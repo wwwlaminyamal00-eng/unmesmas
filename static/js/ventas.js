@@ -8978,7 +8978,13 @@ function renderQuoteProducts() {
         return;
     }
     
-    tbody.innerHTML = quoteProducts.map((p, i) => `
+    tbody.innerHTML = quoteProducts.map((p, i) => {
+        const cantidad = Number(p.cantidad || 1);
+        const valorVenta = Number(p.valorVenta || 0);
+        // 🔽 VALOR TOTAL SIN IGV (solo cantidad × valor unitario)
+        const valorTotalSinIgv = cantidad * valorVenta;
+        
+        return `
         <tr>
             <td class="col-item">${i + 1}</td>
             <td class="col-code">${p.codigo || '-'}</td>
@@ -8993,18 +8999,17 @@ function renderQuoteProducts() {
                     ${SUNAT_UNIDADES.map(u => `<option value="${u.codigo}" ${p.um === u.codigo || p.um === u.nombre ? 'selected' : ''}>${u.codigo}</option>`).join('')}
                 </select>
             </td>
-            <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);calcQuote();"></td>
-            <td class="col-price"><input style="width:90px;text-align:right" value="${p.valorVenta || 0}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Number(this.value);calcQuote();"></td>
-            <td class="col-total"><b>${money(((p.cantidad || 1) * (p.valorVenta || 0)) * 1.18)}</b></td>
+            <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);renderQuoteProducts();calcQuote();"></td>
+            <td class="col-price"><input style="width:90px;text-align:right" value="${p.valorVenta || 0}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Number(this.value);renderQuoteProducts();calcQuote();"></td>
+            <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
             <td class="col-stock">${p.stock || 0}</td>
             <td class="col-delivery">${p.entrega === 'Inmediata' ? '<span class="badge b-ok">Inmediata</span>' : '<span class="badge b-draft">' + (p.entrega || 'Por confirmar') + '</span>'}</td>
             <td class="col-actions">
                 <button class="btn btn-sm btn-danger" onclick="quoteProducts.splice(${i},1);renderQuoteProducts();calcQuote();">✕</button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
-
 
 
 
