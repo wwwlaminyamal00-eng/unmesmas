@@ -1,5 +1,5 @@
 ﻿# routes/productos.py
-from flask import Blueprint, render_template, request, jsonify, session, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, flash, redirect, url_for, Response
 from utils import login_required
 from database import db_query, db_execute, db_tx
 from psycopg2.extras import RealDictCursor
@@ -13,6 +13,24 @@ productos_bp = Blueprint('productos', __name__, url_prefix='/productos')
 # ============================================================
 # FUNCIONES DE UTILIDAD
 # ============================================================
+
+def sincronizar_secuencia_productos(cur):
+    """
+    🔧 Auto-sanación: Sincroniza la secuencia de la primary key `id`
+    con el MAX(id) actual. Evita el error:
+    'duplicate key value violates unique constraint "productos_pkey"'.
+    """
+    try:
+        cur.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('productos', 'id'),
+                (SELECT COALESCE(MAX(id), 0) + 1 FROM productos),
+                false
+            )
+        """)
+    except Exception as e:
+        print(f"⚠️ No se pudo sincronizar la secuencia: {e}")
+
 
 def generar_codigo_con_lock(cur):
     """
@@ -33,6 +51,7 @@ def generar_codigo_con_lock(cur):
     nuevo_num = max_num + 1
     return f"PRD-{str(nuevo_num).zfill(4)}"
 
+
 def safe_float(value, default=0):
     """Convierte a float de forma segura"""
     if value is None or value == '':
@@ -42,6 +61,7 @@ def safe_float(value, default=0):
     except (ValueError, TypeError):
         return default
 
+
 def safe_int(value, default=0):
     """Convierte a int de forma segura"""
     if value is None or value == '':
@@ -50,6 +70,7 @@ def safe_int(value, default=0):
         return int(value)
     except (ValueError, TypeError):
         return default
+
 
 def obtener_ultimo_codigo_producto():
     """Obtiene el último código de producto para generar el siguiente"""
@@ -61,22 +82,22 @@ def obtener_ultimo_codigo_producto():
             WHERE codigo LIKE 'PRD-%' 
             AND codigo ~ '^PRD-[0-9]+$'
         """)
-        
+
         print(f"📋 Resultado de MAX: {result}")
-        
+
         max_num = 0
         if result and result[0].get('max_num') is not None:
             max_num = int(result[0]['max_num'])
             print(f"📊 Máximo número encontrado: {max_num}")
         else:
             print("⚠️ No se encontraron códigos PRD-XXXX")
-        
+
         nuevo_num = max_num + 1
         nuevo_codigo = f"PRD-{str(nuevo_num).zfill(4)}"
-        
+
         print(f"✅ Nuevo código generado: {nuevo_codigo}")
         return nuevo_codigo
-        
+
     except Exception as e:
         print(f"❌ Error generando código: {e}")
         import traceback
@@ -91,6 +112,7 @@ def obtener_ultimo_codigo_producto():
             pass
         return "PRD-0011"
 
+
 # ============================================================
 # RUTAS PARA PÁGINAS HTML
 # ============================================================
@@ -100,40 +122,44 @@ def obtener_ultimo_codigo_producto():
 def productos():
     """Página principal de productos - Redirige a nuevo producto"""
     codigo_auto = obtener_ultimo_codigo_producto()
-    return render_template('nuevo_producto.html', 
-                          active_tab='nuevo',
-                          codigo_auto=codigo_auto,
-                          editando=False,
-                          producto=None)
+    return render_template('nuevo_producto.html',
+                           active_tab='nuevo',
+                           codigo_auto=codigo_auto,
+                           editando=False,
+                           producto=None)
+
 
 @productos_bp.route('/nuevo')
 @login_required
 def productos_nuevo():
     """Página de nuevo producto con código automático"""
     codigo_auto = obtener_ultimo_codigo_producto()
-    return render_template('nuevo_producto.html', 
-                          active_tab='nuevo', 
-                          codigo_auto=codigo_auto,
-                          editando=False,
-                          producto=None)
+    return render_template('nuevo_producto.html',
+                           active_tab='nuevo',
+                           codigo_auto=codigo_auto,
+                           editando=False,
+                           producto=None)
+
 
 @productos_bp.route('/base-datos')
 @login_required
 def productos_base_datos():
     """Página de base de datos de productos"""
-    return render_template('base_datos_producto.html', 
-                          active_tab='base-datos',
-                          producto=None,
-                          editando=False)
+    return render_template('base_datos_producto.html',
+                           active_tab='base-datos',
+                           producto=None,
+                           editando=False)
+
 
 @productos_bp.route('/comparativo')
 @login_required
 def productos_comparativo():
     """Página de comparativo de costos"""
-    return render_template('comparativo_costos.html', 
-                          active_tab='comparativo',
-                          producto=None,
-                          editando=False)
+    return render_template('comparativo_costos.html',
+                           active_tab='comparativo',
+                           producto=None,
+                           editando=False)
+
 
 @productos_bp.route('/editar/<int:producto_id>')
 @login_required
@@ -151,25 +177,22 @@ def productos_editar(producto_id):
             FROM productos
             WHERE id = %s AND activo = TRUE
         """, (producto_id,))
-        
+
         if not producto:
             flash('Producto no encontrado', 'error')
             return redirect(url_for('productos.productos_base_datos'))
-        
-        # ✅ Convertir a diccionario para mejor manejo
+
         producto_dict = dict(producto[0])
         print(f"📝 Producto encontrado: {producto_dict}")
-        
-        # ✅ Obtener código automático (aunque no se use en edición)
+
         codigo_auto = obtener_ultimo_codigo_producto()
-        
-        # ✅ Pasar el producto como diccionario
-        return render_template('nuevo_producto.html', 
-                              active_tab='nuevo',
-                              codigo_auto=codigo_auto,
-                              producto=producto_dict,
-                              editando=True)
-        
+
+        return render_template('nuevo_producto.html',
+                               active_tab='nuevo',
+                               codigo_auto=codigo_auto,
+                               producto=producto_dict,
+                               editando=True)
+
     except Exception as e:
         print(f"❌ Error en productos_editar: {e}")
         import traceback
@@ -191,7 +214,7 @@ def get_productos():
         categoria = request.args.get('categoria', '').strip()
         marca = request.args.get('marca', '').strip()
         modelo = request.args.get('modelo', '').strip()
-        
+
         query = """
             SELECT 
                 p.id, p.codigo, p.descripcion, p.descripcion_larga,
@@ -209,7 +232,7 @@ def get_productos():
         """
         params = []
         condiciones = []
-        
+
         if busqueda:
             condiciones.append("(p.codigo ILIKE %s OR p.descripcion ILIKE %s OR p.modelo ILIKE %s OR p.marca ILIKE %s)")
             params.extend([f'%{busqueda}%'] * 4)
@@ -222,23 +245,24 @@ def get_productos():
         if modelo:
             condiciones.append("p.modelo = %s")
             params.append(modelo)
-        
+
         if condiciones:
             query += " AND " + " AND ".join(condiciones)
-        
+
         query += " ORDER BY fecha_creacion DESC"
-        
+
         productos = db_query(query, params)
-        
+
         return jsonify({
             'success': True,
             'data': productos,
             'total': len(productos)
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_productos: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @productos_bp.route('/api/productos/<int:producto_id>', methods=['GET'])
 @login_required
@@ -260,17 +284,19 @@ def get_producto(producto_id):
             LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
             WHERE p.id = %s AND p.activo = TRUE
         """, (producto_id,))
-        
+
         if not producto:
             return jsonify({'success': False, 'error': 'Producto no encontrado'}), 404
-        
+
         return jsonify({
             'success': True,
             'data': producto[0]
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_producto: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @productos_bp.route('/api/productos', methods=['POST'])
 @login_required
@@ -278,7 +304,7 @@ def create_producto():
     """Crear un nuevo producto"""
     try:
         print("📥 Recibiendo solicitud POST /api/productos")
-        
+
         if request.content_type and 'application/json' in request.content_type:
             data = request.get_json()
         else:
@@ -286,25 +312,27 @@ def create_producto():
             foto = request.files.get('foto')
             if foto and foto.filename:
                 data['foto'] = foto.filename
-        
+
         print(f"📦 Datos recibidos: {data}")
-        
-        # 🔧 CAMBIO: 'codigo' ya NO es requerido del frontend, se genera en el backend
+
         required_fields = ['descripcion', 'modelo', 'marca', 'familia', 'unidad', 'transporte']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({
-                    'success': False, 
+                    'success': False,
                     'error': f'El campo "{field}" es requerido'
                 }), 400
-        
+
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # 🔧 CAMBIO: el código se genera AQUÍ, dentro de la misma transacción y con lock
+
+            # 🔧 PASO 1: Sincronizar secuencia de la PK (evita duplicate key)
+            sincronizar_secuencia_productos(cur)
+
+            # 🔧 PASO 2: Generar código (con advisory lock)
             codigo = generar_codigo_con_lock(cur)
             print(f"🆕 Código generado de forma segura: {codigo}")
-            
+
             proveedor_id = data.get('proveedor_id') or None
             if proveedor_id == '':
                 proveedor_id = None
@@ -363,10 +391,10 @@ def create_producto():
                 data.get('abastecimiento', ''),
                 proveedor_id
             ))
-            
+
             resultado = cur.fetchone()
             print(f"✅ Producto insertado: ID={resultado['id']}, Código={resultado['codigo']}")
-            
+
             return jsonify({
                 'success': True,
                 'data': {
@@ -375,12 +403,13 @@ def create_producto():
                 },
                 'message': f'Producto creado exitosamente con código {resultado["codigo"]}'
             })
-            
+
     except Exception as e:
         print(f"❌ Error en create_producto: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @productos_bp.route('/api/productos/<int:producto_id>', methods=['PUT'])
 @login_required
@@ -388,15 +417,13 @@ def update_producto(producto_id):
     """Actualizar un producto existente"""
     try:
         data = request.get_json()
-        
-        # ✅ VERIFICAR QUE EL PRODUCTO EXISTE
+
         existente = db_query("SELECT id, codigo FROM productos WHERE id = %s AND activo = TRUE", (producto_id,))
         if not existente:
             return jsonify({'success': False, 'error': 'Producto no encontrado'}), 404
-        
-        # ✅ MANTENER EL CÓDIGO EXISTENTE (no actualizar)
+
         codigo_existente = existente[0]['codigo']
-        
+
         proveedor_id = data.get('proveedor_id') or None
         if proveedor_id == '':
             proveedor_id = None
@@ -443,17 +470,16 @@ def update_producto(producto_id):
             proveedor_id,
             producto_id
         ))
-        
+
         return jsonify({
             'success': True,
             'message': 'Producto actualizado exitosamente',
             'data': {'codigo': codigo_existente}
         })
-        
+
     except Exception as e:
         print(f"❌ Error en update_producto: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 
 @productos_bp.route('/api/productos/<int:producto_id>', methods=['DELETE'])
@@ -464,20 +490,21 @@ def delete_producto(producto_id):
         existente = db_query("SELECT id FROM productos WHERE id = %s AND activo = TRUE", (producto_id,))
         if not existente:
             return jsonify({'success': False, 'error': 'Producto no encontrado'}), 404
-        
+
         db_execute("""
             UPDATE productos SET activo = FALSE, updated_at = NOW()
             WHERE id = %s
         """, (producto_id,))
-        
+
         return jsonify({
             'success': True,
             'message': 'Producto desactivado exitosamente'
         })
-        
+
     except Exception as e:
         print(f"❌ Error en delete_producto: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @productos_bp.route('/api/productos/buscar', methods=['GET'])
 @login_required
@@ -487,7 +514,7 @@ def buscar_productos():
         q = request.args.get('q', '').strip()
         if not q or len(q) < 2:
             return jsonify({'success': True, 'data': []})
-        
+
         productos = db_query("""
             SELECT id, codigo, descripcion, modelo, marca, precio_unitario, stock, unidad
             FROM productos
@@ -496,15 +523,16 @@ def buscar_productos():
             ORDER BY codigo
             LIMIT 20
         """, (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'))
-        
+
         return jsonify({
             'success': True,
             'data': productos
         })
-        
+
     except Exception as e:
         print(f"❌ Error en buscar_productos: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @productos_bp.route('/api/productos/filtros', methods=['GET'])
 @login_required
@@ -516,19 +544,19 @@ def get_filtros_productos():
             FROM productos WHERE activo = TRUE AND familia IS NOT NULL AND familia != ''
             ORDER BY familia
         """)
-        
+
         marcas = db_query("""
             SELECT DISTINCT marca
             FROM productos WHERE activo = TRUE AND marca IS NOT NULL AND marca != ''
             ORDER BY marca
         """)
-        
+
         modelos = db_query("""
             SELECT DISTINCT modelo
             FROM productos WHERE activo = TRUE AND modelo IS NOT NULL AND modelo != ''
             ORDER BY modelo
         """)
-        
+
         return jsonify({
             'success': True,
             'data': {
@@ -537,12 +565,12 @@ def get_filtros_productos():
                 'modelos': [m['modelo'] for m in modelos] if modelos else []
             }
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_filtros_productos: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ⚠️ UNICA DEFINICION - Eliminada la duplicada
+
 @productos_bp.route('/api/productos/ultimo-codigo', methods=['GET'])
 @login_required
 def get_ultimo_codigo():
@@ -558,6 +586,7 @@ def get_ultimo_codigo():
         print(f"❌ Error en get_ultimo_codigo: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 # ============================================================
 # ENDPOINTS PARA COMPARATIVO DE COSTOS
 # ============================================================
@@ -565,69 +594,44 @@ def get_ultimo_codigo():
 @productos_bp.route('/api/comparativo-costos', methods=['GET'])
 @login_required
 def get_comparativo_costos():
-    """
-    API: Obtener datos del comparativo de costos
-    Con soporte para filtros opcionales
-    """
+    """API: Obtener datos del comparativo de costos"""
     try:
-        # Obtener parámetros de filtro
         categoria = request.args.get('categoria', '').strip()
         marca = request.args.get('marca', '').strip()
         min_margen = request.args.get('min_margen', '').strip()
         max_margen = request.args.get('max_margen', '').strip()
         busqueda = request.args.get('q', '').strip()
         producto_id = request.args.get('producto_id', '').strip()
-        
-        # Construir la consulta base
+
         query = """
             SELECT 
-                producto_id,
-                codigo,
-                nombre_producto,
-                modelo,
-                marca,
-                categoria,
-                subcategoria,
-                costo_actual,
-                precio_actual,
-                stock,
-                stock_minimo,
-                estado,
-                activo,
-                precio_venta,
-                precio_lista,
-                margen_preferido,
-                total_registros_costos,
-                costo_promedio_historico,
-                costo_minimo_historico,
-                costo_maximo_historico,
-                costo_compra_promedio,
-                costo_transporte_promedio,
-                costo_almacenaje_promedio,
-                costo_manufactura_promedio,
-                ultimo_costo_registrado,
-                fecha_ultimo_costo,
-                margen_actual_porcentaje,
-                margen_historico_porcentaje,
-                diferencia_margen_preferido
+                producto_id, codigo, nombre_producto, modelo, marca,
+                categoria, subcategoria, costo_actual, precio_actual,
+                stock, stock_minimo, estado, activo, precio_venta,
+                precio_lista, margen_preferido, total_registros_costos,
+                costo_promedio_historico, costo_minimo_historico,
+                costo_maximo_historico, costo_compra_promedio,
+                costo_transporte_promedio, costo_almacenaje_promedio,
+                costo_manufactura_promedio, ultimo_costo_registrado,
+                fecha_ultimo_costo, margen_actual_porcentaje,
+                margen_historico_porcentaje, diferencia_margen_preferido
             FROM vista_comparativo_costos
             WHERE 1=1
         """
         params = []
-        
-        # Aplicar filtros
+
         if producto_id:
             query += " AND producto_id = %s"
             params.append(int(producto_id))
-        
+
         if categoria:
             query += " AND categoria ILIKE %s"
             params.append(f'%{categoria}%')
-        
+
         if marca:
             query += " AND marca ILIKE %s"
             params.append(f'%{marca}%')
-        
+
         if busqueda:
             query += """ AND (
                 codigo ILIKE %s OR 
@@ -636,21 +640,19 @@ def get_comparativo_costos():
                 marca ILIKE %s
             )"""
             params.extend([f'%{busqueda}%'] * 4)
-        
+
         if min_margen:
             query += " AND margen_actual_porcentaje >= %s"
             params.append(float(min_margen))
-        
+
         if max_margen:
             query += " AND margen_actual_porcentaje <= %s"
             params.append(float(max_margen))
-        
-        # Ordenar
+
         query += " ORDER BY nombre_producto"
-        
-        # Ejecutar consulta
+
         resultados = db_query(query, params)
-        
+
         return jsonify({
             'success': True,
             'data': resultados,
@@ -663,25 +665,21 @@ def get_comparativo_costos():
                 'busqueda': busqueda if busqueda else None
             }
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_comparativo_costos: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @productos_bp.route('/api/comparativo-costos/resumen', methods=['GET'])
 @login_required
 def get_resumen_costos():
-    """
-    API: Obtener resumen del dashboard de costos
-    """
+    """API: Obtener resumen del dashboard de costos"""
     try:
-        resultado = db_query("""
-            SELECT * FROM vista_resumen_costos
-        """)
-        
-        # Si no hay resultados, devolver valores por defecto
+        resultado = db_query("SELECT * FROM vista_resumen_costos")
+
         if not resultado:
             return jsonify({
                 'success': True,
@@ -700,49 +698,41 @@ def get_resumen_costos():
                     'promedio_ultimos_30_dias': 0
                 }
             })
-        
+
         return jsonify({
             'success': True,
             'data': resultado[0]
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_resumen_costos: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @productos_bp.route('/api/productos/<int:producto_id>/costos-historicos', methods=['GET'])
 @login_required
 def get_costos_historicos(producto_id):
-    """
-    API: Obtener el historial de costos de un producto específico
-    """
+    """API: Obtener el historial de costos de un producto específico"""
     try:
-        # Verificar que el producto existe
         producto = db_query("""
             SELECT id, codigo, descripcion 
             FROM productos 
             WHERE id = %s AND activo = TRUE
         """, (producto_id,))
-        
+
         if not producto:
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': 'Producto no encontrado'
             }), 404
-        
-        # Obtener historial de costos
+
         historial = db_query("""
-            SELECT 
-                id,
-                fecha_registro,
-                tipo_costo,
-                monto,
-                observaciones
+            SELECT id, fecha_registro, tipo_costo, monto, observaciones
             FROM costos_productos
             WHERE producto_id = %s
             ORDER BY fecha_registro DESC
         """, (producto_id,))
-        
+
         return jsonify({
             'success': True,
             'data': {
@@ -751,42 +741,38 @@ def get_costos_historicos(producto_id):
                 'total_registros': len(historial)
             }
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_costos_historicos: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @productos_bp.route('/api/comparativo-costos/filtros', methods=['GET'])
 @login_required
 def get_filtros_comparativo():
-    """
-    API: Obtener opciones de filtros para el comparativo
-    """
+    """API: Obtener opciones de filtros para el comparativo"""
     try:
-        # Obtener categorías únicas de la vista
         categorias = db_query("""
             SELECT DISTINCT categoria 
             FROM vista_comparativo_costos 
             WHERE categoria IS NOT NULL AND categoria != ''
             ORDER BY categoria
         """)
-        
-        # Obtener marcas únicas
+
         marcas = db_query("""
             SELECT DISTINCT marca 
             FROM vista_comparativo_costos 
             WHERE marca IS NOT NULL AND marca != ''
             ORDER BY marca
         """)
-        
-        # Obtener productos con datos
+
         productos = db_query("""
             SELECT DISTINCT producto_id, codigo, nombre_producto
             FROM vista_comparativo_costos
             ORDER BY nombre_producto
             LIMIT 100
         """)
-        
+
         return jsonify({
             'success': True,
             'data': {
@@ -795,61 +781,40 @@ def get_filtros_comparativo():
                 'productos': productos if productos else []
             }
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_filtros_comparativo: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @productos_bp.route('/api/comparativo-costos/exportar', methods=['GET'])
 @login_required
 def exportar_comparativo_csv():
-    """
-    API: Exportar datos del comparativo a CSV
-    """
+    """API: Exportar datos del comparativo a CSV"""
     try:
-        # Obtener todos los datos
         resultados = db_query("""
             SELECT 
-                codigo,
-                nombre_producto,
-                modelo,
-                marca,
-                categoria,
-                costo_actual,
-                precio_actual,
-                costo_promedio_historico,
-                margen_actual_porcentaje,
-                margen_historico_porcentaje,
-                total_registros_costos,
-                fecha_ultimo_costo
+                codigo, nombre_producto, modelo, marca, categoria,
+                costo_actual, precio_actual, costo_promedio_historico,
+                margen_actual_porcentaje, margen_historico_porcentaje,
+                total_registros_costos, fecha_ultimo_costo
             FROM vista_comparativo_costos
             ORDER BY nombre_producto
         """)
-        
-        # Construir CSV
+
         import csv
         from io import StringIO
-        
+
         output = StringIO()
         writer = csv.writer(output)
-        
-        # Encabezados
+
         writer.writerow([
-            'Código',
-            'Producto',
-            'Modelo',
-            'Marca',
-            'Categoría',
-            'Costo Actual (S/)',
-            'Precio Venta (S/)',
-            'Costo Promedio Histórico (S/)',
-            'Margen Actual (%)',
-            'Margen Histórico (%)',
-            'N° Registros Costos',
-            'Fecha Último Costo'
+            'Código', 'Producto', 'Modelo', 'Marca', 'Categoría',
+            'Costo Actual (S/)', 'Precio Venta (S/)',
+            'Costo Promedio Histórico (S/)', 'Margen Actual (%)',
+            'Margen Histórico (%)', 'N° Registros Costos', 'Fecha Último Costo'
         ])
-        
-        # Datos
+
         for row in resultados:
             writer.writerow([
                 row.get('codigo', ''),
@@ -865,12 +830,10 @@ def exportar_comparativo_csv():
                 row.get('total_registros_costos', 0),
                 row.get('fecha_ultimo_costo', '')
             ])
-        
+
         csv_content = output.getvalue()
         output.close()
-        
-        # Devolver como archivo CSV
-        from flask import Response
+
         return Response(
             csv_content,
             mimetype='text/csv',
@@ -878,30 +841,22 @@ def exportar_comparativo_csv():
                 'Content-Disposition': f'attachment; filename=comparativo_costos_{datetime.now().strftime("%Y%m%d")}.csv'
             }
         )
-        
+
     except Exception as e:
         print(f"❌ Error en exportar_comparativo_csv: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @productos_bp.route('/api/comparativo-costos/mejor-producto', methods=['GET'])
 @login_required
 def get_mejor_producto():
-    """
-    API: Obtener el producto con mejor margen
-    """
+    """API: Obtener el producto con mejor margen"""
     try:
         resultado = db_query("""
             SELECT 
-                producto_id,
-                codigo,
-                nombre_producto,
-                marca,
-                modelo,
-                categoria,
-                precio_actual,
-                costo_actual,
-                margen_actual_porcentaje,
-                costo_promedio_historico,
+                producto_id, codigo, nombre_producto, marca, modelo,
+                categoria, precio_actual, costo_actual,
+                margen_actual_porcentaje, costo_promedio_historico,
                 total_registros_costos
             FROM vista_comparativo_costos
             WHERE margen_actual_porcentaje = (
@@ -910,19 +865,19 @@ def get_mejor_producto():
             )
             LIMIT 1
         """)
-        
+
         if not resultado:
             return jsonify({
                 'success': True,
                 'data': None,
                 'message': 'No hay productos con datos de costos'
             })
-        
+
         return jsonify({
             'success': True,
             'data': resultado[0]
         })
-        
+
     except Exception as e:
         print(f"❌ Error en get_mejor_producto: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
