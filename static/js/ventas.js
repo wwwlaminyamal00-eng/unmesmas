@@ -13376,63 +13376,65 @@ function renderCotizacionFormContent(isEdit) {
     </div>
 </div>
     <!-- ============================================================ -->
-<!-- 3. RESUMEN - ESTILO IMAGEN (con orden corregido) -->
-<!-- ============================================================ -->
-<div class="create-panel summary-card" style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;max-width:500px;font-family:'Segoe UI',Roboto,sans-serif;">
-    
-    <!-- Título "3. Resumen" -->
-    <div style="padding:5px 10px;border-bottom:1px solid #E5E7EB;background:#FAFAFA;display:flex;align-items:center;gap:5px;">
-        <span style="color:#D32F2F;font-weight:700;font-size:10px;">3.</span>
-        <span style="color:#D32F2F;font-weight:700;font-size:10px;">Resumen</span>
-    </div>
-    
-    <!-- Cuerpo del resumen -->
-    <div style="padding:6px 10px 8px 10px;">
+    <!-- 3. RESUMEN - ESTILO IMAGEN (con orden corregido)            -->
+    <!-- ============================================================ -->
+    <div class="create-panel summary-card" style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;max-width:500px;font-family:'Segoe UI',Roboto,sans-serif;">
         
-        <!-- FILA: Subtotal -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-            <span style="font-size:9.5px;color:#444;font-weight:500;">Subtotal</span>
-            <span id="sumSubtotal" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
+        <!-- Título "3. Resumen" -->
+        <div style="padding:5px 10px;border-bottom:1px solid #E5E7EB;background:#FAFAFA;display:flex;align-items:center;gap:5px;">
+            <span style="color:#D32F2F;font-weight:700;font-size:10px;">3.</span>
+            <span style="color:#D32F2F;font-weight:700;font-size:10px;">Resumen</span>
         </div>
         
-        <!-- FILA: IGV 18% -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-            <span style="font-size:9.5px;color:#444;font-weight:500;">IGV 18%</span>
-            <span id="sumIgv" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
-        </div>
-        
-        <!-- FILA: Valor venta -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-            <span style="font-size:9.5px;color:#444;font-weight:500;">Valor venta</span>
-            <span id="sumValorVenta" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
-        </div>
-        
-        <!-- FILA: Descuento + input + select (después de Valor venta) -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-            <span style="font-size:9.5px;color:#444;font-weight:500;">Descuento</span>
-            <div style="display:flex;align-items:center;gap:3px;">
-                <input id="fDiscountValue" type="number" value="0" step="0.01" style="width:50px;height:18px;border:1px solid #CCC;border-radius:4px;padding:0 3px;text-align:right;font-weight:600;font-size:9.5px;background:#FFF;">
-                <select id="fDiscountType" style="height:18px;border-radius:4px;border:1px solid #CCC;font-weight:600;font-size:9px;background:#FFF;padding:0 3px;" onchange="calcQuote()">
-                    <option value="%">%</option>
-                    <option value="S/">S/</option>
-                </select>
+        <!-- Cuerpo del resumen -->
+        <div style="padding:6px 10px 8px 10px;">
+            
+            <!-- FILA: Subtotal -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
+                <span style="font-size:9.5px;color:#444;font-weight:500;">Subtotal</span>
+                <span id="sumSubtotal" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
             </div>
+            
+            <!-- FILA: IGV 18% -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
+                <span style="font-size:9.5px;color:#444;font-weight:500;">IGV 18%</span>
+                <span id="sumIgv" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
+            </div>
+            
+            <!-- FILA: Descuento + input + select -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
+                <span style="font-size:9.5px;color:#444;font-weight:500;">Descuento</span>
+                <div style="display:flex;align-items:center;gap:3px;">
+                    <input id="fDiscountValue" type="number" value="0" step="0.01" style="width:50px;height:18px;border:1px solid #CCC;border-radius:4px;padding:0 3px;text-align:right;font-weight:600;font-size:9.5px;background:#FFF;">
+                    <select id="fDiscountType" style="height:18px;border-radius:4px;border:1px solid #CCC;font-weight:600;font-size:9px;background:#FFF;padding:0 3px;" onchange="calcQuote()">
+                        <option value="%">%</option>
+                        <option value="S/">S/</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- FILA: Dscto aplicado -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
+                <span style="font-size:9.5px;color:#444;font-weight:500;">Dscto aplicado</span>
+                <span id="sumDiscount" style="font-size:10px;font-weight:600;color:#D32F2F;">-S/ 0.00</span>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- 🔽 FILA: Valor venta (MOVIDA AQUÍ, DEBAJO DE "Dscto aplicado") -->
+            <!-- ============================================================ -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
+                <span style="font-size:9.5px;color:#444;font-weight:500;">Valor venta</span>
+                <span id="sumValorVenta" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
+            </div>
+            
+            <!-- TOTAL -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0 0 0;margin-top:2px;border-top:2px solid #D32F2F;">
+                <span style="font-size:11px;font-weight:700;color:#1E1E1E;">TOTAL A PAGAR</span>
+                <span id="sumTotal" style="font-size:15px;font-weight:800;color:#D32F2F;">S/ 0.00</span>
+            </div>
+            
         </div>
-        
-        <!-- FILA: Dscto aplicado -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-            <span style="font-size:9.5px;color:#444;font-weight:500;">Dscto aplicado</span>
-            <span id="sumDiscount" style="font-size:10px;font-weight:600;color:#D32F2F;">-S/ 0.00</span>
-        </div>
-        
-        <!-- TOTAL -->
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0 0 0;margin-top:2px;border-top:2px solid #D32F2F;">
-            <span style="font-size:11px;font-weight:700;color:#1E1E1E;">TOTAL A PAGAR</span>
-            <span id="sumTotal" style="font-size:15px;font-weight:800;color:#D32F2F;">S/ 0.00</span>
-        </div>
-        
     </div>
-</div>
 
 </div> <!-- 🔴 CIERRE DEL GRID DE 3 COLUMNAS -->
 
