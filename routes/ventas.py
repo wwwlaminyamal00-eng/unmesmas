@@ -505,9 +505,8 @@ def actualizar_guia_db(guia_id, data):
 # ============================================================
 # FUNCIONES DE AYUDA PARA COMPROBANTES
 # ============================================================
-
 def obtener_comprobantes_db():
-    """Obtiene todos los comprobantes con los campos de retención"""
+    """Obtiene todos los comprobantes con los campos de retención y orden de compra"""
     try:
         query = """
             SELECT 
@@ -518,6 +517,8 @@ def obtener_comprobantes_db():
                 items_json, observaciones, estado_sunat, 
                 documento_asociado, condicion_pago,
                 guia_vinculada, pc_vinculado,
+                -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA
+                orden_compra_cliente,
                 -- 🔽 NUEVOS CAMPOS DE RETENCIÓN
                 es_credito, estado_credito, fecha_aprobacion,
                 fecha_vencimiento, dias_credito, monto_retenido,
@@ -533,7 +534,7 @@ def obtener_comprobantes_db():
         return []
 
 def guardar_comprobante_db(data):
-    """Guarda un nuevo comprobante con fecha y hora correcta"""
+    """Guarda un nuevo comprobante con fecha y hora correcta, incluyendo orden de compra"""
     try:
         from datetime import datetime
         
@@ -542,7 +543,7 @@ def guardar_comprobante_db(data):
         if not fecha_emision:
             fecha_emision = datetime.now().isoformat()
         
-        print(f"📅 Fecha emisión guardando: {fecha_emision}")  # Para depuración
+        print(f"📅 Fecha emisión guardando: {fecha_emision}")
         
         query = """
             INSERT INTO comprobantes (
@@ -553,6 +554,8 @@ def guardar_comprobante_db(data):
                 items_json, observaciones, estado_sunat,
                 condicion_pago, documento_asociado, guia_vinculada,
                 pc_vinculado, creado_por,
+                -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+                orden_compra_cliente,
                 -- 🔽 CAMPOS DE RETENCIÓN
                 tiene_retencion, es_credito, estado_credito,
                 fecha_aprobacion, fecha_vencimiento, dias_credito,
@@ -562,6 +565,7 @@ def guardar_comprobante_db(data):
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s,
+                %s, -- orden_compra_cliente
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING id, serie, numero
@@ -571,7 +575,7 @@ def guardar_comprobante_db(data):
             data.get('tipo_comprobante', 'FACTURA'),
             data.get('serie', 'F001'),
             data.get('numero'),
-            fecha_emision,  # ✅ CON FECHA Y HORA COMPLETA
+            fecha_emision,
             data.get('moneda', 'PEN'),
             data.get('cliente_tipo_doc', 'RUC'),
             data.get('cliente_numero_doc'),
@@ -590,6 +594,8 @@ def guardar_comprobante_db(data):
             data.get('guia_vinculada'),
             data.get('pc_vinculado'),
             data.get('creado_por'),
+            # 🔽 ORDEN DE COMPRA MANUAL
+            data.get('orden_compra_cliente', '') or '',
             # 🔽 CAMPOS DE RETENCIÓN
             data.get('tiene_retencion', False),
             data.get('es_credito', False),
@@ -2221,7 +2227,6 @@ def api_comprobantes_listar():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @ventas_bp.route('/ventas/api/comprobantes/guardar', methods=['POST'])
 @login_required
 def api_comprobantes_guardar():
@@ -2246,6 +2251,9 @@ def api_comprobantes_guardar():
         obs_retencion = data.get('obs_retencion')
         condicion_pago = data.get('condicion', 'Contado')
         
+        # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+        orden_compra_cliente = data.get('orden_compra_cliente', '') or ''
+        
         # Calcular totales
         monto_total = float(data.get('total', 0))
         subtotal = float(data.get('subtotal', 0))
@@ -2255,7 +2263,7 @@ def api_comprobantes_guardar():
         # 🔽 OBTENER FECHA Y HORA ACTUAL CORRECTA
         # ============================================================
         from datetime import datetime
-        fecha_emision = datetime.now().isoformat()  # ✅ CON HORA COMPLETA
+        fecha_emision = datetime.now().isoformat()
         print(f"📅 Fecha emisión guardando: {fecha_emision}")
         
         # ============================================================
@@ -2308,6 +2316,8 @@ def api_comprobantes_guardar():
             'documento_asociado': data.get('cotizacion') or data.get('cotizacion_numero') or '',
             'guia_vinculada': data.get('guia') or '',
             'pc_vinculado': data.get('pc') or '',
+            # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+            'orden_compra_cliente': orden_compra_cliente,
             # 🔽 CAMPOS DE RETENCIÓN
             'tiene_retencion': tiene_retencion,
             'es_credito': es_credito,
@@ -2338,6 +2348,8 @@ def api_comprobantes_guardar():
                     estado_sunat = %s, condicion_pago = %s,
                     documento_asociado = %s, guia_vinculada = %s,
                     pc_vinculado = %s,
+                    -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+                    orden_compra_cliente = %s,
                     tiene_retencion = %s, es_credito = %s,
                     estado_credito = %s, fecha_aprobacion = %s,
                     fecha_vencimiento = %s, dias_credito = %s,
@@ -2369,6 +2381,8 @@ def api_comprobantes_guardar():
                 comprobante_data['documento_asociado'],
                 comprobante_data['guia_vinculada'],
                 comprobante_data['pc_vinculado'],
+                # 🔽 ORDEN DE COMPRA MANUAL
+                comprobante_data['orden_compra_cliente'],
                 comprobante_data['tiene_retencion'],
                 comprobante_data['es_credito'],
                 comprobante_data['estado_credito'],
@@ -2404,6 +2418,8 @@ def api_comprobantes_guardar():
                 items_json, observaciones, estado_sunat,
                 condicion_pago, documento_asociado, guia_vinculada,
                 pc_vinculado, creado_por,
+                -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+                orden_compra_cliente,
                 tiene_retencion, es_credito, estado_credito,
                 fecha_aprobacion, fecha_vencimiento, dias_credito,
                 porcentaje_retencion, monto_retenido, monto_a_pagar,
@@ -2412,6 +2428,7 @@ def api_comprobantes_guardar():
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s,
+                %s, -- orden_compra_cliente
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING id, serie, numero
@@ -2439,6 +2456,8 @@ def api_comprobantes_guardar():
             comprobante_data['guia_vinculada'],
             comprobante_data['pc_vinculado'],
             comprobante_data['creado_por'],
+            # 🔽 ORDEN DE COMPRA MANUAL
+            comprobante_data['orden_compra_cliente'],
             comprobante_data['tiene_retencion'],
             comprobante_data['es_credito'],
             comprobante_data['estado_credito'],
@@ -2468,7 +2487,6 @@ def api_comprobantes_guardar():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @ventas_bp.route('/ventas/api/comprobantes/<int:id>', methods=['GET'])
 @login_required
 def api_comprobantes_obtener(id):
@@ -2485,6 +2503,8 @@ def api_comprobantes_obtener(id):
                 items_json, observaciones, estado_sunat,
                 condicion_pago, documento_asociado, guia_vinculada,
                 pc_vinculado, 
+                -- 🔽 NUEVO CAMPO
+                orden_compra_cliente,
                 tiene_retencion, 
                 es_credito, estado_credito, fecha_aprobacion,
                 fecha_vencimiento, dias_credito, 
@@ -2499,25 +2519,19 @@ def api_comprobantes_obtener(id):
         
         print(f"📊 Resultado de consulta: {result}")
         
-        # 🔽 VERIFICAR QUE HAYA RESULTADOS
         if not result:
             print(f"❌ No se encontró comprobante con ID: {id}")
             return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
         
-        # Verificar que result sea una lista y tenga elementos
         if not isinstance(result, list) or len(result) == 0:
             print(f"❌ Resultado vacío o no es lista: {type(result)}")
             return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
         
-        # Tomar el primer resultado
         comp = result[0]
         
-        # Verificar que comp sea un diccionario
         if not isinstance(comp, dict):
             print(f"⚠️ Resultado no es un diccionario: {type(comp)}")
-            # Si es una tupla, convertir a diccionario
             if isinstance(comp, (tuple, list)):
-                # Obtener los nombres de las columnas
                 columns = [
                     'id', 'tipo_comprobante', 'serie', 'numero', 'fecha_emision',
                     'moneda', 'cliente_tipo_doc', 'cliente_numero_doc',
@@ -2525,7 +2539,8 @@ def api_comprobantes_obtener(id):
                     'cliente_telefono', 'subtotal', 'igv', 'total',
                     'items_json', 'observaciones', 'estado_sunat',
                     'condicion_pago', 'documento_asociado', 'guia_vinculada',
-                    'pc_vinculado', 'tiene_retencion', 'es_credito',
+                    'pc_vinculado', 'orden_compra_cliente',
+                    'tiene_retencion', 'es_credito',
                     'estado_credito', 'fecha_aprobacion', 'fecha_vencimiento',
                     'dias_credito', 'porcentaje_retencion', 'monto_retenido',
                     'monto_a_pagar', 'obs_retencion', 'sunat_response',
@@ -2555,6 +2570,7 @@ def api_comprobantes_obtener(id):
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @ventas_bp.route('/ventas/api/comprobantes/<int:id>', methods=['DELETE'])
 @login_required

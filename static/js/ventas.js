@@ -3159,14 +3159,6 @@ async function saveGuia(estado) {
 }
 window.saveGuia = saveGuia;
 
-// ============================================================
-// RENDERIZAR CONTENIDO DEL MODAL DE COMPROBANTES CON RETENCIÓN TOGGLE
-// ============================================================
-
-// ============================================================
-// RENDERIZAR CONTENIDO DEL MODAL DE COMPROBANTES CON RETENCIÓN DEL 3%
-// ============================================================
-
 function renderComprobanteFormContent(isEdit, data) {
     const cotOptions = (cotizacionesData || []).map(q => 
         `<option value="${q.numero}" ${data?.cotizacion === q.numero ? 'selected' : ''}>${q.numero} - ${q.razon || 'Sin cliente'}</option>`
@@ -3205,10 +3197,10 @@ function renderComprobanteFormContent(isEdit, data) {
     // 🔽 DATOS DE RETENCIÓN DEL IGV (3% para Perú)
     // ============================================================
     const tieneRetencion = data?.tiene_retencion || false;
-    const porcentajeRetencion = data?.porcentaje_retencion || 3.00; // 3% por defecto
+    const porcentajeRetencion = data?.porcentaje_retencion || 3.00;
     const montoRetenido = data?.monto_retenido || 0;
     const montoTotal = data?.total || data?.monto || 0;
-    const montoBaseRetencion = montoTotal; // Se retiene sobre el total (incluye IGV)
+    const montoBaseRetencion = montoTotal;
     const montoRetenidoCalculado = (montoBaseRetencion * porcentajeRetencion) / 100;
     
     // Productos
@@ -3242,6 +3234,20 @@ function renderComprobanteFormContent(isEdit, data) {
                         <option value="">-- Ninguno --</option>
                         ${pcOptions || '<option value="" disabled>Sin PCs</option>'}
                     </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- 🔽 NUEVA SECCIÓN: ORDEN DE COMPRA MANUAL (OPCIONAL)        -->
+        <!-- ============================================================ -->
+        <div class="ficha-section">
+            <div class="ficha-grid">
+                <div class="form-field col-12">
+                    <label>N° Orden de Compra (opcional)</label>
+                    <input id="compOrdenCompra" 
+                           placeholder="Ej: OC-04705 (se mostrará en el PDF si lo ingresas)" 
+                           value="${data?.orden_compra_cliente || ''}">
                 </div>
             </div>
         </div>
@@ -3990,6 +3996,9 @@ function cargarDatosComprobante(data) {
     setVal('compGuia', data.guia_vinculada || data.guia);
     setVal('compPC', data.pc_vinculado || data.pc);
     
+    // 🔽 NUEVO CAMPO: ORDEN DE COMPRA
+    setVal('compOrdenCompra', data.orden_compra_cliente || '');
+    
     // 🔽 DATOS DE RETENCIÓN
     setVal('compEstadoCredito', data.estado_credito || 'Pendiente de aprobación');
     setVal('compFechaAprobacion', data.fecha_aprobacion || today());
@@ -4009,9 +4018,12 @@ function cargarDatosComprobante(data) {
     }
 }
 
-
 // ============================================================
 // GUARDAR COMPROBANTE CON DATOS DE RETENCIÓN DEL 3%
+// ============================================================
+
+// ============================================================
+// GUARDAR COMPROBANTE CON DATOS DE RETENCIÓN DEL 3% Y ORDEN DE COMPRA
 // ============================================================
 
 async function _saveComprobante(estado) {
@@ -4064,10 +4076,12 @@ async function _saveComprobante(estado) {
             tipo: document.getElementById('compTipo')?.value || 'Factura',
             serie: document.getElementById('compSerie')?.value || 'F001',
             numero: document.getElementById('compNumero')?.value || String(Date.now()).slice(-8),
-             fecha_emision: new Date().toISOString(),
+            fecha_emision: new Date().toISOString(),
             cotizacion: document.getElementById('compCotizacion')?.value || '',
             guia: document.getElementById('compGuia')?.value || '',
             pc: document.getElementById('compPC')?.value || '',
+            // 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+            orden_compra_cliente: document.getElementById('compOrdenCompra')?.value?.trim() || '',
             cliente: document.getElementById('compCliente')?.value || '',
             ruc: document.getElementById('compRuc')?.value || '',
             direccion: document.getElementById('compDireccion')?.value || '',
@@ -4113,6 +4127,9 @@ async function _saveComprobante(estado) {
         showToast('❌ Error al guardar el comprobante', 'error');
     }
 }
+
+
+
 
 function saveComprobante(estado) {
     const tipo = document.getElementById('compTipo')?.value || 'Comprobante';

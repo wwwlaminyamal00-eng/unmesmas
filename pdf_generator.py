@@ -301,7 +301,18 @@ class PDFGenerator:
 
             total_letras = self.numero_a_letras(total)
 
-            orden_compra_cliente = datos_comprobante.get('orden_compra_cliente', '—')
+            # ============================================================
+            # 🔽 LÓGICA PARA ORDEN DE COMPRA: MANUAL O AUTOMÁTICA
+            # ============================================================
+            orden_compra_cliente = datos_comprobante.get('orden_compra_cliente', '').strip()
+            
+            # Si no se ingresó manualmente, intentar obtener del documento asociado (cotización/PC)
+            if not orden_compra_cliente:
+                orden_compra_cliente = datos_comprobante.get('documento_asociado', '') or '—'
+                print(f"📋 Orden de Compra (auto desde documento asociado): {orden_compra_cliente}")
+            else:
+                print(f"📋 Orden de Compra (manual): {orden_compra_cliente}")
+            
             factura = datos_comprobante.get('factura', '—')
             nro_cotizacion = datos_comprobante.get('nro_cotizacion', '—')
             
@@ -391,6 +402,7 @@ class PDFGenerator:
             traceback.print_exc()
             return None
 
+  
     def _obtener_template_comprobante(self):
         return """<!DOCTYPE html>
 <html>
@@ -959,6 +971,8 @@ class PDFGenerator:
             html = re.sub(r'{{.*?}}', '', html, flags=re.DOTALL)
             
             return html
+
+
 
     def _generar_qr_comprobante(self, datos_comprobante):
         try:
