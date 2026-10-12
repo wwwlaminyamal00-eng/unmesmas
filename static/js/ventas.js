@@ -13428,7 +13428,7 @@ function renderCotizacionFormContent(isEdit) {
             <!-- 🔽 FILA: Valor venta (MOVIDA AQUÍ, DEBAJO DE "Dscto aplicado") -->
             <!-- ============================================================ -->
             <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #F0F0F0;">
-                <span style="font-size:9.5px;color:#444;font-weight:500;">Valor venta</span>
+                <span style="font-size:9.5px;color:#444;font-weight:500;">Valor Venta Total</span>
                 <span id="sumValorVenta" style="font-size:10px;font-weight:600;color:#1E1E1E;">S/ 0.00</span>
             </div>
             
