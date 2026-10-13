@@ -1189,22 +1189,10 @@ def api_recepciones_guardar():
 
         result = guardar_recepcion_db(data)
         if result:
-            if data.get('estado') in ('Aprobada', 'Almacenada'):
-                try:
-                    update_stock_query = """
-                        UPDATE productos 
-                        SET stock = stock + %s
-                        WHERE descripcion ILIKE %s OR codigo ILIKE %s
-                    """
-                    db_query(update_stock_query, (
-                        float(data.get('cantidad', 0)),
-                        f"%{data.get('producto', '')}%",
-                        f"%{data.get('producto', '')}%"
-                    ))
-                    print(f"✅ Stock actualizado para: {data.get('producto')}")
-                except Exception as e:
-                    print(f"⚠️ Error actualizando stock: {e}")
-
+            # El stock ya no se suma aquí (antes se sumaba buscando el nombre con ILIKE, lo que podía
+            # afectar a varios productos y sumar dos veces al pasar de Aprobada a Almacenada).
+            # Ahora la recepción aprobada aparece en Inventario ▸ Entradas y salidas para ingresarla
+            # indicando la empresa dueña y la sede donde quedó.
             return jsonify({'success': True, 'message': 'Recepción guardada', 'data': result})
         return jsonify({'success': False, 'error': 'No se pudo guardar'}), 200
 
@@ -1239,29 +1227,7 @@ def api_recepciones_toggle(id):
         result = db_query(query, (nuevo_estado, id))
         
         if result:
-            if nuevo_estado in ['Aprobada', 'Almacenada']:
-                try:
-                    get_query = """
-                        SELECT producto, cantidad 
-                        FROM recepciones_mercaderia 
-                        WHERE id = %s
-                    """
-                    recepcion = db_query(get_query, (id,))
-                    if recepcion:
-                        update_stock_query = """
-                            UPDATE productos 
-                            SET stock = stock + %s
-                            WHERE descripcion ILIKE %s OR codigo ILIKE %s
-                        """
-                        db_query(update_stock_query, (
-                            float(recepcion[0].get('cantidad', 0)),
-                            f'%{recepcion[0].get("producto", "")}%',
-                            f'%{recepcion[0].get("producto", "")}%'
-                        ))
-                        print(f"✅ Stock actualizado para recepción ID: {id}")
-                except Exception as e:
-                    print(f"⚠️ Error actualizando stock: {e}")
-            
+            # El stock se ingresa desde Inventario ▸ Entradas y salidas (ver api_recepciones_guardar).
             return jsonify({
                 'success': True,
                 'message': f'Recepción actualizada a {nuevo_estado}',

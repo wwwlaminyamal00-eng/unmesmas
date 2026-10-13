@@ -428,6 +428,10 @@ def update_producto(producto_id):
         if proveedor_id == '':
             proveedor_id = None
 
+        # Si el producto ya está en el nuevo Inventario, el stock solo cambia con movimientos del kardex
+        # (así nadie puede "corregir" el stock a mano sin dejar rastro).
+        from routes.inventario import asegurar_tablas_inventario
+        asegurar_tablas_inventario()
         db_execute("""
             UPDATE productos SET
                 descripcion = %s, descripcion_larga = %s,
@@ -435,7 +439,9 @@ def update_producto(producto_id):
                 unidad = %s, peso = %s, volumen = %s,
                 observaciones = %s, transporte = %s,
                 costo_unitario = %s, precio_unitario = %s,
-                stock = %s, stock_minimo = %s,
+                stock = CASE WHEN EXISTS (SELECT 1 FROM inv_stock WHERE producto_id = productos.id)
+                             THEN stock ELSE %s END,
+                stock_minimo = %s,
                 estado = %s,
                 presentacion_proveedor = %s, presentacion_venta = %s,
                 venta_minima = %s, codigo_barras = %s,

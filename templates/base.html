@@ -137,10 +137,15 @@
         <span class="caret-toggle">›</span>
     </div>
     <div class="menu-children">
-        <a href="/inventario?tab=estado_stock" class="child-btn" data-screen="estado_stock" style="text-decoration:none;">Estado de stock</a>
-        <a href="/inventario?tab=kardex" class="child-btn" data-screen="kardex" style="text-decoration:none;">Kardex</a>
+        <a href="/inventario?tab=resumen" class="child-btn" data-screen="resumen" style="text-decoration:none;">🔔 Qué revisar hoy</a>
+        <a href="/inventario?tab=estado_stock" class="child-btn" data-screen="estado_stock" style="text-decoration:none;">Stock consolidado</a>
+        <a href="/inventario?tab=donde" class="child-btn" data-screen="donde" style="text-decoration:none;">¿Dónde está?</a>
         <a href="/inventario?tab=entradas_salidas" class="child-btn" data-screen="entradas_salidas" style="text-decoration:none;">Entradas y salidas</a>
-        <a href="/inventario?tab=transferencias" class="child-btn" data-screen="transferencias" style="text-decoration:none;">Transferencias</a>
+        <a href="/inventario?tab=transferencias" class="child-btn" data-screen="transferencias" style="text-decoration:none;">Traslados e intercompany</a>
+        <a href="/inventario?tab=separaciones" class="child-btn" data-screen="separaciones" style="text-decoration:none;">Separaciones</a>
+        <a href="/inventario?tab=conteos" class="child-btn" data-screen="conteos" style="text-decoration:none;">Conteos</a>
+        <a href="/inventario?tab=kardex" class="child-btn" data-screen="kardex" style="text-decoration:none;">Kardex</a>
+        <a href="/inventario?tab=sedes" class="child-btn" data-screen="sedes" style="text-decoration:none;">Sedes y SUNAT</a>
     </div>
 </div>
 
@@ -1289,7 +1294,7 @@ else if (currentPath.includes('/compras')) {
 else if (currentPath.includes('/inventario')) {
     // Obtener el parámetro tab de la URL
     const urlParams = new URLSearchParams(currentSearch);
-    let tab = urlParams.get('tab') || 'estado_stock';
+    let tab = urlParams.get('tab') || 'resumen';
     
     console.log(`📋 Módulo Inventario - tab: ${tab}`);
     
@@ -1307,10 +1312,15 @@ else if (currentPath.includes('/inventario')) {
     // MAPEO CORRECTO: El texto del menú vs el parámetro tab
     // En el HTML tienes: "Entradas y salidas", pero el tab es 'entradas_salidas'
     const moduleMap = {
-        'estado_stock': 'Estado de stock',
-        'kardex': 'Kardex',
+        'resumen': '🔔 Qué revisar hoy',
+        'estado_stock': 'Stock consolidado',
+        'donde': '¿Dónde está?',
         'entradas_salidas': 'Entradas y salidas',
-        'transferencias': 'Transferencias'
+        'transferencias': 'Traslados e intercompany',
+        'separaciones': 'Separaciones',
+        'conteos': 'Conteos',
+        'kardex': 'Kardex',
+        'sedes': 'Sedes y SUNAT'
     };
     
     // RESALTAR CHILD EN SIDEBAR SEGÚN TAB

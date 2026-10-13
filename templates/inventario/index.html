@@ -3,280 +3,532 @@
 {% block title %}Inventario - ERP Multiempresa{% endblock %}
 
 {% block breadcrumb %}
-<a href="/" class="crumb-btn">Inicio</a>
+<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a>
 <span>/</span>
 <span class="crumb-btn active-crumb">Inventario</span>
 {% endblock %}
 
 {% block page_title %}Inventario{% endblock %}
 
-{% block subtitle %}Control de stock, Kardex, movimientos y transferencias.{% endblock %}
+{% block subtitle %}Stock por empresa y por sede, kardex, traslados, separaciones y conteos.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
-<style>
-    /* Puedes copiar los estilos genéricos de compras.css o usar los mismos */
-    .section { display: none !important; }
-    .section.active { display: block !important; }
-    /* ... resto de estilos (tabs, master-table, badges, etc) ... */
-</style>
 {% endblock %}
 
 {% block content %}
-<!-- TABS (con eventos onclick agregados) -->
-<div class="tabs" id="tabsRowInv">
-    <button class="tab-btn active" data-tab="estado_stock" onclick="switchInventarioTab('estado_stock')">📊 Estado de stock</button>
-    <button class="tab-btn" data-tab="kardex" onclick="switchInventarioTab('kardex')">📈 Kardex</button>
-    <button class="tab-btn" data-tab="entradas_salidas" onclick="switchInventarioTab('entradas_salidas')">📥📤 Entradas y salidas</button>
-    <button class="tab-btn" data-tab="transferencias" onclick="switchInventarioTab('transferencias')">🔄 Transferencias</button>
-</div>
+<div id="invApp"
+     data-operar="{{ 'true' if puede_operar else 'false' }}"
+     data-contar="{{ 'true' if puede_contar else 'false' }}"
+     data-aprobar="{{ 'true' if puede_aprobar else 'false' }}"
+     data-admin="{{ 'true' if es_admin else 'false' }}"
+     data-dias-separacion="{{ dias_separacion }}">
 
-<!-- ============================================================ -->
-<!-- ESTADO DE STOCK -->
-<!-- ============================================================ -->
-<div id="estado_stock" class="section active">
-    <div class="panel">
-        <div class="clean-header">
-            <div class="master-title-wrap">
-                <div class="master-title">📊 Estado de stock</div>
-                <div class="master-subtitle">Resumen de existencias actuales</div>
-            </div>
-            <div class="search-box">
-                <div class="search-input-wrapper">
-                    <span class="search-icon">🔎</span>
-                    <input id="estado_stockSearch" placeholder="Buscar por producto / código / ubicación...">
-                </div>
-                <!-- Filtro de fecha para Estado de Stock -->
-                <div class="date-filter-wrapper">
-                    <span class="date-icon">📅</span>
-                    <input type="date" id="estado_stockFechaIicio" title="Fecha inicio">
-                    <span class="date-sep">→</span>
-                    <input type="date" id="estado_stockFechaFin" title="Fecha fin">
-                    <button class="btn-clear-date" onclick="clearDateFilter('estado_stock')" title="Limpiar filtros">✕</button>
-                </div>
-            </div>
-            <div class="clean-actions">
-                <button class="btn btn-secondary" onclick="exportData('estado_stock')">📥 Exportar</button>
-                <button class="btn btn-primary btn-create" onclick="openStockModal()">+ Ajustar stock</button>
-            </div>
-        </div>
-        <div class="table-scroll">
-            <table class="master-table">
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Producto</th>
-                        <th>Stock actual</th>
-                        <th>Stock mínimo</th>
-                        <th>Ubicación</th>
-                        <th>Último movimiento</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="stockRows"></tbody>
-            </table>
-        </div>
-        <div class="footer-table">
-            <span id="stockCount">Mostrando 0 de 0 productos</span>
-        </div>
+    <!-- TABS -->
+    <div class="tabs inv-tabs" id="tabsRowInv">
+        <button class="tab-btn active" data-tab="resumen">🔔 Qué revisar hoy</button>
+        <button class="tab-btn" data-tab="estado_stock">🧮 Stock consolidado</button>
+        <button class="tab-btn" data-tab="donde">📍 ¿Dónde está?</button>
+        <button class="tab-btn" data-tab="entradas_salidas">📥📤 Entradas y salidas</button>
+        <button class="tab-btn" data-tab="transferencias">🔄 Traslados y ventas entre empresas</button>
+        <button class="tab-btn" data-tab="separaciones">🔒 Separaciones</button>
+        <button class="tab-btn" data-tab="conteos">✅ Conteos</button>
+        <button class="tab-btn" data-tab="kardex">📒 Kardex</button>
+        <button class="tab-btn" data-tab="sedes">🏢 Sedes y SUNAT</button>
     </div>
+
+    <!-- ======================================================= -->
+    <!-- QUÉ REVISAR HOY -->
+    <!-- ======================================================= -->
+    <section class="section active" id="sec-resumen">
+        <div class="inv-kpis">
+            <div class="inv-kpi"><small>Valor del stock</small><b id="kpiValor">S/ 0.00</b><span id="kpiProductos">0 productos con stock</span></div>
+            <div class="inv-kpi inv-kpi-warn"><small>Producto lento</small><b id="kpiLento">0</b><span id="kpiLentoTxt">Sin venta hace más de 30 días</span></div>
+            <div class="inv-kpi inv-kpi-danger"><small>Producto inmovilizado</small><b id="kpiInmovil">0</b><span id="kpiInmovilTxt">S/ 0.00 parados</span></div>
+            <div class="inv-kpi inv-kpi-danger"><small>Pérdidas del mes</small><b id="kpiPerdidas">S/ 0.00</b><span>Robos, mermas, faltantes</span></div>
+            <div class="inv-kpi"><small>Por aprobar</small><b id="kpiPendientes">0</b><span>Movimientos esperando supervisor</span></div>
+        </div>
+        <div class="inv-ubicaciones" id="resUbicaciones"></div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Qué revisar hoy</div>
+                    <div class="inv-help">Lista de tareas. Cuando una alerta desaparece, es porque ya está resuelta.</div>
+                </div>
+                <button class="btn btn-secondary" id="btnRefrescarResumen">↻ Actualizar</button>
+            </div>
+            <div class="inv-alertas" id="resAlertas"><div class="inv-vacio">Cargando...</div></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- STOCK CONSOLIDADO -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-estado_stock">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Stock consolidado del grupo</div>
+                    <div class="inv-help">Cuánto hay de cada producto, de qué empresa es y en qué sede está. "Disponible" ya descuenta lo separado para clientes.</div>
+                </div>
+                <div class="inv-filters">
+                    <input type="search" id="conBuscar" placeholder="Buscar producto, código, marca o modelo...">
+                    <select id="conRotacion">
+                        <option value="">Toda rotación</option>
+                        <option value="Se mueve">Se mueve</option>
+                        <option value="Lento">Lento</option>
+                        <option value="Inmovilizado">Inmovilizado</option>
+                    </select>
+                    <label class="inv-check"><input type="checkbox" id="conTodos"> Ver también sin stock</label>
+                    <a class="btn btn-secondary" id="conExportar" href="/inventario/api/consolidado/exportar">⬇ Excel (CSV)</a>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table" id="conTabla">
+                    <thead id="conHead"></thead>
+                    <tbody id="conBody"><tr><td>Cargando...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="inv-foot" id="conFoot"></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- ¿DÓNDE ESTÁ? / PREPARAR PEDIDO -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-donde">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">¿Dónde está? · Preparar un pedido</div>
+                    <div class="inv-help">Antes de decirle al cliente "venga a recoger", revisa aquí dónde está la mercadería y qué hay que juntar.</div>
+                </div>
+            </div>
+            <div class="inv-form inv-form-4">
+                <label class="inv-span2">Producto
+                    <div class="prod-picker" data-picker="donde"></div>
+                </label>
+                <label>Cantidad que pide el cliente<input type="number" id="dondeCantidad" min="0" step="any" placeholder="Ej. 20"></label>
+                <label>Empresa que factura<select id="dondeEmpresa" data-empresas></select></label>
+                <label>Sede desde donde se entrega<select id="dondeSede" data-sedes></select></label>
+                <div class="inv-span3 inv-actions-left">
+                    <button class="btn btn-primary" id="btnUbicar">🔎 Revisar</button>
+                </div>
+            </div>
+            <div id="dondeResultado" class="inv-donde"></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- ENTRADAS Y SALIDAS -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-entradas_salidas">
+        <div class="inv-botones-grandes">
+            <button class="inv-gran inv-gran-in" data-abrir-mov="ENTRADA"><span>📥</span><b>Registrar entrada</b><small>Llegó mercadería de un proveedor o un cliente devolvió</small></button>
+            <button class="inv-gran inv-gran-out" data-abrir-mov="SALIDA"><span>📤</span><b>Registrar salida</b><small>Se entregó mercadería a un cliente o se devolvió al proveedor</small></button>
+            <button class="inv-gran inv-gran-warn" data-abrir-mov="PROBLEMA"><span>⚠️</span><b>Reportar un problema</b><small>Producto dañado, vencido, perdido o robado</small></button>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Recepciones de Compras por ingresar al inventario</div>
+                    <div class="inv-help">Mercadería ya aprobada en Compras ▸ Recepción. Indica de qué empresa es y en qué sede quedó.</div>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>Recepción</th><th>Fecha</th><th class="left">Producto</th><th>Cantidad</th><th class="left">Proveedor</th><th>OC</th><th>Acción</th></tr></thead>
+                    <tbody id="recBody"><tr><td colspan="7">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Últimos movimientos</div>
+                    <div class="inv-help">Nada se borra: si algo se registró mal, un supervisor lo corrige con un movimiento contrario.</div>
+                </div>
+                <div class="inv-filters">
+                    <select id="movEstado">
+                        <option value="Registrado">Registrados</option>
+                        <option value="Pendiente">Por aprobar</option>
+                        <option value="Rechazado">Rechazados</option>
+                        <option value="Todos">Todos</option>
+                    </select>
+                    <input type="search" id="movBuscar" placeholder="Buscar producto, documento, cliente, serie...">
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>N°</th><th>Fecha</th><th>Tipo</th><th class="left">Motivo</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Documento</th><th class="left">Cliente / proveedor</th><th>Registró</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody id="movBody"><tr><td colspan="13">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- TRASLADOS E INTERCOMPANY -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-transferencias">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Traslados entre sedes</div>
+                    <div class="inv-help">La mercadería sigue siendo de la misma empresa, solo cambia de lugar. Quien envía no puede recibir: lo recibe otra persona en destino y cuenta lo que llegó.</div>
+                </div>
+                <div class="inv-filters">
+                    <select id="traEstado">
+                        <option value="">Todos</option>
+                        <option value="En camino">En camino</option>
+                        <option value="Recibido">Recibidos</option>
+                        <option value="Recibido con faltante">Con faltante</option>
+                        <option value="Anulado">Anulados</option>
+                    </select>
+                    <button class="btn btn-primary" id="btnNuevoTraslado">+ Nuevo traslado</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>N°</th><th>Fecha</th><th>Empresa</th><th>De</th><th>A</th><th class="left">Productos</th><th>Guía</th><th>Lleva</th><th>Envió</th><th>Recibió</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody id="traBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Ventas entre empresas del grupo (intercompany)</div>
+                    <div class="inv-help">La mercadería no se mueve: cambia de dueño. Sale del stock de una empresa y entra al de la otra con la misma factura.</div>
+                </div>
+                <button class="btn btn-primary" id="btnNuevoIC">+ Registrar venta entre empresas</button>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>Operación</th><th>Fecha</th><th>Vende</th><th>Compra</th><th>Sede</th><th class="left">Producto</th><th>Cantidad</th><th>Precio unit.</th><th>Factura</th><th>Registró</th></tr></thead>
+                    <tbody id="icBody"><tr><td colspan="10">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SEPARACIONES -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-separaciones">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Separaciones de stock</div>
+                    <div class="inv-help">Cuando un cliente confirma, separa sus unidades aquí. Así nadie más las vende. Vencida la fecha, se liberan solas.</div>
+                </div>
+                <div class="inv-filters">
+                    <select id="sepEstado">
+                        <option value="Activa">Activas</option>
+                        <option value="Entregada">Entregadas</option>
+                        <option value="Liberada">Liberadas</option>
+                        <option value="Todas">Todas</option>
+                    </select>
+                    <button class="btn btn-primary" id="btnNuevaSep">+ Separar stock</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>N°</th><th class="left">Cliente</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Pedido / cotización</th><th>Vence</th><th>Separó</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody id="sepBody"><tr><td colspan="11">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- CONTEOS -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-conteos">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Conteos físicos</div>
+                    <div class="inv-help">Quien cuenta no ve cuánto dice el sistema (conteo a ciegas). Quien cuenta no aprueba: lo aprueba un supervisor. Lo hace personal de control, no logística.</div>
+                </div>
+                <div class="inv-filters">
+                    <button class="btn btn-secondary" id="btnConteoSorpresa">🎲 Conteo sorpresa</button>
+                    <button class="btn btn-primary" id="btnConteoGeneral">+ Conteo completo</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>N°</th><th>Fecha</th><th>Tipo</th><th>Empresa</th><th>Sede</th><th>Productos</th><th>Contó</th><th>Con diferencia</th><th>Diferencia S/</th><th>Aprobó</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody id="cntBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- KARDEX -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-kardex">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Kardex valorizado</div>
+                    <div class="inv-help">Cada entrada y salida con su documento, responsable y saldo. Costo promedio ponderado. Elige producto, empresa y sede para ver el saldo exacto de esa ubicación.</div>
+                </div>
+            </div>
+            <div class="inv-form inv-form-6">
+                <label class="inv-span2">Producto<div class="prod-picker" data-picker="kardex" data-opcional="true"></div></label>
+                <label>Empresa<select id="kdxEmpresa" data-empresas data-todas="true"></select></label>
+                <label>Sede<select id="kdxSede" data-sedes data-todas="true"></select></label>
+                <label>Desde<input type="date" id="kdxDesde"></label>
+                <label>Hasta<input type="date" id="kdxHasta"></label>
+                <div class="inv-span6 inv-actions-left">
+                    <button class="btn btn-primary" id="btnKardex">Ver kardex</button>
+                    <a class="btn btn-secondary" id="kdxExportar" href="#">⬇ Exportar (formato 13.1)</a>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead>
+                        <tr><th rowspan="2">Fecha</th><th rowspan="2">N°</th><th rowspan="2">Empresa</th><th rowspan="2">Sede</th><th rowspan="2" class="left">Producto</th><th rowspan="2" class="left">Motivo</th><th rowspan="2">Documento</th>
+                            <th colspan="3" class="grp-in">Entradas</th><th colspan="3" class="grp-out">Salidas</th><th colspan="3" class="grp-saldo">Saldo</th><th rowspan="2">Responsable</th></tr>
+                        <tr><th class="grp-in">Cant.</th><th class="grp-in">C. unit.</th><th class="grp-in">Total</th>
+                            <th class="grp-out">Cant.</th><th class="grp-out">C. unit.</th><th class="grp-out">Total</th>
+                            <th class="grp-saldo">Cant.</th><th class="grp-saldo">C. prom.</th><th class="grp-saldo">Total</th></tr>
+                    </thead>
+                    <tbody id="kdxBody"><tr><td colspan="17">Elige filtros y presiona "Ver kardex".</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SEDES Y SUNAT -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-sedes">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Sedes por empresa y registro en SUNAT</div>
+                    <div class="inv-help">Las sedes se crean en Maestros ▸ Almacenes y las empresas en Configuración ▸ Empresas. Aquí se marca, para cada empresa, si esa sede está declarada en su RUC (domicilio fiscal o establecimiento anexo).</div>
+                </div>
+                <button class="btn btn-primary" id="btnGuardarSedes">Guardar</button>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th class="left">Sede</th><th class="left">Dirección</th><th>Empresa</th><th>Es su domicilio fiscal</th><th>Declarada como establecimiento anexo</th><th>Código SUNAT</th><th class="left">Nota</th></tr></thead>
+                    <tbody id="sedesBody"><tr><td colspan="7">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="inv-foot">Si una empresa guarda mercadería en una sede que no está declarada en su RUC, aparece una alerta en "Qué revisar hoy".</div>
+        </div>
+    </section>
 </div>
 
-<!-- ============================================================ -->
-<!-- KARDEX -->
-<!-- ============================================================ -->
-<div id="kardex" class="section">
-    <div class="panel">
-        <div class="clean-header">
-            <div class="master-title-wrap">
-                <div class="master-title">📈 Kardex</div>
-                <div class="master-subtitle">Historial de movimientos por producto</div>
-            </div>
-            <div class="search-box">
-                <div class="search-input-wrapper">
-                    <span class="search-icon">🔎</span>
-                    <input id="kardexSearch" placeholder="Buscar por producto o N° movimiento...">
-                </div>
-                <div class="date-filter-wrapper">
-                    <span class="date-icon">📅</span>
-                    <input type="date" id="kardexFechaIicio" title="Fecha inicio">
-                    <span class="date-sep">→</span>
-                    <input type="date" id="kardexFechaFin" title="Fecha fin">
-                    <button class="btn-clear-date" onclick="clearDateFilter('kardex')" title="Limpiar filtros">✕</button>
-                </div>
-            </div>
-            <div class="clean-actions">
-                <select id="kardexTipo">
-                    <option value="">Todos</option>
-                    <option value="Entrada">Entrada</option>
-                    <option value="Salida">Salida</option>
-                    <option value="Ajuste">Ajuste</option>
+<!-- ======================================================= -->
+<!-- MODAL MOVIMIENTO -->
+<!-- ======================================================= -->
+<div class="modal-bg" id="movModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="movTitulo">Registrar entrada</div>
+            <button class="btn btn-secondary" data-close="movModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <div class="inv-paso inv-full" id="movAyuda"></div>
+            <input type="hidden" id="movRecepcion">
+            <label class="inv-full">1. ¿Qué pasó?
+                <select id="movMotivo"></select>
+            </label>
+            <label class="inv-full">2. Producto<div class="prod-picker" data-picker="mov"></div></label>
+            <label>3. ¿De qué empresa es?<select id="movEmpresa" data-empresas></select></label>
+            <label>4. ¿En qué sede está físicamente?<select id="movSede" data-sedes></select></label>
+            <label>5. Cantidad<input type="number" id="movCantidad" min="0" step="any"></label>
+            <label id="movCostoWrap">Costo unitario sin IGV (S/)<input type="number" id="movCosto" min="0" step="0.0001"></label>
+            <label id="movDocTipoWrap">Tipo de documento
+                <select id="movDocTipo">
+                    <option>Guía de remisión</option><option>Factura</option><option>Boleta</option>
+                    <option>Orden de compra</option><option>Pedido del cliente (PC)</option><option>Nota de crédito</option><option>Otro</option>
                 </select>
-            </div>
+            </label>
+            <label id="movDocWrap">N° de documento<input type="text" id="movDoc" maxlength="60" placeholder="Ej. T001-00001234"></label>
+            <label id="movTerceroWrap">Cliente o proveedor<input type="text" id="movTercero" maxlength="255"></label>
+            <label id="movSepWrap" class="inv-full" style="display:none">Separación del cliente (si la hay)<select id="movSeparacion"><option value="">Sin separación</option></select></label>
+            <label id="movLoteWrap">Lote o N° de serie / IMEI<input type="text" id="movLote" maxlength="120"></label>
+            <label id="movVencWrap">Fecha de vencimiento (si tiene)<input type="date" id="movVenc"></label>
+            <label class="inv-full">Observaciones<textarea id="movObs" rows="2" maxlength="500"></textarea></label>
+            <div class="inv-tip inv-full" id="movTip"></div>
         </div>
-        <div class="table-scroll">
-            <table class="master-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>N° Movimiento</th>
-                        <th>Producto</th>
-                        <th>Tipo</th>
-                        <th>Cantidad</th>
-                        <th>Responsable</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="kardexRows"></tbody>
-            </table>
-        </div>
-        <div class="footer-table">
-            <span id="kardexCount">Mostrando 0 de 0 movimientos</span>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="movModal">Cancelar</button>
+            <button class="btn btn-primary" id="movGuardar">Guardar</button>
         </div>
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- ENTRADAS Y SALIDAS -->
-<!-- ============================================================ -->
-<div id="entradas_salidas" class="section">
-    <div class="panel">
-        <div class="clean-header">
-            <div class="master-title-wrap">
-                <div class="master-title">📥📤 Entradas y salidas</div>
-                <div class="master-subtitle">Registro de ingresos y egresos de almacén</div>
-            </div>
-            <div class="search-box">
-                <div class="search-input-wrapper">
-                    <span class="search-icon">🔎</span>
-                    <input id="entradas_salidasSearch" placeholder="Buscar por motivo o producto...">
-                </div>
-                <div class="date-filter-wrapper">
-                    <span class="date-icon">📅</span>
-                    <input type="date" id="entradas_salidasFechaIicio" title="Fecha inicio">
-                    <span class="date-sep">→</span>
-                    <input type="date" id="entradas_salidasFechaFin" title="Fecha fin">
-                    <button class="btn-clear-date" onclick="clearDateFilter('entradas_salidas')" title="Limpiar filtros">✕</button>
-                </div>
-            </div>
-            <div class="clean-actions">
-                <button class="btn btn-primary btn-create" onclick="openEntradaModal()">+ Entrada</button>
-                <button class="btn btn-secondary" style="border-color:#EF233C; color:#EF233C;" onclick="openSalidaModal()">- Salida</button>
-            </div>
+<!-- MODAL TRASLADO -->
+<div class="modal-bg" id="traModal">
+    <div class="modal inv-modal inv-modal-lg">
+        <div class="modal-head">
+            <div class="modal-title">Nuevo traslado entre sedes</div>
+            <button class="btn btn-secondary" data-close="traModal">✕</button>
         </div>
-        <div class="table-scroll">
-            <table class="master-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Documento</th>
-                        <th>Tipo</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Motivo</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="movRows"></tbody>
-            </table>
+        <div class="modal-body inv-form">
+            <label>Empresa dueña de la mercadería<select id="traEmpresa" data-empresas></select></label>
+            <label>Quién la lleva<input type="text" id="traEncargado" maxlength="150" placeholder="Nombre de la persona o del motorizado"></label>
+            <label>Sale de<select id="traOrigen" data-sedes></select></label>
+            <label>Llega a<select id="traDestino" data-sedes></select></label>
+            <label>N° de guía de remisión<input type="text" id="traGuia" maxlength="40" placeholder="Ej. T001-00000123"></label>
+            <label>Observaciones<input type="text" id="traObs" maxlength="300"></label>
+            <div class="inv-full">
+                <div class="inv-subtitulo">Productos</div>
+                <div class="inv-linea">
+                    <div class="prod-picker" data-picker="tra"></div>
+                    <input type="number" id="traCant" min="0" step="any" placeholder="Cantidad">
+                    <button class="btn btn-secondary" id="traAgregar">+ Agregar</button>
+                </div>
+                <table class="inv-table inv-mini"><thead><tr><th class="left">Producto</th><th>Cantidad</th><th></th></tr></thead><tbody id="traItems"></tbody></table>
+            </div>
+            <div class="inv-tip inv-full">💡 Por SUNAT, todo traslado entre locales debe ir con guía de remisión (motivo "Traslado entre establecimientos de la misma empresa"). Si aún no la tienes, regístrala apenas se emita.</div>
         </div>
-        <div class="footer-table">
-            <span id="movCount">Mostrando 0 de 0 movimientos</span>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="traModal">Cancelar</button>
+            <button class="btn btn-primary" id="traGuardar">Enviar traslado</button>
         </div>
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- TRANSFERENCIAS -->
-<!-- ============================================================ -->
-<div id="transferencias" class="section">
-    <div class="panel">
-        <div class="clean-header">
-            <div class="master-title-wrap">
-                <div class="master-title">🔄 Transferencias</div>
-                <div class="master-subtitle">Traslados de productos entre almacenes</div>
-            </div>
-            <div class="search-box">
-                <div class="search-input-wrapper">
-                    <span class="search-icon">🔎</span>
-                    <input id="transferenciasSearch" placeholder="Buscar por N° transferencia o producto...">
-                </div>
-                <div class="date-filter-wrapper">
-                    <span class="date-icon">📅</span>
-                    <input type="date" id="transferenciasFechaIicio" title="Fecha inicio">
-                    <span class="date-sep">→</span>
-                    <input type="date" id="transferenciasFechaFin" title="Fecha fin">
-                    <button class="btn-clear-date" onclick="clearDateFilter('transferencias')" title="Limpiar filtros">✕</button>
-                </div>
-            </div>
-            <div class="clean-actions">
-                <button class="btn btn-primary btn-create" onclick="openTransferenciaModal()">+ Nueva transferencia</button>
-            </div>
+<!-- MODAL RECIBIR TRASLADO -->
+<div class="modal-bg" id="recTraModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="recTraTitulo">Recibir traslado</div>
+            <button class="btn btn-secondary" data-close="recTraModal">✕</button>
         </div>
-        <div class="table-scroll">
-            <table class="master-table">
-                <thead>
-                    <tr>
-                        <th>N° Transferencia</th>
-                        <th>Fecha</th>
-                        <th>Origen</th>
-                        <th>Destino</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="transRows"></tbody>
-            </table>
+        <div class="modal-body inv-form">
+            <div class="inv-paso inv-full">Cuenta lo que llegó y escribe la cantidad real de cada producto. Si falta algo, explica qué pasó.</div>
+            <div class="inv-full"><table class="inv-table inv-mini"><thead><tr><th class="left">Producto</th><th>Enviado</th><th>Llegó</th></tr></thead><tbody id="recTraItems"></tbody></table></div>
+            <label class="inv-full">Observaciones<textarea id="recTraObs" rows="2" maxlength="500"></textarea></label>
         </div>
-        <div class="footer-table">
-            <span id="transCount">Mostrando 0 de 0 transferencias</span>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="recTraModal">Cancelar</button>
+            <button class="btn btn-primary" id="recTraGuardar">Confirmar recepción</button>
         </div>
     </div>
 </div>
 
-<!-- MODALES -->
-{% include "inventario/modales/estado_stock_modal.html" %}
-{% include "inventario/modales/kardex_modal.html" %}
-{% include "inventario/modales/entrada_salida_modal.html" %}
-{% include "inventario/modales/transferencia_modal.html" %}
+<!-- MODAL INTERCOMPANY -->
+<div class="modal-bg" id="icModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title">Venta entre empresas del grupo</div>
+            <button class="btn btn-secondary" data-close="icModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <label>Empresa que vende (dueña actual)<select id="icVende" data-empresas></select></label>
+            <label>Empresa que compra<select id="icCompra" data-empresas></select></label>
+            <label class="inv-full">Producto<div class="prod-picker" data-picker="ic"></div></label>
+            <label>Sede donde está la mercadería<select id="icSede" data-sedes></select></label>
+            <label>Cantidad<input type="number" id="icCantidad" min="0" step="any"></label>
+            <label>Precio unitario sin IGV de la factura (S/)<input type="number" id="icPrecio" min="0" step="0.0001" placeholder="Si lo dejas vacío, se usa el costo"></label>
+            <label>N° de factura<input type="text" id="icFactura" maxlength="60" placeholder="Ej. F001-00000456"></label>
+            <label class="inv-full">Observaciones<input type="text" id="icObs" maxlength="300"></label>
+            <div class="inv-tip inv-full">💡 Toda venta entre empresas necesita su factura. Si la registras sin número, queda una alerta hasta que lo completes.</div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="icModal">Cancelar</button>
+            <button class="btn btn-primary" id="icGuardar">Registrar</button>
+        </div>
+    </div>
+</div>
 
+<!-- MODAL SEPARACIÓN -->
+<div class="modal-bg" id="sepModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title">Separar stock para un cliente</div>
+            <button class="btn btn-secondary" data-close="sepModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <label class="inv-full">Producto<div class="prod-picker" data-picker="sep"></div></label>
+            <label>Empresa<select id="sepEmpresa" data-empresas></select></label>
+            <label>Sede<select id="sepSede" data-sedes></select></label>
+            <label>Cantidad<input type="number" id="sepCantidad" min="0" step="any"></label>
+            <label>Separar hasta<input type="date" id="sepVence"></label>
+            <label>Cliente<input type="text" id="sepCliente" maxlength="255"></label>
+            <label>Pedido o cotización<input type="text" id="sepDoc" maxlength="60" placeholder="Ej. PC-20261013-0001"></label>
+            <label class="inv-full">Observaciones<input type="text" id="sepObs" maxlength="300"></label>
+            <div class="inv-tip inv-full" id="sepTip"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="sepModal">Cancelar</button>
+            <button class="btn btn-primary" id="sepGuardar">Separar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL NUEVO CONTEO -->
+<div class="modal-bg" id="cntNuevoModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="cntNuevoTitulo">Nuevo conteo</div>
+            <button class="btn btn-secondary" data-close="cntNuevoModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <input type="hidden" id="cntTipo">
+            <div class="inv-paso inv-full" id="cntNuevoAyuda"></div>
+            <label>Empresa<select id="cntEmpresa" data-empresas></select></label>
+            <label>Sede<select id="cntSede" data-sedes></select></label>
+            <label class="inv-full">Observaciones<input type="text" id="cntObs" maxlength="300"></label>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="cntNuevoModal">Cancelar</button>
+            <button class="btn btn-primary" id="cntCrear">Crear conteo</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CONTAR / REVISAR CONTEO -->
+<div class="modal-bg" id="cntModal">
+    <div class="modal inv-modal inv-modal-lg">
+        <div class="modal-head">
+            <div class="modal-title" id="cntTitulo">Conteo</div>
+            <button class="btn btn-secondary" data-close="cntModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <div class="inv-paso inv-full" id="cntAyuda"></div>
+            <div class="inv-full table-wrap"><table class="inv-table inv-mini"><thead id="cntHead"></thead><tbody id="cntItems"></tbody></table></div>
+        </div>
+        <div class="modal-foot" id="cntPie"></div>
+    </div>
+</div>
+
+<!-- MODAL MOTIVO (rechazar / corregir / anular) -->
+<div class="modal-bg" id="motivoModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="motivoTitulo">Motivo</div>
+            <button class="btn btn-secondary" data-close="motivoModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <div class="inv-paso inv-full" id="motivoAyuda"></div>
+            <label class="inv-full">Escribe el motivo<textarea id="motivoTexto" rows="3" maxlength="500"></textarea></label>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="motivoModal">Cancelar</button>
+            <button class="btn btn-primary" id="motivoOk">Confirmar</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
-
-<!-- ============================================================ -->
-<!-- SCRIPT PARA FORZAR APERTURA DEL SIDEBAR Y CARGA DE DATOS -->
-<!-- ============================================================ -->
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('🚀 Iniciando módulo Inventario desde el HTML...');
-        
-        // 1. Abrir el menú lateral de Inventario si está cerrado
-        const grupos = document.querySelectorAll('.menu-group');
-        grupos.forEach(grupo => {
-            const header = grupo.querySelector('.menu-header');
-            if (header && header.textContent.includes('6 ─ Inventario')) {
-                // Forzar la apertura del grupo
-                grupo.classList.add('open');
-                console.log('✅ Menú lateral de Inventario desplegado automáticamente');
-            }
-        });
-
-        // 2. Inicializar el módulo con la pestaña de la URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const initialTab = urlParams.get('tab') || 'estado_stock';
-        
-        // Esperar un momento a que cargue todo el DOM y luego iniciar
-        setTimeout(() => {
-            if (typeof initInventario === 'function') {
-                initInventario(initialTab);
-            } else {
-                console.error('❌ initInventario no está disponible. Revisa que inventario.js esté cargado.');
-            }
-        }, 300);
-    });
+window.INV_MOTIVOS = {
+    ENTRADA: {{ motivos_entrada|tojson }},
+    SALIDA: {{ motivos_salida|tojson }},
+    PROBLEMA: {{ motivos_problema|tojson }}
+};
 </script>
+<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
 {% endblock %}

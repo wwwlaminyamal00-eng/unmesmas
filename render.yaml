@@ -6,7 +6,13 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn main:app
     envVars:
+      # Las credenciales NO se escriben aquí: configúralas en el panel de Render
+      # (Environment > Add Environment Variable). sync:false evita que se suban al repo.
       - key: DATABASE_URL
-        value: postgresql://postgres:admin3561967kcf@aws-1-us-east-1.pooler.supabase.com:6543/postgres
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
       - key: PYTHON_VERSION
         value: 3.11.0

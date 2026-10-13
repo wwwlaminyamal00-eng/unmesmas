@@ -4024,7 +4024,7 @@ def api_cotizaciones_generar_pdf(id):
                 'item': idx,
                 'codigo': p.get('codigo', '---'),
                 'descripcion': p.get('descripcion') or p.get('descripcion_larga') or 'Producto sin descripción',
-                'modelo': p.get('modelo', ''),
+                'modelo': p.get('modelo') or '-',
                 'marca': p.get('marca', ''),
                 'unidad': p.get('um', 'NIU'),
                 'cantidad': cantidad,
@@ -4544,7 +4544,7 @@ def api_cotizaciones_generar_pdf(id):
     <div class="seccion-aclaratoria">
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
-        <strong>Este producto cuenta con un descuento del 10% aplicado directamente en el valor de venta.</strong><br>
+        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
         Para más información visítanos en 
         <a href="https://kcfcorporacion.com" class="web-link">www.kcfcorporacion.com</a>
     </div>
@@ -5733,7 +5733,7 @@ def api_cotizaciones_preview_pdf(id):
                 'item': idx,
                 'codigo': p.get('codigo', '---'),
                 'descripcion': p.get('descripcion') or p.get('descripcion_larga') or 'Producto sin descripción',
-                'modelo': p.get('modelo', ''),
+                'modelo': p.get('modelo') or '-',
                 'marca': p.get('marca', ''),
                 'unidad': p.get('um', 'NIU'),
                 'cantidad': cantidad,
@@ -6257,7 +6257,7 @@ def api_cotizaciones_preview_pdf(id):
     <div class="seccion-aclaratoria">
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
-        <strong>Este producto cuenta con un descuento del 10% aplicado directamente en el valor de venta.</strong><br>
+        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
         Para más información visítanos en 
         <a href="https://kcfcorporacion.com" class="web-link">www.kcfcorporacion.com</a>
     </div>

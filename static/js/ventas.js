@@ -8851,8 +8851,10 @@ function loadPedidoCotizacion() {
     // monto de la cotización ya incluye IGV: base sin IGV = total - igv (evita doble IGV)
     const _pcConIgv = Number(cotizacion.total || cotizacion.monto || 0);
     const _pcSinIgv = cotizacion.igv != null ? _pcConIgv - Number(cotizacion.igv || 0) : Number(cotizacion.subtotal || 0);
-    document.getElementById('pcMonto').value = _pcSinIgv.toFixed(2);
-    document.getElementById('pcMontoConIgv').value = _pcConIgv.toFixed(2);
+    const _pcMontoEl = document.getElementById('pcMonto');
+    const _pcMontoIgvEl = document.getElementById('pcMontoConIgv');
+    if (_pcMontoEl) _pcMontoEl.value = _pcSinIgv.toFixed(2);
+    if (_pcMontoIgvEl) _pcMontoIgvEl.value = _pcConIgv.toFixed(2);
     
     // Cargar productos de la cotización
     const productos = cotizacion.productos || [];
@@ -12385,8 +12387,10 @@ function loadPedidoCotizacionSAP() {
     // monto de la cotización ya incluye IGV: base sin IGV = total - igv (evita doble IGV)
     const _pcConIgv = Number(cotizacion.total || cotizacion.monto || 0);
     const _pcSinIgv = cotizacion.igv != null ? _pcConIgv - Number(cotizacion.igv || 0) : Number(cotizacion.subtotal || 0);
-    document.getElementById('pcMonto').value = _pcSinIgv.toFixed(2);
-    document.getElementById('pcMontoConIgv').value = _pcConIgv.toFixed(2);
+    const _pcMontoEl = document.getElementById('pcMonto');
+    const _pcMontoIgvEl = document.getElementById('pcMontoConIgv');
+    if (_pcMontoEl) _pcMontoEl.value = _pcSinIgv.toFixed(2);
+    if (_pcMontoIgvEl) _pcMontoIgvEl.value = _pcConIgv.toFixed(2);
     
     // Cargar productos
     const productos = cotizacion.productos || [];
