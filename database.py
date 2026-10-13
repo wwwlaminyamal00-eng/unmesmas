@@ -8,14 +8,23 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # =========================
 # SUPABASE DATABASE URL
 # =========================
-# 1. Primero intenta leer la URL limpia que configuraste en Render
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# La URL de conexión se lee SIEMPRE de variables de entorno (archivo .env en local,
+# panel de Render en producción). No se guardan credenciales en el código.
+try:
+    from dotenv import load_dotenv  # opcional: carga .env si python-dotenv está instalado
+    load_dotenv()
+except ImportError:
+    pass
 
-# 2. Si estás en local y no existe la variable de Render, usa esta por defecto (sin +psycopg2)
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+
 if not DATABASE_URL:
-    DATABASE_URL = "postgresql://postgres.tkfmwvsenvgpyexvdcat:admin3561967kcf@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
+    raise RuntimeError(
+        "Falta la variable de entorno DATABASE_URL. "
+        "Copia .env.example como .env y coloca la cadena de conexión de Supabase/PostgreSQL."
+    )
 
-# 3. Por si acaso se te pasa un +psycopg2 en algún lado, esto lo limpia automáticamente:
+# Por si se usa el formato de SQLAlchemy (postgresql+psycopg2://), se normaliza para psycopg2
 if DATABASE_URL.startswith("postgresql+psycopg2://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql://", 1)
 
@@ -52,9 +61,8 @@ def db_query(sql, params=None):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Asegurar que params sea una tupla.
-        # Si no hay parámetros, se envía None para que psycopg2 no interprete
-        # los '%' literales (ej. LIKE 'PRD-%') como marcadores.
+        # Asegurar que params sea una tupla. Sin parámetros se envía None para que
+        # psycopg2 no interprete los '%' literales (ej. LIKE 'PRD-%') como marcadores.
         if params is None or (isinstance(params, (tuple, list)) and len(params) == 0):
             params = None
         elif not isinstance(params, (tuple, list)):
@@ -63,14 +71,13 @@ def db_query(sql, params=None):
         # Ejecutar consulta
         cur.execute(sql, params)
         
-        # ✅ La forma correcta: si cur.description tiene valor, la consulta devolvió filas
-        # (funciona para SELECT, WITH ... SELECT, INSERT/UPDATE ... RETURNING, etc.)
+        # Si la consulta devuelve filas (SELECT, WITH ... SELECT, INSERT/UPDATE ... RETURNING)
         if cur.description is not None:
             results = cur.fetchall()
             conn.commit()
             return [dict(row) for row in results] if results else []
         
-        # Para INSERT/UPDATE/DELETE sin RETURNING
+        # Para otros casos (INSERT, UPDATE, DELETE sin RETURNING)
         conn.commit()
         return []
         
@@ -84,7 +91,9 @@ def db_query(sql, params=None):
         if cur:
             cur.close()
         if conn:
-            conn.close()      
+            conn.close()
+
+                
 
 def db_execute(sql, params=()):
     conn = None
@@ -1507,12 +1516,13 @@ def verificar_usuario_supabase(email: str, password: str, empresa_codigo: str = 
         import supabase
         import os
         
-        SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://tkfmwvsenvgpyexvdcat.supabase.co")
-        # 🔑 CLAVE CORRECTA
-        SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrZm13dnNlbnZncHlleHZkY2F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTIxMzMsImV4cCI6MjA5NDc4ODEzM30.PtvktiyFjVNcBCLHI_gJmirDH_vM6_7TQuGQDzcnw8A")
+        SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+        # 🔑 La clave se toma solo de variables de entorno
+        SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return {"success": False, "error": "SUPABASE_URL / SUPABASE_KEY no configurados"}
         
         print(f"🔐 Conectando a Supabase: {SUPABASE_URL}")
-        print(f"🔑 Usando key: {SUPABASE_KEY[:20]}...")  # Solo mostrar parte de la clave
         
         supabase_client = supabase.create_client(SUPABASE_URL, SUPABASE_KEY)
         
