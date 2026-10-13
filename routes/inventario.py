@@ -1,9 +1,9 @@
-# routes/inventario.py - Módulo de Inventario multiempresa y multisede
+﻿# routes/inventario.py - Módulo de Inventario multiempresa y multisede
 #
 # Idea central (pensada para personal nuevo):
 #   - El stock se guarda por EMPRESA (dueña legal: KCF, AGD, ...) y por SEDE física
 #     (San Martín de Porres, Breña, ...). Empresas y sedes son datos configurables:
-#     empresas = tabla erp_empresas, sedes = tabla almacenes (Maestros).
+#     empresas = tabla erp_empresas (id UUID), sedes = tabla almacenes (id entero).
 #   - Nada se edita ni se borra: todo cambio de stock es un MOVIMIENTO del kardex con
 #     motivo, documento, usuario y fecha. Un error se corrige con un movimiento de reversa.
 #   - Separación de funciones: quien envía un traslado no lo recibe, quien cuenta no aprueba
@@ -12,6 +12,7 @@
 #
 # Tablas nuevas (se crean solas, no tocan datos existentes): ver migrations/003_inventario.sql
 import os
+import uuid as _uuid_mod
 import random
 import threading
 from datetime import date, datetime, timedelta
@@ -75,12 +76,13 @@ class ErrorInventario(Exception):
 
 # ============================================================
 # TABLAS (se crean solas; script equivalente en migrations/003_inventario.sql)
+# empresa_id es UUID porque erp_empresas.id es UUID en Supabase.
 # ============================================================
 SQL_DDL_INVENTARIO = """
     CREATE TABLE IF NOT EXISTS inv_sede_empresa (
         id SERIAL PRIMARY KEY,
         almacen_id INTEGER NOT NULL,
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         registrado_sunat BOOLEAN NOT NULL DEFAULT false,
         codigo_establecimiento VARCHAR(10),
         es_domicilio_fiscal BOOLEAN NOT NULL DEFAULT false,
@@ -89,7 +91,7 @@ SQL_DDL_INVENTARIO = """
         UNIQUE (almacen_id, empresa_id)
     );
     CREATE TABLE IF NOT EXISTS inv_stock (
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         cantidad NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (cantidad >= 0),
@@ -104,7 +106,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('ENTRADA', 'SALIDA')),
@@ -143,7 +145,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         origen_id INTEGER NOT NULL,
         destino_id INTEGER NOT NULL,
         estado VARCHAR(30) NOT NULL DEFAULT 'En camino',
@@ -169,7 +171,7 @@ SQL_DDL_INVENTARIO = """
     CREATE TABLE IF NOT EXISTS inv_separaciones (
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         cantidad NUMERIC(14,4) NOT NULL CHECK (cantidad >= 0),
@@ -190,7 +192,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id INTEGER NOT NULL,
+        empresa_id UUID NOT NULL,
         almacen_id INTEGER NOT NULL,
         tipo VARCHAR(20) NOT NULL DEFAULT 'General',
         estado VARCHAR(20) NOT NULL DEFAULT 'En conteo',
@@ -287,6 +289,7 @@ def _num(valor, nombre='La cantidad'):
 
 
 def _entero(valor, nombre):
+    """Convierte a entero positivo (para almacén, producto, etc.)."""
     try:
         n = int(valor)
         if n > 0:
@@ -294,6 +297,16 @@ def _entero(valor, nombre):
     except (TypeError, ValueError):
         pass
     raise ErrorInventario(f'Selecciona {nombre}.')
+
+
+def _uuid(valor, nombre):
+    """Convierte a UUID validado (para empresa_id, que en Supabase es UUID)."""
+    if valor in (None, ''):
+        raise ErrorInventario(f'Selecciona {nombre}.')
+    try:
+        return str(_uuid_mod.UUID(str(valor)))
+    except (ValueError, AttributeError, TypeError):
+        raise ErrorInventario(f'Selecciona {nombre} válido.')
 
 
 def _siguiente_numero(cur, prefijo, tabla, columna='numero'):
@@ -486,6 +499,8 @@ def _respuesta_error(e):
     if isinstance(e, ErrorInventario):
         return jsonify({'success': False, 'error': str(e)}), 400
     print(f'❌ Inventario: {e}')
+    import traceback
+    traceback.print_exc()
     return jsonify({'success': False, 'error': 'No se pudo completar la operación. Intenta de nuevo.'}), 500
 
 
@@ -620,7 +635,7 @@ def _consolidado(empresa_id=None, almacen_id=None, q='', solo_con_stock=True):
 @inventario_bp.route('/api/consolidado')
 def api_consolidado():
     try:
-        empresa_id = request.args.get('empresa_id', type=int)
+        empresa_id = request.args.get('empresa_id') or None
         almacen_id = request.args.get('almacen_id', type=int)
         data = _consolidado(empresa_id, almacen_id, (request.args.get('q') or '').strip(),
                             request.args.get('todos') != 'true')
@@ -659,7 +674,7 @@ def api_ubicar():
     try:
         producto_id = _entero(request.args.get('producto_id'), 'un producto')
         cantidad = a_decimal(request.args.get('cantidad') or '0')
-        empresa_venta = request.args.get('empresa_id', type=int)
+        empresa_venta = request.args.get('empresa_id') or None
         sede_despacho = request.args.get('almacen_id', type=int)
         filas = db_query("""
             SELECT s.empresa_id, s.almacen_id, s.cantidad,
@@ -718,7 +733,7 @@ def api_movimiento_nuevo():
                 return _no_autorizado('No tienes permiso para reportar problemas de inventario.')
         elif not puede_operar():
             return _no_autorizado('Solo el personal de almacén puede registrar entradas y salidas.')
-        empresa_id = _entero(d.get('empresa_id'), 'la empresa')
+        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -792,7 +807,7 @@ def api_kardex():
     """Kardex valorizado. Con producto, empresa y sede: saldo exacto de esa ubicación."""
     try:
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = request.args.get('empresa_id', type=int)
+        empresa_id = request.args.get('empresa_id') or None
         almacen_id = request.args.get('almacen_id', type=int)
         desde = request.args.get('desde') or None
         hasta = request.args.get('hasta') or None
@@ -829,7 +844,7 @@ def api_kardex():
 @inventario_bp.route('/api/kardex/exportar')
 def api_kardex_exportar():
     """Registro de inventario permanente valorizado (estructura del formato 13.1 de SUNAT) en CSV."""
-    empresa_id = request.args.get('empresa_id', type=int)
+    empresa_id = request.args.get('empresa_id') or None
     producto_id = request.args.get('producto_id', type=int)
     desde = request.args.get('desde') or None
     hasta = request.args.get('hasta') or None
@@ -1018,7 +1033,7 @@ def api_traslado_nuevo():
         return _no_autorizado('Solo el personal de almacén puede enviar traslados.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _entero(d.get('empresa_id'), 'la empresa dueña de la mercadería')
+        empresa_id = _uuid(d.get('empresa_id'), 'la empresa dueña de la mercadería')
         origen_id = _entero(d.get('origen_id'), 'la sede de origen')
         destino_id = _entero(d.get('destino_id'), 'la sede de destino')
         if not (d.get('encargado') or '').strip():
@@ -1134,7 +1149,7 @@ def api_juntar():
             for paso in d.get('plan') or []:
                 if int(paso['almacen_id']) == destino_id:
                     continue
-                t = crear_traslado(cur, int(paso['empresa_id']), int(paso['almacen_id']), destino_id,
+                t = crear_traslado(cur, str(paso['empresa_id']), int(paso['almacen_id']), destino_id,
                                    [{'producto_id': producto_id, 'cantidad': paso['tomar']}], None, encargado,
                                    (d.get('observaciones') or 'Juntar mercadería para despacho').strip())
                 numeros.append(t['numero'])
@@ -1177,8 +1192,8 @@ def api_intercompany():
         return _no_autorizado('Solo el personal de almacén puede registrar ventas entre empresas.')
     d = request.get_json(silent=True) or {}
     try:
-        vende = _entero(d.get('empresa_vende_id'), 'la empresa que vende')
-        compra = _entero(d.get('empresa_compra_id'), 'la empresa que compra')
+        vende = _uuid(d.get('empresa_vende_id'), 'la empresa que vende')
+        compra = _uuid(d.get('empresa_compra_id'), 'la empresa que compra')
         almacen_id = _entero(d.get('almacen_id'), 'la sede donde está la mercadería')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -1234,7 +1249,7 @@ def api_separaciones():
     try:
         estado = request.args.get('estado') or 'Activa'
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = request.args.get('empresa_id', type=int)
+        empresa_id = request.args.get('empresa_id') or None
         almacen_id = request.args.get('almacen_id', type=int)
         filas = db_query("""
             SELECT s.*, p.codigo, p.descripcion, p.unidad, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
@@ -1254,7 +1269,7 @@ def api_separaciones():
 def api_separacion_nueva():
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _entero(d.get('empresa_id'), 'la empresa')
+        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -1332,7 +1347,7 @@ def api_conteo_nuevo():
         return _no_autorizado('Los conteos los hace personal de control, no logística. Pide acceso a tu supervisor.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _entero(d.get('empresa_id'), 'la empresa')
+        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         tipo = 'Sorpresa' if d.get('tipo') == 'Sorpresa' else 'General'
         _, unom = _usuario()
@@ -1629,7 +1644,7 @@ def api_sedes_empresas():
                         codigo_establecimiento = EXCLUDED.codigo_establecimiento,
                         es_domicilio_fiscal = EXCLUDED.es_domicilio_fiscal, observaciones = EXCLUDED.observaciones,
                         updated_at = NOW()
-                """, (int(f['almacen_id']), int(f['empresa_id']), bool(f.get('registrado_sunat')),
+                """, (int(f['almacen_id']), _uuid(f['empresa_id'], 'la empresa'), bool(f.get('registrado_sunat')),
                       (f.get('codigo_establecimiento') or '').strip() or None, bool(f.get('es_domicilio_fiscal')),
                       (f.get('observaciones') or '').strip() or None))
         return jsonify({'success': True, 'message': 'Configuración guardada.'})
