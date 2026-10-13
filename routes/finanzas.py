@@ -1,4 +1,4 @@
-# routes/finanzas.py - Módulo de Finanzas / Tesorería
+﻿# routes/finanzas.py - Módulo de Finanzas / Tesorería
 #
 # Trabaja sobre los documentos que YA existen en el ERP:
 #   - Cuentas por cobrar (CxC): comprobantes de venta (tabla comprobantes)
@@ -25,7 +25,7 @@ METODOS_PAGO = ('Transferencia', 'Depósito', 'Efectivo', 'Cheque', 'Yape/Plin',
 _tablas_listas = False
 _lock_tablas = threading.Lock()
 
-# Script equivalente: migrations/001_finanzas_y_mejoras.sql
+# Script equivalente: migrations/001_finanzas.sql
 SQL_DDL_FINANZAS = """
     CREATE TABLE IF NOT EXISTS finanzas_pagos (
         id SERIAL PRIMARY KEY,
@@ -96,8 +96,13 @@ def _fmt(v):
 
 
 # ============================================================
-# CONSULTAS BASE
+# CONSULTAS
 # ============================================================
+# IMPORTANTE: en tu base, comprobantes.numero es INTEGER (no varchar).
+# Por eso se usa c.numero::text en todos los sitios donde se concatena.
+# comprobantes.serie es varchar, pero se castea igual para evitar problemas.
+# ============================================================
+
 SQL_CXC = """
     WITH cobros AS (
         SELECT documento_id, SUM(monto) AS cobrado
@@ -111,10 +116,14 @@ SQL_CXC = """
         WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR')
         GROUP BY comprobante_asociado
     )
-    SELECT c.id, c.tipo_comprobante, c.serie, c.numero,
-           COALESCE(c.serie, '') || '-' || COALESCE(c.numero, '') AS documento,
-           c.cliente_nombre AS tercero, c.cliente_numero_doc AS ruc,
-           c.fecha_emision, c.condicion_pago, c.es_credito, c.dias_credito,
+    SELECT c.id, c.tipo_comprobante,
+           c.serie::text AS serie,
+           c.numero::text AS numero,
+           COALESCE(c.serie::text, '') || '-' || COALESCE(c.numero::text, '') AS documento,
+           c.cliente_nombre AS tercero,
+           c.cliente_numero_doc AS ruc,
+           c.fecha_emision, c.condicion_pago, c.es_credito,
+           COALESCE(c.dias_credito, 0) AS dias_credito,
            COALESCE(c.fecha_vencimiento::date,
                     c.fecha_emision::date + COALESCE(c.dias_credito, 0)) AS fecha_vencimiento,
            COALESCE(c.total, 0) AS total,
@@ -125,7 +134,10 @@ SQL_CXC = """
            COALESCE(c.estado_sunat, 'Borrador') AS estado_documento
     FROM comprobantes c
     LEFT JOIN cobros cb ON cb.documento_id = c.id
-    LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero, COALESCE(c.serie, '') || '-' || COALESCE(c.numero, ''))
+    LEFT JOIN nc ON nc.comprobante_asociado IN (
+        c.numero::text,
+        COALESCE(c.serie::text, '') || '-' || COALESCE(c.numero::text, '')
+    )
     WHERE COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
 """
 
@@ -136,11 +148,16 @@ SQL_CXP = """
         WHERE documento_tabla = 'comprobantes_proveedor' AND tipo = 'PAGO' AND estado <> 'Anulado'
         GROUP BY documento_id
     )
-    SELECT cp.id, cp.tipo AS tipo_comprobante, NULL AS serie, cp.numero,
-           cp.numero AS documento,
-           cp.proveedor_nombre AS tercero, cp.ruc_proveedor AS ruc,
-           cp.fecha AS fecha_emision, oc.condicion_pago, NULL::boolean AS es_credito,
-           NULLIF(regexp_replace(COALESCE(oc.condicion_pago, ''), '\\D', '', 'g'), '')::int AS dias_credito,
+    SELECT cp.id, cp.tipo AS tipo_comprobante,
+           NULL::text AS serie,
+           cp.numero::text AS numero,
+           cp.numero::text AS documento,
+           cp.proveedor_nombre AS tercero,
+           cp.ruc_proveedor AS ruc,
+           cp.fecha AS fecha_emision,
+           oc.condicion_pago,
+           NULL::boolean AS es_credito,
+           COALESCE(NULLIF(regexp_replace(COALESCE(oc.condicion_pago, ''), '\\D', '', 'g'), '')::int, 0) AS dias_credito,
            COALESCE(cp.fecha_vencimiento,
                     cp.fecha::date + COALESCE(NULLIF(regexp_replace(COALESCE(oc.condicion_pago, ''), '\\D', '', 'g'), '')::int, 0)
            ) AS fecha_vencimiento,
@@ -174,7 +191,10 @@ def _cuentas(tipo, incluir_borradores=False):
             saldo = a_decimal(0)
         venc = f.get('fecha_vencimiento')
         semaforo = _semaforo(saldo, venc, hoy)
-        dias_vencido = (hoy - (venc.date() if isinstance(venc, datetime) else venc)).days if venc and semaforo == 'Vencido' else 0
+        dias_vencido = 0
+        if venc and semaforo == 'Vencido':
+            v = venc.date() if isinstance(venc, datetime) else venc
+            dias_vencido = (hoy - v).days
         item = {k: _fmt(v) for k, v in f.items()}
         item.update({
             'total': float(redondear(f['total'])),
@@ -231,6 +251,8 @@ def api_resumen():
             'posicion_neta': round(suma(cxc) - suma(cxp), 2),
         }})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error en finanzas api_resumen: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -254,6 +276,8 @@ def api_cxc():
         incluir = request.args.get('incluir_borradores', 'false').lower() == 'true'
         return jsonify({'success': True, 'data': _filtrar(_cuentas('cxc', incluir))})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error en finanzas api_cxc: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
 
@@ -263,6 +287,8 @@ def api_cxp():
     try:
         return jsonify({'success': True, 'data': _filtrar(_cuentas('cxp'))})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error en finanzas api_cxp: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
 
@@ -286,6 +312,8 @@ def api_movimientos():
             data.append(item)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error en finanzas api_movimientos: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
 
@@ -361,6 +389,8 @@ def api_registrar_movimiento():
                         'message': f"{'Cobro' if tipo == 'COBRO' else 'Pago'} registrado. Saldo pendiente: S/ {saldo_final:.2f}",
                         'data': {'id': nuevo_id, 'saldo': float(saldo_final)}})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error registrando movimiento: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -394,6 +424,8 @@ def api_anular_movimiento(mov_id):
                                WHERE id = %s AND estado = 'Pagado'""", (mov['documento_id'],))
         return jsonify({'success': True, 'message': 'Movimiento anulado'})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error anulando movimiento: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -415,6 +447,8 @@ def api_cxp_vencimiento(cp_id):
             return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
         return jsonify({'success': True, 'message': 'Fecha de vencimiento actualizada'})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -461,5 +495,7 @@ def api_flujo():
             f['acumulado'] = round(acumulado, 2)
         return jsonify({'success': True, 'data': filas})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error en finanzas api_flujo: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
