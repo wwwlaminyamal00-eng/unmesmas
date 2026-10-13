@@ -737,6 +737,7 @@ function editOrden(id) {
         return;
     }
     
+    window._ordenEditId = id;  // al guardar se actualiza esta orden en lugar de crear otra
     document.getElementById('ordenCompraModal').classList.add('show');
     document.getElementById('ordNumero').value = orden.numero || '';
     document.getElementById('ordFecha').value = orden.fecha ? orden.fecha.split('T')[0] : '';
@@ -1301,9 +1302,12 @@ function openComparativoModal() {
 }
 
 function openOrdenCompraModal() {
+    window._ordenEditId = null;
     document.getElementById('ordenCompraModal').classList.add('show');
     document.getElementById('ordFecha').value = new Date().toISOString().slice(0,10);
-    document.getElementById('ordNumero').value = `OC-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(ordenesData.length + 1).padStart(4,'0')}`;
+    // El número definitivo lo asigna el servidor al guardar (evita duplicados)
+    document.getElementById('ordNumero').value = '';
+    document.getElementById('ordNumero').placeholder = 'Se asigna al guardar';
 }
 
 function openComprobanteProveedorModal() {
@@ -1427,6 +1431,7 @@ async function saveOrdenCompra(estado) {
     const total = subtotal + igv;
     
     const data = {
+        id: window._ordenEditId || null,
         numero_orden: document.getElementById('ordNumero').value,
         fecha_creacion: document.getElementById('ordFecha').value,
         estado: estado,
@@ -1448,7 +1453,9 @@ async function saveOrdenCompra(estado) {
         });
         const result = await response.json();
         if (result.success) {
-            showToast(`✅ Orden ${data.numero_orden} guardada`, 'success');
+            showToast(`✅ Orden ${(result.data && result.data.numero_orden) || data.numero_orden} guardada`, 'success');
+            if (result.advertencia) showToast('⚠️ ' + result.advertencia, 'warning');
+            window._ordenEditId = null;
             await cargarDatosCompras();
             renderOrdenes();
         } else {

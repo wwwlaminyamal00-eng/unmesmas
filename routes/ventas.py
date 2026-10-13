@@ -1,4 +1,4 @@
-﻿# routes/ventas.py - INICIO CORREGIDO
+# routes/ventas.py - INICIO CORREGIDO
 
 import sys
 import os
@@ -18,6 +18,9 @@ from pdf_generator import pdf_generator
 
 # Importar desde database.py
 from database import db_query, db_execute, db_tx, get_connection, buscar_cliente_por_ruc
+from psycopg2.extras import RealDictCursor
+from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
+                   totales_consistentes, bloquear_numeracion)
 
 ventas_bp = Blueprint('ventas', __name__)
 
@@ -34,6 +37,56 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _siguiente_numero(cur, tabla, serie, ancho=8, columna_serie='serie', extra_where='', extra_params=()):
+    """Siguiente correlativo numérico de una serie (con bloqueo para evitar duplicados)."""
+    bloquear_numeracion(cur, f"{tabla}:{serie}{':' + str(extra_params) if extra_params else ''}")
+    cur.execute(f"""
+        SELECT COALESCE(MAX(NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
+        FROM {tabla} WHERE COALESCE({columna_serie}, '') = COALESCE(%s, '') {extra_where}
+    """, (serie,) + tuple(extra_params))
+    fila = cur.fetchone()
+    siguiente = fila['siguiente'] if isinstance(fila, dict) else fila[0]
+    return str(siguiente).zfill(ancho)
+
+# ============================================================
+# FLUJO DE ESTADOS DE COTIZACIÓN
+# ============================================================
+# Borrador -> En revisión / Por validar -> Validado por Hellen -> Generada -> Aceptada por Cliente
+ESTADOS_VALIDADOS = ('Validado por Hellen', 'Validada', 'Validado')
+ESTADOS_QUE_REQUIEREN_APROBADOR = ESTADOS_VALIDADOS
+ESTADOS_BLOQUEADOS = ('Generada', 'Aceptada por Cliente', 'Aceptada', 'Facturada', 'Anulada')
+ESTADOS_ACEPTADA = ('Aceptada por Cliente', 'Aceptada')
+
+
+def _requiere_validacion_previa():
+    # Si se pone COTIZACION_REQUIERE_VALIDACION=false, un vendedor puede generar sin validación previa
+    return os.environ.get('COTIZACION_REQUIERE_VALIDACION', 'true').lower() != 'false'
+
+
+def validar_transicion_cotizacion(estado_actual, estado_nuevo):
+    """Devuelve None si el cambio de estado es válido, o un mensaje de error."""
+    estado_actual = (estado_actual or '').strip()
+    estado_nuevo = (estado_nuevo or '').strip()
+    if not estado_nuevo or estado_actual == estado_nuevo:
+        return None
+    if estado_actual in ESTADOS_ACEPTADA or estado_actual == 'Facturada':
+        return f'La cotización ya está "{estado_actual}" y no puede cambiar de estado.'
+    if estado_actual == 'Anulada':
+        if estado_nuevo == 'Borrador' and es_aprobador():
+            return None
+        return 'La cotización está anulada. Solo un aprobador puede reactivarla como Borrador.'
+    if estado_nuevo in ESTADOS_QUE_REQUIEREN_APROBADOR and not es_aprobador():
+        return 'Solo un usuario aprobador puede validar cotizaciones.'
+    if estado_nuevo == 'Generada' and not es_aprobador() and _requiere_validacion_previa() \
+            and estado_actual not in ESTADOS_VALIDADOS:
+        return 'La cotización debe estar validada antes de generarse.'
+    if estado_nuevo in ESTADOS_ACEPTADA and estado_actual not in ('Generada', 'Enviada'):
+        return 'Solo una cotización generada puede marcarse como aceptada por el cliente.'
+    if estado_actual == 'Generada' and estado_nuevo in ('Borrador', 'En revisión', 'Por validar') and not es_aprobador():
+        return 'Una cotización generada no puede volver a borrador (duplícala para modificarla).'
+    return None
 
 # ============================================================
 # FUNCIONES DE AYUDA PARA COTIZACIONES - VERSIÓN CORREGIDA
@@ -72,7 +125,11 @@ def crear_tabla_cotizaciones_eliminadas_si_no_existe():
                 eliminado_en TIMESTAMP DEFAULT NOW()
             )
         """
-        db_execute(query)
+        with db_tx() as conn:
+            cur = conn.cursor()
+            # Evita el error de creación simultánea cuando varias pantallas consultan a la vez
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('cotizaciones_eliminadas_ddl'))")
+            cur.execute(query)
     except Exception as e:
         print(f"❌ Error creando tabla cotizaciones_eliminadas: {e}")
         raise
@@ -175,7 +232,7 @@ def guardar_cotizacion_db(data):
                 subtotal, igv, total, usuario_id, notas,
                 forma_pago, tiempo_entrega, almacen, validez_oferta,
                 codigo_cotizacion, correlativo, condicion_pago,
-                direccion_entrega, requerimiento, nota_cotizacion,  # ← REQUERIMIENTO ESTÁ AQUÍ
+                direccion_entrega, requerimiento, nota_cotizacion,
                 descuento_porcentaje, descuento_monto, descuento_tipo,
                 contacto_cliente, telefono_cliente, email_cliente,
                 seguimiento, motivo, transporte, parihuela, nota_interna,
@@ -1057,7 +1114,7 @@ def guardar_pc_db(data):
             data.get('responsable') or data.get('vendedor') or 'Hellen',
             data.get('lugar_entrega') or data.get('entrega') or '',
             data.get('condicion_atencion') or data.get('condicion_pago') or '',
-            data.get('creado_por') or 8,
+            data.get('creado_por'),
             items_json,
             data.get('medio') or data.get('correo_origen') or 'Correo',
             data.get('entrega') or data.get('lugar_entrega') or '',
@@ -1202,7 +1259,7 @@ def guardar_despacho_db(data):
             data.get('observaciones') or '',
             data.get('responsable') or 'Hellen',
             items_json,
-            data.get('creado_por') or 8
+            data.get('creado_por') or session.get('usuario_id')
         )
         
         result = db_query(query, params)
@@ -1343,439 +1400,225 @@ def api_cotizaciones_listar():
 @ventas_bp.route('/ventas/api/cotizaciones/guardar', methods=['POST'])
 @login_required
 def api_cotizaciones_guardar():
+    """
+    Crea o actualiza una cotización con su detalle en UNA sola transacción.
+    - Los totales (subtotal, descuento, IGV, total) se recalculan en el servidor.
+    - Valida cliente, productos, cantidades y precios.
+    - Respeta el flujo de estados (validación/aprobación).
+    - El número se genera sin duplicados aunque dos usuarios guarden a la vez.
+    """
     try:
-        data = request.get_json()
-        usuario_id = session.get('usuario_id', 8) or data.get('usuario_id', 8)
-        
-        print("=" * 80)
-        print("📦 API COTIZACIONES GUARDAR")
-        print(f"  - id: {data.get('id')}")
-        print(f"  - cliente_id: {data.get('cliente_id')}")
-        print(f"  - usuario_id: {usuario_id}")
-        print(f"  - estado: {data.get('estado')}")
-        print(f"  - total: {data.get('total')}")
-        print(f"  - productos: {len(data.get('productos', []))}")
-        # 🔽 LOG DEL REQUERIMIENTO
-        print(f"  - REQUERIMIENTO RECIBIDO: '{data.get('requerimiento')}'")
-        print("=" * 80)
-        
-        # ============================================================
-        # DETERMINAR SI ES EDICIÓN O NUEVA
-        # ============================================================
-        cotizacion_id = data.get('id')
-        es_edicion = cotizacion_id is not None and cotizacion_id > 0
-        
-        # Obtener cliente_id
-        cliente_id = data.get('cliente_id')
-        if isinstance(cliente_id, str):
-            try:
-                cliente_id = int(cliente_id)
-            except ValueError:
-                return jsonify({'success': False, 'error': 'cliente_id debe ser un número'}), 400
-        
+        data = request.get_json(silent=True) or {}
+        usuario_id = session.get('usuario_id')
+
+        # ------------------------------------------------------------
+        # 1. Datos básicos y validaciones
+        # ------------------------------------------------------------
+        try:
+            cotizacion_id = int(data.get('id') or 0) or None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'id de cotización inválido'}), 400
+        es_edicion = cotizacion_id is not None
+
+        try:
+            cliente_id = int(data.get('cliente_id') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'cliente_id debe ser un número'}), 400
         if not cliente_id:
             return jsonify({'success': False, 'error': 'cliente_id es requerido'}), 400
-        
-        # Verificar que el cliente existe
+
         cliente = db_query("SELECT id, razon_social FROM clientes WHERE id = %s", (cliente_id,))
         if not cliente:
             return jsonify({'success': False, 'error': f'Cliente con ID {cliente_id} no encontrado'}), 400
-        
-        print(f"✅ Cliente encontrado: {cliente[0]['razon_social']}")
-        
-        # Calcular totales
-        subtotal = float(data.get('subtotal', 0))
-        igv = float(data.get('igv', 0))
-        total = float(data.get('total', 0))
-        
-        print(f"📊 Totales: subtotal={subtotal}, igv={igv}, total={total}")
-        
-        # ============================================================
-        # OBTENER NÚMERO DE COTIZACIÓN (RESPETAR EXISTENTE)
-        # ============================================================
-        numero = None
-        codigo = None
-        correlativo = None
-        
-        if es_edicion:
-            # SI ES EDICIÓN, OBTENER EL NÚMERO EXISTENTE DE LA BD
-            query_existente = """
-                SELECT numero_cotizacion, codigo_cotizacion, correlativo
-                FROM cotizaciones 
-                WHERE id = %s
-            """
-            existente = db_query(query_existente, (cotizacion_id,))
-            
-            if existente:
-                numero = existente[0].get('numero_cotizacion')
-                codigo = existente[0].get('codigo_cotizacion')
-                correlativo = existente[0].get('correlativo')
-                print(f"📋 Edición - Manteniendo número: {numero}, correlativo: {correlativo}")
-            else:
-                # Fallback: si no se encuentra, generar uno nuevo
-                count_data = db_query("SELECT COUNT(*) as total FROM cotizaciones")
-                count = count_data[0]['total'] + 1 if count_data else 1
-                numero = f"COT-{str(count).zfill(6)}"
-                codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
-                correlativo = count
-                print(f"📋 Fallback - Generando nuevo número: {numero}")
+
+        productos = data.get('productos') or []
+        if not productos:
+            return jsonify({'success': False, 'error': 'Agrega al menos un producto a la cotización'}), 400
+
+        estado_nuevo = (data.get('estado') or 'Borrador').strip()
+
+        # El frontend envía algunos campos con otro nombre: se aceptan ambos
+        contacto = data.get('contacto_cliente') or data.get('contacto')
+        telefono = data.get('telefono_cliente') or data.get('telefono')
+        email = data.get('email_cliente') or data.get('email')
+        validez = data.get('validez_oferta') or data.get('validez')
+        descuento_tipo = data.get('descuento_tipo') or '%'
+        descuento_valor = data.get('descuento_valor', data.get('descuento_porcentaje', 0))
+        if descuento_tipo in ('%', 'porcentaje'):
+            descuento_porcentaje = a_decimal(descuento_valor)
+            if descuento_porcentaje < 0 or descuento_porcentaje > 100:
+                return jsonify({'success': False, 'error': 'El descuento debe estar entre 0% y 100%'}), 400
         else:
-            # NUEVA COTIZACIÓN - Generar número
-            count_data = db_query("SELECT COUNT(*) as total FROM cotizaciones")
-            count = count_data[0]['total'] + 1 if count_data else 1
-            numero = f"COT-{str(count).zfill(6)}"
-            codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
-            correlativo = count
-            print(f"📋 Nueva cotización - Generando número: {numero}")
-        
-        print(f"📋 Número final: {numero}, Código: {codigo}, Correlativo: {correlativo}")
-        
-        # ============================================================
-        # GUARDAR O ACTUALIZAR
-        # ============================================================
-        
-        if es_edicion:
-            # ============================================================
-            # ACTUALIZAR COTIZACIÓN EXISTENTE (MANTENIENDO NÚMERO)
-            # ============================================================
-            print(f"🔄 Actualizando cotización ID: {cotizacion_id}")
-            
-            query_update = """
-                UPDATE cotizaciones SET
-                    cliente_id = %s,
-                    estado = %s,
-                    subtotal = %s,
-                    igv = %s,
-                    total = %s,
-                    usuario_id = %s,
-                    notas = %s,
-                    forma_pago = %s,
-                    tiempo_entrega = %s,
-                    validez_oferta = %s,
-                    condicion_pago = %s,
-                    direccion_entrega = %s,
-                    requerimiento = %s,
-                    nota_cotizacion = %s,
-                    descuento_porcentaje = %s,
-                    descuento_monto = %s,
-                    descuento_tipo = %s,
-                    contacto_cliente = %s,
-                    telefono_cliente = %s,
-                    email_cliente = %s,
-                    seguimiento = %s,
-                    motivo = %s,
-                    transporte = %s,
-                    parihuela = %s,
-                    nota_interna = %s,
-                    vendedor = %s
-                WHERE id = %s
-                RETURNING id, numero_cotizacion
-            """
-            
-            # 🔽 OBTENER REQUERIMIENTO (asegurar que no sea None)
-            requerimiento = data.get('requerimiento') or ''
-            print(f"📝 REQUERIMIENTO A GUARDAR (UPDATE): '{requerimiento}'")
-            
-            params_update = (
-                cliente_id,
-                data.get('estado', 'Borrador'),
-                subtotal,
-                igv,
-                total,
-                usuario_id,
-                data.get('notas', ''),
-                data.get('forma_pago'),
-                data.get('tiempo_entrega'),
-                data.get('validez_oferta'),
-                data.get('condicion_pago'),
-                data.get('direccion_entrega'),
-                requerimiento,  # ← REQUERIMIENTO
-                data.get('nota_cotizacion', ''),
-                float(data.get('descuento_porcentaje', 0)),
-                float(data.get('descuento_monto', 0)),
-                data.get('descuento_tipo', 'porcentaje'),
-                data.get('contacto_cliente'),
-                data.get('telefono_cliente'),
-                data.get('email_cliente'),
-                data.get('seguimiento', 'Asesor'),
-                data.get('motivo', 'Proyecto nuevo'),
-                data.get('transporte', 'Seleccione'),
-                data.get('parihuela', 'Seleccione'),
-                data.get('nota_interna', ''),
-                data.get('vendedor', 'Helen Blas Príncipe'),
-                cotizacion_id
+            descuento_porcentaje = a_decimal(0)
+            if a_decimal(descuento_valor) < 0:
+                return jsonify({'success': False, 'error': 'El descuento no puede ser negativo'}), 400
+        requerimiento = data.get('requerimiento') or ''
+        vendedor = data.get('vendedor') or session.get('nombre_completo') or ''
+
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            # ------------------------------------------------------------
+            # 2. Flujo de estados (edición)
+            # ------------------------------------------------------------
+            estado_actual = None
+            if es_edicion:
+                cur.execute("SELECT id, estado, numero_cotizacion FROM cotizaciones WHERE id = %s FOR UPDATE",
+                            (cotizacion_id,))
+                existente = cur.fetchone()
+                if not existente:
+                    return jsonify({'success': False, 'error': 'La cotización a editar no existe'}), 404
+                estado_actual = existente['estado']
+                if estado_actual in ESTADOS_BLOQUEADOS and not (estado_actual == 'Generada' and es_aprobador()):
+                    return jsonify({'success': False,
+                                    'error': f'La cotización está "{estado_actual}" y ya no se puede editar. '
+                                             f'Usa "Duplicar" para crear una nueva versión.'}), 409
+            error_flujo = validar_transicion_cotizacion(estado_actual or 'Borrador', estado_nuevo)
+            if error_flujo:
+                return jsonify({'success': False, 'error': error_flujo}), 409
+
+            # ------------------------------------------------------------
+            # 3. Resolver productos y calcular importes en el servidor
+            # ------------------------------------------------------------
+            lineas = []
+            no_encontrados = []
+            for idx, producto in enumerate(productos, start=1):
+                codigo_producto = (producto.get('codigo') or '').strip()
+                producto_id = producto.get('producto_id')
+                producto_bd = None
+                if producto_id:
+                    cur.execute("SELECT id, codigo, costo_unitario, precio_unitario FROM productos WHERE id = %s",
+                                (producto_id,))
+                    producto_bd = cur.fetchone()
+                if not producto_bd and codigo_producto:
+                    cur.execute("SELECT id, codigo, costo_unitario, precio_unitario FROM productos "
+                                "WHERE TRIM(codigo) = TRIM(%s) ORDER BY id LIMIT 1", (codigo_producto,))
+                    producto_bd = cur.fetchone()
+                if not producto_bd:
+                    no_encontrados.append(codigo_producto or f'línea {idx}')
+                    continue
+
+                cantidad = a_decimal(producto.get('cantidad'), '1')
+                precio = a_decimal(producto.get('valorVenta', producto_bd.get('precio_unitario') or 0))
+                if cantidad <= 0:
+                    return jsonify({'success': False, 'error': f'Cantidad inválida en la línea {idx} ({codigo_producto})'}), 400
+                if precio < 0:
+                    return jsonify({'success': False, 'error': f'Precio inválido en la línea {idx} ({codigo_producto})'}), 400
+                lineas.append({'producto_id': producto_bd['id'], 'cantidad': cantidad, 'precio': precio,
+                               'costo': a_decimal(producto_bd.get('costo_unitario') or 0)})
+
+            if no_encontrados:
+                # Antes se omitían en silencio y la cotización quedaba incompleta
+                return jsonify({'success': False,
+                                'error': 'Productos no encontrados en la base de datos: ' + ', '.join(no_encontrados)}), 400
+
+            totales = calcular_totales(lineas, descuento_valor, descuento_tipo)
+            if data.get('total') is not None and abs(a_decimal(data.get('total')) - totales['total']) > a_decimal('0.05'):
+                print(f"⚠️ Total enviado por el navegador ({data.get('total')}) difiere del calculado "
+                      f"({totales['total']}); se guarda el calculado en el servidor.")
+
+            # ------------------------------------------------------------
+            # 4. Cabecera
+            # ------------------------------------------------------------
+            valores = (
+                cliente_id, estado_nuevo, totales['subtotal'], totales['igv'], totales['total'], usuario_id,
+                data.get('notas', ''), data.get('forma_pago') or data.get('condicion_pago'),
+                data.get('tiempo_entrega'), validez, data.get('condicion_pago'), data.get('direccion_entrega'),
+                requerimiento, data.get('nota_cotizacion', ''), descuento_porcentaje, totales['descuento'],
+                descuento_tipo, contacto, telefono, email,
+                data.get('seguimiento', 'Asesor'), data.get('motivo', 'Proyecto nuevo'),
+                data.get('transporte', 'Seleccione'), data.get('parihuela', 'Seleccione'),
+                data.get('nota_interna', ''), vendedor,
             )
-            
-            result_update = db_query(query_update, params_update)
-            
-            if result_update:
-                # ELIMINAR DETALLES ANTIGUOS Y VOLVER A INSERTAR
-                with db_tx() as conn:
-                    from psycopg2.extras import RealDictCursor
-                    cur = conn.cursor(cursor_factory=RealDictCursor)
-                    
-                    # Eliminar detalles antiguos
-                    cur.execute("DELETE FROM cotizacion_detalle WHERE cotizacion_id = %s", (cotizacion_id,))
-                    
-                    # Insertar nuevos productos
-                    productos = data.get('productos', [])
-                    productos_guardados = 0
-                    productos_fallidos = 0
-                    
-                    for idx, producto in enumerate(productos):
-                        try:
-                            codigo_producto = producto.get('codigo', '').strip()
-                            producto_id = producto.get('producto_id')
-                            
-                            # Buscar producto
-                            if producto_id:
-                                cur.execute(
-                                    "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE id = %s",
-                                    (producto_id,)
-                                )
-                                producto_bd = cur.fetchone()
-                            else:
-                                cur.execute(
-                                    "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE codigo = %s",
-                                    (codigo_producto,)
-                                )
-                                producto_bd = cur.fetchone()
-                                
-                                if not producto_bd:
-                                    cur.execute(
-                                        "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE TRIM(codigo) = TRIM(%s)",
-                                        (codigo_producto,)
-                                    )
-                                    producto_bd = cur.fetchone()
-                            
-                            if not producto_bd:
-                                print(f"  ❌ Producto '{codigo_producto}' NO ENCONTRADO")
-                                productos_fallidos += 1
-                                continue
-                            
-                            producto_id_bd = producto_bd['id']
-                            cantidad = float(producto.get('cantidad', 1))
-                            precio_venta = float(producto.get('valorVenta', producto_bd.get('precio_unitario', 0)))
-                            costo_unitario = float(producto_bd.get('costo_unitario', 0))
-                            
-                            subtotal_costo = cantidad * costo_unitario
-                            subtotal_venta = cantidad * precio_venta
-                            
-                            if costo_unitario > 0:
-                                margen_porcentaje = ((precio_venta - costo_unitario) / costo_unitario * 100)
-                            else:
-                                margen_porcentaje = 0
-                            
-                            cur.execute("""
-                                INSERT INTO cotizacion_detalle (
-                                    cotizacion_id, producto_id, cantidad,
-                                    costo_unitario, subtotal_costo, margen_porcentaje,
-                                    precio_venta_unitario, subtotal_venta,
-                                    descuento_porcentaje, precio_venta_con_descuento,
-                                    subtotal_venta_con_descuento, descuento_total, margen_final
-                                ) VALUES (
-                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                                )
-                            """, (
-                                cotizacion_id, producto_id_bd, cantidad,
-                                costo_unitario, subtotal_costo, margen_porcentaje,
-                                precio_venta, subtotal_venta,
-                                0, precio_venta, subtotal_venta, 0, margen_porcentaje
-                            ))
-                            
-                            productos_guardados += 1
-                            print(f"  ✅ Producto {idx+1}: {producto_bd['codigo']} - Cant: {cantidad}")
-                            
-                        except Exception as e:
-                            print(f"  ❌ Error guardando producto: {e}")
-                            productos_fallidos += 1
-                            raise
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'Cotización actualizada correctamente con {productos_guardados} productos',
-                    'data': {
-                        'id': cotizacion_id,
-                        'numero': numero,
-                        'productos_guardados': productos_guardados,
-                        'productos_fallidos': productos_fallidos
-                    }
-                })
+            if es_edicion:
+                cur.execute("""
+                    UPDATE cotizaciones SET
+                        cliente_id = %s, estado = %s, subtotal = %s, igv = %s, total = %s, usuario_id = %s,
+                        notas = %s, forma_pago = %s, tiempo_entrega = %s, validez_oferta = %s,
+                        condicion_pago = %s, direccion_entrega = %s, requerimiento = %s, nota_cotizacion = %s,
+                        descuento_porcentaje = %s, descuento_monto = %s, descuento_tipo = %s,
+                        contacto_cliente = %s, telefono_cliente = %s, email_cliente = %s,
+                        seguimiento = %s, motivo = %s, transporte = %s, parihuela = %s,
+                        nota_interna = %s, vendedor = %s, updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, numero_cotizacion
+                """, valores + (cotizacion_id,))
+                fila = cur.fetchone()
+                numero = fila['numero_cotizacion']
+                cur.execute("DELETE FROM cotizacion_detalle WHERE cotizacion_id = %s", (cotizacion_id,))
             else:
-                return jsonify({'success': False, 'error': 'No se pudo actualizar la cotización'}), 400
-        
-        else:
-            # ============================================================
-            # INSERTAR NUEVA COTIZACIÓN
-            # ============================================================
-            print("➕ Insertando nueva cotización...")
-            
-            # 🔽 OBTENER REQUERIMIENTO
-            requerimiento = data.get('requerimiento') or ''
-            print(f"📝 REQUERIMIENTO A GUARDAR (INSERT): '{requerimiento}'")
-            
-            # Preparar parámetros para la cotización
-            params = (
-                numero,
-                cliente_id,
-                datetime.now().isoformat(),
-                data.get('estado', 'Borrador'),
-                subtotal,
-                igv,
-                total,
-                usuario_id,
-                data.get('notas', ''),
-                data.get('condicion_pago'),
-                data.get('tiempo_entrega'),
-                data.get('validez_oferta'),
-                codigo,
-                correlativo,
-                data.get('condicion_pago'),
-                data.get('direccion_entrega'),
-                requerimiento,  # ← REQUERIMIENTO
-                data.get('nota_cotizacion', ''),
-                float(data.get('descuento_porcentaje', 0)),
-                float(data.get('descuento_monto', 0)),
-                data.get('descuento_tipo', 'porcentaje'),
-                data.get('contacto_cliente'),
-                data.get('telefono_cliente'),
-                data.get('email_cliente'),
-                data.get('seguimiento', 'Asesor'),
-                data.get('motivo', 'Proyecto nuevo'),
-                data.get('transporte', 'Seleccione'),
-                data.get('parihuela', 'Seleccione'),
-                data.get('nota_interna', ''),
-                data.get('vendedor', 'Helen Blas Príncipe')
-            )
-            
-            try:
-                with db_tx() as conn:
-                    from psycopg2.extras import RealDictCursor
-                    cur = conn.cursor(cursor_factory=RealDictCursor)
-                    
-                    # 1. Insertar cotización
-                    cur.execute("""
-                        INSERT INTO cotizaciones (
-                            numero_cotizacion, cliente_id, fecha_creacion, estado,
-                            subtotal, igv, total, usuario_id, notas,
-                            forma_pago, tiempo_entrega, validez_oferta,
-                            codigo_cotizacion, correlativo, condicion_pago,
-                            direccion_entrega, requerimiento, nota_cotizacion,
-                            descuento_porcentaje, descuento_monto, descuento_tipo,
-                            contacto_cliente, telefono_cliente, email_cliente,
-                            seguimiento, motivo, transporte, parihuela, nota_interna,
-                            vendedor
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s
-                        )
-                        RETURNING id, numero_cotizacion
-                    """, params)
-                    
-                    result = cur.fetchone()
-                    cotizacion_id = result['id']
-                    numero = result['numero_cotizacion']
-                    print(f"✅ Cotización creada con ID: {cotizacion_id}")
-                    
-                    # 2. Insertar productos en cotizacion_detalle
-                    productos = data.get('productos', [])
-                    print(f"📦 Guardando {len(productos)} productos...")
-                    
-                    productos_guardados = 0
-                    productos_fallidos = 0
-                    
-                    for idx, producto in enumerate(productos):
-                        try:
-                            codigo_producto = producto.get('codigo', '').strip()
-                            producto_id = producto.get('producto_id')
-                            
-                            # Buscar producto
-                            if producto_id:
-                                cur.execute(
-                                    "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE id = %s",
-                                    (producto_id,)
-                                )
-                                producto_bd = cur.fetchone()
-                            else:
-                                cur.execute(
-                                    "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE codigo = %s",
-                                    (codigo_producto,)
-                                )
-                                producto_bd = cur.fetchone()
-                                
-                                if not producto_bd:
-                                    cur.execute(
-                                        "SELECT id, codigo, descripcion, precio_unitario, costo_unitario FROM productos WHERE TRIM(codigo) = TRIM(%s)",
-                                        (codigo_producto,)
-                                    )
-                                    producto_bd = cur.fetchone()
-                            
-                            if not producto_bd:
-                                print(f"  ❌ Producto '{codigo_producto}' NO ENCONTRADO")
-                                productos_fallidos += 1
-                                continue
-                            
-                            producto_id_bd = producto_bd['id']
-                            cantidad = float(producto.get('cantidad', 1))
-                            precio_venta = float(producto.get('valorVenta', producto_bd.get('precio_unitario', 0)))
-                            costo_unitario = float(producto_bd.get('costo_unitario', 0))
-                            
-                            subtotal_costo = cantidad * costo_unitario
-                            subtotal_venta = cantidad * precio_venta
-                            
-                            if costo_unitario > 0:
-                                margen_porcentaje = ((precio_venta - costo_unitario) / costo_unitario * 100)
-                            else:
-                                margen_porcentaje = 0
-                            
-                            cur.execute("""
-                                INSERT INTO cotizacion_detalle (
-                                    cotizacion_id, producto_id, cantidad,
-                                    costo_unitario, subtotal_costo, margen_porcentaje,
-                                    precio_venta_unitario, subtotal_venta,
-                                    descuento_porcentaje, precio_venta_con_descuento,
-                                    subtotal_venta_con_descuento, descuento_total, margen_final
-                                ) VALUES (
-                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                                )
-                            """, (
-                                cotizacion_id, producto_id_bd, cantidad,
-                                costo_unitario, subtotal_costo, margen_porcentaje,
-                                precio_venta, subtotal_venta,
-                                0, precio_venta, subtotal_venta, 0, margen_porcentaje
-                            ))
-                            
-                            productos_guardados += 1
-                            print(f"  ✅ Producto {idx+1}: {producto_bd['codigo']} - Cant: {cantidad}")
-                            
-                        except Exception as e:
-                            print(f"  ❌ Error guardando producto: {e}")
-                            productos_fallidos += 1
-                            raise
-                    
-                    return jsonify({
-                        'success': True,
-                        'message': f'Cotización creada correctamente con {productos_guardados} productos',
-                        'data': {
-                            'id': cotizacion_id,
-                            'numero': numero,
-                            'productos_guardados': productos_guardados,
-                            'productos_fallidos': productos_fallidos
-                        }
-                    })
-                    
-            except Exception as e:
-                print(f"❌ Error en transacción: {e}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'success': False, 'error': str(e)}), 500
-            
+                # Numeración sin duplicados: bloqueo + máximo correlativo existente
+                bloquear_numeracion(cur, 'cotizaciones')
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(correlativo::text, '\\D', '', 'g'), '')::bigint), 0) + 1
+                               AS siguiente FROM cotizaciones""")
+                correlativo = cur.fetchone()['siguiente']
+                numero = f"COT-{str(correlativo).zfill(6)}"
+                codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(correlativo).zfill(4)}"
+                cur.execute("""
+                    INSERT INTO cotizaciones (
+                        cliente_id, estado, subtotal, igv, total, usuario_id,
+                        notas, forma_pago, tiempo_entrega, validez_oferta,
+                        condicion_pago, direccion_entrega, requerimiento, nota_cotizacion,
+                        descuento_porcentaje, descuento_monto, descuento_tipo,
+                        contacto_cliente, telefono_cliente, email_cliente,
+                        seguimiento, motivo, transporte, parihuela, nota_interna, vendedor,
+                        numero_cotizacion, codigo_cotizacion, correlativo, fecha_creacion
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id, numero_cotizacion
+                """, valores + (numero, codigo, correlativo))
+                fila = cur.fetchone()
+                cotizacion_id = fila['id']
+
+            # Registro de quién validó (cuando el aprobador guarda con estado validado)
+            if estado_nuevo in ESTADOS_VALIDADOS and estado_actual not in ESTADOS_VALIDADOS:
+                cur.execute("""UPDATE cotizaciones SET usuario_validacion_id = %s, validado_por_nombre = %s
+                               WHERE id = %s""", (usuario_id, session.get('nombre_completo'), cotizacion_id))
+
+            # ------------------------------------------------------------
+            # 5. Detalle
+            # ------------------------------------------------------------
+            factor = (totales['base_imponible'] / totales['subtotal']) if totales['subtotal'] else a_decimal(1)
+            for l in lineas:
+                subtotal_costo = l['cantidad'] * l['costo']
+                subtotal_venta = l['cantidad'] * l['precio']
+                margen = ((l['precio'] - l['costo']) / l['costo'] * 100) if l['costo'] > 0 else a_decimal(0)
+                precio_desc = l['precio'] * factor
+                margen_final = ((precio_desc - l['costo']) / l['costo'] * 100) if l['costo'] > 0 else a_decimal(0)
+                cur.execute("""
+                    INSERT INTO cotizacion_detalle (
+                        cotizacion_id, producto_id, cantidad, costo_unitario, subtotal_costo, margen_porcentaje,
+                        precio_venta_unitario, subtotal_venta, descuento_porcentaje, precio_venta_con_descuento,
+                        subtotal_venta_con_descuento, descuento_total, margen_final
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (cotizacion_id, l['producto_id'], l['cantidad'], l['costo'], redondear(subtotal_costo),
+                      redondear(margen), l['precio'], redondear(subtotal_venta),
+                      redondear((1 - factor) * 100), redondear(precio_desc, 4),
+                      redondear(subtotal_venta * factor), redondear(subtotal_venta * (1 - factor)),
+                      redondear(margen_final)))
+
+        accion = 'actualizada' if es_edicion else 'creada'
+        return jsonify({
+            'success': True,
+            'message': f'Cotización {accion} correctamente con {len(lineas)} productos',
+            'data': {
+                'id': cotizacion_id,
+                'numero': numero,
+                'estado': estado_nuevo,
+                'subtotal': float(totales['subtotal']),
+                'descuento': float(totales['descuento']),
+                'igv': float(totales['igv']),
+                'total': float(totales['total']),
+                'productos_guardados': len(lineas),
+                'productos_fallidos': 0
+            }
+        })
+
     except Exception as e:
         print(f"❌ Error general en api_cotizaciones_guardar: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'No se pudo guardar la cotización: ' + str(e)}), 500
 
 
 @ventas_bp.route('/ventas/api/cotizaciones/<int:id>', methods=['GET'])
@@ -1793,10 +1636,17 @@ def api_cotizaciones_obtener(id):
 @login_required
 def api_cotizaciones_toggle(id):
     try:
-        data = request.get_json()
-        nuevo_estado = data.get('estado')
+        data = request.get_json(silent=True) or {}
+        nuevo_estado = (data.get('estado') or '').strip()
         if not nuevo_estado:
             return jsonify({'success': False, 'error': 'Estado requerido'}), 400
+
+        actual = db_query("SELECT estado FROM cotizaciones WHERE id = %s", (id,))
+        if not actual:
+            return jsonify({'success': False, 'error': 'Cotización no encontrada'}), 404
+        error_flujo = validar_transicion_cotizacion(actual[0]['estado'], nuevo_estado)
+        if error_flujo:
+            return jsonify({'success': False, 'error': error_flujo}), 409
         
         result = actualizar_estado_cotizacion_db(id, nuevo_estado)
         if result:
@@ -1846,6 +1696,10 @@ def api_cotizaciones_eliminar(id):
                 'data': {'id': id, 'estado': 'Anulada'}
             })
 
+        if estado_actual in ('Generada',) + ESTADOS_ACEPTADA + ('Facturada',) and not es_aprobador():
+            return jsonify({'success': False,
+                            'error': f'Solo un aprobador puede anular una cotización en estado "{estado_actual}"'}), 403
+
         # 2. Obtener productos de la cotización
         query_productos = """
             SELECT 
@@ -1864,7 +1718,7 @@ def api_cotizaciones_eliminar(id):
         # 3. Asegurar que la tabla de respaldo exista
         crear_tabla_cotizaciones_eliminadas_si_no_existe()
 
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
 
         # 4. Serializar valores no compatibles con JSON (fechas, Decimal)
         from decimal import Decimal
@@ -1922,17 +1776,19 @@ def api_cotizaciones_eliminar(id):
             motivo,
             usuario_id
         )
-        db_execute(query_insert, params_insert)
-        print(f"✅ Respaldo guardado en cotizaciones_eliminadas para cotización {id}")
-
-        # 6. Cambiar estado a 'Anulada' (igual que antes)
-        query_update = """
-            UPDATE cotizaciones 
-            SET estado = 'Anulada'
-            WHERE id = %s
-            RETURNING id, estado
-        """
-        result_update = db_query(query_update, (id,))
+        # 6. Respaldo + anulación en una sola transacción (antes podía quedar el respaldo sin anular)
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(query_insert, params_insert)
+            cur.execute("""
+                UPDATE cotizaciones 
+                SET estado = 'Anulada', updated_at = NOW()
+                WHERE id = %s
+                RETURNING id, estado
+            """, (id,))
+            fila = cur.fetchone()
+        result_update = [dict(fila)] if fila else []
+        print(f"✅ Cotización {id} respaldada y anulada")
 
         if result_update:
             return jsonify({
@@ -2006,7 +1862,7 @@ def api_guias_listar():
 def api_guias_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         
         print("=" * 80)
         print("📦 API GUIAS GUARDAR - INICIO")
@@ -2066,9 +1922,43 @@ def api_guias_guardar():
         """
         
         items_json = json.dumps(data.get('items', []))
+        serie = (data.get('serie') or 'T001').strip()
+        numero = str(data.get('numero') or '').strip()
+
+        # ------------------------------------------------------------
+        # EDICIÓN: antes cada edición creaba una guía nueva (duplicados)
+        # ------------------------------------------------------------
+        if data.get('id'):
+            actual = db_query("SELECT id, estado_sunat FROM guias_remision WHERE id = %s", (data['id'],))
+            if not actual:
+                return jsonify({'success': False, 'error': 'Guía no encontrada'}), 404
+            if (actual[0].get('estado_sunat') or '').upper() in ('EMITIDA', 'EMITIDO', 'ACEPTADA', 'ACEPTADO', 'ANULADA', 'ANULADO'):
+                return jsonify({'success': False,
+                                'error': f'La guía está "{actual[0].get("estado_sunat")}" y ya no se puede modificar'}), 409
+            datos_upd = dict(data)
+            datos_upd['items_json'] = items_json
+            datos_upd['estado_sunat'] = data.get('estado', 'BORRADOR')
+            datos_upd['fecha_traslado'] = fecha_traslado
+            fila = actualizar_guia_db(data['id'], datos_upd)
+            if fila:
+                return jsonify({'success': True, 'message': 'Guía actualizada correctamente',
+                                'data': {'id': fila['id'], 'numero': fila['numero']}})
+            return jsonify({'success': False, 'error': 'No se pudo actualizar la guía'}), 400
+
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            if numero:
+                bloquear_numeracion(cur, f"guias_remision:{serie}")
+                cur.execute("SELECT 1 FROM guias_remision WHERE serie = %s AND numero = %s", (serie, numero))
+                if cur.fetchone():
+                    return jsonify({'success': False,
+                                    'error': f'Ya existe la guía {serie}-{numero}. Deja el número vacío para asignarlo automáticamente.'}), 409
+            else:
+                numero = _siguiente_numero(cur, 'guias_remision', serie)
+            data['numero'] = numero
         
         params = (
-            data.get('serie', 'T001'),
+            serie,
             data.get('numero'),
             fecha_emision,  # ← YA VIENE CON HORA DEL FRONTEND
             fecha_traslado,
@@ -2143,7 +2033,9 @@ def api_guias_obtener(id):
 @login_required
 def api_guias_eliminar(id):
     try:
-        result = actualizar_guia_db(id, {'estado_sunat': 'ANULADA'})
+        # Antes se usaba actualizar_guia_db con un dict vacío y se borraban todos los datos de la guía
+        result = db_query("UPDATE guias_remision SET estado_sunat = 'ANULADA', updated_at = NOW() "
+                          "WHERE id = %s RETURNING id", (id,))
         if result:
             return jsonify({'success': True, 'message': 'Guía anulada'})
         return jsonify({'success': False, 'error': 'No se pudo anular'}), 400
@@ -2227,12 +2119,78 @@ def api_comprobantes_listar():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+_SQL_INSERT_COMPROBANTE = """
+    INSERT INTO comprobantes (
+        tipo_comprobante, serie, numero, fecha_emision,
+        moneda, cliente_tipo_doc, cliente_numero_doc,
+        cliente_nombre, cliente_direccion, cliente_email,
+        cliente_telefono, subtotal, igv, total,
+        items_json, observaciones, estado_sunat,
+        condicion_pago, documento_asociado, guia_vinculada,
+        pc_vinculado, creado_por,
+        -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+        orden_compra_cliente,
+        tiene_retencion, es_credito, estado_credito,
+        fecha_aprobacion, fecha_vencimiento, dias_credito,
+        porcentaje_retencion, monto_retenido, monto_a_pagar,
+        obs_retencion
+    ) VALUES (
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s,
+        %s, -- orden_compra_cliente
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+    )
+    RETURNING id, serie, numero
+"""
+
+
+def _params_insert_comprobante(comprobante_data):
+    return (
+        comprobante_data['tipo_comprobante'],
+        comprobante_data['serie'],
+        comprobante_data['numero'],
+        comprobante_data['fecha_emision'],
+        comprobante_data['moneda'],
+        comprobante_data['cliente_tipo_doc'],
+        comprobante_data['cliente_numero_doc'],
+        comprobante_data['cliente_nombre'],
+        comprobante_data['cliente_direccion'],
+        comprobante_data['cliente_email'],
+        comprobante_data['cliente_telefono'],
+        comprobante_data['subtotal'],
+        comprobante_data['igv'],
+        comprobante_data['total'],
+        comprobante_data['items_json'],
+        comprobante_data['observaciones'],
+        comprobante_data['estado_sunat'],
+        comprobante_data['condicion_pago'],
+        comprobante_data['documento_asociado'],
+        comprobante_data['guia_vinculada'],
+        comprobante_data['pc_vinculado'],
+        comprobante_data['creado_por'],
+        # 🔽 ORDEN DE COMPRA MANUAL
+        comprobante_data['orden_compra_cliente'],
+        comprobante_data['tiene_retencion'],
+        comprobante_data['es_credito'],
+        comprobante_data['estado_credito'],
+        comprobante_data['fecha_aprobacion'],
+        comprobante_data['fecha_vencimiento'],
+        comprobante_data['dias_credito'],
+        comprobante_data['porcentaje_retencion'],
+        comprobante_data['monto_retenido'],
+        comprobante_data['monto_a_pagar'],
+        comprobante_data['obs_retencion']
+    )
+
+
 @ventas_bp.route('/ventas/api/comprobantes/guardar', methods=['POST'])
 @login_required
 def api_comprobantes_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         
         items_json = data.get('items', [])
         
@@ -2254,10 +2212,39 @@ def api_comprobantes_guardar():
         # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
         orden_compra_cliente = data.get('orden_compra_cliente', '') or ''
         
+        # ============================================================
+        # 🔽 VALIDACIONES DE FACTURACIÓN (cliente, documento, importes, IGV)
+        # ============================================================
+        tipo_comp = (data.get('tipo') or 'FACTURA').strip()
+        ruc_cliente = (data.get('ruc') or '').strip()
+        if not (data.get('cliente') or '').strip():
+            return jsonify({'success': False, 'error': 'El nombre o razón social del cliente es obligatorio'}), 400
+        if tipo_comp.upper() in ('FACTURA', '01') and not (len(ruc_cliente) == 11 and ruc_cliente.isdigit()):
+            return jsonify({'success': False, 'error': 'Para una factura el RUC del cliente debe tener 11 dígitos'}), 400
+
+        # Importes: total = subtotal + IGV (18%). Si el navegador envía valores inconsistentes,
+        # se recalculan a partir del total para que el comprobante siempre cuadre.
+        total_dec = redondear(data.get('total', data.get('monto', 0)))
+        subtotal_dec = redondear(data.get('subtotal', 0))
+        igv_dec = redondear(data.get('igv', 0))
+        if total_dec <= 0:
+            # Si no se envió total pero sí items, se calcula desde los items
+            lineas = [{'cantidad': it.get('cantidad'), 'precio': it.get('valorVenta', it.get('precio_unitario', 0))}
+                      for it in (items_json or []) if isinstance(it, dict)]
+            if lineas:
+                t = calcular_totales(lineas)
+                subtotal_dec, igv_dec, total_dec = t['subtotal'], t['igv'], t['total']
+        if total_dec <= 0:
+            return jsonify({'success': False, 'error': 'El monto total del comprobante debe ser mayor a 0'}), 400
+        igv_esperado = redondear(subtotal_dec * tasa_igv())
+        if not totales_consistentes(subtotal_dec, igv_dec, total_dec) or abs(igv_dec - igv_esperado) > a_decimal('0.05'):
+            subtotal_dec = redondear(total_dec / (1 + tasa_igv()))
+            igv_dec = total_dec - subtotal_dec
+
         # Calcular totales
-        monto_total = float(data.get('total', 0))
-        subtotal = float(data.get('subtotal', 0))
-        igv = float(data.get('igv', 0))
+        monto_total = float(total_dec)
+        subtotal = float(subtotal_dec)
+        igv = float(igv_dec)
         
         # ============================================================
         # 🔽 OBTENER FECHA Y HORA ACTUAL CORRECTA
@@ -2282,7 +2269,7 @@ def api_comprobantes_guardar():
                     dias_credito = 30
                 if not fecha_vencimiento and dias_credito:
                     from datetime import timedelta
-                    fecha_aprobacion_dt = datetime.strptime(fecha_aprobacion, '%Y-%m-%d')
+                    fecha_aprobacion_dt = datetime.strptime(str(fecha_aprobacion)[:10], '%Y-%m-%d')
                     fecha_vencimiento_dt = fecha_aprobacion_dt + timedelta(days=int(dias_credito))
                     fecha_vencimiento = fecha_vencimiento_dt.isoformat()
                 if not obs_retencion:
@@ -2292,6 +2279,18 @@ def api_comprobantes_guardar():
                 monto_retenido = 0
                 monto_a_pagar = monto_total
                 estado_credito = 'No aplica (monto < S/ 700)'
+        else:
+            # Sin retención el cliente paga el total (antes quedaba en 0 y la cuenta por cobrar no cuadraba)
+            monto_retenido = 0
+            monto_a_pagar = monto_total
+        if es_credito and not fecha_vencimiento:
+            from datetime import timedelta
+            try:
+                dias = int(dias_credito or 30)
+            except (TypeError, ValueError):
+                dias = 30
+            dias_credito = dias
+            fecha_vencimiento = (datetime.now() + timedelta(days=dias)).date().isoformat()
         
         # Preparar datos para guardar
         comprobante_data = {
@@ -2336,6 +2335,18 @@ def api_comprobantes_guardar():
         # SI TIENE ID, ACTUALIZAR
         # ============================================================
         if data.get('id'):
+            actual = db_query("SELECT estado_sunat, tipo_comprobante, serie, numero FROM comprobantes WHERE id = %s", (data['id'],))
+            if not actual:
+                return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
+            estado_previo = (actual[0].get('estado_sunat') or '').upper()
+            if estado_previo in ('EMITIDO', 'ENVIADO', 'ACEPTADO', 'PAGADO', 'ANULADO'):
+                return jsonify({'success': False,
+                                'error': f'El comprobante está "{actual[0].get("estado_sunat")}" y ya no se puede modificar. '
+                                         f'Para corregirlo emite una nota de crédito.'}), 409
+            if comprobante_data['numero'] and db_query(
+                    "SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND numero = %s AND id <> %s",
+                    (comprobante_data['tipo_comprobante'], comprobante_data['serie'], comprobante_data['numero'], data['id'])):
+                return jsonify({'success': False, 'error': f"Ya existe el comprobante {comprobante_data['serie']}-{comprobante_data['numero']}"}), 409
             query = """
                 UPDATE comprobantes SET
                     tipo_comprobante = %s, serie = %s, numero = %s,
@@ -2404,81 +2415,34 @@ def api_comprobantes_guardar():
         # ============================================================
         # CREAR NUEVO COMPROBANTE
         # ============================================================
-        if not comprobante_data['numero']:
-            count_data = db_query("SELECT COUNT(*) as total FROM comprobantes")
-            count = count_data[0]['total'] + 1 if count_data else 1
-            comprobante_data['numero'] = str(count).zfill(8)
-        
-        query_insert = """
-            INSERT INTO comprobantes (
-                tipo_comprobante, serie, numero, fecha_emision,
-                moneda, cliente_tipo_doc, cliente_numero_doc,
-                cliente_nombre, cliente_direccion, cliente_email,
-                cliente_telefono, subtotal, igv, total,
-                items_json, observaciones, estado_sunat,
-                condicion_pago, documento_asociado, guia_vinculada,
-                pc_vinculado, creado_por,
-                -- 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
-                orden_compra_cliente,
-                tiene_retencion, es_credito, estado_credito,
-                fecha_aprobacion, fecha_vencimiento, dias_credito,
-                porcentaje_retencion, monto_retenido, monto_a_pagar,
-                obs_retencion
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s,
-                %s, -- orden_compra_cliente
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-            RETURNING id, serie, numero
-        """
-        params_insert = (
-            comprobante_data['tipo_comprobante'],
-            comprobante_data['serie'],
-            comprobante_data['numero'],
-            comprobante_data['fecha_emision'],
-            comprobante_data['moneda'],
-            comprobante_data['cliente_tipo_doc'],
-            comprobante_data['cliente_numero_doc'],
-            comprobante_data['cliente_nombre'],
-            comprobante_data['cliente_direccion'],
-            comprobante_data['cliente_email'],
-            comprobante_data['cliente_telefono'],
-            comprobante_data['subtotal'],
-            comprobante_data['igv'],
-            comprobante_data['total'],
-            comprobante_data['items_json'],
-            comprobante_data['observaciones'],
-            comprobante_data['estado_sunat'],
-            comprobante_data['condicion_pago'],
-            comprobante_data['documento_asociado'],
-            comprobante_data['guia_vinculada'],
-            comprobante_data['pc_vinculado'],
-            comprobante_data['creado_por'],
-            # 🔽 ORDEN DE COMPRA MANUAL
-            comprobante_data['orden_compra_cliente'],
-            comprobante_data['tiene_retencion'],
-            comprobante_data['es_credito'],
-            comprobante_data['estado_credito'],
-            comprobante_data['fecha_aprobacion'],
-            comprobante_data['fecha_vencimiento'],
-            comprobante_data['dias_credito'],
-            comprobante_data['porcentaje_retencion'],
-            comprobante_data['monto_retenido'],
-            comprobante_data['monto_a_pagar'],
-            comprobante_data['obs_retencion']
-        )
-        
-        result = db_query(query_insert, params_insert)
-        
+        numero_enviado = str(comprobante_data['numero'] or '').strip()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            # Numeración correlativa por tipo y serie, sin duplicados aunque se guarde en simultáneo
+            bloquear_numeracion(cur, f"comprobantes:{comprobante_data['tipo_comprobante']}:{comprobante_data['serie']}")
+            if numero_enviado:
+                cur.execute("SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND numero = %s",
+                            (comprobante_data['tipo_comprobante'], comprobante_data['serie'], numero_enviado))
+                if cur.fetchone():
+                    return jsonify({'success': False,
+                                    'error': f"Ya existe el comprobante {comprobante_data['serie']}-{numero_enviado}. "
+                                             f"Deja el número vacío para asignar el siguiente automáticamente."}), 409
+                comprobante_data['numero'] = numero_enviado
+            else:
+                cur.execute("""
+                    SELECT COALESCE(MAX(NULLIF(regexp_replace(numero, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
+                    FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s
+                """, (comprobante_data['tipo_comprobante'], comprobante_data['serie']))
+                comprobante_data['numero'] = str(cur.fetchone()['siguiente']).zfill(8)
+            cur.execute(_SQL_INSERT_COMPROBANTE, _params_insert_comprobante(comprobante_data))
+            fila = cur.fetchone()
+        result = [dict(fila)] if fila else []
         if result:
             return jsonify({
                 'success': True,
                 'message': 'Comprobante creado correctamente',
                 'data': result[0]
             })
-        
         return jsonify({'success': False, 'error': 'No se pudo crear'}), 400
         
     except Exception as e:
@@ -2656,13 +2620,39 @@ def api_notas_credito_listar():
 def api_notas_credito_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         data['creado_por'] = usuario_id
         
-        if not data.get('numero'):
-            count_data = db_query("SELECT COUNT(*) as total FROM notas_credito")
-            count = count_data[0]['total'] + 1 if count_data else 1
-            data['numero'] = str(count)
+        monto = a_decimal(data.get('monto'))
+        if monto <= 0:
+            return jsonify({'success': False, 'error': 'El monto de la nota de crédito debe ser mayor a 0'}), 400
+        if not (data.get('motivo') or '').strip():
+            return jsonify({'success': False, 'error': 'El motivo de la nota de crédito es obligatorio'}), 400
+
+        # La nota de crédito no puede superar el saldo del comprobante que corrige
+        asociado = (data.get('comprobante_asociado') or '').strip()
+        if asociado:
+            comp = db_query("""
+                SELECT id, total FROM comprobantes
+                WHERE numero = %s OR (serie || '-' || numero) = %s
+                   OR (serie || '-' || LTRIM(numero, '0')) = %s
+                ORDER BY id DESC LIMIT 1
+            """, (asociado, asociado, asociado))
+            if comp:
+                ya_emitido = db_query("""
+                    SELECT COALESCE(SUM(monto), 0) AS total FROM notas_credito
+                    WHERE comprobante_asociado = %s AND COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO')
+                """, (asociado,))[0]['total']
+                saldo = a_decimal(comp[0]['total']) - a_decimal(ya_emitido)
+                if monto > saldo + a_decimal('0.01'):
+                    return jsonify({'success': False,
+                                    'error': f'El monto (S/ {monto:.2f}) supera el saldo del comprobante {asociado} '
+                                             f'(S/ {saldo:.2f})'}), 400
+
+        if not str(data.get('numero') or '').strip():
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                data['numero'] = _siguiente_numero(cur, 'notas_credito', data.get('serie') or 'FC01')
         
         result = guardar_nota_credito_db(data)
         if result:
@@ -2729,7 +2719,7 @@ def api_pedido_compra_listar():
 def api_pedido_compra_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         data['creado_por'] = usuario_id
         
         print("=" * 80)
@@ -2777,6 +2767,26 @@ def api_pedido_compra_guardar():
             except Exception as e:
                 print(f"⚠️ Error buscando cotización por número: {e}")
         
+        advertencia = None
+        if cotizacion_id and not pc_id:
+            estado_cot = db_query("SELECT estado FROM cotizaciones WHERE id = %s", (cotizacion_id,))
+            if not estado_cot:
+                return jsonify({'success': False, 'error': 'La cotización vinculada no existe'}), 400
+            estado_cot = estado_cot[0]['estado'] or ''
+            if estado_cot in ('Anulada', 'Rechazada'):
+                return jsonify({'success': False,
+                                'error': f'No se puede registrar un PC sobre una cotización "{estado_cot}"'}), 409
+            if estado_cot in ('Borrador', 'En revisión', 'Por validar') and _requiere_validacion_previa():
+                return jsonify({'success': False,
+                                'error': f'La cotización está en "{estado_cot}". Debe validarse/generarse antes de registrar el pedido del cliente.'}), 409
+            previos = db_query("""SELECT numero FROM pedido_compra_pc
+                                  WHERE cotizacion_id = %s AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')""",
+                               (cotizacion_id,))
+            if previos:
+                advertencia = ('Atención: esta cotización ya tiene el/los PC ' +
+                               ', '.join(p['numero'] or '' for p in previos) +
+                               '. Verifica que no sea un pedido duplicado.')
+
         if cotizacion_id and not pc_id:  # Solo si es nuevo
             cot_query = """
                 SELECT 
@@ -2810,14 +2820,22 @@ def api_pedido_compra_guardar():
         # ============================================================
         # GENERAR NÚMERO SI ES NUEVO Y NO TIENE
         # ============================================================
+        if not pc_id and data.get('numero') and db_query("SELECT 1 FROM pedido_compra_pc WHERE numero = %s", (data['numero'],)):
+            print(f"⚠️ Número de PC {data['numero']} ya existe; se asigna uno nuevo")
+            data['numero'] = None
         if not pc_id and not data.get('numero'):
-            from datetime import datetime
-            data['numero'] = f"PC-{datetime.now().strftime('%Y%m%d')}-{str(datetime.now().timestamp()).split('.')[0][-4:]}"
+            # Correlativo diario PC-AAAAMMDD-NNNN (antes se usaban 4 dígitos de la hora y podían repetirse)
+            prefijo = f"PC-{datetime.now().strftime('%Y%m%d')}-"
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                bloquear_numeracion(cur, 'pedido_compra_pc:' + prefijo)
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
+                               FROM pedido_compra_pc WHERE numero LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
+                data['numero'] = prefijo + str(cur.fetchone()['sig']).zfill(4)
         
         # Fecha si no tiene
-       
-            if not data.get('fecha'):
-             data['fecha'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if not data.get('fecha'):
+            data['fecha'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         # ============================================================
         # GUARDAR EL PC (INSERT O UPDATE)
@@ -2842,7 +2860,8 @@ def api_pedido_compra_guardar():
             return jsonify({
                 'success': True, 
                 'message': 'PC guardado correctamente', 
-                'data': result
+                'data': result,
+                'advertencia': advertencia
             })
         
         return jsonify({'success': False, 'error': 'No se pudo guardar'}), 400
@@ -3029,7 +3048,7 @@ def api_despachos_listar():
 def api_despachos_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         
         print("=" * 80)
         print("🚚 API DESPACHOS GUARDAR")
@@ -3125,7 +3144,7 @@ def api_despachos_guardar():
             data.get('observaciones') or '',
             data.get('responsable') or 'Hellen',
             items_json,
-            data.get('creado_por') or 8
+            data.get('creado_por') or session.get('usuario_id')
         )
         
         result = db_query(query, params)
@@ -3160,7 +3179,7 @@ def api_devoluciones_listar():
 def api_devoluciones_guardar():
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         data['creado_por'] = usuario_id
         
         if not data.get('numero'):
@@ -3452,7 +3471,23 @@ def api_comprobantes_toggle(id):
         estados_validos = ['Borrador', 'Emitido', 'Enviado', 'Pagado', 'Anulado']
         if nuevo_estado not in estados_validos:
             return jsonify({'success': False, 'error': f'Estado inválido'}), 400
-        
+        actual = db_query("SELECT estado_sunat FROM comprobantes WHERE id = %s", (id,))
+        if not actual:
+            return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
+        estado_actual = (actual[0].get('estado_sunat') or 'Borrador').capitalize()
+        transiciones = {
+            'Borrador': ('Emitido', 'Anulado'),
+            'Emitido': ('Enviado', 'Pagado', 'Anulado'),
+            'Enviado': ('Pagado', 'Anulado'),
+            'Aceptado': ('Pagado', 'Anulado'),
+            'Pagado': (),
+            'Anulado': (),
+        }
+        permitidos = transiciones.get(estado_actual, estados_validos)
+        if nuevo_estado != estado_actual and nuevo_estado not in permitidos:
+            return jsonify({'success': False,
+                            'error': f'No se puede pasar un comprobante de "{estado_actual}" a "{nuevo_estado}"'}), 409
+
         query = """
             UPDATE comprobantes 
             SET estado_sunat = %s, updated_at = NOW()
@@ -3743,7 +3778,7 @@ def api_cotizaciones_duplicar(id):
         nuevo_numero = f"COT-{str(count).zfill(6)}"
         codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
         
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         cliente_id = cabecera[0].get('cliente_id')
         
         print(f"📋 Nuevo número: {nuevo_numero}")
@@ -6796,7 +6831,7 @@ def api_transportistas_guardar():
     """Guardar un nuevo transportista desde ventas"""
     try:
         data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         
         print(f"📦 Guardando transportista desde ventas: {data}")
         
@@ -6847,6 +6882,7 @@ def api_cotizaciones_eliminadas():
     """Obtiene el historial de cotizaciones eliminadas/anuladas"""
     try:
         print("🔍 Consultando cotizaciones eliminadas...")
+        crear_tabla_cotizaciones_eliminadas_si_no_existe()
         
         # ✅ CON JOIN CON LA COLUMNA CORRECTA
         query = """
@@ -6931,34 +6967,40 @@ def api_transportistas_buscar():
 def api_ver_eliminada(id):
     """Obtiene el detalle de una cotización eliminada"""
     try:
+        # Antes consultaba columnas inexistentes en "cotizaciones" (siempre error 500).
+        # El respaldo con motivo y usuario está en cotizaciones_eliminadas.
+        crear_tabla_cotizaciones_eliminadas_si_no_existe()
         query = """
             SELECT 
-                c.id,
-                c.numero_cotizacion as numero,
-                c.fecha_creacion as fecha,
-                c.estado,
-                c.motivo_eliminacion as motivo,
-                c.fecha_eliminacion,
-                c.eliminado_por,
-                c.cliente_razon_social as cliente,
-                c.cliente_ruc as ruc,
-                c.cliente_direccion as direccion,
-                c.cliente_contacto as contacto,
-                c.cliente_telefono as telefono,
-                c.cliente_email as email,
-                c.condicion_pago,
-                c.tiempo_entrega,
-                c.validez_oferta,
-                c.subtotal,
-                c.igv,
-                c.total,
-                u.nombre_usuario as usuario_elimino
-            FROM cotizaciones c
-            LEFT JOIN usuarios u ON u.id = c.eliminado_por
-            WHERE c.id = %s AND c.estado = 'Anulada'
+                ce.id,
+                ce.cotizacion_id_original,
+                ce.numero_cotizacion as numero,
+                ce.fecha_creacion as fecha,
+                ce.estado_anterior as estado,
+                ce.motivo_eliminacion as motivo,
+                ce.eliminado_en as fecha_eliminacion,
+                ce.eliminado_por,
+                ce.cliente_razon_social as cliente,
+                ce.cliente_ruc as ruc,
+                ce.contacto_cliente as contacto,
+                ce.telefono_cliente as telefono,
+                ce.email_cliente as email,
+                ce.condicion_pago,
+                ce.tiempo_entrega,
+                ce.direccion_entrega,
+                ce.subtotal,
+                ce.igv,
+                ce.total,
+                ce.productos_json,
+                u.nombre_completo as usuario_elimino
+            FROM cotizaciones_eliminadas ce
+            LEFT JOIN usuarios u ON u.id = ce.eliminado_por
+            WHERE ce.id = %s OR ce.cotizacion_id_original = %s
+            ORDER BY (ce.id = %s) DESC, ce.eliminado_en DESC
+            LIMIT 1
         """
         
-        registro = db_query(query, (id,))
+        registro = db_query(query, (id, id, id))
         
         if not registro:
             return jsonify({'success': False, 'error': 'Registro no encontrado'}), 404
@@ -6983,10 +7025,7 @@ def api_ver_eliminada(id):
 @login_required
 def api_cotizaciones_revision():
     try:
-        rol = session.get('rol', '').lower()
-        roles_permitidos = ['hellen', 'erika', 'admin', 'superadmin', 'administrador']
-        
-        if rol not in roles_permitidos:
+        if not es_aprobador():
             return jsonify({'success': True, 'data': [], 'message': 'No autorizado'})
         
         # 🔽 Incluir "Por validar" y "Validado por Hellen"
@@ -7083,16 +7122,10 @@ def api_cotizaciones_revision():
 def api_cotizaciones_validar(id):
     """Registra quién validó una cotización"""
     try:
-        data = request.get_json()
-        usuario_id = session.get('usuario_id', 8)
-        nombre = session.get('nombre', '')
-        
-        # Si no viene nombre, obtener de la sesión
-        if not nombre:
-            query_user = "SELECT nombre_completo FROM usuarios WHERE id = %s"
-            user_result = db_query(query_user, (usuario_id,))
-            if user_result:
-                nombre = user_result[0].get('nombre_completo', 'Hellen')
+        if not es_aprobador():
+            return jsonify({'success': False, 'error': 'No tienes permisos para validar cotizaciones'}), 403
+        usuario_id = session.get('usuario_id')
+        nombre = session.get('nombre_completo') or session.get('usuario') or ''
         
         query = """
             UPDATE cotizaciones 
@@ -7126,10 +7159,7 @@ def api_cotizaciones_aceptar(id):
     """Acepta una cotización en revisión y la pasa a estado 'Generada'"""
     try:
         # Verificar que el usuario tenga permisos
-        rol = session.get('rol', '').lower()
-        roles_permitidos = ['hellen', 'erika', 'admin', 'superadmin', 'administrador']
-        
-        if rol not in roles_permitidos:
+        if not es_aprobador():
             return jsonify({
                 'success': False, 
                 'error': 'No tienes permisos para aceptar cotizaciones'
@@ -7160,7 +7190,7 @@ def api_cotizaciones_aceptar(id):
             RETURNING id, estado
         """
         
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         result = db_query(query_update, (usuario_id, id))
         
         if result:
@@ -7186,17 +7216,14 @@ def api_cotizaciones_rechazar(id):
     """Rechaza una cotización en revisión con motivo"""
     try:
         # Verificar que el usuario tenga permisos
-        rol = session.get('rol', '').lower()
-        roles_permitidos = ['hellen', 'erika', 'admin', 'superadmin', 'administrador']
-        
-        if rol not in roles_permitidos:
+        if not es_aprobador():
             return jsonify({
                 'success': False, 
                 'error': 'No tienes permisos para rechazar cotizaciones'
             }), 403
         
-        data = request.get_json()
-        motivo = data.get('motivo_rechazo', '').strip()
+        data = request.get_json(silent=True) or {}
+        motivo = (data.get('motivo_rechazo') or '').strip()
         
         if not motivo:
             return jsonify({
@@ -7230,7 +7257,7 @@ def api_cotizaciones_rechazar(id):
             RETURNING id, estado
         """
         
-        usuario_id = session.get('usuario_id', 8)
+        usuario_id = session.get('usuario_id')
         result = db_query(query_update, (motivo, usuario_id, id))
         
         if result:

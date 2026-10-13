@@ -3093,7 +3093,7 @@ async function saveGuia(estado) {
             id: editingId,
             estado: estado || 'Borrador',
             serie: document.getElementById('guiaSerie')?.value || 'T001',
-            numero: document.getElementById('guiaNumero')?.value || String(Date.now()).slice(-8),
+            numero: document.getElementById('guiaNumero')?.value?.trim() || '',  // vacío = el servidor asigna el correlativo
 
             // 🔽 ENVIAR FECHA CON HORA COMPLETA (IGUAL QUE COMPROBANTES)
             fecha_emision: fechaHoraISO,  // ← CON HORA COMPLETA
@@ -3268,7 +3268,7 @@ function renderComprobanteFormContent(isEdit, data) {
                 </div>
                 <div class="form-field col-3">
                     <label>Número</label>
-                    <input id="compNumero" value="${data?.numero || String(Date.now()).slice(-8)}">
+                    <input id="compNumero" value="${data?.numero || ''}" placeholder="Automático">
                 </div>
                 <div class="form-field col-3">
                     <label>Estado</label>
@@ -4075,7 +4075,7 @@ async function _saveComprobante(estado) {
             estado: estado || 'Borrador',
             tipo: document.getElementById('compTipo')?.value || 'Factura',
             serie: document.getElementById('compSerie')?.value || 'F001',
-            numero: document.getElementById('compNumero')?.value || String(Date.now()).slice(-8),
+            numero: document.getElementById('compNumero')?.value?.trim() || '',  // vacío = el servidor asigna el siguiente correlativo
             fecha_emision: new Date().toISOString(),
             cotizacion: document.getElementById('compCotizacion')?.value || '',
             guia: document.getElementById('compGuia')?.value || '',
@@ -5371,7 +5371,7 @@ async function openComprobanteModalWithData(id, cotizacion) {
             </div>
             <div class="form-field col-3">
                 <label>Número</label>
-                <input id="compNumero" value="${String(Date.now()).slice(-8)}">
+                <input id="compNumero" value="" placeholder="Automático">
             </div>
             <div class="form-field col-3">
                 <label>Estado</label>
@@ -8848,8 +8848,11 @@ function loadPedidoCotizacion() {
     document.getElementById('pcContacto').value = cotizacion.contacto || '';
     document.getElementById('pcMoneda').value = cotizacion.moneda || 'Soles (S/)';
     document.getElementById('pcEntrega').value = cotizacion.direccion_entrega || '';
-    document.getElementById('pcMonto').value = cotizacion.total || cotizacion.monto || 0;
-    document.getElementById('pcMontoConIgv').value = cotizacion.total || 0;
+    // monto de la cotización ya incluye IGV: base sin IGV = total - igv (evita doble IGV)
+    const _pcConIgv = Number(cotizacion.total || cotizacion.monto || 0);
+    const _pcSinIgv = cotizacion.igv != null ? _pcConIgv - Number(cotizacion.igv || 0) : Number(cotizacion.subtotal || 0);
+    document.getElementById('pcMonto').value = _pcSinIgv.toFixed(2);
+    document.getElementById('pcMontoConIgv').value = _pcConIgv.toFixed(2);
     
     // Cargar productos de la cotización
     const productos = cotizacion.productos || [];
@@ -10942,7 +10945,7 @@ function openNotaCreditoModal(id = null) {
                 </div>
                 <div class="form-field col-3">
                     <label>Número</label>
-                    <input id="notaNumero" value="${String(Date.now()).slice(-8)}">
+                    <input id="notaNumero" value="" placeholder="Automático">
                 </div>
                 <div class="form-field col-3">
                     <label>Estado</label>
@@ -12379,8 +12382,11 @@ function loadPedidoCotizacionSAP() {
     document.getElementById('pcCotFecha').value = cotizacion.fecha || '';
     document.getElementById('pcCliente').value = cotizacion.razon || '';
     document.getElementById('pcRuc').value = cotizacion.ruc || '';
-    document.getElementById('pcMonto').value = cotizacion.total || cotizacion.monto || 0;
-      document.getElementById('pcMontoConIgv').value = (cotizacion.total || cotizacion.monto || 0) * 1.18; 
+    // monto de la cotización ya incluye IGV: base sin IGV = total - igv (evita doble IGV)
+    const _pcConIgv = Number(cotizacion.total || cotizacion.monto || 0);
+    const _pcSinIgv = cotizacion.igv != null ? _pcConIgv - Number(cotizacion.igv || 0) : Number(cotizacion.subtotal || 0);
+    document.getElementById('pcMonto').value = _pcSinIgv.toFixed(2);
+    document.getElementById('pcMontoConIgv').value = _pcConIgv.toFixed(2);
     
     // Cargar productos
     const productos = cotizacion.productos || [];

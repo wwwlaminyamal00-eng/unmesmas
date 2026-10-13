@@ -1,4 +1,4 @@
-﻿# routes/compras.py - Módulo de Compras
+# routes/compras.py - Módulo de Compras
 
 import sys
 import os
@@ -14,6 +14,8 @@ import json
 
 # Importar desde database.py
 from database import db_query, db_execute, db_tx, get_connection
+from psycopg2.extras import RealDictCursor
+from utils import calcular_totales, a_decimal, redondear, bloquear_numeracion
 
 # ============================================================
 # CREAR EL BLUEPRINT
@@ -101,7 +103,7 @@ def guardar_solicitud_db(data):
             data.get('solicitante'),
             data.get('urgencia', 'Media'),
             data.get('justificacion', ''),
-            data.get('creado_por') or session.get('usuario_id', 8)
+            session.get('usuario_id')
         )
         result = db_query(query, params)
         return result[0] if result else None
@@ -196,7 +198,7 @@ def guardar_comparativo_db(data):
             data.get('estado', 'Borrador'),
             data.get('producto'),
             proveedores_json,
-            data.get('creado_por') or session.get('usuario_id', 8)
+            session.get('usuario_id')
         )
         result = db_query(query, params)
         return result[0] if result else None
@@ -251,137 +253,132 @@ def obtener_ordenes_db():
         return []
 
 
+def _resolver_proveedor_id(cur, data):
+    """Obtiene el proveedor_id a partir del id, RUC o razón social que envía el formulario."""
+    if data.get('proveedor_id'):
+        return data.get('proveedor_id')
+    ruc = (data.get('ruc') or '').strip()
+    if ruc:
+        cur.execute("SELECT id FROM proveedores WHERE ruc = %s ORDER BY id LIMIT 1", (ruc,))
+        fila = cur.fetchone()
+        if fila:
+            return fila['id']
+    nombre = (data.get('proveedor') or '').strip()
+    if nombre:
+        cur.execute("""SELECT id FROM proveedores
+                       WHERE UPPER(razon_social) = UPPER(%s) OR UPPER(razon_comercial) = UPPER(%s)
+                       ORDER BY id LIMIT 1""", (nombre, nombre))
+        fila = cur.fetchone()
+        if fila:
+            return fila['id']
+    return None
+
+
+def _normalizar_items_orden(items):
+    """Acepta precio_unitario o precioUnitario (el formulario usa este último) y recalcula el total."""
+    normalizados = []
+    for it in items or []:
+        cantidad = a_decimal(it.get('cantidad'))
+        precio = a_decimal(it.get('precio_unitario', it.get('precioUnitario', 0)))
+        producto = (it.get('producto') or '').strip()
+        if not producto or producto == 'Sin producto':
+            continue
+        if cantidad <= 0:
+            raise ValueError(f'La cantidad de "{producto}" debe ser mayor a 0')
+        if precio < 0:
+            raise ValueError(f'El precio de "{producto}" no puede ser negativo')
+        normalizados.append({'producto': producto, 'cantidad': cantidad, 'precio': precio,
+                             'total': redondear(cantidad * precio)})
+    return normalizados
+
+
+ESTADOS_OC_CERRADOS = ('Confirmada', 'Recibida', 'Anulada')
+
+
 def guardar_orden_db(data):
-    """Guarda una nueva orden de compra (usando tu estructura real)"""
-    try:
-        # Si es actualización, usar UPDATE
-        if data.get('id'):
-            query = """
+    """
+    Guarda (crea o actualiza) una orden de compra y sus items en UNA transacción.
+    Antes: los items no se guardaban al editar, los errores de items se ignoraban,
+    el precio llegaba en 0 (precioUnitario vs precio_unitario) y la OC quedaba sin proveedor.
+    """
+    items = _normalizar_items_orden(data.get('items'))
+    if not items:
+        raise ValueError('La orden de compra debe tener al menos un producto')
+    totales = calcular_totales([{'cantidad': i['cantidad'], 'precio': i['precio']} for i in items],
+                               data.get('descuento_porcentaje', 0), '%')
+
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        proveedor_id = _resolver_proveedor_id(cur, data)
+        orden_id = data.get('id')
+
+        if orden_id:
+            cur.execute("SELECT estado FROM ordenes_compra WHERE id = %s FOR UPDATE", (orden_id,))
+            fila = cur.fetchone()
+            if not fila:
+                raise ValueError('La orden de compra no existe')
+            if fila['estado'] in ESTADOS_OC_CERRADOS:
+                raise PermissionError(f'La orden está "{fila["estado"]}" y ya no se puede modificar')
+            cur.execute("""
                 UPDATE ordenes_compra SET
-                    codigo_orden = %s,
-                    correlativo = %s,
-                    proveedor_id = %s,
-                    usuario_id = %s,
-                    estado = %s,
-                    subtotal = %s,
-                    igv = %s,
-                    total = %s,
-                    condicion_pago = %s,
-                    tiempo_entrega = %s,
-                    fecha_requerida = %s,
-                    lugar_entrega = %s,
-                    num_cotizacion = %s,
-                    nota_compra = %s,
-                    notas = %s,
-                    descuento_porcentaje = %s,
-                    descuento_monto = %s,
-                    descuento_tipo = %s,
-                    contacto_proveedor = %s,
-                    telefono_proveedor = %s,
-                    email_proveedor = %s,
+                    proveedor_id = COALESCE(%s, proveedor_id), estado = %s,
+                    subtotal = %s, igv = %s, total = %s, descuento_monto = %s,
+                    condicion_pago = %s, tiempo_entrega = %s, fecha_requerida = %s,
+                    lugar_entrega = %s, num_cotizacion = %s, nota_compra = %s, notas = %s,
+                    contacto_proveedor = %s, telefono_proveedor = %s, email_proveedor = %s,
                     updated_at = NOW()
                 WHERE id = %s
                 RETURNING id, numero_orden
-            """
-            params = (
-                data.get('codigo_orden') or data.get('numero_orden'),
-                data.get('correlativo') or '00001',
-                data.get('proveedor_id'),
-                data.get('usuario_id') or session.get('usuario_id', 8),
-                data.get('estado', 'pendiente'),
-                float(data.get('subtotal', 0)),
-                float(data.get('igv', 0)),
-                float(data.get('total', 0)),
-                data.get('condicion_pago', 'Contado'),
-                data.get('tiempo_entrega', '5 días hábiles'),
-                data.get('fecha_requerida'),
-                data.get('lugar_entrega'),
-                data.get('num_cotizacion'),
-                data.get('nota_compra'),
-                data.get('notas'),
-                float(data.get('descuento_porcentaje', 0)),
-                float(data.get('descuento_monto', 0)),
-                data.get('descuento_tipo', 'porcentaje'),
-                data.get('contacto_proveedor'),
-                data.get('telefono_proveedor'),
-                data.get('email_proveedor'),
-                data['id']
-            )
-            result = db_query(query, params)
-            return result[0] if result else None
-        
-        # Si es nuevo, INSERT
-        query = """
-            INSERT INTO ordenes_compra (
-                numero_orden, codigo_orden, correlativo,
-                proveedor_id, usuario_id, estado,
-                subtotal, igv, total, condicion_pago, tiempo_entrega,
-                fecha_requerida, lugar_entrega, num_cotizacion,
-                nota_compra, notas,
-                descuento_porcentaje, descuento_monto, descuento_tipo,
-                contacto_proveedor, telefono_proveedor, email_proveedor
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s
-            )
-            RETURNING id, numero_orden
-        """
-        
-        params = (
-            data.get('numero_orden'),
-            data.get('codigo_orden') or data.get('numero_orden'),
-            data.get('correlativo') or '00001',
-            data.get('proveedor_id'),
-            data.get('usuario_id') or session.get('usuario_id', 8),
-            data.get('estado', 'pendiente'),
-            float(data.get('subtotal', 0)),
-            float(data.get('igv', 0)),
-            float(data.get('total', 0)),
-            data.get('condicion_pago', 'Contado'),
-            data.get('tiempo_entrega', '5 días hábiles'),
-            data.get('fecha_requerida'),
-            data.get('lugar_entrega'),
-            data.get('num_cotizacion'),
-            data.get('nota_compra'),
-            data.get('notas'),
-            float(data.get('descuento_porcentaje', 0)),
-            float(data.get('descuento_monto', 0)),
-            data.get('descuento_tipo', 'porcentaje'),
-            data.get('contacto_proveedor'),
-            data.get('telefono_proveedor'),
-            data.get('email_proveedor')
-        )
-        
-        result = db_query(query, params)
-        orden_id = result[0]['id'] if result else None
-        
-        # Guardar items si existen
-        items = data.get('items', [])
-        if items and orden_id:
-            for item in items:
-                try:
-                    item_query = """
-                        INSERT INTO ordenes_compra_items (
-                            orden_compra_id, producto, cantidad, 
-                            precio_unitario, total
-                        ) VALUES (%s, %s, %s, %s, %s)
-                    """
-                    db_query(item_query, (
-                        orden_id,
-                        item.get('producto'),
-                        float(item.get('cantidad', 1)),
-                        float(item.get('precio_unitario', 0)),
-                        float(item.get('total', 0))
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Error guardando item: {e}")
-        
-        return result[0] if result else None
-    except Exception as e:
-        print(f"❌ Error en guardar_orden_db: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+            """, (proveedor_id, data.get('estado', 'Borrador'), totales['subtotal'], totales['igv'],
+                  totales['total'], totales['descuento'], data.get('condicion_pago', 'Contado'),
+                  data.get('tiempo_entrega', '5 días hábiles'), data.get('fecha_requerida') or None,
+                  data.get('lugar_entrega'), data.get('num_cotizacion'), data.get('nota_compra'),
+                  data.get('notas'), data.get('contacto_proveedor') or data.get('proveedor'),
+                  data.get('telefono_proveedor'), data.get('email_proveedor'), orden_id))
+            resultado = cur.fetchone()
+            cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (orden_id,))
+        else:
+            prefijo = f"OC-{datetime.now().strftime('%Y%m%d')}-"
+            bloquear_numeracion(cur, 'ordenes_compra:' + prefijo)
+            numero = (data.get('numero_orden') or '').strip()
+            if numero:
+                cur.execute("SELECT 1 FROM ordenes_compra WHERE numero_orden = %s", (numero,))
+                if cur.fetchone():
+                    numero = ''  # el número propuesto por el navegador ya existe: se genera otro
+            if not numero:
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero_orden FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
+                               FROM ordenes_compra WHERE numero_orden LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
+                numero = prefijo + str(cur.fetchone()['sig']).zfill(4)
+            cur.execute("""
+                INSERT INTO ordenes_compra (
+                    numero_orden, codigo_orden, correlativo, proveedor_id, usuario_id, estado,
+                    subtotal, igv, total, condicion_pago, tiempo_entrega, fecha_requerida,
+                    lugar_entrega, num_cotizacion, nota_compra, notas,
+                    descuento_porcentaje, descuento_monto, descuento_tipo,
+                    contacto_proveedor, telefono_proveedor, email_proveedor
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, numero_orden
+            """, (numero, numero, numero[-4:], proveedor_id, session.get('usuario_id'),
+                  data.get('estado', 'Borrador'), totales['subtotal'], totales['igv'], totales['total'],
+                  data.get('condicion_pago', 'Contado'), data.get('tiempo_entrega', '5 días hábiles'),
+                  data.get('fecha_requerida') or None, data.get('lugar_entrega'), data.get('num_cotizacion'),
+                  data.get('nota_compra'), data.get('notas'), a_decimal(data.get('descuento_porcentaje', 0)),
+                  totales['descuento'], data.get('descuento_tipo', 'porcentaje'),
+                  data.get('contacto_proveedor') or data.get('proveedor'),
+                  data.get('telefono_proveedor'), data.get('email_proveedor')))
+            resultado = cur.fetchone()
+            orden_id = resultado['id']
+
+        for it in items:
+            cur.execute("""
+                INSERT INTO ordenes_compra_items (orden_compra_id, producto, cantidad, precio_unitario, total)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (orden_id, it['producto'], it['cantidad'], it['precio'], it['total']))
+
+        resultado = dict(resultado)
+        resultado.update({'subtotal': float(totales['subtotal']), 'igv': float(totales['igv']),
+                          'total': float(totales['total']), 'proveedor_id': proveedor_id})
+        return resultado
 
 
 def actualizar_orden_db(orden_id, data):
@@ -501,7 +498,7 @@ def guardar_comprobante_proveedor_db(data):
             data.get('orden_compra') or data.get('orden_compra_numero') or '',
             data.get('estado', 'Pendiente'),
             data.get('observaciones', ''),
-            data.get('creado_por') or session.get('usuario_id', 8)
+            session.get('usuario_id')
         )
         result = db_query(query, params)
         return result[0] if result else None
@@ -600,7 +597,7 @@ def guardar_recepcion_db(data):
             data.get('unidad', 'UND'),
             data.get('estado_mercaderia', 'Buen estado'),
             data.get('observaciones', ''),
-            data.get('creado_por') or session.get('usuario_id', 8)
+            session.get('usuario_id')
         )
         result = db_query(query, params)
         return result[0] if result else None
@@ -890,14 +887,18 @@ def api_ordenes_listar():
         formatted_data = []
         for row in data:
             proveedor_nombre = None
+            proveedor_ruc = None
             if row.get('proveedor_id'):
                 try:
-                    prov_query = "SELECT razon_social FROM proveedores WHERE id = %s"
-                    prov_result = db_query(prov_query, (row['proveedor_id'],))
+                    prov_result = db_query("SELECT razon_social, ruc FROM proveedores WHERE id = %s", (row['proveedor_id'],))
                     if prov_result:
                         proveedor_nombre = prov_result[0].get('razon_social')
-                except:
-                    pass
+                        proveedor_ruc = prov_result[0].get('ruc')
+                except Exception as e:
+                    print(f"⚠️ No se pudo obtener el proveedor {row.get('proveedor_id')}: {e}")
+            for it in row.get('items', []):
+                # el formulario de edición lee precioUnitario
+                it['precioUnitario'] = float(it.get('precio_unitario') or 0)
             
             formatted_data.append({
                 'id': row.get('id'),
@@ -905,7 +906,7 @@ def api_ordenes_listar():
                 'fecha': row.get('fecha_creacion'),
                 'estado': row.get('estado'),
                 'proveedor': proveedor_nombre or row.get('contacto_proveedor') or f"Proveedor ID: {row.get('proveedor_id')}",
-                'ruc': row.get('contacto_proveedor') and 'RUC no disponible',
+                'ruc': proveedor_ruc or '',
                 'condicion_pago': row.get('condicion_pago'),
                 'moneda': 'Soles (S/)',
                 'subtotal': float(row.get('subtotal', 0)),
@@ -929,24 +930,18 @@ def api_ordenes_listar():
 def api_ordenes_guardar():
     """Guarda una orden de compra"""
     try:
-        data = request.get_json()
-        print(f"📄 Guardando orden de compra: {data}")
-        
-        if not data.get('numero_orden'):
-            count_data = db_query("SELECT COUNT(*) as total FROM ordenes_compra")
-            count = count_data[0]['total'] + 1 if count_data else 1
-            data['numero_orden'] = f"OC-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
-        
-        items = data.get('items', [])
-        if items and not data.get('subtotal'):
-            subtotal = sum(float(i.get('total', float(i.get('cantidad', 0)) * float(i.get('precio_unitario', 0)))) for i in items)
-            data['subtotal'] = subtotal
-            data['igv'] = subtotal * 0.18
-            data['total'] = subtotal * 1.18
-        
-        result = guardar_orden_db(data)
+        data = request.get_json(silent=True) or {}
+        try:
+            result = guardar_orden_db(data)
+        except PermissionError as e:
+            return jsonify({'success': False, 'error': str(e)}), 409
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         if result:
-            return jsonify({'success': True, 'message': 'Orden de compra guardada', 'data': result})
+            advertencia = None if result.get('proveedor_id') else \
+                'La orden se guardó sin proveedor registrado: verifica el RUC en Maestros > Proveedores.'
+            return jsonify({'success': True, 'message': f"Orden de compra {result.get('numero_orden')} guardada",
+                            'data': result, 'advertencia': advertencia})
         return jsonify({'success': False, 'error': 'No se pudo guardar'}), 400
         
     except Exception as e:
@@ -1011,8 +1006,11 @@ def api_ordenes_eliminar(id):
                 'error': f'Solo se pueden eliminar órdenes en estado "Borrador" o "Anulada". Estado actual: {estado}'
             }), 400
         
-        query = "DELETE FROM ordenes_compra WHERE id = %s RETURNING id"
-        result = db_query(query, (id,))
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (id,))
+            cur.execute("DELETE FROM ordenes_compra WHERE id = %s RETURNING id", (id,))
+            result = cur.fetchall()
         
         if result:
             return jsonify({'success': True, 'message': 'Orden eliminada'})
@@ -1067,19 +1065,38 @@ def api_comprobantes_proveedor_listar():
 def api_comprobantes_proveedor_guardar():
     """Guarda un comprobante de proveedor"""
     try:
-        data = request.get_json()
-        print(f"🧾 Guardando comprobante de proveedor: {data}")
+        data = request.get_json(silent=True) or {}
+        numero = (data.get('numero') or '').strip()
+        ruc = (data.get('ruc') or data.get('ruc_proveedor') or '').strip()
+        tipo = data.get('tipo', 'Factura')
+        if not numero:
+            return jsonify({'success': False, 'error': 'El número del comprobante del proveedor es obligatorio'}), 400
+        if ruc and not (len(ruc) == 11 and ruc.isdigit()):
+            return jsonify({'success': False, 'error': 'El RUC del proveedor debe tener 11 dígitos'}), 400
+        if a_decimal(data.get('monto')) <= 0:
+            return jsonify({'success': False, 'error': 'El monto debe ser mayor a 0'}), 400
+        # Evita registrar dos veces la misma factura del proveedor (afectaría cuentas por pagar)
+        if db_query("""SELECT 1 FROM comprobantes_proveedor
+                       WHERE numero = %s AND COALESCE(ruc_proveedor, '') = %s AND COALESCE(tipo, 'Factura') = %s
+                         AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')""", (numero, ruc, tipo)):
+            return jsonify({'success': False, 'error': f'El comprobante {numero} de este proveedor ya está registrado'}), 409
+        # Vincula la OC por número si no viene el id
+        if not data.get('orden_compra_id') and (data.get('orden_compra') or data.get('orden_compra_numero')):
+            oc = db_query("SELECT id FROM ordenes_compra WHERE numero_orden = %s",
+                          (data.get('orden_compra') or data.get('orden_compra_numero'),))
+            if oc:
+                data['orden_compra_id'] = oc[0]['id']
 
         result = guardar_comprobante_proveedor_db(data)
         if result:
             return jsonify({'success': True, 'message': 'Comprobante registrado', 'data': result})
-        return jsonify({'success': False, 'error': 'No se pudo guardar'}), 200
+        return jsonify({'success': False, 'error': 'No se pudo guardar'}), 400
 
     except Exception as e:
         print(f"❌ Error en api_comprobantes_proveedor_guardar: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 200
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @compras_bp.route('/compras/api/comprobantes-proveedor/<int:id>/toggle', methods=['PUT'])

@@ -1,7 +1,9 @@
-﻿from flask import Blueprint, render_template
+from flask import Blueprint, redirect, url_for
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
+
 @dashboard_bp.route('/dashboard')
 def dashboard():
-    return render_template('dashboard.html')
+    # No existe templates/dashboard.html: el panel principal es /index
+    return redirect(url_for('index'))

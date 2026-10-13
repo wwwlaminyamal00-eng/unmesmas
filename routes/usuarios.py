@@ -2,6 +2,13 @@
 from flask import Blueprint, render_template, request, jsonify, session
 from database import db_query, db_execute, db_tx
 from psycopg2.extras import RealDictCursor
+from werkzeug.security import generate_password_hash
+from utils import es_admin
+
+
+def _password_valida(pwd):
+    """Contraseña opcional; si se envía debe tener al menos 8 caracteres."""
+    return pwd is None or pwd == '' or (isinstance(pwd, str) and len(pwd) >= 8)
 
 # ============================================================
 # BLUEPRINT - UN SOLO Blueprint para todo
@@ -58,7 +65,7 @@ def get_usuarios():
                     AND ue.estado = 'activo'
                 ) as empresas_acceso
             FROM usuarios u
-            WHERE u.estado = 'activo'
+            WHERE u.estado = 'activo' {filtro_usuario}
             ORDER BY 
                 CASE 
                     WHEN u.nombres_apellidos = 'ANTONY GAMONAL' THEN 1
@@ -70,7 +77,9 @@ def get_usuarios():
                     ELSE 999
                 END ASC,
                 u.nombres_apellidos ASC
-        """)
+        """.replace('{filtro_usuario}', '' if es_admin() else 'AND u.id = %s'),
+            None if es_admin() else (session.get('usuario_id'),))
+        # Un usuario que no es administrador solo recibe su propio registro (lo usa el menú para sus permisos)
         
         return jsonify({
             'success': True,
@@ -127,6 +136,13 @@ def create_usuario():
         
         if not data.get('usuario_sistema'):
             return jsonify({'success': False, 'error': 'usuario_sistema es requerido'}), 400
+
+        if not _password_valida(data.get('password')):
+            return jsonify({'success': False, 'error': 'La contraseña debe tener al menos 8 caracteres'}), 400
+
+        existe = db_query("SELECT id FROM usuarios WHERE usuario_sistema = %s", (data.get('usuario_sistema'),))
+        if existe:
+            return jsonify({'success': False, 'error': 'Ya existe un usuario con ese nombre de usuario'}), 400
         
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -148,6 +164,13 @@ def create_usuario():
             ))
             
             usuario_id = cur.fetchone()['id']
+
+            # Contraseña y rol opcionales (la contraseña se guarda siempre como hash)
+            if data.get('password'):
+                cur.execute("UPDATE usuarios SET password = %s WHERE id = %s",
+                            (generate_password_hash(data['password']), usuario_id))
+            if data.get('rol'):
+                cur.execute("UPDATE usuarios SET rol = %s WHERE id = %s", (data['rol'], usuario_id))
             
             empresas_acceso = data.get('empresas_acceso', [])
             for acceso in empresas_acceso:
@@ -206,6 +229,14 @@ def update_usuario(usuario_id):
                 data.get('estado', 'activo'),
                 usuario_id
             ))
+
+            if data.get('password'):
+                if not _password_valida(data.get('password')):
+                    raise ValueError('La contraseña debe tener al menos 8 caracteres')
+                cur.execute("UPDATE usuarios SET password = %s WHERE id = %s",
+                            (generate_password_hash(data['password']), usuario_id))
+            if data.get('rol'):
+                cur.execute("UPDATE usuarios SET rol = %s WHERE id = %s", (data['rol'], usuario_id))
             
             return jsonify({
                 'success': True,
@@ -221,6 +252,8 @@ def update_usuario(usuario_id):
 def delete_usuario(usuario_id):
     """Eliminar usuario (borrado lógico)"""
     try:
+        if str(session.get('usuario_id')) == str(usuario_id):
+            return jsonify({'success': False, 'error': 'No puedes desactivar tu propio usuario'}), 400
         db_execute("""
             UPDATE usuarios SET estado = 'inactivo', updated_at = NOW()
             WHERE id = %s

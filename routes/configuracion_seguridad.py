@@ -1488,7 +1488,7 @@ def registrar_auditoria(empresa_id, auth_user_id, tabla, registro_id, accion, da
 def get_session_info():
     """Obtener información de la sesión actual"""
     try:
-        user_id = session.get('user_id')
+        user_id = session.get('user_id') or session.get('usuario_id')
         if not user_id:
             return jsonify({'success': False, 'error': 'No autenticado'}), 401
         
