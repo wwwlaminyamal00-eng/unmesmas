@@ -295,6 +295,15 @@ def _normalizar_items_orden(items):
 ESTADOS_OC_CERRADOS = ('Confirmada', 'Recibida', 'Anulada')
 
 
+def _es_oc_nueva(orden_id):
+    """True si la OC pertenece al nuevo flujo de Compras (routes/compras_flujo.py)."""
+    try:
+        f = db_query("SELECT flujo FROM ordenes_compra WHERE id = %s", (orden_id,))
+        return bool(f and f[0].get('flujo') == 'v2')
+    except Exception:
+        return False  # la columna aún no existe: no hay OC nuevas
+
+
 def guardar_orden_db(data):
     """
     Guarda (crea o actualiza) una orden de compra y sus items en UNA transacción.
@@ -313,10 +322,12 @@ def guardar_orden_db(data):
         orden_id = data.get('id')
 
         if orden_id:
-            cur.execute("SELECT estado FROM ordenes_compra WHERE id = %s FOR UPDATE", (orden_id,))
+            cur.execute("SELECT * FROM ordenes_compra WHERE id = %s FOR UPDATE", (orden_id,))
             fila = cur.fetchone()
             if not fila:
                 raise ValueError('La orden de compra no existe')
+            if fila.get('flujo') == 'v2':
+                raise PermissionError('Esta orden se hizo en la nueva pantalla de Compras: corrígela allí.')
             if fila['estado'] in ESTADOS_OC_CERRADOS:
                 raise PermissionError(f'La orden está "{fila["estado"]}" y ya no se puede modificar')
             cur.execute("""
@@ -612,10 +623,10 @@ def guardar_recepcion_db(data):
 # RUTAS PRINCIPALES
 # ============================================================
 
-@compras_bp.route('/compras')
+@compras_bp.route('/compras/anterior')
 @login_required
 def compras():
-    """Página principal del módulo de compras"""
+    """Pantallas anteriores de Compras (se conservan). La nueva pantalla está en routes/compras_flujo.py (/compras)."""
     tab = request.args.get('tab', 'solicitud_compra')
     return render_template('compras/index.html',
                          active_tab=tab,
@@ -965,6 +976,8 @@ def api_ordenes_toggle(id):
         estados_validos = ['Borrador', 'Emitida', 'Enviada', 'Confirmada', 'Anulada']
         if nuevo_estado not in estados_validos:
             return jsonify({'success': False, 'error': f'Estado inválido'}), 400
+        if _es_oc_nueva(id):
+            return jsonify({'success': False, 'error': 'Esta orden se maneja en la nueva pantalla de Compras (aprobación, pago y recepción).'}), 409
         
         query = """
             UPDATE ordenes_compra 
@@ -1000,6 +1013,8 @@ def api_ordenes_eliminar(id):
             return jsonify({'success': False, 'error': 'Orden no encontrada'}), 404
         
         estado = check_result[0].get('estado')
+        if _es_oc_nueva(id):
+            return jsonify({'success': False, 'error': 'Las órdenes de la nueva pantalla de Compras no se eliminan: se anulan con motivo.'}), 409
         if estado not in ['Borrador', 'Anulada']:
             return jsonify({
                 'success': False,

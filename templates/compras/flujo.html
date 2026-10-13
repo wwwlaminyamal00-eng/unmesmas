@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}Compras - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}
+<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a>
+<span>/</span>
+<span class="crumb-btn active-crumb">Compras</span>
+{% endblock %}
+
+{% block page_title %}Compras{% endblock %}
+
+{% block subtitle %}Compras bajo pedido: del pedido del cliente a la mercadería en almacén, con cada paso a cargo de una persona distinta.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/compras_flujo.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="comApp"
+     data-comprar="{{ 'true' if puede_comprar else 'false' }}"
+     data-aprobar="{{ 'true' if puede_aprobar else 'false' }}"
+     data-pagar="{{ 'true' if puede_pagar else 'false' }}"
+     data-recibir="{{ 'true' if puede_recibir else 'false' }}"
+     data-facturar="{{ 'true' if puede_facturar else 'false' }}"
+     data-admin="{{ 'true' if es_admin else 'false' }}"
+     data-tab="{{ tab }}">
+
+    <div class="tabs inv-tabs" id="tabsRowCom">
+        <button class="tab-btn active" data-tab="hoy">🔔 Hoy en Compras</button>
+        <button class="tab-btn" data-tab="pedidos">🛒 Pedidos por comprar</button>
+        <button class="tab-btn" data-tab="ordenes">📄 Órdenes de compra</button>
+        <button class="tab-btn" data-tab="recibir">📦 Recibir mercadería</button>
+        <button class="tab-btn" data-tab="facturas">💳 Pagos y facturas</button>
+        <button class="tab-btn" data-tab="precios">💲 Precios por producto</button>
+        <a class="tab-btn com-tab-link" href="/compras/anterior?tab=solicitud_compra" title="Las pantallas de antes siguen disponibles">🗂 Pantallas anteriores</a>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- HOY EN COMPRAS -->
+    <!-- ======================================================= -->
+    <section class="section active" id="sec-hoy">
+        <div class="com-flujo">
+            <div class="com-flujo-paso"><span>1</span><b>Pedido del cliente</b><small>Ventas lo registra (PC)</small></div>
+            <div class="com-flujo-paso"><span>2</span><b>Orden de compra</b><small>Compras: empresa, proveedor y sede</small></div>
+            <div class="com-flujo-paso"><span>3</span><b>Aprobación</b><small>Supervisora (no quien la hizo)</small></div>
+            <div class="com-flujo-paso"><span>4</span><b>Pago</b><small>Finanzas, solo a la cuenta del proveedor</small></div>
+            <div class="com-flujo-paso"><span>5</span><b>Recepción a ciegas</b><small>Otra persona cuenta en la sede</small></div>
+            <div class="com-flujo-paso"><span>6</span><b>Factura</b><small>Debe cuadrar con lo recibido</small></div>
+            <div class="com-flujo-paso fin"><span>✓</span><b>Inventario</b><small>Se ingresa y queda separado para el cliente</small></div>
+        </div>
+        <div class="inv-kpis">
+            <div class="inv-kpi" data-ir="pedidos"><small>Pedidos por comprar</small><b id="kpiPedidos">0</b><span>Pedidos de clientes sin orden</span></div>
+            <div class="inv-kpi inv-kpi-warn" data-ir="ordenes" data-paso="aprobar"><small>Por aprobar</small><b id="kpiAprobar">0</b><span>Órdenes esperando a la supervisora</span></div>
+            <div class="inv-kpi inv-kpi-warn" data-ir="facturas"><small>Por pagar (contado)</small><b id="kpiPagar">S/ 0.00</b><span>Antes de recoger</span></div>
+            <div class="inv-kpi" data-ir="recibir"><small>Por recibir</small><b id="kpiRecibir">0</b><span>Órdenes con mercadería pendiente</span></div>
+            <div class="inv-kpi inv-kpi-danger" data-ir="ordenes" data-paso="incidencia"><small>Diferencias abiertas</small><b id="kpiInc">0</b><span>Faltantes, sobrantes, dañados</span></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Qué hacer hoy</div>
+                    <div class="inv-help">Lista de tareas de Compras. Cuando una alerta desaparece es porque ya está resuelta.</div>
+                </div>
+                <button class="btn btn-secondary" id="btnRefrescarHoy">↻ Actualizar</button>
+            </div>
+            <div class="inv-alertas" id="hoyAlertas"><div class="inv-vacio">Cargando...</div></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- PEDIDOS POR COMPRAR -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-pedidos">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Pedidos de clientes por comprar</div>
+                    <div class="inv-help">Marca los productos que vas a comprar al <b>mismo proveedor</b> y pulsa "Crear orden de compra". Si la columna "Stock libre en el grupo" tiene unidades, <b>primero usa ese stock</b> (Inventario ▸ ¿Dónde está?) y compra solo lo que falta.</div>
+                </div>
+                <div class="inv-filters">
+                    <input type="search" id="pedBuscar" placeholder="Buscar cliente, pedido o producto...">
+                    <label class="inv-check"><input type="checkbox" id="pedTodos"> Ver también los ya comprados</label>
+                    <button class="btn btn-primary" id="btnCrearDesdePedidos" disabled>🛒 Crear orden de compra (<span id="pedMarcados">0</span>)</button>
+                </div>
+            </div>
+            <div id="pedLista" class="com-pedidos"><div class="inv-vacio">Cargando...</div></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- ÓRDENES DE COMPRA -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-ordenes">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Órdenes de compra</div>
+                    <div class="inv-help">La columna <b>"Siguiente paso"</b> dice qué falta y quién lo hace. Haz clic en una orden para ver todo su historial.</div>
+                </div>
+                <div class="inv-filters">
+                    <select id="ocEmpresa" data-empresas data-todas="Todas las empresas"></select>
+                    <select id="ocPaso">
+                        <option value="">Todas las abiertas</option>
+                        <option value="enviar">Borradores</option>
+                        <option value="aprobar">Por aprobar</option>
+                        <option value="pagar,pagar_credito">Por pagar</option>
+                        <option value="recibir">Por recibir</option>
+                        <option value="incidencia">Con diferencias</option>
+                        <option value="factura">Sin factura</option>
+                        <option value="listo">Completas</option>
+                        <option value="anulada">Anuladas</option>
+                    </select>
+                    <input type="search" id="ocBuscar" placeholder="Buscar OC, proveedor, cliente, producto...">
+                    <a class="btn btn-secondary" href="/compras/api/flujo/ordenes/exportar">⬇ Excel (CSV)</a>
+                    <button class="btn btn-primary" id="btnNuevaOC">+ Nueva orden</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>N°</th><th>Fecha</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para</th><th>Entrega en</th><th>Pago</th><th>Total</th><th>Llegó</th><th>Estado</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <tbody id="ocBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="inv-foot" id="ocFoot"></div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- RECIBIR MERCADERÍA -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-recibir">
+        <div class="inv-paso com-regla">
+            📦 <b>Cómo recibir:</b> 1) Pide la guía de remisión del proveedor. 2) Cuenta producto por producto <b>sin mirar la guía</b>. 3) Escribe lo que contaste: el sistema no te muestra cuánto se pidió, a propósito. 4) Separa lo dañado. 5) Al final el sistema te dice si falta o sobra algo.<br>
+            🔒 Quien recogió la mercadería del proveedor <b>no puede</b> recibirla, y quien hizo la orden tampoco.
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Órdenes con mercadería por llegar</div>
+                    <div class="inv-help">Las órdenes al contado aparecen bloqueadas hasta que Finanzas registra el pago.</div>
+                </div>
+                <button class="btn btn-secondary" id="btnRefrescarRecibir">↻ Actualizar</button>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Cómo llega</th><th>Sede</th><th>Fecha prometida</th><th class="left">Para</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody id="recBodyCom"><tr><td colspan="9">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- PAGOS Y FACTURAS -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-facturas">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Órdenes por pagar</div>
+                    <div class="inv-help">Al contado: se paga antes de recoger. Paga <b>solo a la cuenta bancaria registrada del proveedor</b> y anota el N° de operación. Quien hizo la orden no puede registrar el pago.</div>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Condición</th><th>Total</th><th>Pagado</th><th>Falta</th><th>Acción</th></tr></thead>
+                    <tbody id="pagBody"><tr><td colspan="8">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Facturas de proveedores por registrar</div>
+                    <div class="inv-help">Copia los datos <b>tal como están en la factura</b>. El sistema la compara con lo que realmente llegó: si no cuadra, queda como diferencia por resolver. Las facturas registradas pasan a Finanzas ▸ Cuentas por pagar.</div>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Estado</th><th>Recibido</th><th>Facturas</th><th>Acción</th></tr></thead>
+                    <tbody id="facBody"><tr><td colspan="7">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- PRECIOS -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-precios">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Precios de compra por producto y proveedor</div>
+                    <div class="inv-help">Sirve para negociar y para detectar sobreprecios. Precios sin IGV de órdenes aprobadas.</div>
+                </div>
+                <div class="inv-filters">
+                    <input type="search" id="preBuscar" placeholder="Buscar producto o proveedor...">
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>Código</th><th class="left">Producto</th><th class="left">Proveedor</th><th>Compras</th><th>Último precio</th><th>Más barato</th><th>Más caro</th><th>Última compra</th></tr></thead>
+                    <tbody id="preBody"><tr><td colspan="8">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- ======================================================= -->
+<!-- MODAL: NUEVA / CORREGIR ORDEN DE COMPRA -->
+<!-- ======================================================= -->
+<div class="modal-bg" id="ocModal">
+    <div class="modal inv-modal inv-modal-lg com-modal-xl">
+        <div class="modal-head">
+            <div class="modal-title" id="ocTitulo">Nueva orden de compra</div>
+            <button class="btn btn-secondary" data-close="ocModal">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="ocId">
+            <div class="com-bloque">
+                <div class="com-bloque-tit"><span>1</span> ¿Qué empresa compra y a quién?</div>
+                <div class="inv-form inv-form-4">
+                    <label>Empresa que compra (la factura sale a su nombre)<select id="ocEmp" data-empresas></select></label>
+                    <label class="inv-span2">Proveedor
+                        <div class="prov-picker" id="ocProv">
+                            <input type="search" class="pp-input" placeholder="Escribe RUC o nombre del proveedor..." autocomplete="off">
+                            <div class="pp-lista"></div>
+                        </div>
+                    </label>
+                    <label>Cotización del proveedor (N°)<input type="text" id="ocCotizacion" maxlength="60" placeholder="Opcional"></label>
+                    <label>Condición de pago
+                        <select id="ocCondicion">
+                            <option value="Contado">Contado (se paga antes de recoger)</option>
+                            <option value="Contra entrega">Contra entrega</option>
+                            <option value="Crédito">Crédito</option>
+                        </select>
+                    </label>
+                    <label id="ocDiasWrap" style="display:none">Días de crédito<input type="number" id="ocDias" min="1" step="1" placeholder="Ej. 30"></label>
+                    <div class="inv-span2 com-prov-info" id="ocProvInfo"></div>
+                </div>
+            </div>
+            <div class="com-bloque">
+                <div class="com-bloque-tit"><span>2</span> ¿Cómo llega y dónde termina la mercadería?</div>
+                <div class="inv-form inv-form-4">
+                    <label>¿Quién la trae?
+                        <select id="ocModalidad">
+                            <option value="Proveedor entrega">El proveedor la entrega</option>
+                            <option value="Nosotros recogemos">Nosotros recogemos</option>
+                        </select>
+                    </label>
+                    <label id="ocRecojoWrap" class="inv-span2" style="display:none">Dirección de recojo<input type="text" id="ocRecojo" maxlength="250"></label>
+                    <label>Sede donde debe quedar<select id="ocSede" data-sedes></select></label>
+                    <label>Fecha prometida por el proveedor<input type="date" id="ocFecha"></label>
+                    <div class="inv-full" id="ocSunat"></div>
+                </div>
+            </div>
+            <div class="com-bloque">
+                <div class="com-bloque-tit"><span>3</span> Productos <small>(precios sin IGV)</small></div>
+                <div class="table-wrap">
+                    <table class="inv-table com-lineas">
+                        <thead><tr><th class="left" style="min-width:260px">Producto</th><th class="left">Para</th><th>Cantidad</th><th>Precio unit. sin IGV</th><th>Total</th><th></th></tr></thead>
+                        <tbody id="ocLineas"></tbody>
+                    </table>
+                </div>
+                <div class="com-lineas-pie">
+                    <button class="btn btn-secondary" id="btnLineaStock">+ Agregar producto para stock (sin pedido)</button>
+                    <div class="com-totales"><span>Subtotal <b id="ocSub">S/ 0.00</b></span><span>IGV <b id="ocIgv">S/ 0.00</b></span><span class="tot">Total <b id="ocTot">S/ 0.00</b></span></div>
+                </div>
+                <div class="inv-form">
+                    <label class="inv-full" id="ocMotivoWrap" style="display:none">⚠️ Hay productos sin pedido de cliente (compra para stock). ¿Por qué se compran?
+                        <textarea id="ocMotivo" rows="2" maxlength="500" placeholder="Ej. se vende todas las semanas; precio de oferta hasta el viernes"></textarea>
+                    </label>
+                    <label class="inv-full">Notas para el proveedor<textarea id="ocNotas" rows="2" maxlength="500" placeholder="Ej. entregar con guía a nombre de la empresa que compra; horario de recepción 9 a 5"></textarea></label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="ocModal">Cancelar</button>
+            <button class="btn btn-secondary" id="ocGuardar">Guardar borrador</button>
+            <button class="btn btn-primary" id="ocEnviar">Enviar a aprobar ➜</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: DETALLE DE LA ORDEN -->
+<div class="modal-bg" id="detModal">
+    <div class="modal inv-modal inv-modal-lg com-modal-xl">
+        <div class="modal-head">
+            <div class="modal-title" id="detTitulo">Orden de compra</div>
+            <button class="btn btn-secondary" data-close="detModal">✕</button>
+        </div>
+        <div class="modal-body" id="detCuerpo"></div>
+        <div class="modal-foot com-acciones" id="detAcciones"></div>
+    </div>
+</div>
+
+<!-- MODAL: PAGO -->
+<div class="modal-bg" id="pagoModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="pagoTitulo">Registrar pago</div>
+            <button class="btn btn-secondary" data-close="pagoModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <input type="hidden" id="pagoOc">
+            <div class="inv-full" id="pagoCuenta"></div>
+            <label>Monto pagado (S/)<input type="number" id="pagoMonto" min="0" step="0.01"></label>
+            <label>Fecha del pago<input type="date" id="pagoFecha"></label>
+            <label>Método<select id="pagoMetodo"></select></label>
+            <label>Banco desde el que se pagó<input type="text" id="pagoBanco" maxlength="80" placeholder="Ej. BCP"></label>
+            <label class="inv-full">N° de operación<input type="text" id="pagoOperacion" maxlength="80" placeholder="Está en la constancia del banco"></label>
+            <label class="inv-full">Observaciones<textarea id="pagoObs" rows="2" maxlength="500"></textarea></label>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="pagoModal">Cancelar</button>
+            <button class="btn btn-primary" id="pagoGuardar">Registrar pago</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: RECEPCIÓN A CIEGAS -->
+<div class="modal-bg" id="recModal">
+    <div class="modal inv-modal inv-modal-lg com-modal-xl">
+        <div class="modal-head">
+            <div class="modal-title" id="recTitulo">Recibir mercadería</div>
+            <button class="btn btn-secondary" data-close="recModal">✕</button>
+        </div>
+        <div class="modal-body" id="recCuerpo">
+            <input type="hidden" id="recOc">
+            <div class="inv-paso" id="recInfo"></div>
+            <div class="inv-form inv-form-4">
+                <label>¿En qué sede estás recibiendo?<select id="recSede" data-sedes></select></label>
+                <label>N° de guía del proveedor<input type="text" id="recGuia" maxlength="60" placeholder="Ej. EG01-00001234"></label>
+                <label>¿Quién trajo la mercadería?
+                    <select id="recTraidoTipo">
+                        <option value="proveedor">El proveedor (su transporte)</option>
+                        <option value="usuario">Una persona de nuestra empresa</option>
+                        <option value="courier">Un transporte contratado</option>
+                    </select>
+                </label>
+                <label id="recUsuarioWrap" style="display:none">¿Quién la recogió?<select id="recUsuario"></select></label>
+                <label id="recCourierWrap" style="display:none">Empresa de transporte / chofer<input type="text" id="recCourier" maxlength="150"></label>
+            </div>
+            <div class="table-wrap">
+                <table class="inv-table">
+                    <thead><tr><th>Código</th><th class="left">Producto</th><th>¿Cuántos llegaron <b>en buen estado</b>?</th><th>¿Cuántos <b>dañados</b>?</th><th>Lote / serie / IMEI</th><th>Vence</th><th>Comentario</th></tr></thead>
+                    <tbody id="recItems"></tbody>
+                </table>
+            </div>
+            <div class="inv-form"><label class="inv-full">Observaciones<textarea id="recObs" rows="2" maxlength="500" placeholder="Ej. cajas mojadas, llegó sin rótulo, etc."></textarea></label></div>
+        </div>
+        <div class="modal-body" id="recResultado" style="display:none"></div>
+        <div class="modal-foot" id="recPie">
+            <button class="btn btn-secondary" data-close="recModal">Cancelar</button>
+            <button class="btn btn-primary" id="recGuardar">✔ Registrar lo que conté</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: FACTURA DEL PROVEEDOR -->
+<div class="modal-bg" id="facModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="facTitulo">Registrar factura del proveedor</div>
+            <button class="btn btn-secondary" data-close="facModal">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <input type="hidden" id="facOc">
+            <div class="inv-paso inv-full">Escribe los datos <b>tal como aparecen en la factura</b>. No la corrijas tú: si algo no cuadra, el sistema lo avisa.</div>
+            <label>Tipo<select id="facTipo"><option>Factura</option><option>Boleta</option><option>Recibo por honorarios</option></select></label>
+            <label>Serie y número<input type="text" id="facNumero" maxlength="30" placeholder="F001-00012345"></label>
+            <label>Fecha de emisión<input type="date" id="facFecha"></label>
+            <label>Total de la factura con IGV (S/)<input type="number" id="facMonto" min="0" step="0.01"></label>
+            <label class="inv-full">Observaciones<textarea id="facObs" rows="2" maxlength="500"></textarea></label>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="facModal">Cancelar</button>
+            <button class="btn btn-primary" id="facGuardar">Registrar factura</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: MOTIVO -->
+<div class="modal-bg" id="motivoModalCom">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="motivoTituloCom">Motivo</div>
+            <button class="btn btn-secondary" data-close="motivoModalCom">✕</button>
+        </div>
+        <div class="modal-body inv-form">
+            <div class="inv-paso inv-full" id="motivoAyudaCom"></div>
+            <label class="inv-full">Escribe aquí<textarea id="motivoTextoCom" rows="3" maxlength="500"></textarea></label>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" data-close="motivoModalCom">Cancelar</button>
+            <button class="btn btn-primary" id="motivoOkCom">Confirmar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/compras_flujo.js') }}"></script>
+{% endblock %}

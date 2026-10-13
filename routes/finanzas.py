@@ -389,7 +389,7 @@ def api_anular_movimiento(mov_id):
             if mov['documento_tabla'] == 'comprobantes':
                 cur.execute("""UPDATE comprobantes SET estado_sunat = 'Emitido', updated_at = NOW()
                                WHERE id = %s AND estado_sunat = 'Pagado'""", (mov['documento_id'],))
-            else:
+            elif mov['documento_tabla'] == 'comprobantes_proveedor':
                 cur.execute("""UPDATE comprobantes_proveedor SET estado = 'Pendiente', updated_at = NOW()
                                WHERE id = %s AND estado = 'Pagado'""", (mov['documento_id'],))
         return jsonify({'success': True, 'message': 'Movimiento anulado'})

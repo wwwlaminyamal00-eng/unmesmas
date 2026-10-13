@@ -70,6 +70,7 @@ from routes.papelera import papelera_bp
 from routes.configuracion import configuracion_bp
 from routes.maestros import maestros_bp  # ← Este ya tiene sus propios endpoints
 from routes.compras import compras_bp
+from routes.compras_flujo import compras_flujo_bp
 
 
 # ==========================================
@@ -172,6 +173,7 @@ app.register_blueprint(papelera_bp)
 app.register_blueprint(configuracion_bp)
 app.register_blueprint(maestros_bp)  
 app.register_blueprint(compras_bp)
+app.register_blueprint(compras_flujo_bp)
 
 # ==========================================
 # HELPERS

@@ -1,0 +1,115 @@
+/* Módulo Compras bajo pedido - complementa inventario.css (paneles, tablas, formularios) */
+.com-tab-link{text-decoration:none;display:inline-flex;align-items:center;color:#475569}
+
+/* Flujo "cómo se compra aquí" */
+.com-flujo{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:12px}
+.com-flujo-paso{position:relative;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 10px 10px 12px;display:flex;flex-direction:column;gap:2px}
+.com-flujo-paso span{width:24px;height:24px;border-radius:50%;background:#1E3A8A;color:#fff;font-weight:950;font-size:12px;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.com-flujo-paso b{font-size:13px;color:#0F172A}
+.com-flujo-paso small{font-size:11px;color:#64748B;font-weight:700;line-height:1.3}
+.com-flujo-paso:not(:last-child)::after{content:'➜';position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:#94A3B8;font-size:13px;z-index:1}
+.com-flujo-paso.fin{background:#F0FDF4;border-color:#86EFAC}
+.com-flujo-paso.fin span{background:#16A34A}
+.inv-kpi[data-ir]{cursor:pointer}
+.inv-kpi[data-ir]:hover{transform:translateY(-1px)}
+
+/* Pedidos por comprar */
+.com-pedidos{display:flex;flex-direction:column;gap:10px;padding:12px}
+.com-pedido{border:1px solid #E2E8F0;border-radius:12px;overflow:hidden}
+.com-pedido-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:13px}
+.com-pedido-head b{font-size:14px;color:#0F172A}
+.com-pedido-head small{color:#64748B;font-weight:700}
+.com-pedido-meta{font-size:12px;color:#475569;font-weight:700}
+.com-pedido .inv-table{border:0}
+.com-pedido tr.com-ok td{color:#94A3B8;background:#F8FAFC}
+.com-stock-si{display:inline-block;background:#FEF3C7;color:#92400E;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:900}
+.com-stock-no{color:#94A3B8;font-size:12px;font-weight:700}
+.ped-check{width:18px;height:18px;cursor:pointer}
+
+/* Lista de órdenes */
+.com-fila{cursor:pointer}
+.com-paso{display:inline-block;border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:900;white-space:nowrap}
+.com-paso + small{display:block;color:#64748B;font-weight:700;font-size:11px}
+.com-paso-warn{background:#FEF3C7;color:#92400E}
+.com-paso-info{background:#DBEAFE;color:#1E3A8A}
+.com-paso-danger{background:#FEE2E2;color:#B91C1C}
+.com-paso-ok{background:#DCFCE7;color:#166534}
+.com-paso-gris{background:#F1F5F9;color:#475569}
+.com-barra{width:70px;height:8px;background:#E2E8F0;border-radius:99px;overflow:hidden;margin:0 auto}
+.com-barra i{display:block;height:100%;background:#16A34A}
+.est-por-aprobar,.est-borrador{background:#FEF3C7;color:#92400E}
+.est-aprobada,.est-recibida-parcial{background:#DBEAFE;color:#1E3A8A}
+.est-recibida,.est-cerrada{background:#DCFCE7;color:#166534}
+.est-anulada{background:#F1F5F9;color:#64748B;text-decoration:line-through}
+
+/* Formulario OC */
+.com-modal-xl{width:min(1120px,97vw)}
+.com-bloque{border:1px solid #E2E8F0;border-radius:12px;margin:12px 14px;overflow:visible}
+.com-bloque-tit{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-weight:950;font-size:14px;color:#0F172A;border-radius:12px 12px 0 0}
+.com-bloque-tit span{width:22px;height:22px;border-radius:50%;background:#EF233C;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.com-bloque-tit small{color:#64748B;font-weight:700}
+.prov-picker{position:relative}
+.prov-picker .pp-input{width:100%;box-sizing:border-box}
+.prov-picker.pp-ok .pp-input{border-color:#16A34A;background:#F0FDF4}
+.com-prov-card{background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#334155;line-height:1.6}
+.com-lineas td{vertical-align:top}
+.com-lineas .inp-num{width:110px}
+.com-lineas small{display:block}
+.com-pp .pp-input{height:34px;border:1px solid #CBD5E1;border-radius:8px;padding:0 8px;font-weight:700}
+.com-info-linea{font-size:11px;color:#475569;font-weight:700;margin-top:4px;line-height:1.5}
+.com-para{font-size:12px;font-weight:800;color:#1E3A8A}
+.com-alerta-precio{color:#B91C1C;font-weight:900}
+.com-lineas tr.com-caro td{background:#FEF2F2}
+.com-lineas-pie{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px}
+.com-totales{display:flex;gap:16px;font-size:13px;font-weight:800;color:#475569}
+.com-totales .tot{font-size:16px;color:#0F172A}
+.com-totales b{color:#0F172A}
+
+/* Detalle */
+.com-stepper{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:14px 14px 4px}
+.com-step{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;position:relative;color:#94A3B8}
+.com-step span{width:30px;height:30px;border-radius:50%;border:2px solid #CBD5E1;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:950;font-size:13px;z-index:1}
+.com-step b{font-size:12px}
+.com-step:not(:last-child)::after{content:'';position:absolute;top:15px;left:calc(50% + 16px);right:calc(-50% + 16px);height:2px;background:#E2E8F0}
+.com-step.hecho{color:#166534}
+.com-step.hecho span{background:#16A34A;border-color:#16A34A;color:#fff}
+.com-step.actual{color:#B45309}
+.com-step.actual span{border-color:#F59E0B;background:#FEF3C7;color:#92400E;box-shadow:0 0 0 4px rgba(245,158,11,.15)}
+.com-step.error span{background:#FEE2E2;border-color:#DC2626;color:#B91C1C}
+.com-step.luego{color:#CBD5E1}
+.com-step.anulada{color:#CBD5E1}
+.com-siguiente{margin:10px 14px;padding:10px 12px;border-radius:10px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;font-size:14px}
+.com-siguiente small{color:#475569;font-weight:700}
+.com-siguiente.com-paso-listo{background:#F0FDF4;border-color:#86EFAC;color:#166534}
+.com-siguiente.com-paso-incidencia{background:#FEF2F2;border-color:#FCA5A5;color:#991B1B}
+#detCuerpo > .inv-aviso,#detCuerpo > .inv-alerta,#detCuerpo > .inv-tip,#detCuerpo > .inv-subtitulo,#detCuerpo > .table-wrap{margin-left:14px;margin-right:14px}
+.com-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:6px 14px 12px}
+.com-datos > div{border:1px solid #E2E8F0;border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;background:#fff}
+.com-datos small{font-size:10.5px;font-weight:900;color:#64748B;text-transform:uppercase}
+.com-datos b{font-size:13.5px;color:#0F172A}
+.com-datos span{font-size:11.5px;color:#475569;font-weight:700}
+.com-columnas{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:6px 14px}
+.com-mov{border:1px solid #E2E8F0;border-radius:9px;padding:7px 9px;font-size:12.5px;font-weight:700;margin-bottom:6px}
+.com-mov small{display:block;color:#64748B;font-size:11px}
+.com-historial{margin:0 14px 14px;border-left:3px solid #CBD5E1;padding-left:10px;font-size:12px;color:#334155;line-height:1.8}
+.com-acciones{flex-wrap:wrap;gap:6px}
+.com-btn-danger{color:#B91C1C !important;border-color:#FCA5A5 !important}
+
+/* Pago */
+.com-cuenta{border:2px solid #86EFAC;background:#F0FDF4;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.com-cuenta small{font-size:11px;font-weight:900;color:#166534;text-transform:uppercase}
+.com-cuenta b{font-size:15px;color:#0F172A}
+.com-cuenta span{font-size:12px;font-weight:700;color:#475569}
+.com-cuenta-num{font-size:16px;font-weight:950;color:#14532D;margin-top:4px}
+.com-cuenta-falta{margin-top:6px;font-size:13px;font-weight:800;color:#0F172A}
+
+/* Recepción */
+.com-regla{margin-bottom:12px}
+#recCuerpo .inv-paso{margin:12px 14px 0}
+#recCuerpo .table-wrap{padding:0 14px}
+#recResultado{padding:12px 14px}
+.com-inp-grande{width:110px;height:38px;font-size:16px;border:2px solid #2563EB}
+
+@media(max-width:1100px){.com-flujo{grid-template-columns:repeat(4,1fr)}.com-flujo-paso::after{display:none}}
+@media(max-width:800px){.com-flujo{grid-template-columns:1fr 1fr}.com-datos,.com-columnas{grid-template-columns:1fr}.com-stepper{grid-template-columns:repeat(3,1fr)}}
+#ocBody td:first-child,#recBodyCom td:first-child,#pagBody td:first-child,#facBody td:first-child{white-space:nowrap}

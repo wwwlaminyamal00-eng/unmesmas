@@ -1,0 +1,1488 @@
+# routes/compras_flujo.py - Compras bajo pedido, multiempresa y multisede
+#
+# Idea central (pensada para personal nuevo):
+#   1. Se compra para un PEDIDO DEL CLIENTE (PC). Comprar "para stock" es la excepción y
+#      siempre necesita un motivo y la aprobación de una supervisora.
+#   2. Toda orden de compra (OC) dice qué EMPRESA compra (KCF, AGD, ...) y en qué SEDE debe
+#      terminar la mercadería (San Martín de Porres, Breña, ...). Empresas y sedes son datos.
+#   3. Separación de funciones contra robos y errores:
+#        - quien hace la OC no la aprueba,
+#        - quien hace la OC no la paga (paga Finanzas, solo a la cuenta del proveedor),
+#        - quien recogió la mercadería no la recibe: la recibe otra persona en la sede,
+#        - la recepción es "a ciegas": quien recibe NO ve cuánto se pidió, cuenta lo que llegó.
+#   4. Cada diferencia (faltante, sobrante, dañado, factura que no cuadra) queda como una
+#      INCIDENCIA abierta hasta que una supervisora la resuelve.
+#   5. Nada se borra: todo queda en el historial de la OC con usuario y fecha.
+#
+# Tablas: usa las que ya existían (ordenes_compra, ordenes_compra_items, recepciones_mercaderia,
+# comprobantes_proveedor, finanzas_pagos) agregando columnas, y crea com_recepciones,
+# com_recepcion_items, com_incidencias y com_historial. Script: migrations/004_compras.sql
+import csv
+import io
+import json
+import os
+import threading
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from flask import Blueprint, render_template, request, jsonify, session, Response
+from psycopg2.extras import RealDictCursor
+
+from database import db_query, db_tx
+from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, tasa_igv, calcular_totales, \
+    bloquear_numeracion
+from routes.inventario import asegurar_tablas_inventario, _siguiente_numero, _fila, _empresas, _sedes, \
+    ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
+from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
+
+compras_flujo_bp = Blueprint('compras_flujo', __name__)
+
+
+def _roles(nombre, por_defecto):
+    return {r.strip().lower() for r in os.environ.get(nombre, por_defecto).split(',') if r.strip()}
+
+
+# Quién puede preparar órdenes de compra
+ROLES_COMPRAS = _roles('ROLES_COMPRAS', 'compras,comprador,logistica,logistico,asistente_compras')
+# Aprobación automática para OC pequeñas (0 = todas necesitan aprobación)
+MONTO_SIN_APROBACION = a_decimal(os.environ.get('COMPRAS_MONTO_SIN_APROBACION', '0'))
+# Alerta si el precio sube más de este % respecto a la última compra del mismo producto
+ALERTA_PRECIO_PCT = a_decimal(os.environ.get('COMPRAS_ALERTA_PRECIO_PCT', '10'))
+# Tolerancia (S/) para decir que la factura del proveedor "cuadra" con lo recibido
+TOLERANCIA_FACTURA = a_decimal(os.environ.get('COMPRAS_TOLERANCIA_FACTURA', '1.00'))
+# Días para avisar: pagado y la mercadería no llega / recibido y la factura no llega
+DIAS_AVISO = int(os.environ.get('COMPRAS_DIAS_AVISO', '3'))
+
+CONDICIONES = ('Contado', 'Contra entrega', 'Crédito')
+MODALIDADES = ('Proveedor entrega', 'Nosotros recogemos')
+ESTADOS_ABIERTOS = ('Aprobada', 'Recibida parcial')
+ESTADOS_PC_FUERA = ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA', 'CERRADO', 'CERRADA')
+
+
+class ErrorCompras(Exception):
+    """Error de negocio con un mensaje claro para el usuario."""
+
+
+# ============================================================
+# TABLAS (se crean solas; script equivalente en migrations/004_compras.sql)
+# ============================================================
+SQL_DDL_COMPRAS = """
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS modalidad_entrega VARCHAR(30);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS direccion_recojo TEXT;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS tipo_compra VARCHAR(20);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS motivo_stock TEXT;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS fecha_compromiso DATE;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS dias_credito INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS creado_por_nombre VARCHAR(150);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS aprobado_por_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(150);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(150);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS anulado_en TIMESTAMP;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS motivo_anulacion TEXT;
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS producto_id INTEGER;
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS unidad VARCHAR(20);
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS pedido_id INTEGER;
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS pedido_numero VARCHAR(40);
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cliente VARCHAR(255);
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cantidad_recibida NUMERIC(14,4) DEFAULT 0;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS producto_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS almacen_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(16,6);
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS com_recepcion_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS oc_item_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS pedido_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS pedido_numero VARCHAR(40);
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS cliente VARCHAR(255);
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS guia_proveedor VARCHAR(60);
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS lote_serie VARCHAR(120);
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS monto_esperado NUMERIC(14,2);
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS cuadra BOOLEAN;
+    CREATE TABLE IF NOT EXISTS com_recepciones (
+        id SERIAL PRIMARY KEY,
+        numero VARCHAR(30) UNIQUE,
+        fecha TIMESTAMP NOT NULL DEFAULT NOW(),
+        orden_compra_id INTEGER NOT NULL,
+        empresa_id INTEGER,
+        almacen_id INTEGER NOT NULL,
+        guia_proveedor VARCHAR(60) NOT NULL,
+        traido_por_tipo VARCHAR(20) NOT NULL,
+        traido_por_id INTEGER,
+        traido_por VARCHAR(150),
+        recibido_por_id INTEGER,
+        recibido_por VARCHAR(150),
+        con_diferencias BOOLEAN NOT NULL DEFAULT false,
+        observaciones TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS com_recepcion_items (
+        id SERIAL PRIMARY KEY,
+        recepcion_id INTEGER NOT NULL REFERENCES com_recepciones(id),
+        oc_item_id INTEGER NOT NULL,
+        producto_id INTEGER,
+        pendiente_antes NUMERIC(14,4),
+        cantidad_buena NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (cantidad_buena >= 0),
+        cantidad_danada NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (cantidad_danada >= 0),
+        lote_serie VARCHAR(120),
+        fecha_vencimiento DATE,
+        comentario TEXT
+    );
+    CREATE TABLE IF NOT EXISTS com_incidencias (
+        id SERIAL PRIMARY KEY,
+        numero VARCHAR(30) UNIQUE,
+        fecha TIMESTAMP NOT NULL DEFAULT NOW(),
+        orden_compra_id INTEGER NOT NULL,
+        recepcion_id INTEGER,
+        comprobante_id INTEGER,
+        producto_id INTEGER,
+        tipo VARCHAR(30) NOT NULL,
+        cantidad NUMERIC(14,4),
+        monto NUMERIC(14,2),
+        detalle TEXT,
+        estado VARCHAR(20) NOT NULL DEFAULT 'Abierta',
+        resolucion TEXT,
+        resuelto_por VARCHAR(150),
+        resuelto_en TIMESTAMP,
+        reportado_por VARCHAR(150)
+    );
+    CREATE TABLE IF NOT EXISTS com_historial (
+        id SERIAL PRIMARY KEY,
+        orden_compra_id INTEGER NOT NULL,
+        fecha TIMESTAMP NOT NULL DEFAULT NOW(),
+        usuario_id INTEGER,
+        usuario VARCHAR(150),
+        accion VARCHAR(60) NOT NULL,
+        detalle TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_oci_pedido ON ordenes_compra_items (pedido_id, producto_id);
+    CREATE INDEX IF NOT EXISTS idx_com_hist_oc ON com_historial (orden_compra_id, id);
+    CREATE INDEX IF NOT EXISTS idx_com_inc_oc ON com_incidencias (orden_compra_id);
+    CREATE INDEX IF NOT EXISTS idx_rm_com ON recepciones_mercaderia (com_recepcion_id);
+"""
+
+_tablas_listas = False
+_lock_tablas = threading.Lock()
+
+
+def asegurar_tablas_compras():
+    global _tablas_listas
+    if _tablas_listas:
+        return
+    with _lock_tablas:
+        if _tablas_listas:
+            return
+        asegurar_tablas_inventario()
+        asegurar_tablas_finanzas()
+        with db_tx() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('compras_ddl'))")
+            cur.execute(SQL_DDL_COMPRAS)
+        _tablas_listas = True
+
+
+@compras_flujo_bp.before_request
+def _antes():
+    asegurar_tablas_compras()
+
+
+# ============================================================
+# PERMISOS
+# ============================================================
+def puede_comprar():
+    return es_admin() or es_aprobador() or rol_actual() in ROLES_COMPRAS
+
+
+def puede_aprobar():
+    return es_admin() or es_aprobador()
+
+
+def puede_pagar():
+    return es_admin() or es_aprobador() or rol_actual() in ROLES_FINANZAS
+
+
+def puede_recibir():
+    return es_admin() or es_aprobador() or rol_actual() in ROLES_ALMACEN or rol_actual() in ROLES_CONTROL_INVENTARIO
+
+
+def puede_facturar():
+    return puede_pagar() or puede_comprar()
+
+
+def _usuario():
+    return session.get('usuario_id'), (session.get('nombre_completo') or session.get('usuario') or 'Usuario')
+
+
+def _no_autorizado(msg):
+    return jsonify({'success': False, 'error': msg}), 403
+
+
+def _respuesta_error(e):
+    if isinstance(e, ErrorCompras):
+        return jsonify({'success': False, 'error': str(e)}), 400
+    if isinstance(e, PermissionError):
+        return jsonify({'success': False, 'error': str(e)}), 403
+    print(f'❌ Compras: {e}')
+    return jsonify({'success': False, 'error': 'No se pudo completar la operación. Intenta de nuevo.'}), 500
+
+
+def _entero(valor, nombre):
+    try:
+        n = int(valor)
+        if n > 0:
+            return n
+    except (TypeError, ValueError):
+        pass
+    raise ErrorCompras(f'Elige {nombre}.')
+
+
+def _historial(cur, oc_id, accion, detalle=None):
+    uid, unom = _usuario()
+    cur.execute("INSERT INTO com_historial (orden_compra_id, usuario_id, usuario, accion, detalle) VALUES (%s,%s,%s,%s,%s)",
+                (oc_id, uid, unom, accion, detalle))
+
+
+def _incidencia(cur, oc_id, tipo, detalle, recepcion_id=None, comprobante_id=None, producto_id=None,
+                cantidad=None, monto=None):
+    _, unom = _usuario()
+    numero = _siguiente_numero(cur, 'INC', 'com_incidencias')
+    cur.execute("""
+        INSERT INTO com_incidencias (numero, orden_compra_id, recepcion_id, comprobante_id, producto_id, tipo,
+            cantidad, monto, detalle, reportado_por)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id, numero
+    """, (numero, oc_id, recepcion_id, comprobante_id, producto_id, tipo, cantidad, monto, detalle, unom))
+    return cur.fetchone()
+
+
+def _cant(n):
+    return f'{a_decimal(n).normalize():f}'
+
+
+# ============================================================
+# CONSULTAS DE APOYO
+# ============================================================
+def _items_pedido(pc):
+    """Normaliza los productos de un pedido del cliente (items_json puede venir como objetos o como listas)."""
+    crudo = pc.get('items_json') or []
+    if isinstance(crudo, str):
+        try:
+            crudo = json.loads(crudo)
+        except ValueError:
+            crudo = []
+    if isinstance(crudo, dict):
+        crudo = crudo.get('items') or list(crudo.values())
+    items = []
+    for it in crudo or []:
+        if isinstance(it, dict):
+            items.append({'producto_id': it.get('producto_id') or it.get('id_producto'),
+                          'codigo': (it.get('codigo') or '').strip(),
+                          'descripcion': it.get('producto') or it.get('descripcion') or '',
+                          'unidad': it.get('um') or it.get('unidad') or '',
+                          'cantidad': a_decimal(it.get('cantidad_pc') or it.get('cantidad') or 0)})
+        elif isinstance(it, (list, tuple)) and len(it) > 1:
+            items.append({'producto_id': None, 'codigo': str(it[0] or '').strip(), 'descripcion': it[1] or '',
+                          'unidad': '', 'cantidad': a_decimal(it[5] if len(it) > 5 else 1)})
+    return items
+
+
+def _stock_libre_grupo(producto_ids):
+    """Stock que se puede usar sin comprar: todo el grupo, menos lo separado para clientes."""
+    if not producto_ids:
+        return {}
+    filas = db_query("""
+        WITH st AS (SELECT producto_id, SUM(cantidad) AS c FROM inv_stock WHERE producto_id = ANY(%s) GROUP BY producto_id),
+             sp AS (SELECT producto_id, SUM(cantidad) AS c FROM inv_separaciones
+                    WHERE estado = 'Activa' AND vence_el >= CURRENT_DATE AND producto_id = ANY(%s) GROUP BY producto_id)
+        SELECT st.producto_id, st.c - COALESCE(sp.c, 0) AS libre FROM st LEFT JOIN sp USING (producto_id)
+    """, (list(producto_ids), list(producto_ids)))
+    return {f['producto_id']: max(a_decimal(f['libre']), Decimal('0')) for f in filas}
+
+
+def _detalle_stock_libre(producto_id):
+    filas = db_query("""
+        SELECT COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede,
+               s.cantidad - COALESCE((SELECT SUM(x.cantidad) FROM inv_separaciones x WHERE x.estado = 'Activa'
+                   AND x.vence_el >= CURRENT_DATE AND x.producto_id = s.producto_id AND x.empresa_id = s.empresa_id
+                   AND x.almacen_id = s.almacen_id), 0) AS libre
+        FROM inv_stock s JOIN erp_empresas e ON e.id = s.empresa_id JOIN almacenes a ON a.id = s.almacen_id
+        WHERE s.producto_id = %s AND s.cantidad > 0 ORDER BY e.id, a.id
+    """, (producto_id,))
+    return [{'empresa': f['empresa'], 'sede': f['sede'], 'libre': float(max(a_decimal(f['libre']), 0))}
+            for f in filas if a_decimal(f['libre']) > 0]
+
+
+def _resolver_productos(items):
+    """Completa producto_id por código cuando el pedido no lo trae."""
+    codigos = {i['codigo'] for i in items if not i['producto_id'] and i['codigo']}
+    if codigos:
+        mapa = {f['codigo']: f['id'] for f in db_query(
+            "SELECT DISTINCT ON (codigo) codigo, id FROM productos WHERE codigo = ANY(%s) ORDER BY codigo, id",
+            (list(codigos),))}
+        for i in items:
+            if not i['producto_id'] and i['codigo']:
+                i['producto_id'] = mapa.get(i['codigo'])
+    for i in items:
+        try:
+            i['producto_id'] = int(i['producto_id']) if i['producto_id'] else None
+        except (TypeError, ValueError):
+            i['producto_id'] = None
+    return items
+
+
+def _comprado_por_pedido(cur=None, excluir_oc=None):
+    sql = """
+        SELECT oci.pedido_id, oci.producto_id, SUM(oci.cantidad) AS c
+        FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+        WHERE oci.pedido_id IS NOT NULL AND COALESCE(oc.estado, '') <> 'Anulada' AND oc.id <> COALESCE(%s, -1)
+        GROUP BY oci.pedido_id, oci.producto_id
+    """
+    if cur:
+        cur.execute(sql, (excluir_oc,))
+        filas = cur.fetchall()
+    else:
+        filas = db_query(sql, (excluir_oc,))
+    return {(f['pedido_id'], f['producto_id']): a_decimal(f['c']) for f in filas}
+
+
+def _pedidos_por_comprar(todos=False, pedido_id=None):
+    filas = db_query("""
+        SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero
+        FROM pedido_compra_pc
+        WHERE COALESCE(UPPER(estado), '') <> ALL(%s) AND (%s::int IS NULL OR id = %s::int)
+        ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 300
+    """, (list(ESTADOS_PC_FUERA), pedido_id, pedido_id))
+    comprado = _comprado_por_pedido()
+    pedidos, ids = [], set()
+    for pc in filas:
+        items = _resolver_productos(_items_pedido(pc))
+        for it in items:
+            ya = comprado.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
+            it['comprado'] = ya
+            it['falta'] = max(it['cantidad'] - ya, Decimal('0'))
+            if it['producto_id']:
+                ids.add(it['producto_id'])
+        pend = [i for i in items if i['falta'] > 0]
+        if not todos and not pend:
+            continue
+        pedidos.append({'id': pc['id'], 'numero': pc['numero'], 'fecha': pc['fecha'], 'cliente': pc['cliente'],
+                        'ruc': pc['ruc'], 'estado': pc['estado'], 'lugar_entrega': pc['lugar_entrega'],
+                        'cotizacion': pc['cotizacion_numero'], 'items': items})
+    libre = _stock_libre_grupo(ids)
+    for p in pedidos:
+        for it in p['items']:
+            it['stock_libre'] = float(libre.get(it['producto_id'], 0)) if it['producto_id'] else 0
+            for k in ('cantidad', 'comprado', 'falta'):
+                it[k] = float(it[k])
+        p['fecha'] = p['fecha'].strftime('%Y-%m-%d') if isinstance(p['fecha'], (date, datetime)) else p['fecha']
+        p['pendientes'] = sum(1 for i in p['items'] if i['falta'] > 0)
+    return pedidos
+
+
+def _ultimo_precio(cur, producto_id, excluir_oc=None):
+    cur.execute("""
+        SELECT oci.precio_unitario, oc.numero_orden, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha,
+               p.razon_social AS proveedor
+        FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+        LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+        WHERE oci.producto_id = %s AND COALESCE(oc.estado, '') NOT IN ('Anulada', 'Borrador')
+          AND oc.id <> COALESCE(%s, -1) AND COALESCE(oci.precio_unitario, 0) > 0
+        ORDER BY oc.id DESC LIMIT 1
+    """, (producto_id, excluir_oc))
+    return cur.fetchone()
+
+
+def _alertas_precio(cur, oc_id, items):
+    alertas = []
+    for it in items:
+        u = _ultimo_precio(cur, it['producto_id'], oc_id)
+        if not u:
+            continue
+        antes = a_decimal(u['precio_unitario'])
+        ahora = a_decimal(it['precio_unitario'])
+        if antes > 0 and ahora > antes * (1 + ALERTA_PRECIO_PCT / 100):
+            pct = redondear((ahora / antes - 1) * 100, 1)
+            fecha = u['fecha'].strftime('%d/%m/%Y') if u['fecha'] else ''
+            alertas.append(f"{it.get('descripcion') or it.get('producto')}: {pct}% más caro que la última compra "
+                           f"(S/ {redondear(antes, 2)} a {u['proveedor'] or 'otro proveedor'} el {fecha}, {u['numero_orden']}).")
+    return alertas
+
+
+def _sede_declarada(empresa_id, almacen_id):
+    """True / False si está marcado en Inventario ▸ Sedes y SUNAT; None si nadie lo ha marcado aún."""
+    f = db_query("SELECT registrado_sunat, es_domicilio_fiscal FROM inv_sede_empresa WHERE empresa_id = %s AND almacen_id = %s",
+                 (empresa_id, almacen_id))
+    if not f:
+        return None
+    return bool(f[0]['registrado_sunat'] or f[0]['es_domicilio_fiscal'])
+
+
+def _pagado_oc(oc_id):
+    f = db_query("""
+        SELECT COALESCE(SUM(monto), 0) AS pagado FROM finanzas_pagos
+        WHERE tipo = 'PAGO' AND estado <> 'Anulado'
+          AND ((documento_tabla = 'ordenes_compra' AND documento_id = %s)
+            OR (documento_tabla = 'comprobantes_proveedor' AND documento_id IN
+                (SELECT id FROM comprobantes_proveedor WHERE orden_compra_id = %s
+                   AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA'))))
+    """, (oc_id, oc_id))
+    return a_decimal(f[0]['pagado'])
+
+
+# ============================================================
+# LISTA Y DETALLE DE ÓRDENES (con el "siguiente paso" calculado)
+# ============================================================
+SQL_OC_LISTA = """
+    WITH it AS (
+        SELECT orden_compra_id, COUNT(*) AS lineas, SUM(cantidad) AS pedida, SUM(COALESCE(cantidad_recibida, 0)) AS recibida,
+               SUM(LEAST(COALESCE(cantidad_recibida, 0), cantidad) * precio_unitario) AS valor_recibido,
+               string_agg(DISTINCT pedido_numero, ', ') AS pedidos, string_agg(DISTINCT cliente, ', ') AS clientes,
+               string_agg(producto, ' · ' ORDER BY id) AS productos
+        FROM ordenes_compra_items GROUP BY orden_compra_id
+    ),
+    pg AS (
+        SELECT oc2.id, COALESCE(SUM(fp.monto), 0) AS pagado
+        FROM ordenes_compra oc2
+        JOIN finanzas_pagos fp ON fp.tipo = 'PAGO' AND fp.estado <> 'Anulado'
+          AND ((fp.documento_tabla = 'ordenes_compra' AND fp.documento_id = oc2.id)
+            OR (fp.documento_tabla = 'comprobantes_proveedor' AND fp.documento_id IN
+                (SELECT cp.id FROM comprobantes_proveedor cp WHERE cp.orden_compra_id = oc2.id)))
+        GROUP BY oc2.id
+    ),
+    fa AS (
+        SELECT orden_compra_id, COUNT(*) AS facturas, SUM(monto) AS facturado, BOOL_AND(COALESCE(cuadra, true)) AS cuadra
+        FROM comprobantes_proveedor WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA') AND orden_compra_id IS NOT NULL
+        GROUP BY orden_compra_id
+    ),
+    inc AS (SELECT orden_compra_id, COUNT(*) AS abiertas FROM com_incidencias WHERE estado = 'Abierta' GROUP BY orden_compra_id)
+    SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
+           oc.empresa_id, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+           oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
+           oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, oc.num_cotizacion, oc.notas,
+           oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
+           oc.subtotal, oc.igv, oc.total, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
+           oc.aprobado_en, oc.motivo_anulacion,
+           COALESCE(it.lineas, 0) AS lineas, COALESCE(it.pedida, 0) AS pedida, COALESCE(it.recibida, 0) AS recibida,
+           COALESCE(it.valor_recibido, 0) AS valor_recibido, it.pedidos, it.clientes, it.productos,
+           COALESCE(pg.pagado, 0) AS pagado, COALESCE(fa.facturas, 0) AS facturas, COALESCE(fa.facturado, 0) AS facturado,
+           fa.cuadra, COALESCE(inc.abiertas, 0) AS incidencias
+    FROM ordenes_compra oc
+    LEFT JOIN erp_empresas e ON e.id = oc.empresa_id
+    LEFT JOIN almacenes a ON a.id = oc.almacen_entrega_id
+    LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+    LEFT JOIN it ON it.orden_compra_id = oc.id
+    LEFT JOIN pg ON pg.id = oc.id
+    LEFT JOIN fa ON fa.orden_compra_id = oc.id
+    LEFT JOIN inc ON inc.orden_compra_id = oc.id
+"""
+
+
+def _paso(o):
+    """Qué toca hacer con esta OC y quién lo hace. Es lo que ve el personal en la lista."""
+    estado = o['estado'] or 'Borrador'
+    total = a_decimal(o['total'])
+    pagado = a_decimal(o['pagado'])
+    contado = (o.get('condicion_pago') or '').startswith('Contado')
+    if o.get('flujo') != 'v2':
+        return {'codigo': 'antigua', 'texto': 'OC del sistema anterior', 'quien': '—'}
+    if estado == 'Anulada':
+        return {'codigo': 'anulada', 'texto': 'Anulada', 'quien': '—'}
+    if estado == 'Borrador':
+        return {'codigo': 'enviar', 'texto': 'Terminar y enviar a aprobar', 'quien': 'Compras'}
+    if estado == 'Por aprobar':
+        return {'codigo': 'aprobar', 'texto': 'Aprobar', 'quien': 'Supervisora'}
+    if estado in ESTADOS_ABIERTOS and contado and pagado < total:
+        return {'codigo': 'pagar', 'texto': 'Pagar al proveedor (es al contado)', 'quien': 'Finanzas'}
+    if estado in ESTADOS_ABIERTOS:
+        texto = 'Recibir lo que falta' if estado == 'Recibida parcial' else (
+            'Recoger y recibir en sede' if o.get('modalidad_entrega') == 'Nosotros recogemos' else 'Recibir en sede')
+        return {'codigo': 'recibir', 'texto': texto, 'quien': 'Almacén (otra persona)'}
+    if a_decimal(o['incidencias']) > 0:
+        return {'codigo': 'incidencia', 'texto': 'Resolver diferencias', 'quien': 'Supervisora'}
+    if a_decimal(o['facturas']) == 0:
+        return {'codigo': 'factura', 'texto': 'Registrar factura del proveedor', 'quien': 'Finanzas / Compras'}
+    if pagado < a_decimal(o['facturado']):
+        return {'codigo': 'pagar_credito', 'texto': 'Pagar factura (crédito)', 'quien': 'Finanzas'}
+    return {'codigo': 'listo', 'texto': 'Completa', 'quien': '—'}
+
+
+def _oc_dict(o):
+    d = _fila(o)
+    d['paso'] = _paso(o)
+    d['saldo_pago'] = float(max(a_decimal(o['total']) - a_decimal(o['pagado']), 0))
+    pedida = a_decimal(o['pedida'])
+    d['avance_recepcion'] = float(min(a_decimal(o['recibida']) / pedida * 100, 100)) if pedida > 0 else 0
+    hoy = date.today()
+    fc = o.get('fecha_compromiso')
+    d['atrasada'] = bool(fc and fc < hoy and o['estado'] in ESTADOS_ABIERTOS)
+    return d
+
+
+def _listar_ocs(where='', params=()):
+    filas = db_query(SQL_OC_LISTA + (' WHERE ' + where if where else '') + ' ORDER BY oc.id DESC LIMIT 500', params)
+    return [_oc_dict(f) for f in filas]
+
+
+def _obtener_oc(oc_id):
+    filas = db_query(SQL_OC_LISTA + ' WHERE oc.id = %s', (oc_id,))
+    if not filas:
+        raise ErrorCompras('La orden de compra no existe.')
+    return filas[0]
+
+
+# ============================================================
+# PÁGINA
+# ============================================================
+@compras_flujo_bp.route('/compras')
+def compras_inicio():
+    return render_template('compras/flujo.html',
+                           puede_comprar=puede_comprar(), puede_aprobar=puede_aprobar(), puede_pagar=puede_pagar(),
+                           puede_recibir=puede_recibir(), puede_facturar=puede_facturar(), es_admin=es_admin(),
+                           metodos=METODOS_PAGO, tab=request.args.get('tab') or 'hoy')
+
+
+@compras_flujo_bp.route('/compras/api/flujo/catalogos')
+def api_catalogos():
+    try:
+        empresas = _empresas()
+        empresa_sesion = (session.get('empresa') or '').upper()
+        defecto = next((e['id'] for e in empresas if (e.get('codigo') or '').upper() == empresa_sesion),
+                       empresas[0]['id'] if empresas else None)
+        proveedores = db_query("""
+            SELECT id, ruc, razon_social, razon_comercial, direccion, lugar_recojo, condicion_pago, tiempo_credito,
+                   banco, numero_cuenta, cci, contacto, telefono, email
+            FROM proveedores WHERE COALESCE(activo, true) = true ORDER BY razon_social LIMIT 2000
+        """)
+        usuarios = db_query("""
+            SELECT id, COALESCE(NULLIF(nombres_apellidos, ''), usuario_sistema) AS nombre FROM usuarios
+            WHERE COALESCE(LOWER(estado), 'activo') NOT IN ('inactivo', 'inactiva', 'bloqueado') ORDER BY 2
+        """)
+        registro = db_query("SELECT almacen_id, empresa_id, registrado_sunat, es_domicilio_fiscal FROM inv_sede_empresa")
+        return jsonify({'success': True, 'empresas': empresas, 'sedes': _sedes(), 'empresa_defecto': defecto,
+                        'proveedores': [_fila(p) for p in proveedores], 'usuarios': [_fila(u) for u in usuarios],
+                        'registro_sunat': [_fila(r) for r in registro], 'usuario_id': session.get('usuario_id'),
+                        'metodos': list(METODOS_PAGO), 'alerta_precio_pct': float(ALERTA_PRECIO_PCT)})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# HOY EN COMPRAS (tablero de tareas y alertas)
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/resumen')
+def api_resumen():
+    try:
+        ocs = _listar_ocs("oc.flujo = 'v2'")
+        hoy = date.today()
+        pedidos = _pedidos_por_comprar()
+        por = lambda c: [o for o in ocs if o['paso']['codigo'] == c]
+        alertas = []
+
+        def alerta(nivel, texto, ir=None, cuantos=None):
+            alertas.append({'nivel': nivel, 'texto': texto, 'ir': ir, 'cuantos': cuantos})
+
+        if pedidos:
+            n = sum(p['pendientes'] for p in pedidos)
+            alerta('info', f'<b>{len(pedidos)} pedido(s) de clientes</b> tienen {n} producto(s) sin orden de compra. '
+                           'Antes de comprar, mira la columna "Stock libre en el grupo".', 'pedidos', len(pedidos))
+        if por('aprobar'):
+            alerta('warn', f'<b>{len(por("aprobar"))} orden(es) esperan aprobación.</b> Sin aprobación no se paga ni se recibe.',
+                   'ordenes', len(por('aprobar')))
+        if por('pagar'):
+            monto = sum(o['saldo_pago'] for o in por('pagar'))
+            alerta('warn', f'<b>{len(por("pagar"))} orden(es) al contado por pagar</b> (S/ {monto:,.2f}). '
+                           'Finanzas paga solo a la cuenta registrada del proveedor.', 'facturas', len(por('pagar')))
+        atrasadas = [o for o in ocs if o['atrasada']]
+        if atrasadas:
+            alerta('danger', f'<b>{len(atrasadas)} orden(es) atrasadas:</b> pasó la fecha prometida y la mercadería no llega completa: '
+                             + ', '.join(o['numero'] for o in atrasadas[:6]) + '. Llama al proveedor.', 'recibir', len(atrasadas))
+        pagadas_sin_llegar = [o for o in ocs if o['estado'] in ESTADOS_ABIERTOS and a_decimal(o['pagado']) > 0
+                              and o['aprobado_en'] and str(o['aprobado_en'])[:10] <= (hoy - timedelta(days=DIAS_AVISO)).isoformat()]
+        if pagadas_sin_llegar:
+            alerta('danger', f'<b>{len(pagadas_sin_llegar)} orden(es) pagadas y la mercadería aún no llega completa</b> '
+                             f'(más de {DIAS_AVISO} días): ' + ', '.join(o['numero'] for o in pagadas_sin_llegar[:6]) + '.',
+                   'recibir', len(pagadas_sin_llegar))
+        inc = db_query("SELECT COUNT(*) AS n FROM com_incidencias WHERE estado = 'Abierta'")[0]['n']
+        if inc:
+            alerta('danger', f'<b>{inc} diferencia(s) abiertas</b> (faltantes, sobrantes, dañados o facturas que no cuadran). '
+                             'Una supervisora debe resolverlas.', 'ordenes', inc)
+        sin_factura = [o for o in ocs if o['estado'] in ('Recibida', 'Recibida parcial') and not o['facturas']]
+        if sin_factura:
+            alerta('warn', f'<b>{len(sin_factura)} orden(es) recibidas sin factura del proveedor.</b> Pídela y regístrala.',
+                   'facturas', len(sin_factura))
+        pagado_sin_factura = [o for o in ocs if a_decimal(o['pagado']) > 0 and not o['facturas'] and o['estado'] != 'Anulada']
+        if pagado_sin_factura:
+            alerta('warn', f'<b>{len(pagado_sin_factura)} pago(s) sin factura.</b> Se pagó y todavía no hay factura registrada.',
+                   'facturas', len(pagado_sin_factura))
+        no_ingresadas = db_query("""
+            SELECT COUNT(DISTINCT r.com_recepcion_id) AS n FROM recepciones_mercaderia r
+            WHERE r.com_recepcion_id IS NOT NULL AND r.fecha < NOW() - INTERVAL '1 day'
+              AND NOT EXISTS (SELECT 1 FROM inv_movimientos m WHERE m.recepcion_id = r.id AND m.estado <> 'Rechazado')
+        """)[0]['n']
+        if no_ingresadas:
+            alerta('danger', f'<b>{no_ingresadas} recepción(es) de hace más de un día no están en el Inventario.</b> '
+                             'Mercadería que no está en el inventario se puede perder. Ve a Inventario ▸ Entradas y salidas.',
+                   None, no_ingresadas)
+        propias = [o for o in ocs if o['aprobado_por_id'] and o['aprobado_por_id'] == o['usuario_id']]
+        if propias:
+            alerta('info', f'{len(propias)} orden(es) fueron aprobadas por la misma persona que las hizo (solo puede hacerlo un administrador): '
+                           + ', '.join(o['numero'] for o in propias[:6]) + '.', 'ordenes', len(propias))
+        cxp = db_query("""
+            SELECT COUNT(*) AS n, COALESCE(SUM(monto), 0) AS m FROM comprobantes_proveedor
+            WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA', 'PAGADO')
+              AND fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+        """)[0]
+        if cxp['n']:
+            alerta('warn', f"<b>{cxp['n']} factura(s) a crédito vencen esta semana</b> (S/ {float(cxp['m']):,.2f}). Ver Finanzas ▸ Cuentas por pagar.",
+                   None, cxp['n'])
+        stock_mes = sum(float(o['total']) for o in ocs if o['tipo_compra'] == 'Para stock' and o['estado'] != 'Anulada'
+                        and str(o['fecha'])[:7] == hoy.isoformat()[:7])
+        total_mes = sum(float(o['total']) for o in ocs if o['estado'] != 'Anulada' and str(o['fecha'])[:7] == hoy.isoformat()[:7])
+        if stock_mes:
+            pct = stock_mes / total_mes * 100 if total_mes else 0
+            alerta('warn' if pct > 10 else 'info',
+                   f'Este mes se compró <b>S/ {stock_mes:,.2f} para stock</b> ({pct:.0f}% de las compras). La meta es no pasar del 5-10%.',
+                   'ordenes', None)
+        if not alertas:
+            alerta('ok', 'Todo al día. No hay tareas pendientes en Compras. 👍')
+        kpis = {
+            'pedidos': len(pedidos),
+            'por_aprobar': len(por('aprobar')),
+            'por_pagar': round(sum(o['saldo_pago'] for o in por('pagar')), 2),
+            'por_recibir': len(por('recibir')) + len(por('pagar')),
+            'incidencias': inc,
+            'compras_mes': round(total_mes, 2),
+        }
+        return jsonify({'success': True, 'kpis': kpis, 'alertas': alertas})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# PEDIDOS DE CLIENTES POR COMPRAR
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/pedidos')
+def api_pedidos():
+    try:
+        return jsonify({'success': True, 'data': _pedidos_por_comprar(todos=request.args.get('todos') == '1')})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/producto/<int:producto_id>')
+def api_info_producto(producto_id):
+    """Para el formulario de OC: últimas compras (precio y proveedor) y stock libre en el grupo."""
+    try:
+        compras = db_query("""
+            SELECT oc.numero_orden, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, p.razon_social AS proveedor,
+                   oci.cantidad, oci.precio_unitario, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa
+            FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+            LEFT JOIN proveedores p ON p.id = oc.proveedor_id LEFT JOIN erp_empresas e ON e.id = oc.empresa_id
+            WHERE oci.producto_id = %s AND COALESCE(oc.estado, '') NOT IN ('Anulada', 'Borrador')
+            ORDER BY oc.id DESC LIMIT 8
+        """, (producto_id,))
+        return jsonify({'success': True, 'compras': [_fila(c) for c in compras],
+                        'stock_libre': _detalle_stock_libre(producto_id)})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/precios')
+def api_precios():
+    """Historial de precios por producto y proveedor (para negociar y detectar sobreprecios)."""
+    try:
+        q = (request.args.get('q') or '').strip()
+        filas = db_query("""
+            SELECT pr.id AS producto_id, pr.codigo, pr.descripcion, p.razon_social AS proveedor,
+                   COUNT(*) AS compras, MIN(oci.precio_unitario) AS minimo, MAX(oci.precio_unitario) AS maximo,
+                   (ARRAY_AGG(oci.precio_unitario ORDER BY oc.id DESC))[1] AS ultimo,
+                   MAX(COALESCE(oc.fecha_creacion, oc.created_at)) AS ultima_fecha
+            FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+            JOIN productos pr ON pr.id = oci.producto_id LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+            WHERE COALESCE(oc.estado, '') NOT IN ('Anulada', 'Borrador')
+              AND (%s = '' OR pr.codigo ILIKE %s OR pr.descripcion ILIKE %s OR p.razon_social ILIKE %s)
+            GROUP BY pr.id, pr.codigo, pr.descripcion, p.razon_social
+            ORDER BY pr.descripcion, ultimo LIMIT 300
+        """, (q, f'%{q}%', f'%{q}%', f'%{q}%'))
+        return jsonify({'success': True, 'data': [_fila(f) for f in filas]})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# ÓRDENES DE COMPRA
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/ordenes')
+def api_ordenes():
+    try:
+        cond, params = [], []
+        if request.args.get('empresa_id'):
+            cond.append('oc.empresa_id = %s')
+            params.append(int(request.args['empresa_id']))
+        estado = request.args.get('estado') or ''
+        if estado == 'abiertas':
+            cond.append("COALESCE(oc.estado, '') NOT IN ('Cerrada', 'Anulada')")
+        elif estado:
+            cond.append('oc.estado = %s')
+            params.append(estado)
+        if request.args.get('nuevas') != '0':
+            cond.append("oc.flujo = 'v2'")
+        q = (request.args.get('q') or '').strip()
+        if q:
+            cond.append("(oc.numero_orden ILIKE %s OR p.razon_social ILIKE %s OR it.clientes ILIKE %s OR it.pedidos ILIKE %s OR it.productos ILIKE %s)")
+            params += [f'%{q}%'] * 5
+        datos = _listar_ocs(' AND '.join(cond), tuple(params))
+        paso = request.args.get('paso')
+        if paso:
+            datos = [d for d in datos if d['paso']['codigo'] in paso.split(',')]
+        return jsonify({'success': True, 'data': datos})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>')
+def api_orden_detalle(oc_id):
+    try:
+        o = _oc_dict(_obtener_oc(oc_id))
+        items = db_query("""
+            SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, oci.cantidad, oci.precio_unitario, oci.total,
+                   oci.pedido_id, oci.pedido_numero, oci.cliente, COALESCE(oci.cantidad_recibida, 0) AS cantidad_recibida,
+                   pr.codigo
+            FROM ordenes_compra_items oci LEFT JOIN productos pr ON pr.id = oci.producto_id
+            WHERE oci.orden_compra_id = %s ORDER BY oci.id
+        """, (oc_id,))
+        o['items'] = [_fila(i) for i in items]
+        o['historial'] = [_fila(h) for h in db_query(
+            "SELECT fecha, usuario, accion, detalle FROM com_historial WHERE orden_compra_id = %s ORDER BY id", (oc_id,))]
+        o['recepciones'] = [_fila(r) for r in db_query("""
+            SELECT r.numero, r.fecha, r.guia_proveedor, r.traido_por, r.recibido_por, r.con_diferencias, a.nombre AS sede,
+                   r.observaciones
+            FROM com_recepciones r LEFT JOIN almacenes a ON a.id = r.almacen_id WHERE r.orden_compra_id = %s ORDER BY r.id
+        """, (oc_id,))]
+        o['pagos'] = [_fila(p) for p in db_query("""
+            SELECT fecha, monto, metodo, banco, numero_operacion, usuario_nombre, documento_numero FROM finanzas_pagos
+            WHERE tipo = 'PAGO' AND estado <> 'Anulado' AND ((documento_tabla = 'ordenes_compra' AND documento_id = %s)
+               OR (documento_tabla = 'comprobantes_proveedor' AND documento_id IN
+                   (SELECT id FROM comprobantes_proveedor WHERE orden_compra_id = %s)))
+            ORDER BY fecha, id
+        """, (oc_id, oc_id))]
+        o['facturas'] = [_fila(f) for f in db_query("""
+            SELECT id, tipo, numero, fecha, monto, monto_esperado, cuadra, estado, fecha_vencimiento
+            FROM comprobantes_proveedor WHERE orden_compra_id = %s ORDER BY id
+        """, (oc_id,))]
+        o['incidencias'] = [_fila(i) for i in db_query("""
+            SELECT i.id, i.numero, i.fecha, i.tipo, i.cantidad, i.monto, i.detalle, i.estado, i.resolucion,
+                   i.resuelto_por, i.reportado_por, pr.descripcion AS producto
+            FROM com_incidencias i LEFT JOIN productos pr ON pr.id = i.producto_id
+            WHERE i.orden_compra_id = %s ORDER BY i.id
+        """, (oc_id,))]
+        prov = db_query("SELECT banco, numero_cuenta, cci, direccion, lugar_recojo, contacto, telefono FROM proveedores WHERE id = %s",
+                        (o['proveedor_id'],)) if o.get('proveedor_id') else []
+        o['proveedor_datos'] = _fila(prov[0]) if prov else {}
+        avisos = []
+        if o.get('flujo') == 'v2' and o['estado'] in ('Por aprobar', 'Borrador'):
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                avisos += _alertas_precio(cur, oc_id, [dict(i, descripcion=i['producto']) for i in items if i['producto_id']])
+        if o.get('empresa_id') and o.get('almacen_entrega_id') and _sede_declarada(o['empresa_id'], o['almacen_entrega_id']) is False:
+            avisos.append(f"La sede {o['sede']} no está declarada en SUNAT para {o['empresa']}. La guía del proveedor debe llegar a un "
+                          "establecimiento de la empresa que compra. Revisa Inventario ▸ Sedes y SUNAT.")
+        o['avisos'] = avisos
+        uid = session.get('usuario_id')
+        o['soy_creador'] = bool(uid and uid == o['usuario_id'])
+        return jsonify({'success': True, 'data': o})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+def _validar_items(cur, items_in, oc_id=None):
+    if not items_in:
+        raise ErrorCompras('Agrega al menos un producto.')
+    comprado = _comprado_por_pedido(cur, excluir_oc=oc_id)
+    pedidos_cache = {}
+    items, suma_pedido = [], {}
+    for it in items_in:
+        producto_id = _entero(it.get('producto_id'), 'el producto de la lista (no se puede escribir a mano)')
+        cur.execute("SELECT id, codigo, descripcion, unidad FROM productos WHERE id = %s", (producto_id,))
+        prod = cur.fetchone()
+        if not prod:
+            raise ErrorCompras('Uno de los productos no existe.')
+        cantidad = a_decimal(it.get('cantidad'))
+        precio = a_decimal(it.get('precio_unitario', it.get('precio')))
+        nombre = prod['descripcion']
+        if cantidad <= 0:
+            raise ErrorCompras(f'La cantidad de "{nombre}" debe ser mayor que 0.')
+        if precio <= 0:
+            raise ErrorCompras(f'Escribe el precio sin IGV de "{nombre}".')
+        pedido_id = it.get('pedido_id') or None
+        pedido_num = cliente = None
+        if pedido_id:
+            pedido_id = int(pedido_id)
+            if pedido_id not in pedidos_cache:
+                cur.execute("SELECT id, numero, cliente, estado, items_json FROM pedido_compra_pc WHERE id = %s", (pedido_id,))
+                pc = cur.fetchone()
+                if not pc:
+                    raise ErrorCompras('El pedido del cliente no existe.')
+                if (pc['estado'] or '').upper() in ESTADOS_PC_FUERA:
+                    raise ErrorCompras(f"El pedido {pc['numero']} está {pc['estado']}: no se puede comprar para él.")
+                pedidos_cache[pedido_id] = (pc, _resolver_productos(_items_pedido(pc)))
+            pc, pc_items = pedidos_cache[pedido_id]
+            pedido_num, cliente = pc['numero'], pc['cliente']
+            necesita = sum((i['cantidad'] for i in pc_items if i['producto_id'] == producto_id), Decimal('0'))
+            if necesita <= 0:
+                raise ErrorCompras(f'"{nombre}" no está en el pedido {pedido_num}.')
+            clave = (pedido_id, producto_id)
+            suma_pedido[clave] = suma_pedido.get(clave, Decimal('0')) + cantidad
+            falta = necesita - comprado.get(clave, Decimal('0'))
+            if suma_pedido[clave] > falta:
+                raise ErrorCompras(f'El pedido {pedido_num} solo necesita {_cant(max(falta, 0))} de "{nombre}" '
+                                   f'(pidió {_cant(necesita)} y ya hay {_cant(necesita - falta)} en otras órdenes). '
+                                   'Si quieres comprar más para stock, agrega otra línea sin pedido.')
+        items.append({'producto_id': producto_id, 'producto': nombre, 'codigo': prod['codigo'],
+                      'unidad': prod['unidad'] or 'UND', 'cantidad': cantidad, 'precio_unitario': precio,
+                      'total': redondear(cantidad * precio), 'pedido_id': pedido_id, 'pedido_numero': pedido_num,
+                      'cliente': cliente})
+    return items
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes', methods=['POST'])
+def api_orden_guardar():
+    """Crea o corrige una OC en Borrador. Con enviar=true la manda a aprobación."""
+    if not puede_comprar():
+        return _no_autorizado('Tu usuario no puede preparar órdenes de compra.')
+    d = request.get_json(silent=True) or {}
+    try:
+        empresa_id = _entero(d.get('empresa_id'), 'la empresa que compra')
+        proveedor_id = _entero(d.get('proveedor_id'), 'el proveedor de la lista')
+        almacen_id = _entero(d.get('almacen_entrega_id'), 'la sede donde debe terminar la mercadería')
+        condicion = d.get('condicion_pago') or ''
+        if condicion not in CONDICIONES:
+            raise ErrorCompras('Elige la condición de pago: Contado, Contra entrega o Crédito.')
+        dias = int(a_decimal(d.get('dias_credito') or 0))
+        if condicion == 'Crédito' and dias <= 0:
+            raise ErrorCompras('Escribe los días de crédito que da el proveedor.')
+        if condicion != 'Crédito':
+            dias = 0
+        modalidad = d.get('modalidad_entrega') or ''
+        if modalidad not in MODALIDADES:
+            raise ErrorCompras('Indica si el proveedor entrega o si nosotros recogemos.')
+        direccion_recojo = (d.get('direccion_recojo') or '').strip()
+        if modalidad == 'Nosotros recogemos' and not direccion_recojo:
+            raise ErrorCompras('Escribe la dirección donde se recoge.')
+        fecha_compromiso = d.get('fecha_compromiso') or None
+        if not fecha_compromiso:
+            raise ErrorCompras('Escribe la fecha en que el proveedor entrega o tiene lista la mercadería.')
+        enviar = bool(d.get('enviar'))
+        oc_id = d.get('id') or None
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT id FROM erp_empresas WHERE id = %s", (empresa_id,))
+            if not cur.fetchone():
+                raise ErrorCompras('La empresa no existe.')
+            cur.execute("SELECT id FROM almacenes WHERE id = %s AND COALESCE(activo, true) = true", (almacen_id,))
+            if not cur.fetchone():
+                raise ErrorCompras('La sede no existe o está inactiva.')
+            cur.execute("SELECT id, razon_social, ruc, contacto, telefono, email FROM proveedores WHERE id = %s", (proveedor_id,))
+            prov = cur.fetchone()
+            if not prov:
+                raise ErrorCompras('El proveedor no existe. Regístralo en Maestros ▸ Proveedores.')
+            if oc_id:
+                cur.execute("SELECT estado, flujo, usuario_id FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+                actual = cur.fetchone()
+                if not actual or actual['flujo'] != 'v2':
+                    raise ErrorCompras('La orden no existe.')
+                if actual['estado'] != 'Borrador':
+                    raise ErrorCompras(f'La orden está "{actual["estado"]}" y ya no se puede cambiar. Si hay un error, anúlala y haz otra.')
+            items = _validar_items(cur, d.get('items'), oc_id)
+            sin_pedido = [i for i in items if not i['pedido_id']]
+            tipo = 'Para stock' if sin_pedido else 'Bajo pedido'
+            motivo_stock = (d.get('motivo_stock') or '').strip()
+            if sin_pedido and len(motivo_stock) < 10:
+                raise ErrorCompras('Hay productos sin pedido de cliente (compra para stock). Explica el motivo: '
+                                   'por ejemplo "se vende todas las semanas" o "precio de oferta".')
+            totales = calcular_totales([{'cantidad': i['cantidad'], 'precio': i['precio_unitario']} for i in items])
+            _, unom = _usuario()
+            uid = session.get('usuario_id')
+            condicion_txt = f'Crédito {dias} días' if condicion == 'Crédito' else condicion
+            valores = (empresa_id, proveedor_id, almacen_id, modalidad, direccion_recojo or None, tipo,
+                       motivo_stock or None, fecha_compromiso, dias, condicion_txt, totales['subtotal'], totales['igv'],
+                       totales['total'], (d.get('num_cotizacion') or '').strip() or None, (d.get('notas') or '').strip() or None,
+                       prov['contacto'] or prov['razon_social'], prov['telefono'], prov['email'])
+            if oc_id:
+                cur.execute("""
+                    UPDATE ordenes_compra SET empresa_id=%s, proveedor_id=%s, almacen_entrega_id=%s, modalidad_entrega=%s,
+                        direccion_recojo=%s, tipo_compra=%s, motivo_stock=%s, fecha_compromiso=%s, dias_credito=%s,
+                        condicion_pago=%s, subtotal=%s, igv=%s, total=%s, num_cotizacion=%s, notas=%s,
+                        contacto_proveedor=%s, telefono_proveedor=%s, email_proveedor=%s, updated_at=NOW()
+                    WHERE id=%s RETURNING id, numero_orden
+                """, valores + (oc_id,))
+                oc = cur.fetchone()
+                cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (oc_id,))
+                _historial(cur, oc_id, 'Corregida', f"Total S/ {totales['total']}")
+            else:
+                prefijo = f"OC-{datetime.now().strftime('%Y%m%d')}-"
+                bloquear_numeracion(cur, 'ordenes_compra:' + prefijo)
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero_orden FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
+                               FROM ordenes_compra WHERE numero_orden LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
+                numero = prefijo + str(cur.fetchone()['sig']).zfill(4)
+                cur.execute("""
+                    INSERT INTO ordenes_compra (empresa_id, proveedor_id, almacen_entrega_id, modalidad_entrega,
+                        direccion_recojo, tipo_compra, motivo_stock, fecha_compromiso, dias_credito, condicion_pago,
+                        subtotal, igv, total, num_cotizacion, notas, contacto_proveedor, telefono_proveedor, email_proveedor,
+                        numero_orden, codigo_orden, correlativo, usuario_id, creado_por_nombre, estado, flujo,
+                        descuento_porcentaje, descuento_monto, descuento_tipo, fecha_creacion, lugar_entrega, tiempo_entrega)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Borrador','v2',0,0,'porcentaje',NOW(),
+                            (SELECT nombre FROM almacenes WHERE id = %s), %s)
+                    RETURNING id, numero_orden
+                """, valores + (numero, numero, int(numero[-4:]), uid, unom, almacen_id, str(fecha_compromiso)))
+                oc = cur.fetchone()
+                oc_id = oc['id']
+                _historial(cur, oc_id, 'Creada', f"{tipo} · Total S/ {totales['total']}")
+            for i in items:
+                cur.execute("""
+                    INSERT INTO ordenes_compra_items (orden_compra_id, producto_id, producto, unidad, cantidad, precio_unitario,
+                        total, pedido_id, pedido_numero, cliente, cantidad_recibida)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0)
+                """, (oc_id, i['producto_id'], i['producto'], i['unidad'], i['cantidad'], i['precio_unitario'], i['total'],
+                      i['pedido_id'], i['pedido_numero'], i['cliente']))
+            alertas = _alertas_precio(cur, oc_id, items)
+            mensaje = f"Orden {oc['numero_orden']} guardada como borrador."
+            if enviar:
+                mensaje = _enviar(cur, oc_id, totales['total'], tipo, alertas)
+        return jsonify({'success': True, 'id': oc_id, 'numero': oc['numero_orden'], 'message': mensaje, 'alertas': alertas})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+def _enviar(cur, oc_id, total, tipo, alertas):
+    if MONTO_SIN_APROBACION > 0 and a_decimal(total) <= MONTO_SIN_APROBACION and tipo == 'Bajo pedido' and not alertas:
+        cur.execute("""UPDATE ordenes_compra SET estado = 'Aprobada', aprobado_por = 'Automática', aprobado_en = NOW(),
+                       updated_at = NOW() WHERE id = %s RETURNING numero_orden""", (oc_id,))
+        num = cur.fetchone()['numero_orden']
+        _historial(cur, oc_id, 'Aprobada automáticamente', f'Monto menor a S/ {MONTO_SIN_APROBACION}')
+        return f'Orden {num} aprobada automáticamente (monto pequeño).'
+    cur.execute("UPDATE ordenes_compra SET estado = 'Por aprobar', updated_at = NOW() WHERE id = %s RETURNING numero_orden", (oc_id,))
+    num = cur.fetchone()['numero_orden']
+    _historial(cur, oc_id, 'Enviada a aprobar', ' | '.join(alertas) if alertas else None)
+    return f'Orden {num} enviada a aprobar.' + (' Ojo: tiene alertas de precio.' if alertas else '')
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/enviar', methods=['POST'])
+def api_orden_enviar(oc_id):
+    if not puede_comprar():
+        return _no_autorizado('Tu usuario no puede enviar órdenes de compra.')
+    try:
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT estado, flujo, total, tipo_compra FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] != 'Borrador':
+                raise ErrorCompras('Solo se envían órdenes en Borrador.')
+            cur.execute("SELECT producto_id, producto AS descripcion, precio_unitario FROM ordenes_compra_items WHERE orden_compra_id = %s", (oc_id,))
+            alertas = _alertas_precio(cur, oc_id, cur.fetchall())
+            msg = _enviar(cur, oc_id, oc['total'], oc['tipo_compra'], alertas)
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/aprobar', methods=['POST'])
+def api_orden_aprobar(oc_id):
+    if not puede_aprobar():
+        return _no_autorizado('Solo una supervisora puede aprobar órdenes de compra.')
+    d = request.get_json(silent=True) or {}
+    try:
+        aprobar = bool(d.get('aprobar'))
+        motivo = (d.get('motivo') or '').strip()
+        uid, unom = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT numero_orden, estado, flujo, usuario_id FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] != 'Por aprobar':
+                raise ErrorCompras(f'La orden está "{oc["estado"]}": no está esperando aprobación.')
+            if aprobar:
+                if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
+                    raise PermissionError('No puedes aprobar una orden que tú misma hiciste. Pídele a otra supervisora.')
+                cur.execute("""UPDATE ordenes_compra SET estado = 'Aprobada', aprobado_por_id = %s, aprobado_por = %s,
+                               aprobado_en = NOW(), updated_at = NOW() WHERE id = %s""", (uid, unom, oc_id))
+                _historial(cur, oc_id, 'Aprobada', motivo or None)
+                msg = f"Orden {oc['numero_orden']} aprobada. Ya se puede enviar al proveedor."
+            else:
+                if len(motivo) < 5:
+                    raise ErrorCompras('Escribe por qué se devuelve la orden, para que la corrijan.')
+                cur.execute("UPDATE ordenes_compra SET estado = 'Borrador', updated_at = NOW() WHERE id = %s", (oc_id,))
+                _historial(cur, oc_id, 'Devuelta para corregir', motivo)
+                msg = f"Orden {oc['numero_orden']} devuelta a Borrador con tu comentario."
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/anular', methods=['POST'])
+def api_orden_anular(oc_id):
+    d = request.get_json(silent=True) or {}
+    try:
+        motivo = (d.get('motivo') or '').strip()
+        if len(motivo) < 5:
+            raise ErrorCompras('Escribe el motivo de la anulación.')
+        uid, unom = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT numero_orden, estado, flujo, usuario_id FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] in ('Anulada', 'Cerrada'):
+                raise ErrorCompras(f'La orden ya está {oc["estado"]}.')
+            if not (puede_aprobar() or (oc['estado'] == 'Borrador' and oc['usuario_id'] == uid)):
+                raise PermissionError('Solo una supervisora puede anular una orden que ya se envió.')
+            cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s LIMIT 1", (oc_id,))
+            if cur.fetchone():
+                raise ErrorCompras('Ya llegó mercadería de esta orden: no se puede anular. Registra la devolución al proveedor y resuelve las diferencias.')
+            if _pagado_oc(oc_id) > 0:
+                raise ErrorCompras('Esta orden tiene pagos. Primero Finanzas debe anular el pago o registrar la devolución del dinero.')
+            cur.execute("""UPDATE ordenes_compra SET estado = 'Anulada', anulado_por = %s, anulado_en = NOW(),
+                           motivo_anulacion = %s, updated_at = NOW() WHERE id = %s""", (unom, motivo, oc_id))
+            _historial(cur, oc_id, 'Anulada', motivo)
+        return jsonify({'success': True, 'message': f"Orden {oc['numero_orden']} anulada. Los pedidos de sus clientes vuelven a 'por comprar'."})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# PAGO AL PROVEEDOR (antes de recoger, cuando es al contado)
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/pago', methods=['POST'])
+def api_orden_pago(oc_id):
+    if not puede_pagar():
+        return _no_autorizado('Solo Finanzas o una supervisora registra pagos.')
+    d = request.get_json(silent=True) or {}
+    try:
+        monto = redondear(d.get('monto'))
+        if monto <= 0:
+            raise ErrorCompras('El monto debe ser mayor que 0.')
+        metodo = d.get('metodo') or 'Transferencia'
+        if metodo not in METODOS_PAGO:
+            raise ErrorCompras('Elige el método de pago.')
+        operacion = (d.get('numero_operacion') or '').strip()
+        if metodo in ('Transferencia', 'Depósito', 'Yape/Plin') and not operacion:
+            raise ErrorCompras('Escribe el N° de operación del banco. Sin él no se puede comprobar el pago.')
+        if metodo == 'Efectivo' and not (d.get('observaciones') or '').strip():
+            raise ErrorCompras('Pago en efectivo: escribe en Observaciones quién entregó el dinero y quién firmó el recibo.')
+        try:
+            fecha = datetime.strptime((d.get('fecha') or date.today().isoformat())[:10], '%Y-%m-%d').date()
+        except ValueError:
+            raise ErrorCompras('Fecha inválida.')
+        if fecha > date.today():
+            raise ErrorCompras('La fecha del pago no puede ser futura.')
+        uid, unom = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""SELECT oc.numero_orden, oc.estado, oc.flujo, oc.usuario_id, oc.total, p.razon_social, p.ruc
+                           FROM ordenes_compra oc LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+                           WHERE oc.id = %s FOR UPDATE OF oc""", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] in ('Borrador', 'Por aprobar', 'Anulada'):
+                raise ErrorCompras(f'La orden está "{oc["estado"]}". Solo se pagan órdenes aprobadas.')
+            if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
+                raise PermissionError('Quien hizo la orden no puede registrar su pago. Lo hace Finanzas.')
+            saldo = redondear(a_decimal(oc['total']) - _pagado_oc(oc_id))
+            if monto > saldo:
+                raise ErrorCompras(f'El monto (S/ {monto}) supera lo que falta pagar de la orden (S/ {max(saldo, 0)}).')
+            cur.execute("""
+                INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre,
+                    tercero_documento, fecha, monto, metodo, banco, numero_operacion, observaciones, usuario_id, usuario_nombre)
+                VALUES ('PAGO', 'ordenes_compra', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (oc_id, oc['numero_orden'], oc['razon_social'], oc['ruc'], fecha, monto, metodo,
+                  (d.get('banco') or '').strip() or None, operacion or None, (d.get('observaciones') or '').strip() or None,
+                  uid, unom))
+            _historial(cur, oc_id, 'Pago registrado', f'S/ {monto} · {metodo} · Op. {operacion or "-"}')
+        resto = saldo - monto
+        return jsonify({'success': True, 'message': f'Pago registrado. ' + (
+            f'Falta pagar S/ {resto}.' if resto > 0 else 'La orden quedó pagada: ya se puede recoger o recibir.')})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# RECEPCIÓN A CIEGAS EN LA SEDE
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/por_recibir')
+def api_por_recibir():
+    """Órdenes listas para recibir. NO muestra cantidades: quien recibe debe contar."""
+    try:
+        datos = _listar_ocs("oc.flujo = 'v2' AND oc.estado IN ('Aprobada', 'Recibida parcial', 'Por aprobar')")
+        res = []
+        for o in datos:
+            res.append({k: o[k] for k in ('id', 'numero', 'empresa', 'empresa_id', 'sede', 'almacen_entrega_id', 'proveedor',
+                                          'modalidad_entrega', 'direccion_recojo', 'fecha_compromiso', 'estado',
+                                          'atrasada', 'paso', 'clientes', 'lineas', 'usuario_id')})
+        return jsonify({'success': True, 'data': res})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/para_recibir')
+def api_para_recibir(oc_id):
+    try:
+        o = _obtener_oc(oc_id)
+        items = db_query("""
+            SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, pr.codigo, pr.marca, pr.modelo
+            FROM ordenes_compra_items oci LEFT JOIN productos pr ON pr.id = oci.producto_id
+            WHERE oci.orden_compra_id = %s AND COALESCE(oci.cantidad_recibida, 0) < oci.cantidad ORDER BY oci.id
+        """, (oc_id,))
+        return jsonify({'success': True, 'orden': {'id': o['id'], 'numero': o['numero'], 'proveedor': o['proveedor'],
+                                                    'empresa': o['empresa'], 'sede': o['sede'],
+                                                    'almacen_entrega_id': o['almacen_entrega_id'],
+                                                    'modalidad_entrega': o['modalidad_entrega'], 'usuario_id': o['usuario_id']},
+                        'items': [_fila(i) for i in items]})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/recibir', methods=['POST'])
+def api_orden_recibir(oc_id):
+    if not puede_recibir():
+        return _no_autorizado('Solo el personal de almacén o de control puede recibir mercadería.')
+    d = request.get_json(silent=True) or {}
+    try:
+        almacen_id = _entero(d.get('almacen_id'), 'la sede donde estás recibiendo')
+        guia = (d.get('guia_proveedor') or '').strip().upper()
+        if len(guia) < 4:
+            raise ErrorCompras('Escribe el N° de guía de remisión del proveedor (ejemplo EG01-00001234). Sin guía no se recibe.')
+        traido_tipo = d.get('traido_por_tipo') or ''
+        if traido_tipo not in ('proveedor', 'usuario', 'courier'):
+            raise ErrorCompras('Indica quién trajo la mercadería.')
+        uid, unom = _usuario()
+        traido_id, traido_nombre = None, None
+        if traido_tipo == 'usuario':
+            traido_id = _entero(d.get('traido_por_id'), 'la persona de la empresa que recogió')
+            if traido_id == uid:
+                raise PermissionError('Tú recogiste la mercadería: no puedes recibirla. La recibe y la cuenta otra persona en la sede.')
+            f = db_query("SELECT COALESCE(NULLIF(nombres_apellidos, ''), usuario_sistema) AS n FROM usuarios WHERE id = %s", (traido_id,))
+            if not f:
+                raise ErrorCompras('La persona que recogió no existe.')
+            traido_nombre = f[0]['n']
+        elif traido_tipo == 'courier':
+            traido_nombre = (d.get('traido_por') or '').strip()
+            if not traido_nombre:
+                raise ErrorCompras('Escribe el nombre de la empresa de transporte o del chofer.')
+        else:
+            traido_nombre = 'Transporte del proveedor'
+        items_in = d.get('items') or []
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""SELECT oc.*, p.razon_social FROM ordenes_compra oc LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+                           WHERE oc.id = %s FOR UPDATE OF oc""", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] not in ESTADOS_ABIERTOS:
+                raise ErrorCompras(f'La orden está "{oc["estado"]}". Solo se recibe mercadería de órdenes aprobadas. '
+                                   'Si llegó algo sin orden aprobada, no lo recibas y avisa a tu supervisora.')
+            if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
+                raise PermissionError('Tú hiciste esta orden de compra: la mercadería la recibe otra persona.')
+            if (oc['condicion_pago'] or '').startswith('Contado') and _pagado_oc(oc_id) < a_decimal(oc['total']):
+                raise ErrorCompras('Esta orden es al contado y Finanzas todavía no registra el pago completo. '
+                                   'Si el proveedor entregó sin pago, avisa a tu supervisora.')
+            cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s AND guia_proveedor = %s", (oc_id, guia))
+            if cur.fetchone():
+                raise ErrorCompras(f'La guía {guia} ya se registró en esta orden.')
+            cur.execute("SELECT id FROM almacenes WHERE id = %s AND COALESCE(activo, true) = true", (almacen_id,))
+            if not cur.fetchone():
+                raise ErrorCompras('La sede no existe.')
+            cur.execute("SELECT * FROM ordenes_compra_items WHERE orden_compra_id = %s ORDER BY id FOR UPDATE", (oc_id,))
+            oc_items = {i['id']: i for i in cur.fetchall()}
+            contados = {}
+            for it in items_in:
+                iid = int(it.get('oc_item_id') or 0)
+                if iid not in oc_items:
+                    raise ErrorCompras('Hay un producto que no es de esta orden.')
+                buena = a_decimal(it.get('cantidad_buena'))
+                danada = a_decimal(it.get('cantidad_danada'))
+                if buena < 0 or danada < 0:
+                    raise ErrorCompras('Las cantidades no pueden ser negativas.')
+                if it.get('cantidad_buena') in (None, ''):
+                    raise ErrorCompras(f'Escribe cuántos llegaron de "{oc_items[iid]["producto"]}" (si no llegó ninguno, escribe 0).')
+                contados[iid] = (buena, danada, it)
+            if not contados or sum(b + dn for b, dn, _ in contados.values()) <= 0:
+                raise ErrorCompras('No escribiste ninguna cantidad. Cuenta lo que llegó.')
+            numero = _siguiente_numero(cur, 'RC', 'com_recepciones')
+            cur.execute("""
+                INSERT INTO com_recepciones (numero, orden_compra_id, empresa_id, almacen_id, guia_proveedor, traido_por_tipo,
+                    traido_por_id, traido_por, recibido_por_id, recibido_por, observaciones)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+            """, (numero, oc_id, oc['empresa_id'], almacen_id, guia, traido_tipo, traido_id, traido_nombre, uid, unom,
+                  (d.get('observaciones') or '').strip() or None))
+            rec_id = cur.fetchone()['id']
+            resultado, diferencias = [], 0
+            for iid, (buena, danada, it) in contados.items():
+                oi = oc_items[iid]
+                pendiente = a_decimal(oi['cantidad']) - a_decimal(oi['cantidad_recibida'])
+                llegado = buena + danada
+                cur.execute("""
+                    INSERT INTO com_recepcion_items (recepcion_id, oc_item_id, producto_id, pendiente_antes, cantidad_buena,
+                        cantidad_danada, lote_serie, fecha_vencimiento, comentario)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (rec_id, iid, oi['producto_id'], pendiente, buena, danada, (it.get('lote_serie') or '').strip() or None,
+                      it.get('fecha_vencimiento') or None, (it.get('comentario') or '').strip() or None))
+                # Lo dañado no se cuenta como recibido: el proveedor debe reponerlo o dar nota de crédito
+                cur.execute("UPDATE ordenes_compra_items SET cantidad_recibida = COALESCE(cantidad_recibida, 0) + %s WHERE id = %s",
+                            (buena, iid))
+                if buena > 0:
+                    cur.execute("""
+                        INSERT INTO recepciones_mercaderia (numero_recepcion, fecha, estado, orden_compra_id, orden_compra_numero,
+                            proveedor_nombre, producto, cantidad, unidad, estado_mercaderia, observaciones, creado_por,
+                            producto_id, empresa_id, almacen_id, costo_unitario, com_recepcion_id, oc_item_id, pedido_id,
+                            pedido_numero, cliente, guia_proveedor, lote_serie, fecha_vencimiento)
+                        VALUES (%s, NOW(), 'Aprobada', %s, %s, %s, %s, %s, %s, 'Buen estado', %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s, %s)
+                    """, (numero, oc_id, oc['numero_orden'], oc['razon_social'], oi['producto'], buena, oi['unidad'] or 'UND',
+                          f'Guía {guia}', str(uid or ''), oi['producto_id'], oc['empresa_id'], almacen_id, oi['precio_unitario'],
+                          rec_id, iid, oi['pedido_id'], oi['pedido_numero'], oi['cliente'], guia,
+                          (it.get('lote_serie') or '').strip() or None, it.get('fecha_vencimiento') or None))
+                fila = {'producto': oi['producto'], 'esperado': float(pendiente), 'llego': float(llegado),
+                        'buena': float(buena), 'danada': float(danada), 'estado': 'Completo'}
+                if danada > 0:
+                    _incidencia(cur, oc_id, 'Dañado', f"{_cant(danada)} {oi['unidad'] or ''} de {oi['producto']} llegaron dañados (guía {guia}).",
+                                rec_id, producto_id=oi['producto_id'], cantidad=danada,
+                                monto=redondear(danada * a_decimal(oi['precio_unitario'])))
+                    fila['estado'] = 'Con dañados'
+                    diferencias += 1
+                if buena > pendiente:
+                    extra = buena - pendiente
+                    _incidencia(cur, oc_id, 'Sobrante', f"Llegaron {_cant(extra)} de más de {oi['producto']} (guía {guia}). "
+                                "Decidir: devolver al proveedor o pagar la diferencia.", rec_id, producto_id=oi['producto_id'],
+                                cantidad=extra, monto=redondear(extra * a_decimal(oi['precio_unitario'])))
+                    fila['estado'] = 'Sobrante'
+                    diferencias += 1
+                elif llegado < pendiente:
+                    fila['estado'] = 'Faltante'
+                    diferencias += 1
+                resultado.append(fila)
+            # Productos que no llegaron en esta guía también son faltantes de esta entrega
+            for iid, oi in oc_items.items():
+                if iid not in contados and a_decimal(oi['cantidad']) > a_decimal(oi['cantidad_recibida']):
+                    resultado.append({'producto': oi['producto'], 'esperado': float(a_decimal(oi['cantidad']) - a_decimal(oi['cantidad_recibida'])),
+                                      'llego': 0, 'buena': 0, 'danada': 0, 'estado': 'Faltante'})
+            cur.execute("""SELECT COUNT(*) FILTER (WHERE COALESCE(cantidad_recibida, 0) < cantidad) AS faltan
+                           FROM ordenes_compra_items WHERE orden_compra_id = %s""", (oc_id,))
+            completa = cur.fetchone()['faltan'] == 0
+            nuevo_estado = 'Recibida' if completa else 'Recibida parcial'
+            cur.execute("UPDATE ordenes_compra SET estado = %s, updated_at = NOW() WHERE id = %s", (nuevo_estado, oc_id))
+            if diferencias:
+                cur.execute("UPDATE com_recepciones SET con_diferencias = true WHERE id = %s", (rec_id,))
+            _historial(cur, oc_id, 'Mercadería recibida', f"{numero} · Guía {guia} · trajo: {traido_nombre} · recibió: {unom}"
+                       + (f' · sede distinta a la de la OC' if oc['almacen_entrega_id'] and oc['almacen_entrega_id'] != almacen_id else ''))
+        faltantes = [r for r in resultado if r['estado'] == 'Faltante']
+        msg = f'Recepción {numero} registrada. '
+        msg += 'Llegó todo lo que faltaba. ' if completa else f'Aún falta mercadería ({len(faltantes)} producto(s)): la orden sigue abierta. '
+        msg += 'Ahora ingrésala en Inventario ▸ Entradas y salidas.'
+        return jsonify({'success': True, 'message': msg, 'numero': numero, 'resultado': resultado, 'estado': nuevo_estado})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/incidencias/<int:inc_id>/resolver', methods=['POST'])
+def api_incidencia_resolver(inc_id):
+    if not puede_aprobar():
+        return _no_autorizado('Solo una supervisora resuelve diferencias.')
+    d = request.get_json(silent=True) or {}
+    try:
+        resolucion = (d.get('resolucion') or '').strip()
+        if len(resolucion) < 5:
+            raise ErrorCompras('Escribe cómo se resolvió (ejemplo: "el proveedor repone el lunes", "nota de crédito F001-123").')
+        _, unom = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT orden_compra_id, numero, estado FROM com_incidencias WHERE id = %s FOR UPDATE", (inc_id,))
+            inc = cur.fetchone()
+            if not inc or inc['estado'] != 'Abierta':
+                raise ErrorCompras('La diferencia ya estaba resuelta.')
+            cur.execute("""UPDATE com_incidencias SET estado = 'Resuelta', resolucion = %s, resuelto_por = %s, resuelto_en = NOW()
+                           WHERE id = %s""", (resolucion, unom, inc_id))
+            _historial(cur, inc['orden_compra_id'], 'Diferencia resuelta', f"{inc['numero']}: {resolucion}")
+            _intentar_cerrar(cur, inc['orden_compra_id'])
+        return jsonify({'success': True, 'message': 'Diferencia resuelta.'})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/cerrar_faltante', methods=['POST'])
+def api_cerrar_faltante(oc_id):
+    """El proveedor ya no enviará lo que falta: se cierra lo pendiente y queda registrado como diferencia."""
+    if not puede_aprobar():
+        return _no_autorizado('Solo una supervisora puede dar por terminada una orden con faltante.')
+    d = request.get_json(silent=True) or {}
+    try:
+        motivo = (d.get('motivo') or '').strip()
+        if len(motivo) < 5:
+            raise ErrorCompras('Explica por qué ya no llegará lo que falta.')
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT estado, flujo FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2' or oc['estado'] != 'Recibida parcial':
+                raise ErrorCompras('Solo se usa en órdenes "Recibida parcial".')
+            cur.execute("SELECT * FROM ordenes_compra_items WHERE orden_compra_id = %s AND COALESCE(cantidad_recibida, 0) < cantidad", (oc_id,))
+            for oi in cur.fetchall():
+                falta = a_decimal(oi['cantidad']) - a_decimal(oi['cantidad_recibida'])
+                _incidencia(cur, oc_id, 'Faltante', f"No llegarán {_cant(falta)} de {oi['producto']}. {motivo}",
+                            producto_id=oi['producto_id'], cantidad=falta, monto=redondear(falta * a_decimal(oi['precio_unitario'])))
+            cur.execute("UPDATE ordenes_compra SET estado = 'Recibida', updated_at = NOW() WHERE id = %s", (oc_id,))
+            _historial(cur, oc_id, 'Cerrada con faltante', motivo)
+        return jsonify({'success': True, 'message': 'Listo. Lo que faltaba quedó como diferencia: pide la nota de crédito o la devolución del dinero.'})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# FACTURA DEL PROVEEDOR (control de 3 vías: OC = recepción = factura)
+# ============================================================
+def _intentar_cerrar(cur, oc_id):
+    cur.execute("""
+        SELECT oc.estado,
+               (SELECT COUNT(*) FROM com_incidencias WHERE orden_compra_id = oc.id AND estado = 'Abierta') AS inc,
+               (SELECT COUNT(*) FROM comprobantes_proveedor WHERE orden_compra_id = oc.id
+                  AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')) AS fac
+        FROM ordenes_compra oc WHERE oc.id = %s
+    """, (oc_id,))
+    f = cur.fetchone()
+    if f and f['estado'] == 'Recibida' and f['inc'] == 0 and f['fac'] > 0:
+        cur.execute("UPDATE ordenes_compra SET estado = 'Cerrada', updated_at = NOW() WHERE id = %s", (oc_id,))
+        _historial(cur, oc_id, 'Cerrada', 'Recibida, facturada y sin diferencias')
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/factura', methods=['POST'])
+def api_orden_factura(oc_id):
+    if not puede_facturar():
+        return _no_autorizado('Tu usuario no puede registrar facturas de proveedores.')
+    d = request.get_json(silent=True) or {}
+    try:
+        tipo = d.get('tipo') or 'Factura'
+        if tipo not in ('Factura', 'Boleta', 'Recibo por honorarios'):
+            raise ErrorCompras('Tipo de comprobante inválido.')
+        numero = (d.get('numero') or '').strip().upper().replace(' ', '')
+        if '-' not in numero or len(numero) < 6:
+            raise ErrorCompras('Escribe la serie y el número tal como están en la factura, por ejemplo F001-00012345.')
+        monto = redondear(d.get('monto'))
+        if monto <= 0:
+            raise ErrorCompras('Escribe el total de la factura (con IGV).')
+        try:
+            fecha = datetime.strptime((d.get('fecha') or '')[:10], '%Y-%m-%d').date()
+        except ValueError:
+            raise ErrorCompras('Escribe la fecha de emisión de la factura.')
+        if fecha > date.today():
+            raise ErrorCompras('La fecha de la factura no puede ser futura.')
+        uid, unom = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""SELECT oc.*, p.razon_social, p.ruc FROM ordenes_compra oc LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+                           WHERE oc.id = %s FOR UPDATE OF oc""", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['estado'] in ('Borrador', 'Por aprobar', 'Anulada'):
+                raise ErrorCompras(f'La orden está "{oc["estado"]}". La factura se registra cuando la orden está aprobada.')
+            ruc = (oc['ruc'] or '').strip()
+            cur.execute("""SELECT 1 FROM comprobantes_proveedor WHERE numero = %s AND COALESCE(ruc_proveedor, '') = %s
+                           AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')""", (numero, ruc))
+            if cur.fetchone():
+                raise ErrorCompras(f'La factura {numero} de este proveedor ya está registrada.')
+            # Lo que debería cobrar el proveedor: lo recibido en buen estado (o lo pedido si aún no llega nada),
+            # menos lo que ya facturó antes en esta misma orden.
+            cur.execute("""SELECT SUM(LEAST(COALESCE(cantidad_recibida, 0), cantidad) * precio_unitario) AS rec,
+                                  SUM(cantidad * precio_unitario) AS ped FROM ordenes_compra_items WHERE orden_compra_id = %s""", (oc_id,))
+            v = cur.fetchone()
+            base = a_decimal(v['rec']) if a_decimal(v['rec']) > 0 else a_decimal(v['ped'])
+            cur.execute("""SELECT COALESCE(SUM(monto), 0) AS f FROM comprobantes_proveedor WHERE orden_compra_id = %s
+                           AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')""", (oc_id,))
+            ya_facturado = a_decimal(cur.fetchone()['f'])
+            esperado = redondear(redondear(base) + redondear(base * tasa_igv()) - ya_facturado)
+            cuadra = abs(monto - esperado) <= TOLERANCIA_FACTURA
+            vence = fecha + timedelta(days=int(oc['dias_credito'] or 0))
+            cur.execute("""
+                INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, orden_compra_id,
+                    orden_compra_numero, estado, observaciones, creado_por, empresa_id, fecha_vencimiento, monto_esperado, cuadra)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'Pendiente',%s,%s,%s,%s,%s,%s) RETURNING id
+            """, (tipo, numero, fecha, monto, ruc, oc['razon_social'], oc_id, oc['numero_orden'],
+                  (d.get('observaciones') or '').strip() or None, unom, oc['empresa_id'], vence, esperado, cuadra))
+            cp_id = cur.fetchone()['id']
+            # Los pagos adelantados de la OC pasan a esta factura (así Cuentas por pagar muestra el saldo real)
+            cur.execute("""SELECT id, monto FROM finanzas_pagos WHERE documento_tabla = 'ordenes_compra' AND documento_id = %s
+                           AND tipo = 'PAGO' AND estado <> 'Anulado' ORDER BY fecha, id FOR UPDATE""", (oc_id,))
+            aplicado = Decimal('0')
+            for p in cur.fetchall():
+                if aplicado + a_decimal(p['monto']) > monto:
+                    break
+                cur.execute("UPDATE finanzas_pagos SET documento_tabla = 'comprobantes_proveedor', documento_id = %s, documento_numero = %s WHERE id = %s",
+                            (cp_id, numero, p['id']))
+                aplicado += a_decimal(p['monto'])
+            if aplicado >= monto:
+                cur.execute("UPDATE comprobantes_proveedor SET estado = 'Pagado' WHERE id = %s", (cp_id,))
+            if not cuadra:
+                _incidencia(cur, oc_id, 'Factura no cuadra',
+                            f'La factura {numero} dice S/ {monto} y según lo recibido debería ser S/ {esperado} '
+                            f'(diferencia S/ {redondear(monto - esperado)}). Pide la corrección o una nota de crédito.',
+                            comprobante_id=cp_id, monto=redondear(monto - esperado))
+            _historial(cur, oc_id, 'Factura registrada', f'{tipo} {numero} · S/ {monto}' + ('' if cuadra else f' · NO CUADRA (esperado S/ {esperado})'))
+            _intentar_cerrar(cur, oc_id)
+        msg = f'Factura {numero} registrada.'
+        msg += ' Cuadra con lo recibido. ✔' if cuadra else f' OJO: no cuadra, debería ser S/ {esperado}. Quedó como diferencia por resolver.'
+        if aplicado:
+            msg += f' Se le aplicó el pago adelantado de S/ {aplicado}.'
+        return jsonify({'success': True, 'message': msg, 'cuadra': cuadra, 'esperado': float(esperado)})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+# ============================================================
+# IMPRESIÓN: ORDEN DE COMPRA PARA EL PROVEEDOR Y HOJA DE RECOJO
+# ============================================================
+@compras_flujo_bp.route('/compras/flujo/ordenes/<int:oc_id>/imprimir')
+def orden_imprimir(oc_id):
+    try:
+        o = _obtener_oc(oc_id)
+        if o['estado'] in ('Borrador', 'Por aprobar') and request.args.get('hoja') != 'borrador':
+            return 'La orden todavía no está aprobada. Solo se envía al proveedor cuando está aprobada.', 409
+        empresa = db_query("SELECT * FROM erp_empresas WHERE id = %s", (o['empresa_id'],)) if o['empresa_id'] else []
+        sede = db_query("SELECT * FROM almacenes WHERE id = %s", (o['almacen_entrega_id'],)) if o['almacen_entrega_id'] else []
+        prov = db_query("SELECT * FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o['proveedor_id'] else []
+        items = db_query("SELECT * FROM ordenes_compra_items WHERE orden_compra_id = %s ORDER BY id", (oc_id,))
+        return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},
+                               sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
+                               hoja=request.args.get('hoja') or 'oc', hoy=date.today(),
+                               declarada=_sede_declarada(o['empresa_id'], o['almacen_entrega_id']) if o['empresa_id'] and o['almacen_entrega_id'] else None)
+    except Exception as e:
+        print(f'❌ Imprimir OC: {e}')
+        return 'No se pudo generar la orden.', 500
+
+
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/exportar')
+def api_ordenes_exportar():
+    try:
+        datos = _listar_ocs("oc.flujo = 'v2'")
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=';')
+        w.writerow(['OC', 'Fecha', 'Empresa', 'Sede', 'Proveedor', 'RUC', 'Tipo', 'Pedidos', 'Clientes', 'Condición',
+                    'Total', 'Pagado', 'Estado', 'Siguiente paso', 'Diferencias abiertas'])
+        for o in datos:
+            w.writerow([o['numero'], o['fecha'], o['empresa'], o['sede'], o['proveedor'], o['ruc'], o['tipo_compra'],
+                        o['pedidos'], o['clientes'], o['condicion_pago'], o['total'], o['pagado'], o['estado'],
+                        o['paso']['texto'], o['incidencias']])
+        return Response('﻿' + buf.getvalue(), mimetype='text/csv',
+                        headers={'Content-Disposition': f'attachment; filename=ordenes_compra_{date.today():%Y%m%d}.csv'})
+    except Exception as e:
+        return _respuesta_error(e)

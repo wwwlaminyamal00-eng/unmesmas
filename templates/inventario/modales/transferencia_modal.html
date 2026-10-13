@@ -1,0 +1,75 @@
+<!-- MODAL TRANSFERENCIA ENTRE ALMACENES -->
+<div class="modal-bg" id="transferenciaModal">
+    <div class="modal-box" style="width:min(900px,96vw); max-height:85vh;">
+        <div class="modal-head">
+            <div class="modal-title" id="transferenciaModalTitle">🔄 Nueva transferencia</div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('transferenciaModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" id="transferenciaForm">
+            <div class="ficha-section">
+                <div class="ficha-section-title">Datos de la transferencia</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-3">
+                        <label>N° Transferencia</label>
+                        <input id="tfrNumero" placeholder="TRF-20260713-0001">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Fecha</label>
+                        <input id="tfrFecha" type="date">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Almacén origen</label>
+                        <select id="tfrOrigen">
+                            <option value="Almacén Principal">Almacén Principal</option>
+                            <option value="Almacén Secundario">Almacén Secundario</option>
+                            <option value="Tienda 1">Tienda 1</option>
+                            <option value="Tienda 2">Tienda 2</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Almacén destino</label>
+                        <select id="tfrDestino">
+                            <option value="Almacén Principal">Almacén Principal</option>
+                            <option value="Almacén Secundario">Almacén Secundario</option>
+                            <option value="Tienda 1">Tienda 1</option>
+                            <option value="Tienda 2">Tienda 2</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Producto a transferir</label>
+                        <input id="tfrProducto" placeholder="Descripción del producto">
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Cantidad</label>
+                        <input id="tfrCantidad" type="number" value="1">
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Unidad</label>
+                        <select id="tfrUnidad">
+                            <option value="UND">UND</option>
+                            <option value="KG">KG</option>
+                            <option value="LTS">LTS</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Estado</label>
+                        <select id="tfrEstado">
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="En tránsito">En tránsito</option>
+                            <option value="Completada">Completada</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-10">
+                        <label>Observaciones</label>
+                        <textarea id="tfrObs" placeholder="Detalles de la transferencia..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal('transferenciaModal')">Cancelar</button>
+            <button class="btn btn-soft" onclick="saveTransferencia('Borrador')">💾 Guardar borrador</button>
+            <button class="btn btn-primary" onclick="saveTransferencia('Pendiente')">📦 Iniciar transferencia</button>
+        </div>
+    </div>
+</div>

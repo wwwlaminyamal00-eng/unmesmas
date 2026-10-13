@@ -359,7 +359,15 @@
             if (prefill.tercero) $('movTercero').value = prefill.tercero;
             if (prefill.recepcion_id) $('movRecepcion').value = prefill.recepcion_id;
             if (prefill.obs) $('movObs').value = prefill.obs;
+            if (prefill.empresa) $('movEmpresa').value = prefill.empresa;
+            if (prefill.sede) $('movSede').value = prefill.sede;
+            if (prefill.lote) $('movLote').value = prefill.lote;
+            if (prefill.venc) $('movVenc').value = prefill.venc;
         }
+        // Lo recibido en Compras se ingresa tal como se recibió (misma empresa, sede y producto)
+        const fijo = !!(prefill && prefill.fijo);
+        ['movEmpresa', 'movSede', 'movMotivo'].forEach(i => { $(i).disabled = fijo; });
+        document.querySelector('[data-picker="mov"] .pp-input').disabled = fijo;
         ajustarFormMovimiento();
         abrir('movModal');
     }
@@ -424,7 +432,7 @@
         try {
             const { data } = await api('/inventario/api/recepciones_pendientes');
             $('recBody').innerHTML = data.length ? data.map(r => `<tr>
-                <td>${esc(r.numero_recepcion)}</td><td>${fecha(r.fecha)}</td><td class="left">${esc(r.producto)}</td>
+                <td>${esc(r.numero_recepcion)}</td><td>${fecha(r.fecha)}</td><td class="left">${esc(r.producto)}${r.desde_compras ? `<small>${esc(nombreEmpresa(r.empresa_id))} · ${esc(nombreSede(r.almacen_id))}${r.cliente ? ' · para ' + esc(r.cliente) : ' · para stock'}</small>` : ''}</td>
                 <td class="num">${cant(r.cantidad)} ${esc(r.unidad || '')}</td><td class="left">${esc(r.proveedor_nombre || '')}</td><td>${esc(r.orden_compra || '')}</td>
                 <td>${PUEDE.operar ? `<button class="btn-mini" data-rec='${esc(JSON.stringify(r))}'>Ingresar</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="7">No hay recepciones pendientes de ingresar. 👍</td></tr>';
@@ -706,9 +714,18 @@
             abrirMovimiento(d.abrirMov);
         } else if (d.rec) {
             const r = JSON.parse(d.rec);
-            abrirMovimiento('ENTRADA', { motivo: 'COMPRA', producto_id: r.producto_id_sugerido, texto: r.producto_id_sugerido ? r.producto : '',
-                cantidad: r.cantidad, documento: r.orden_compra, docTipo: 'Orden de compra', tercero: r.proveedor_nombre,
-                recepcion_id: r.id, obs: 'Recepción ' + r.numero_recepcion });
+            if (r.desde_compras) {
+                // Recibida en Compras: empresa, sede, producto y costo ya se saben; solo se confirma
+                abrirMovimiento('ENTRADA', { motivo: 'COMPRA', producto_id: r.producto_id_sugerido,
+                    texto: (r.codigo ? r.codigo + ' · ' : '') + r.producto, cantidad: r.cantidad, costo: r.costo_unitario,
+                    documento: r.guia_proveedor || r.orden_compra, docTipo: 'Guía de remisión', tercero: r.proveedor_nombre,
+                    recepcion_id: r.id, empresa: r.empresa_id, sede: r.almacen_id, lote: r.lote_serie, venc: r.fecha_vencimiento,
+                    fijo: true, obs: 'Recepción ' + r.numero_recepcion + ' · ' + r.orden_compra + (r.cliente ? ' · Pedido ' + (r.pedido_numero || '') + ' de ' + r.cliente : '') });
+            } else {
+                abrirMovimiento('ENTRADA', { motivo: 'COMPRA', producto_id: r.producto_id_sugerido, texto: r.producto_id_sugerido ? r.producto : '',
+                    cantidad: r.cantidad, documento: r.orden_compra, docTipo: 'Orden de compra', tercero: r.proveedor_nombre,
+                    recepcion_id: r.id, obs: 'Recepción ' + r.numero_recepcion });
+            }
         } else if (d.ubicar) {
             const s = JSON.parse(d.ubicar);
             abrirMovimiento('ENTRADA', { motivo: 'STOCK_INICIAL', producto_id: s.id, texto: s.txt, cantidad: s.stock, costo: s.costo });

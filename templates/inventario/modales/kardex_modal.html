@@ -1,0 +1,51 @@
+<!-- MODAL DETALLE KARDEX (Para ver el detalle de un movimiento) -->
+<div class="modal-bg" id="kardexModal">
+    <div class="modal-box" style="width:min(700px,96vw); max-height:85vh;">
+        <div class="modal-head">
+            <div class="modal-title" id="kardexModalTitle">📈 Detalle del movimiento</div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('kardexModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" id="kardexForm">
+            <div class="ficha-section">
+                <div class="ficha-section-title">Información del movimiento</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-4">
+                        <label>N° Movimiento</label>
+                        <input id="kdxNumero" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-4">
+                        <label>Fecha</label>
+                        <input id="kdxFecha" type="date" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-4">
+                        <label>Tipo</label>
+                        <input id="kdxTipo" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Producto</label>
+                        <input id="kdxProducto" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Cantidad</label>
+                        <input id="kdxCantidad" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Responsable</label>
+                        <input id="kdxResponsable" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-12">
+                        <label>Documento relacionado</label>
+                        <input id="kdxDocumento" readonly style="background:#F1F5F9;">
+                    </div>
+                    <div class="form-field col-12">
+                        <label>Observaciones</label>
+                        <textarea id="kdxObs" readonly style="background:#F1F5F9;" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal('kardexModal')">Cerrar</button>
+        </div>
+    </div>
+</div>
