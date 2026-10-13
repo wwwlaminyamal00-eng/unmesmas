@@ -1,12 +1,136 @@
 # utils.py
+# Utilidades compartidas: autenticación, roles y cálculos comerciales (IGV, totales).
+import os
+from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
-from flask import session, flash, redirect, url_for
+from flask import session, flash, redirect, url_for, request, jsonify
+
+
+# ============================================================
+# ROLES
+# ============================================================
+def _lista_env(nombre, por_defecto):
+    valor = os.environ.get(nombre, por_defecto)
+    return {v.strip().lower() for v in valor.split(',') if v.strip()}
+
+
+# Roles con acceso total a Configuración y seguridad (empresas, usuarios, correlativos, parámetros)
+ROLES_ADMIN = _lista_env('ROLES_ADMIN', 'admin,administrador,superadmin,gerencia_total,gerencia')
+
+# Roles que pueden validar / aceptar / rechazar cotizaciones.
+# Se conservan los valores que ya usaba el sistema (hellen, erika) para no romper usuarios actuales.
+ROLES_APROBADORES = _lista_env(
+    'ROLES_APROBADORES',
+    'hellen,erika,admin,superadmin,administrador,gerencia_total,gerencia,supervisor'
+)
+
+
+def rol_actual():
+    return (session.get('rol') or '').strip().lower()
+
+
+def es_admin():
+    return rol_actual() in ROLES_ADMIN
+
+
+def es_aprobador():
+    return rol_actual() in ROLES_APROBADORES or es_admin()
+
+
+def _es_peticion_api():
+    return '/api/' in request.path or request.is_json or \
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
+            if _es_peticion_api():
+                return jsonify({'success': False, 'error': 'Sesión expirada o no autorizada. Inicia sesión.'}), 401
             flash('Por favor, inicia sesión para acceder.', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            return login_required(f)(*args, **kwargs)
+        if not es_admin():
+            if _es_peticion_api():
+                return jsonify({'success': False, 'error': 'No tienes permisos de administrador para esta acción.'}), 403
+            flash('No tienes permisos para acceder a esa sección.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ============================================================
+# CÁLCULOS COMERCIALES (IGV PERÚ)
+# ============================================================
+def tasa_igv():
+    """Tasa de IGV vigente (18% por defecto). Se puede cambiar con la variable IGV_TASA."""
+    try:
+        return Decimal(str(os.environ.get('IGV_TASA', '0.18')))
+    except Exception:
+        return Decimal('0.18')
+
+
+def a_decimal(valor, por_defecto='0'):
+    """Convierte números o textos ('1,234.50', '', None) a Decimal de forma segura."""
+    if valor is None or valor == '':
+        return Decimal(por_defecto)
+    if isinstance(valor, Decimal):
+        return valor
+    try:
+        return Decimal(str(valor).replace(',', '').strip() or por_defecto)
+    except Exception:
+        return Decimal(por_defecto)
+
+
+def redondear(valor, decimales=2):
+    q = Decimal(1).scaleb(-decimales)
+    return a_decimal(valor).quantize(q, rounding=ROUND_HALF_UP)
+
+
+def calcular_totales(lineas, descuento_valor=0, descuento_tipo='%'):
+    """
+    Calcula subtotal, descuento, IGV y total a partir de líneas
+    [{'cantidad': x, 'precio': valor_unitario_sin_igv}, ...].
+    descuento_tipo: '%' o 'porcentaje' => porcentaje; cualquier otro => monto fijo.
+    Devuelve dict con Decimals redondeados a 2 decimales.
+    """
+    subtotal = sum((a_decimal(l.get('cantidad')) * a_decimal(l.get('precio')) for l in lineas), Decimal('0'))
+    dv = a_decimal(descuento_valor)
+    if dv < 0:
+        dv = Decimal('0')
+    if (descuento_tipo or '%') in ('%', 'porcentaje', 'pct'):
+        descuento = subtotal * min(dv, Decimal('100')) / Decimal('100')
+    else:
+        descuento = min(dv, subtotal)
+    base = subtotal - descuento
+    igv = base * tasa_igv()
+    total = base + igv
+    return {
+        'subtotal': redondear(subtotal),
+        'descuento': redondear(descuento),
+        'base_imponible': redondear(base),
+        'igv': redondear(igv),
+        'total': redondear(redondear(base) + redondear(igv)),
+    }
+
+
+def totales_consistentes(subtotal, igv, total, tolerancia='0.05'):
+    """Verifica que total = subtotal + igv (con tolerancia de redondeo)."""
+    return abs(a_decimal(subtotal) + a_decimal(igv) - a_decimal(total)) <= a_decimal(tolerancia)
+
+
+# ============================================================
+# NUMERACIÓN SEGURA (evita números duplicados)
+# ============================================================
+def bloquear_numeracion(cur, clave):
+    """Bloqueo transaccional para generar correlativos sin duplicados entre usuarios simultáneos."""
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (clave,))
