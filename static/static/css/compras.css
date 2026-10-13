@@ -1,0 +1,247 @@
+/* ============================================================
+   COMPRAS - ESTILOS PRINCIPALES (COLOR ROJO COMO VENTAS)
+   ============================================================ */
+
+/* Color principal: Rojo (mismo que Ventas) */
+:root {
+    --compras-primary: #EF233C;
+    --compras-primary-dark: #D91A30;
+    --compras-primary-light: #FCA5A5;
+    --compras-bg: #FFF1F2;
+    --compras-border: #FCA5A5;
+}
+
+/* ============================================================ */
+/* MODALES DE COMPRAS */
+/* ============================================================ */
+
+.modal-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 99999;
+    padding: 20px;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+}
+.modal-bg.show {
+    display: flex;
+}
+
+.modal-box {
+    width: min(1100px, 96vw);
+    max-height: 95vh;
+    background: #FFFFFF;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(15,23,42,.35);
+    display: flex;
+    flex-direction: column;
+    animation: modalIn 0.3s ease-out;
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.96) translateY(20px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid #E5E7EB;
+    background: #0F172A;
+    color: #fff;
+    flex: 0 0 auto;
+    min-height: 52px;
+}
+.modal-head .modal-title {
+    font-size: 18px;
+    font-weight: 1000;
+    color: #fff;
+}
+.modal-head .btn-close-modal {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 10px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+}
+.modal-head .btn-close-modal:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.modal-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 16px 20px;
+    background: #F8FAFC;
+}
+
+.modal-foot {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 20px;
+    border-top: 1px solid #E5E7EB;
+    background: #FFFFFF;
+}
+.modal-foot .btn {
+    height: 34px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-weight: 950;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.modal-foot .btn-secondary {
+    background: #F1F5F9;
+    color: #0F172A;
+    border: 1px solid #E5E7EB;
+}
+.modal-foot .btn-secondary:hover {
+    background: #E2E8F0;
+}
+.modal-foot .btn-soft {
+    background: #F8FAFC;
+    color: #334155;
+    border: 1px solid #E5E7EB;
+}
+.modal-foot .btn-soft:hover {
+    background: #F1F5F9;
+}
+.modal-foot .btn-primary {
+    background: #EF233C;
+    color: #fff;
+}
+.modal-foot .btn-primary:hover {
+    background: #D91A30;
+}
+
+/* Fichas dentro de modales */
+.ficha-section {
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: #FFFFFF;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.ficha-section-title {
+    padding: 10px 14px;
+    background: #FFF1F2;
+    border-bottom: 1px solid #E2E8F0;
+    color: #EF233C;
+    font-size: 13px;
+    font-weight: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ficha-section-title small {
+    color: #64748B;
+    font-weight: 850;
+    font-size: 11px;
+}
+
+.ficha-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 8px;
+    padding: 12px;
+}
+
+.ficha-grid .form-field {
+    min-width: 0;
+}
+
+.ficha-grid .form-field label {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 950;
+    color: #334155;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+}
+
+.ficha-grid .form-field input,
+.ficha-grid .form-field select,
+.ficha-grid .form-field textarea {
+    width: 100%;
+    border: 1px solid #E5E7EB;
+    border-radius: 9px;
+    background: #FFFFFF;
+    outline: none;
+    color: #0F172A;
+    font-size: 12px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.ficha-grid .form-field input,
+.ficha-grid .form-field select {
+    height: 30px;
+    padding: 0 10px;
+}
+
+.ficha-grid .form-field textarea {
+    padding: 8px 10px;
+    min-height: 50px;
+    resize: vertical;
+}
+
+.ficha-grid .form-field input:focus,
+.ficha-grid .form-field select:focus,
+.ficha-grid .form-field textarea:focus {
+    border-color: #EF233C;
+    box-shadow: 0 0 0 3px rgba(239, 35, 60, 0.10);
+}
+
+.ficha-grid .col-2 { grid-column: span 2; }
+.ficha-grid .col-3 { grid-column: span 3; }
+.ficha-grid .col-4 { grid-column: span 4; }
+.ficha-grid .col-6 { grid-column: span 6; }
+.ficha-grid .col-8 { grid-column: span 8; }
+.ficha-grid .col-12 { grid-column: span 12; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .ficha-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .ficha-grid .col-2,
+    .ficha-grid .col-3,
+    .ficha-grid .col-4,
+    .ficha-grid .col-6,
+    .ficha-grid .col-8,
+    .ficha-grid .col-12 {
+        grid-column: span 1 !important;
+    }
+    .modal-box {
+        width: 98vw !important;
+        max-height: 98vh !important;
+    }
+    .modal-body {
+        padding: 10px !important;
+    }
+    .modal-foot {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}

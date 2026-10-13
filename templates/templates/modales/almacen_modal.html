@@ -1,0 +1,174 @@
+<!-- MODAL ALMACÉN - CON ESTILO DE LA IMAGEN -->
+<div class="modal-bg" id="almacenModal">
+  <div class="client-modal-wrap">
+    <!-- HEADER -->
+    <div class="cm-head">
+      <span class="cm-head-title" id="almTitle">Crear almacén</span>
+      <button class="cm-close" id="almClose">×</button>
+    </div>
+    
+    <!-- BODY -->
+    <div class="cm-body">
+      
+      <!-- Información general -->
+<div class="cm-section">
+  <div class="cm-section-title">
+    <span class="cm-bullet"></span>Información general
+  </div>
+
+  <!-- Contenedor que separa los campos de la caja de estado -->
+  <div class="cm-grid-wrapper">
+
+    <!-- Columna izquierda: campos del almacén -->
+    <div class="cm-grid cm-grid-main">
+
+      <div class="cm-field">
+        <label>EMPRESA *</label>
+        <select id="alm_empresa">
+          <option value="KCF">KCF</option>
+          <option value="AGD">AGD</option>
+        </select>
+      </div>
+
+      <div class="cm-field">
+        <label>CÓDIGO ALMACÉN *</label>
+        <input id="alm_codigo" type="text" placeholder="ALM-001">
+      </div>
+
+      <div class="cm-field">
+        <label>NOMBRE DE ALMACÉN *</label>
+        <input id="alm_nombre" type="text">
+      </div>
+
+      <div class="cm-field">
+        <label>TIPO DE ALMACÉN *</label>
+        <select id="alm_tipo">
+          <option value="Principal">Principal</option>
+          <option value="Secundario">Secundario</option>
+          <option value="Temporal">Temporal</option>
+          <option value="Consignación">Consignación</option>
+          <option value="Virtual">Virtual</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- Columna derecha: estado del almacén -->
+    <div class="cm-state-box" id="almStateBox">
+      <label>ESTADO ALMACÉN *</label>
+
+      <select id="alm_estado">
+        <option value="Activo" selected>Activo</option>
+        <option value="Observado">Observado</option>
+        <option value="Bloqueado">Bloqueado</option>
+      </select>
+
+      <div class="cm-state-indicator">
+        <div class="cm-state-helper">
+          <span
+            class="cm-state-helper-dot"
+            id="almStateDot"
+          ></span>
+
+          <span
+            class="cm-state-helper-text"
+            id="almStateText"
+          ></span>
+        </div>
+
+        <span
+          class="cm-state-pill"
+          id="almStatePill"
+        ></span>
+      </div>
+    </div>
+
+  </div>
+  <!-- fin cm-grid-wrapper -->
+
+</div>
+
+      <!-- Responsable -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Responsable del almacén
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-contact">
+            <div class="cm-field">
+              <label>RESPONSABLE *</label>
+              <input id="alm_responsable" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CARGO RESPONSABLE</label>
+              <input id="alm_responsableCargo" type="text">
+            </div>
+            <div class="cm-field">
+              <label>TELÉFONO</label>
+              <input id="alm_telefono" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CORREO RESPONSABLE</label>
+              <input id="alm_email" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ubicación -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Ubicación y operación
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-delivery">
+            <div class="cm-field span-2">
+              <label>DIRECCIÓN *</label>
+              <input id="alm_direccion" type="text">
+            </div>
+            <div class="cm-field">
+              <label>LINK GOOGLE MAPS</label>
+              <input id="alm_googleMaps" type="text">
+            </div>
+            <div class="cm-field">
+              <label>HORARIO DE ATENCIÓN</label>
+              <input id="alm_horario" type="text" placeholder="Lun-Vie 8am-6pm">
+            </div>
+            <div class="cm-field full-row">
+              <label>INSTRUCCIONES INTERNAS</label>
+              <textarea id="alm_instrucciones"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Observaciones internas
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-field">
+            <label>COMENTARIO INTERNO</label>
+            <textarea id="alm_obs"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="cm-foot">
+      <div class="cm-foot-left">
+        <button class="cm-btn cm-btn-light" id="almClear">Limpiar</button>
+        <span class="cm-hint" id="almHint">Modo: creación</span>
+      </div>
+      <div class="cm-foot-right">
+        <button class="cm-btn cm-btn-light" id="almCancel">Cancelar</button>
+        <button class="cm-btn cm-btn-primary" id="almSave">Guardar Almacén</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+

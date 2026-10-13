@@ -1,0 +1,52 @@
+{% extends "ventas/index.html" %}
+
+{% block content %}
+<div id="notasCreditoContent">
+    <div class="panel">
+        <div class="clean-header">
+            <div class="master-title-wrap">
+                <div class="master-title">📝 Notas de Crédito</div>
+                <div class="master-subtitle">Ajustes y anulaciones de comprobantes</div>
+            </div>
+            <div class="search-box">
+                <input id="notaSearch" placeholder="Buscar por nota / cliente / RUC...">
+            </div>
+            <div class="clean-actions">
+                <select id="notaStatus">
+                    <option value="">Todos los estados</option>
+                    <option value="Borrador">Borrador</option>
+                    <option value="Emitida">Emitida</option>
+                    <option value="Enviada">Enviada</option>
+                    <option value="Aplicada">Aplicada</option>
+                    <option value="Anulada">Anulada</option>
+                </select>
+                <button class="btn btn-secondary" onclick="exportData('notas_credito')">📥 Exportar</button>
+                <button class="btn btn-primary btn-create" onclick="openNotaCreditoModal()">+ Nueva nota</button>
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Fecha</th>
+                        <th>Estado</th>
+                        <th>Tipo</th>
+                        <th>Documento</th>
+                        <th>RUC</th>
+                        <th>Cliente</th>
+                        <th>Comprobante</th>
+                        <th>Motivo</th>
+                        <th>Monto</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="notaRows"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+

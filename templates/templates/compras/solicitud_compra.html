@@ -1,0 +1,73 @@
+<!-- MODAL SOLICITUD DE COMPRA -->
+<div class="modal-bg" id="solicitudModal">
+    <div class="modal-box" style="width:min(900px,96vw); max-height:85vh;">
+        <div class="modal-head">
+            <div class="modal-title" id="solicitudModalTitle">📋 Nueva solicitud de compra</div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('solicitudModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" id="solicitudForm">
+            <div class="ficha-section">
+                <div class="ficha-section-title">Datos de la solicitud</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-3">
+                        <label>N° Solicitud</label>
+                        <input id="solNumero" placeholder="SOL-20260713-0001">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Fecha</label>
+                        <input id="solFecha" type="date">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Área</label>
+                        <select id="solArea">
+                            <option value="Almacén">Almacén</option>
+                            <option value="Producción">Producción</option>
+                            <option value="Mantenimiento">Mantenimiento</option>
+                            <option value="Ventas">Ventas</option>
+                            <option value="Administración">Administración</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Solicitante</label>
+                        <input id="solSolicitante" placeholder="Nombre del solicitante">
+                    </div>
+                    <div class="form-field col-4">
+                        <label>Producto</label>
+                        <input id="solProducto" placeholder="Descripción del producto">
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Cantidad</label>
+                        <input id="solCantidad" type="number" value="1">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Unidad</label>
+                        <select id="solUnidad">
+                            <option value="UND">UND</option>
+                            <option value="KG">KG</option>
+                            <option value="LTS">LTS</option>
+                            <option value="MTS">MTS</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Urgencia</label>
+                        <select id="solUrgencia">
+                            <option value="Baja">Baja</option>
+                            <option value="Media">Media</option>
+                            <option value="Alta">Alta</option>
+                            <option value="Urgente">Urgente</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Justificación</label>
+                        <textarea id="solJustificacion" placeholder="Motivo de la solicitud..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal('solicitudModal')">Cancelar</button>
+            <button class="btn btn-soft" onclick="saveSolicitud('Borrador')">💾 Guardar borrador</button>
+            <button class="btn btn-primary" onclick="saveSolicitud('Pendiente')">📤 Enviar a aprobación</button>
+        </div>
+    </div>
+</div>

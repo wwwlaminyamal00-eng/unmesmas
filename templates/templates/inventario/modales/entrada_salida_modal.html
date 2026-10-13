@@ -1,0 +1,72 @@
+<!-- MODAL ENTRADA / SALIDA DE MERCADERÍA -->
+<div class="modal-bg" id="entradaSalidaModal">
+    <div class="modal-box" style="width:min(900px,96vw); max-height:85vh;">
+        <div class="modal-head">
+            <div class="modal-title" id="entradaSalidaModalTitle">📦 Registrar movimiento</div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('entradaSalidaModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" id="entradaSalidaForm">
+            <div class="ficha-section">
+                <div class="ficha-section-title">Datos del movimiento</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-3">
+                        <label>Tipo de movimiento</label>
+                        <select id="movTipo" onchange="cambiarColorMov()">
+                            <option value="Entrada">📥 Entrada (Ingreso)</option>
+                            <option value="Salida">📤 Salida (Egreso)</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Fecha</label>
+                        <input id="movFecha" type="date">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Documento referencia</label>
+                        <input id="movDocumento" placeholder="OC, Factura, Guía, etc.">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Motivo</label>
+                        <select id="movMotivo">
+                            <option value="Compra">Compra</option>
+                            <option value="Venta">Venta</option>
+                            <option value="Devolución">Devolución</option>
+                            <option value="Ajuste">Ajuste</option>
+                            <option value="Transferencia">Transferencia</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Producto</label>
+                        <input id="movProducto" placeholder="Descripción o código del producto">
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Cantidad</label>
+                        <input id="movCantidad" type="number" value="1">
+                    </div>
+                    <div class="form-field col-4">
+                        <label>Unidad</label>
+                        <select id="movUnidad">
+                            <option value="UND">UND</option>
+                            <option value="KG">KG</option>
+                            <option value="LTS">LTS</option>
+                            <option value="MTS">MTS</option>
+                            <option value="CJA">CJA</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Responsable</label>
+                        <input id="movResponsable" placeholder="Nombre del encargado">
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Observaciones</label>
+                        <textarea id="movObs" placeholder="Detalles adicionales..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal('entradaSalidaModal')">Cancelar</button>
+            <button class="btn btn-soft" onclick="saveMovimiento('Pendiente')">💾 Guardar pendiente</button>
+            <button class="btn btn-primary" onclick="saveMovimiento('Confirmado')">✅ Confirmar movimiento</button>
+        </div>
+    </div>
+</div>

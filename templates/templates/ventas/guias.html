@@ -1,0 +1,53 @@
+
+{% extends "ventas/index.html" %}
+
+{% block content %}
+<div id="guiasContent">
+    <div class="panel">
+        <div class="clean-header">
+            <div class="master-title-wrap">
+                <div class="master-title">📦 Guías de Remisión</div>
+                <div class="master-subtitle">Documentos de traslado de mercadería</div>
+            </div>
+            <div class="search-box">
+                <input id="guiaSearch" placeholder="Buscar por guía / cliente / RUC...">
+            </div>
+            <div class="clean-actions">
+                <select id="guiaStatus">
+                    <option value="">Todos los estados</option>
+                    <option value="Borrador">Borrador</option>
+                    <option value="Pendiente despacho">Pendiente despacho</option>
+                    <option value="Emitida">Emitida</option>
+                    <option value="Entregada">Entregada</option>
+                    <option value="Anulada">Anulada</option>
+                </select>
+                <button class="btn btn-secondary" onclick="exportData('guias')">📥 Exportar</button>
+                <button class="btn btn-primary btn-create" onclick="openGuiaModal()">+ Nueva guía</button>
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Fecha</th>
+                        <th>Estado</th>
+                        <th>Guía</th>
+                        <th>RUC</th>
+                        <th>Cliente</th>
+                        <th>Cotización</th>
+                        <th>Comprobante</th>
+                        <th>Origen</th>
+                        <th>Destino</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="guiaRows"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+

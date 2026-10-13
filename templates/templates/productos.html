@@ -1,0 +1,58 @@
+<!-- templates/productos.html -->
+{% extends "base.html" %}
+
+{% block title %}
+    {% if editando %}
+        Editar producto - ERP Multiempresa
+    {% else %}
+        Productos - ERP Multiempresa
+    {% endif %}
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a>
+<span>/</span>
+{% if editando %}
+    <a href="/productos" class="crumb-btn" style="text-decoration:none;">Productos</a>
+    <span>/</span>
+    <span class="crumb-btn active-crumb">Editar producto</span>
+{% else %}
+    <span class="crumb-btn active-crumb">Productos</span>
+{% endif %}
+{% endblock %}
+
+{% block page_title %}
+    {% if editando %}
+        ✏️ Editar producto
+    {% else %}
+        Productos
+    {% endif %}
+{% endblock %}
+
+{% block subtitle %}
+    {% if editando %}
+        Modifica la información del producto seleccionado.
+    {% else %}
+        Gestión completa de productos: creación, consulta y comparativo de costos.
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<!-- ======================================== -->
+<!-- CONTENIDO SEGÚN LA PESTAÑA ACTIVA        -->
+<!-- ======================================== -->
+{% if active_tab == 'nuevo' %}
+    {% include "nuevo_producto.html" with context %}
+{% elif active_tab == 'base-datos' %}
+    {% include "base_datos_producto.html" %}
+{% elif active_tab == 'comparativo' %}
+    {% include "comparativo_costos.html" %}
+{% else %}
+    {% include "nuevo_producto.html" with context %}
+{% endif %}
+{% endblock %}
+
+
+
+

@@ -1,0 +1,1827 @@
+{% extends "base.html" %}
+
+{% block title %}Base de Datos: Producto - ERP Multiempresa{% endblock %}
+
+
+
+{% block page_title %}Base de Datos{% endblock %}
+{% block subtitle %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bd-toolbar-compact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.bd-search-wrap-compact {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 2px 10px;
+    transition: all 0.2s ease;
+    min-width: 150px;
+    height: 28px;
+}
+
+.bd-search-wrap-compact:focus-within {
+    border-color: #0f172a;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
+}
+
+.bd-search-wrap-compact i {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-right: 8px;
+}
+
+.bd-search-wrap-compact input {
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    width: 100%;
+    outline: none;
+    background: transparent;
+    color: #0f172a;
+    height: 24px;
+    line-height: 24px;
+}
+
+.bd-search-wrap-compact input::placeholder {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.bd-actions-compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.btn-compact {
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    color: #475569;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    height: 28px;
+}
+
+.btn-compact:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+/* ============================================================
+   FILTROS COMPACTOS - UNA SOLA FILA
+   ============================================================ */
+.bd-filters-compact {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.bd-filter-group {
+    flex: 1;
+    min-width: 100px;
+}
+
+.bd-filter-group select {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    font-size: 12px;
+    font-weight: 500;
+    color: #0f172a;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: 28px;
+}
+
+.bd-filter-group select:focus {
+    border-color: #0f172a;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.06);
+}
+
+.bd-filter-group select option {
+    padding: 4px;
+}
+
+/* ============================================================
+   FOOTER CON BOTONES DE VISTA
+   ============================================================ */
+.bd-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-top: 1px solid #e2e8f0;
+    background: #fafbfc;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.bd-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.bd-footer-center {
+    display: flex;
+    align-items: center;
+}
+
+.bd-footer-right {
+    display: flex;
+    align-items: center;
+}
+
+.bd-view-toggle-footer {
+    display: flex;
+    align-items: center;
+    gap: 0px;
+    padding: 0px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+}
+
+.bd-view-toggle-footer .view-label {
+    padding: 4px 10px 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    background: transparent;
+    border-right: 1px solid #e2e8f0;
+}
+
+.bd-view-toggle-footer .view-btn-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px;
+    border: none;
+    border-radius: 0px;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    color: #94a3b8;
+    position: relative;
+}
+
+.bd-view-toggle-footer .view-btn-footer .view-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+
+.bd-view-toggle-footer .view-btn-footer:hover {
+    background: rgba(255,255,255,0.4);
+    color: #0f172a;
+}
+
+.bd-view-toggle-footer .view-btn-footer:hover .view-number {
+    background: #cbd5e1;
+}
+
+.bd-view-toggle-footer .view-btn-footer.active {
+    background: white;
+    color: #0f172a;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 6px;
+    margin: 2px 0;
+}
+
+.bd-view-toggle-footer .view-btn-footer.active .view-number {
+    background: var(--empresa, #EF233C);
+    color: white;
+}
+
+/* ============================================================
+   COLUMNAS - PRINCIPAL VS COMPLETA
+   ============================================================ */
+.col-oculta {
+    display: none !important;
+}
+
+#tablaContainer.vista-completa .col-oculta {
+    display: table-cell !important;
+}
+
+/* ============================================================
+   TABLA - ENCABEZADOS CENTRADOS
+   ============================================================ */
+.bd-table-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.bd-table-scroll {
+    overflow-x: auto;
+    padding: 0;
+}
+
+.bd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 900px;
+}
+
+.bd-table thead th {
+    background: #f8fafc;
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 10px 8px;
+    text-align: center !important;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.bd-table tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    color: #0f172a;
+    font-size: 12px;
+    text-align: center !important;
+}
+
+.bd-table tbody td.bd-col-desc,
+.bd-table tbody td.bd-col-obs,
+.bd-table tbody td.bd-col-desc-larga {
+    text-align: left !important;
+}
+
+.bd-table tbody tr:hover td {
+    background: #f8fafc;
+}
+
+/* ============================================================
+   ANCHOS DE COLUMNAS (PRINCIPAL)
+   ============================================================ */
+.bd-col-item { width: 40px; text-align: center; }
+.bd-col-code { width: 100px; text-align: center; }
+.bd-col-date { width: 170px; text-align: center; }
+.bd-col-desc { width: 150px; }
+.bd-col-model { width: 100px; }
+.bd-col-brand { width: 120px; }
+.bd-col-cat { width: 130px; }
+.bd-col-status { width: 100px; text-align: center; }
+.bd-col-actions { width: 110px; text-align: center; }
+
+/* Anchos para columnas ocultas (completa) */
+.bd-col-subcat { width: 130px; }
+.bd-col-weight { width: 70px; }
+.bd-col-transport { width: 100px; }
+.bd-col-cost { width: 90px; }
+.bd-col-sale { width: 90px; }
+.bd-col-obs { width: 160px; text-align: left; }
+.bd-col-prov-pres { width: 130px; }
+.bd-col-sale-pres { width: 110px; }
+.bd-col-min-sale { width: 80px; }
+.bd-col-barras { width: 120px; }
+.bd-col-volumen { width: 80px; }
+.bd-col-origen { width: 100px; }
+.bd-col-tiempo { width: 100px; }
+.bd-col-abast { width: 120px; }
+.bd-col-stock-min { width: 80px; }
+.bd-col-desc-larga { width: 180px; text-align: left; }
+
+/* ============================================================
+   FECHA / HORA - BADGE
+   ============================================================ */
+.bd-date-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #f1f5f9;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.3px;
+    border: 1px solid #e2e8f0;
+}
+
+.bd-date-badge.editado {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #f59e0b;
+}
+
+.bd-date-badge.editado i {
+    font-size: 12px;
+    margin-right: 4px;
+}
+
+/* ============================================================
+   ESTADOS
+   ============================================================ */
+.bd-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.bd-status .bd-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.bd-status.st-active { background: #dcfce7; color: #166534; }
+.bd-status.st-active .bd-dot { background: #22c55e; }
+
+.bd-status.st-inactive { background: #f1f5f9; color: #475569; }
+.bd-status.st-inactive .bd-dot { background: #94a3b8; }
+
+.bd-status.st-pending { background: #fef3c7; color: #92400e; }
+.bd-status.st-pending .bd-dot { background: #f59e0b; }
+
+.bd-status.st-blocked { background: #fee2e2; color: #991b1b; }
+.bd-status.st-blocked .bd-dot { background: #ef4444; }
+
+.bd-status.st-available { background: #dbeafe; color: #1e40af; }
+.bd-status.st-available .bd-dot { background: #3b82f6; }
+
+/* ============================================================
+   CÓDIGO
+   ============================================================ */
+.bd-t-code {
+    font-family: 'Courier New', monospace;
+    font-weight: 800;
+    color: #0f172a;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    display: inline-block;
+    text-align: center;
+}
+
+/* ============================================================
+   ACCIONES
+   ============================================================ */
+.row-actions {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+}
+
+.row-actions .btn-action {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    background: transparent;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.row-actions .btn-action:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.row-actions .btn-action.btn-view:hover {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.row-actions .btn-action.btn-edit:hover {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.row-actions .btn-action.btn-delete:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* ============================================================
+   PAGINACIÓN
+   ============================================================ */
+.bd-count {
+    font-weight: 600;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.page-info {
+    font-weight: 600;
+    font-size: 12px;
+    color: #64748b;
+    padding: 0 6px;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.page-btn {
+    min-width: 30px;
+    height: 30px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 5px;
+    color: #0f172a;
+    font-weight: 600;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.page-btn:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+}
+
+.page-btn.page-active {
+    border-color: #0f172a;
+    background: #0f172a;
+    color: white;
+}
+
+.page-select {
+    height: 30px;
+    min-width: 100px;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    background: white;
+    padding: 0 6px;
+    font-weight: 600;
+    font-size: 11px;
+    color: #0f172a;
+    outline: none;
+    cursor: pointer;
+}
+
+/* ============================================================
+   SCROLL NOTE
+   ============================================================ */
+.scroll-note {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 768px) {
+    .bd-toolbar-compact {
+        flex-wrap: wrap;
+        padding: 6px 10px;
+    }
+    
+    .bd-search-wrap-compact {
+        flex: 1;
+        min-width: 100px;
+        height: 28px;
+    }
+    
+    .bd-actions-compact {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .bd-filters-compact {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: 4px 8px;
+    }
+    
+    .bd-filter-group {
+        min-width: 80px;
+    }
+    
+    .bd-filter-group select {
+        font-size: 11px;
+        padding: 4px 6px;
+        height: 26px;
+    }
+    
+    .bd-footer {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+    }
+    
+    .bd-footer-left,
+    .bd-footer-center,
+    .bd-footer-right {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .bd-table-scroll {
+        overflow-x: auto;
+    }
+    
+    .pagination {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .bd-view-toggle-footer {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .bd-view-toggle-footer .view-label {
+        width: 100%;
+        text-align: center;
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 4px 8px;
+    }
+    
+    .bd-col-date {
+        min-width: 150px;
+    }
+}
+
+/* ============================================================
+   MODAL VER PRODUCTO - COMPACTO
+   ============================================================ */
+
+.modal-ver-producto {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 999999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-ver-producto.active {
+    display: flex;
+}
+
+.modal-overlay-ver {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 999998;
+}
+
+.modal-contenido-ver {
+    position: relative;
+    z-index: 999999;
+    background: white;
+    border-radius: 16px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+    animation: modalSlideUp 0.25s ease;
+}
+
+@keyframes modalSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header-ver {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-icon-ver {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.modal-title-ver {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.modal-close-ver {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.modal-close-ver:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.modal-body-ver {
+    padding: 16px 20px 12px;
+    max-height: 55vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.modal-body-ver::-webkit-scrollbar {
+    width: 4px;
+}
+
+.modal-body-ver::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.modal-body-ver::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.grid-info-ver {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+}
+
+.grid-info-ver .info-item {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.grid-info-ver .info-item.full {
+    grid-column: span 2;
+}
+
+.grid-info-ver .info-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 1px;
+}
+
+.grid-info-ver .info-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    word-break: break-word;
+}
+
+.grid-info-ver .info-value .badge-estado {
+    display: inline-block;
+    padding: 2px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.badge-estado.activo { background: #dcfce7; color: #166534; }
+.badge-estado.bajo_pedido { background: #fef3c7; color: #92400e; }
+.badge-estado.bloqueado { background: #fee2e2; color: #991b1b; }
+
+.grid-info-ver .info-value .precio-venta {
+    color: #0066FF;
+    font-weight: 800;
+}
+
+.grid-info-ver .info-value .precio-costo {
+    color: #DC2626;
+    font-weight: 800;
+}
+
+.divider-ver {
+    grid-column: span 2;
+    height: 1px;
+    background: #e2e8f0;
+    margin: 4px 0;
+}
+
+.modal-footer-ver {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 20px 16px;
+    border-top: 1px solid #e2e8f0;
+    background: #fafbfc;
+}
+
+.btn-modal-ver {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-modal-ver.btn-secondary {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.btn-modal-ver.btn-secondary:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.btn-modal-ver.btn-primary {
+    background: #0066FF;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 102, 255, 0.25);
+}
+
+.btn-modal-ver.btn-primary:hover {
+    background: #0044CC;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 102, 255, 0.35);
+}
+
+/* ============================================================
+   BORDES ROJOS - VERSIÓN SUAVE
+   ============================================================ */
+
+.bd-table tbody td {
+    border-right: 1px solid #ef4444 !important;
+    padding: 6px 10px;
+
+    box-shadow: inset 0 -1px 0 #d1d5db;
+}
+
+.bd-table tbody td:last-child {
+    border-right: none !important;
+}
+
+.bd-table thead th {
+    border-right: 1px solid #ef4444 !important;
+    border-bottom: 2px solid #ef4444 !important;
+}
+
+.bd-table thead th:last-child {
+    border-right: none !important;
+}
+
+.bd-table tbody tr:hover td {
+    background: #fef2f2 !important;
+}
+
+.bd-table tbody tr {
+    border-bottom: 1px solid #f87171 !important;
+}
+
+@media (max-width: 600px) {
+    .modal-contenido-ver {
+        max-width: 95%;
+        max-height: 90vh;
+    }
+    
+    .grid-info-ver {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    
+    .grid-info-ver .info-item.full {
+        grid-column: span 1;
+    }
+    
+    .divider-ver {
+        grid-column: span 1;
+    }
+    
+    .modal-header-ver {
+        padding: 12px 16px;
+    }
+    
+    .modal-body-ver {
+        padding: 12px 16px 8px;
+    }
+    
+    .modal-footer-ver {
+        padding: 10px 16px 14px;
+        flex-wrap: wrap;
+    }
+    
+    .btn-modal-ver {
+        flex: 1;
+        justify-content: center;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Base de datos: Producto</h1>
+        <p class="subtitle">Consulta, filtra y gestiona todos los productos del sistema.</p>
+    </div>
+</div>
+
+<!-- BARRA DE HERRAMIENTAS COMPACTA - MÁS DELGADA -->
+<div class="bd-toolbar-compact">
+    <div class="bd-search-wrap-compact">
+        <i class="bi bi-search"></i>
+        <input id="bdSearchInput" type="text" placeholder="Buscar por nombre, código, modelo, marca, categoría..." />
+    </div>
+    <div class="bd-actions-compact">
+        <button class="btn-compact" type="button" onclick="bdExportarExcel()"><i class="bi bi-file-earmark-excel" style="color:var(--ok)"></i></button>
+        <button class="btn-compact" type="button" onclick="bdLimpiarFiltros()"><i class="bi bi-funnel"></i></button>
+    </div>
+</div>
+
+<!-- FILTROS COMPACTOS EN UNA SOLA FILA -->
+<div class="bd-filters-compact">
+    <div class="bd-filter-group">
+        <select id="bdCategoriaFilter">
+            <option value="">Categoría</option>
+            <option>Seguridad Industrial</option>
+            <option>Indumentaria de Oficina</option>
+            <option>Tecnología</option>
+            <option>Limpieza</option>
+            <option>Cuidado Personal</option>
+            <option>Ferretería</option>
+            <option>Iluminación</option>
+        </select>
+    </div>
+    <div class="bd-filter-group">
+        <select id="bdSubcategoriaFilter">
+            <option value="">Subcategoría</option>
+            <option>Señalización y tráfico</option>
+            <option>Chalecos</option>
+            <option>Taladros</option>
+            <option>Extintores</option>
+            <option>Protección personal</option>
+            <option>Cintas</option>
+            <option>Primeros Auxilios</option>
+            <option>Lámparas</option>
+            <option>Calzado</option>
+        </select>
+    </div>
+    <div class="bd-filter-group">
+        <select id="bdMarcaFilter">
+            <option value="">Marca</option>
+            <option>KCF Safety</option>
+            <option>EasyWon</option>
+            <option>Borweg</option>
+            <option>Kidde</option>
+            <option>3M</option>
+            <option>Protex</option>
+            <option>Nova Safe</option>
+            <option>Philips</option>
+            <option>Tuk</option>
+            <option>Descartame</option>
+        </select>
+    </div>
+    <div class="bd-filter-group">
+        <select id="bdModeloFilter">
+            <option value="">Modelo</option>
+            <option>CS-75</option>
+            <option>SR-8891</option>
+            <option>TAL-850M</option>
+            <option>PQS-6</option>
+            <option>CS-100R</option>
+            <option>ZP-100</option>
+            <option>BOT-VIP36</option>
+            <option>LED-20W</option>
+            <option>MT-48</option>
+            <option>NIT-010</option>
+        </select>
+    </div>
+    <div class="bd-filter-group">
+        <select id="bdEstadoFilter">
+            <option value="">Estado</option>
+            <option value="activo">🟢 Activo</option>
+            <option value="bajo_pedido">🟠 Bajo pedido</option>
+            <option value="bloqueado">🔴 Bloqueado</option>
+        </select>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TABLA DE PRODUCTOS                                           -->
+<!-- ============================================================ -->
+<div class="bd-table-card" id="tablaContainer">
+    <div class="bd-table-scroll">
+        <table class="bd-table" id="bdTable">
+            <thead>
+                <tr>
+                    <!-- COLUMNAS SIEMPRE VISIBLES (PRINCIPAL) -->
+                    <th class="bd-col-item">Ítem</th>
+                    <th class="bd-col-code">Código</th>
+                    <th class="bd-col-date">Fecha / Hora</th>
+                    <th class="bd-col-desc">Descripción</th>
+                    <th class="bd-col-model">Modelo</th>
+                    <th class="bd-col-brand">Marca</th>
+                    <th class="bd-col-cat">Categoría</th>
+                    <th class="bd-col-status">Estado</th>
+                    <th class="bd-col-actions">Acciones</th>
+
+                    <!-- COLUMNAS OCULTAS EN VISTA PRINCIPAL (COMPLETA) -->
+                    <th class="bd-col-subcat col-oculta">Subcategoría</th>
+                    <th class="bd-col-weight col-oculta">Peso (kg)</th>
+                    <th class="bd-col-transport col-oculta">Transporte</th>
+                    <th class="bd-col-cost col-oculta">Costo</th>
+                    <th class="bd-col-sale col-oculta">Venta</th>
+                    <th class="bd-col-obs col-oculta">Observación</th>
+                    <th class="bd-col-prov-pres col-oculta">Pres. Proveedor</th>
+                    <th class="bd-col-sale-pres col-oculta">Pres. Venta</th>
+                    <th class="bd-col-min-sale col-oculta">Venta mín.</th>
+                    <th class="bd-col-barras col-oculta">Código barras</th>
+                    <th class="bd-col-volumen col-oculta">Volumen (m³)</th>
+                    <th class="bd-col-origen col-oculta">Origen</th>
+                    <th class="bd-col-tiempo col-oculta">Tiempo entrega</th>
+                    <th class="bd-col-abast col-oculta">Abastecimiento</th>
+                    <th class="bd-col-stock-min col-oculta">Stock mín.</th>
+                    <th class="bd-col-desc-larga col-oculta">Descripción larga</th>
+                </tr>
+            </thead>
+            <tbody id="bdProductTableBody">
+                <tr>
+                    <td colspan="25" style="text-align:center;color:#94A3B8;padding:40px;">
+                        <i class="bi bi-inbox" style="font-size:32px;display:block;margin-bottom:10px;"></i>
+                        Cargando productos...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- FOOTER CON BOTONES DE VISTA, CONTADOR Y PAGINACIÓN           -->
+    <!-- ============================================================ -->
+    <div class="bd-footer">
+        <div class="bd-footer-left">
+            <!-- BOTONES DE VISTA: PRINCIPAL / COMPLETA -->
+            <div class="bd-view-toggle-footer">
+                <span class="view-label">Vista de datos</span>
+                <button class="view-btn-footer active" id="viewPrincipalFooter" onclick="cambiarVista('principal')">
+                    <span class="view-number">1</span> Principal
+                </button>
+                <button class="view-btn-footer" id="viewCompletaFooter" onclick="cambiarVista('completa')">
+                    <span class="view-number">2</span> Completa
+                </button>
+            </div>
+        </div>
+        
+        <div class="bd-footer-center">
+            <span class="bd-count" id="bdTotalRegistros">0 registros</span>
+        </div>
+        
+        <div class="bd-footer-right">
+            <div class="pagination">
+                <span class="page-info" id="bdPaginaInfo">1/1</span>
+                <button class="page-btn" onclick="bdPaginaAnterior()">‹</button>
+                <span class="page-btn page-active" id="bdPaginaActual">1</span>
+                <button class="page-btn" onclick="bdPaginaSiguiente()">›</button>
+                <select class="page-select" id="bdPorPaginaSelect" onchange="bdCambiarPorPagina()">
+                    <option value="10">10 por página</option>
+                    <option value="20" selected>20 por página</option>
+                    <option value="50">50 por página</option>
+                    <option value="100">100 por página</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="scroll-note"><i class="bi bi-arrows-expand"></i> Las columnas complementarias se visualizan desplazando la barra horizontal de la tabla.</div>
+<!-- ============================================================ -->
+
+
+<!-- MODAL VER PRODUCTO - COMPACTO                                -->
+<!-- ============================================================ -->
+<div class="modal-ver-producto" id="modalVerProducto" style="display:none;">
+    <div class="modal-overlay-ver" onclick="cerrarModalVer()"></div>
+    <div class="modal-contenido-ver">
+        <div class="modal-header-ver">
+            <span class="modal-icon-ver">📦</span>
+            <span class="modal-title-ver" id="modalVerTitulo">Producto</span>
+            <button class="modal-close-ver" onclick="cerrarModalVer()">✕</button>
+        </div>
+        <div class="modal-body-ver" id="modalVerBody">
+            <div style="text-align:center;padding:20px;color:#94a3b8;">Cargando...</div>
+        </div>
+        <div class="modal-footer-ver">
+            <button class="btn-modal-ver btn-secondary" onclick="cerrarModalVer()">Cerrar</button>
+            <button class="btn-modal-ver btn-primary" id="btnEditarDesdeModal" onclick="editarDesdeModal()">✏️ Editar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+{% block extra_js %}
+<script>
+// ============================================================
+// FUNCIONES PARA BASE DE DATOS DE PRODUCTOS
+// ============================================================
+
+// Variables globales
+window.bdProductos = [];
+window.bdProductosFiltrados = [];
+window.bdVistaActual = 'principal';
+window.bdPaginaActual = 1;
+window.bdPorPagina = 20;
+
+// ============================================================
+// FUNCIÓN PARA FORMATEAR FECHA
+// ============================================================
+function formatearFecha(fecha) {
+    if (!fecha) return '-';
+    
+    try {
+        var d = new Date(fecha);
+        if (isNaN(d.getTime())) return '-';
+        
+        var dia = String(d.getDate()).padStart(2, '0');
+        var mes = String(d.getMonth() + 1).padStart(2, '0');
+        var anio = d.getFullYear();
+        var horas = String(d.getHours()).padStart(2, '0');
+        var minutos = String(d.getMinutes()).padStart(2, '0');
+        
+        return dia + '/' + mes + '/' + anio + ' ' + horas + ':' + minutos;
+    } catch (e) {
+        return '-';
+    }
+}
+
+function fueEditado(fecha_creacion, updated_at) {
+    if (!fecha_creacion || !updated_at) return false;
+    if (fecha_creacion === updated_at) return false;
+    try {
+        var created = new Date(fecha_creacion);
+        var updated = new Date(updated_at);
+        if (isNaN(created.getTime()) || isNaN(updated.getTime())) return false;
+        var diffMs = updated.getTime() - created.getTime();
+        return diffMs > 60000;
+    } catch (e) {
+        return false;
+    }
+}
+
+
+// ============================================================
+// CAMBIAR VISTA
+// ============================================================
+function cambiarVista(vista) {
+    console.log('🔄 Cambiando a vista:', vista);
+    window.bdVistaActual = vista;
+    
+    var viewPrincipal = document.getElementById('viewPrincipalFooter');
+    var viewCompleta = document.getElementById('viewCompletaFooter');
+    
+    if (viewPrincipal) viewPrincipal.classList.remove('active');
+    if (viewCompleta) viewCompleta.classList.remove('active');
+    
+    if (vista === 'principal') {
+        if (viewPrincipal) viewPrincipal.classList.add('active');
+    } else {
+        if (viewCompleta) viewCompleta.classList.add('active');
+    }
+    
+    var container = document.getElementById('tablaContainer');
+    if (container) {
+        if (vista === 'completa') {
+            container.classList.add('vista-completa');
+        } else {
+            container.classList.remove('vista-completa');
+        }
+    }
+    
+    if (typeof bdRenderProductos === 'function') {
+        bdRenderProductos(window.bdProductosFiltrados || window.bdProductos || []);
+    }
+}
+
+// ============================================================
+// CARGAR PRODUCTOS
+// ============================================================
+async function cargarProductos() {
+    console.log('🔄 Cargando productos desde la API...');
+    
+    if (!window.location.pathname.includes('/productos/base-datos')) {
+        console.log('ℹ️ No estamos en la página de base de datos, omitiendo carga');
+        return [];
+    }
+    
+    try {
+        const response = await fetch('/productos/api/productos');
+        const result = await response.json();
+        console.log('📦 Datos recibidos:', result);
+        
+        if (result.success) {
+            window.bdProductos = result.data || [];
+            window.bdProductosFiltrados = window.bdProductos;
+            console.log(`✅ ${window.bdProductos.length} productos cargados`);
+            bdRenderProductos(window.bdProductosFiltrados);
+            return window.bdProductos;
+        } else {
+            console.error('❌ Error en la respuesta:', result.error);
+            if (typeof mostrarNotificacion === 'function') {
+                mostrarNotificacion('error', 'Error', result.error || 'Error al cargar productos');
+            }
+            return [];
+        }
+    } catch (error) {
+        console.error('❌ Error cargando productos:', error);
+        if (typeof mostrarNotificacion === 'function') {
+            mostrarNotificacion('error', 'Error', 'Error al cargar productos desde el servidor');
+        }
+        return [];
+    }
+}
+
+// ============================================================
+// FUNCIÓN editarProducto - REDIRIGE A NUEVO PRODUCTO
+// ============================================================
+function editarProducto(id) {
+    if (!id) {
+        if (typeof mostrarNotificacion === 'function') {
+            mostrarNotificacion('error', '❌ Error', 'ID de producto no válido');
+        }
+        return;
+    }
+    console.log('✏️ Editando producto ID:', id);
+    window.location.href = '/productos/editar/' + id;
+}
+
+// ============================================================
+// APLICAR FILTROS
+// ============================================================
+function bdAplicarFiltros() {
+    var q = document.getElementById('bdSearchInput')?.value?.trim().toLowerCase() || '';
+    var categoria = document.getElementById('bdCategoriaFilter')?.value || '';
+    var subcateg = document.getElementById('bdSubcategoriaFilter')?.value || '';
+    var marca = document.getElementById('bdMarcaFilter')?.value || '';
+    var modelo = document.getElementById('bdModeloFilter')?.value || '';
+    var estado = document.getElementById('bdEstadoFilter')?.value || '';
+    
+    if (!window.bdProductos) return;
+    
+    window.bdProductosFiltrados = window.bdProductos.filter(function(p) {
+        var texto = (p.codigo || '') + ' ' + (p.descripcion || '') + ' ' + (p.modelo || '') + ' ' + (p.marca || '') + ' ' + (p.familia || '') + ' ' + (p.categoria_derivada || '');
+        var coincideTexto = !q || texto.toLowerCase().includes(q);
+        var coincideCategoria = !categoria || (p.familia === categoria || p.categoria === categoria);
+        var coincideSubcategoria = !subcateg || (p.categoria_derivada === subcateg || p.subcategoria === subcateg);
+        var coincideMarca = !marca || p.marca === marca;
+        var coincideModelo = !modelo || p.modelo === modelo;
+        var coincideEstado = !estado || (p.estado || 'activo') === estado;
+        return coincideTexto && coincideCategoria && coincideSubcategoria && coincideMarca && coincideModelo && coincideEstado;
+    });
+    
+    window.bdPaginaActual = 1;
+    bdRenderProductos(window.bdProductosFiltrados);
+}
+
+// ============================================================
+// LIMPIAR FILTROS
+// ============================================================
+function bdLimpiarFiltros() {
+    var searchInput = document.getElementById('bdSearchInput');
+    var categoriaFilter = document.getElementById('bdCategoriaFilter');
+    var subcategoriaFilter = document.getElementById('bdSubcategoriaFilter');
+    var marcaFilter = document.getElementById('bdMarcaFilter');
+    var modeloFilter = document.getElementById('bdModeloFilter');
+    var estadoFilter = document.getElementById('bdEstadoFilter');
+    
+    if (searchInput) searchInput.value = '';
+    if (categoriaFilter) categoriaFilter.selectedIndex = 0;
+    if (subcategoriaFilter) subcategoriaFilter.selectedIndex = 0;
+    if (marcaFilter) marcaFilter.selectedIndex = 0;
+    if (modeloFilter) modeloFilter.selectedIndex = 0;
+    if (estadoFilter) estadoFilter.selectedIndex = 0;
+    
+    window.bdProductosFiltrados = window.bdProductos;
+    window.bdPaginaActual = 1;
+    bdRenderProductos(window.bdProductosFiltrados);
+    
+    if (typeof mostrarNotificacion === 'function') {
+        mostrarNotificacion('info', 'Filtros limpiados', 'Mostrando todos los productos.');
+    }
+}
+
+// ============================================================
+// PAGINACIÓN
+// ============================================================
+function bdPaginaAnterior() {
+    if (window.bdPaginaActual > 1) {
+        window.bdPaginaActual--;
+        bdRenderProductos(window.bdProductosFiltrados);
+    }
+}
+
+function bdPaginaSiguiente() {
+    var total = window.bdProductosFiltrados.length;
+    var totalPaginas = Math.ceil(total / window.bdPorPagina);
+    if (window.bdPaginaActual < totalPaginas) {
+        window.bdPaginaActual++;
+        bdRenderProductos(window.bdProductosFiltrados);
+    }
+}
+
+function bdCambiarPorPagina() {
+    window.bdPorPagina = parseInt(document.getElementById('bdPorPaginaSelect')?.value || 20);
+    window.bdPaginaActual = 1;
+    bdRenderProductos(window.bdProductosFiltrados);
+}
+
+// ============================================================
+// EXPORTAR EXCEL
+// ============================================================
+function bdExportarExcel() {
+    if (typeof mostrarNotificacion === 'function') {
+        mostrarNotificacion('success', '📊 Exportando...', 'El archivo Excel se está generando.');
+    }
+}
+
+// ============================================================
+// VER PRODUCTO - MODAL COMPACTO
+// ============================================================
+var productoIdActual = null;
+
+function verProducto(id) {
+    if (!id) {
+        if (typeof mostrarNotificacion === 'function') {
+            mostrarNotificacion('error', '❌ Error', 'ID de producto no válido');
+        }
+        return;
+    }
+    
+    productoIdActual = id;
+    
+    var modal = document.getElementById('modalVerProducto');
+    var body = document.getElementById('modalVerBody');
+    var titulo = document.getElementById('modalVerTitulo');
+    
+    if (!modal || !body) return;
+    
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+    titulo.textContent = 'Cargando...';
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;"><i class="bi bi-hourglass-split" style="font-size:24px;display:block;margin-bottom:8px;"></i>Cargando producto...</div>';
+    
+    fetch('/productos/api/productos/' + id)
+        .then(function(response) { 
+            if (!response.ok) throw new Error('Error al cargar el producto');
+            return response.json(); 
+        })
+        .then(function(data) {
+            if (data.success && data.data) {
+                var p = data.data;
+                renderModalProducto(p);
+            } else {
+                body.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626;">❌ ' + (data.error || 'Producto no encontrado') + '</div>';
+                titulo.textContent = 'Error';
+            }
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            body.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626;">❌ Error al cargar el producto</div>';
+            titulo.textContent = 'Error';
+        });
+}
+
+
+function renderModalProducto(p) {
+    var titulo = document.getElementById('modalVerTitulo');
+    var body = document.getElementById('modalVerBody');
+    
+    titulo.textContent = p.descripcion || p.codigo || 'Producto';
+    
+    var estadoLabel = 'Activo';
+    if (p.estado) {
+        var estadoLower = p.estado.toLowerCase();
+        var estadoMap = {
+            'activo': 'Activo',
+            'bajo_pedido': 'Bajo pedido',
+            'bloqueado': 'Bloqueado'
+        };
+        estadoLabel = estadoMap[estadoLower] || p.estado.charAt(0).toUpperCase() + p.estado.slice(1).toLowerCase();
+    }
+    
+    var estadoClass = (p.estado || 'activo').toLowerCase();
+    
+    var costo = p.costo_unitario ? parseFloat(p.costo_unitario).toFixed(2) : '0.00';
+    var precio = p.precio_unitario ? parseFloat(p.precio_unitario).toFixed(2) : '0.00';
+    var categoria = p.categoria || p.familia || '-';
+    var subcategoria = p.subcategoria || p.categoria_derivada || '-';
+    
+    // ✅ CORREGIDO: Fechas
+    var fechaCreacion = p.fecha_creacion || null;
+    var fechaActualizacion = p.updated_at || null;
+    
+    var editado = false;
+    if (fechaCreacion && fechaActualizacion && fechaCreacion !== fechaActualizacion) {
+        try {
+            var created = new Date(fechaCreacion);
+            var updated = new Date(fechaActualizacion);
+            if (!isNaN(created.getTime()) && !isNaN(updated.getTime())) {
+                var diffMs = updated.getTime() - created.getTime();
+                editado = diffMs > 60000;
+            }
+        } catch(e) {
+            console.warn('Error comparando fechas:', e);
+        }
+    }
+    
+    var fechaCreacionStr = formatearFecha(fechaCreacion);
+    var fechaEdicionStr = formatearFecha(fechaActualizacion);
+    
+    body.innerHTML = `
+        <div class="grid-info-ver">
+            <div class="info-item">
+                <span class="info-label">Código</span>
+                <span class="info-value"><span class="bd-t-code">${p.codigo || '-'}</span></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Estado</span>
+                <span class="info-value"><span class="badge-estado ${estadoClass}">${estadoLabel}</span></span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Modelo</span>
+                <span class="info-value">${p.modelo || '-'}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Marca</span>
+                <span class="info-value">${p.marca || '-'}</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Categoría</span>
+                <span class="info-value">${categoria}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Subcategoría</span>
+                <span class="info-value">${subcategoria}</span>
+            </div>
+            
+            <div class="divider-ver"></div>
+            
+            <div class="info-item">
+                <span class="info-label">Valor Venta</span>
+                <span class="info-value precio-venta">S/ ${precio}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Valor Costo</span>
+                <span class="info-value precio-costo">S/ ${costo}</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Unidad</span>
+                <span class="info-value">${p.unidad || '-'}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Transporte</span>
+                <span class="info-value">${p.transporte || '-'}</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Stock mínimo</span>
+                <span class="info-value">${p.stock_minimo || '0'}</span>
+            </div>
+            <div class="info-item">
+    <span class="info-label">Fecha creación</span>
+    <span class="info-value">${fechaCreacionStr}</span>  <!-- ✅ Usa fechaCreacionStr -->
+</div>
+
+${editado ? `
+<div class="info-item full" style="background:#fef3c7;border-radius:6px;padding:6px 10px;border:1px solid #f59e0b;">
+    <span class="info-label" style="color:#92400e;">✏️ Última edición</span>
+    <span class="info-value" style="color:#92400e;font-weight:700;">${fechaEdicionStr}</span>  <!-- ✅ Usa fechaEdicionStr -->
+</div>` : ''}
+            
+            <div class="info-item full">
+                <span class="info-label">Descripción</span>
+                <span class="info-value">${p.descripcion_larga || p.descripcion || '-'}</span>
+            </div>
+            
+            ${p.observaciones ? `
+            <div class="info-item full">
+                <span class="info-label">Observaciones</span>
+                <span class="info-value" style="font-weight:400;color:#475569;">${p.observaciones}</span>
+            </div>` : ''}
+        </div>
+    `;
+    
+    var btnEditar = document.getElementById('btnEditarDesdeModal');
+    if (btnEditar) {
+        btnEditar.onclick = function() {
+            cerrarModalVer();
+            editarProducto(p.id);
+        };
+    }
+}
+
+
+function cerrarModalVer() {
+    var modal = document.getElementById('modalVerProducto');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+    productoIdActual = null;
+}
+
+function editarDesdeModal() {
+    if (productoIdActual) {
+        cerrarModalVer();
+        editarProducto(productoIdActual);
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        cerrarModalVer();
+    }
+});
+
+// ============================================================
+// ELIMINAR PRODUCTO
+// ============================================================
+function eliminarProducto(id) {
+    if (!id) {
+        if (typeof mostrarNotificacion === 'function') {
+            mostrarNotificacion('error', '❌ Error', 'ID de producto no válido');
+        }
+        return;
+    }
+    
+    var producto = window.bdProductos.find(function(p) { return p.id == id; });
+    var nombre = producto ? (producto.descripcion || producto.codigo) : 'este producto';
+    
+    if (!confirm('¿Estás seguro de eliminar "' + nombre + '"? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    fetch('/productos/api/productos/' + id, { method: 'DELETE' })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                if (typeof mostrarNotificacion === 'function') {
+                    mostrarNotificacion('success', '✅ Eliminado', '"' + nombre + '" eliminado correctamente');
+                }
+                cargarProductos();
+            } else {
+                if (typeof mostrarNotificacion === 'function') {
+                    mostrarNotificacion('error', '❌ Error', data.error || 'Error al eliminar');
+                }
+            }
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            if (typeof mostrarNotificacion === 'function') {
+                mostrarNotificacion('error', '❌ Error', 'Error al comunicarse con el servidor');
+            }
+        });
+}
+
+
+
+// ============================================================
+// 🔥 FORZAR SOBRESCRITURA DEFINITIVA - AGREGAR AL FINAL DEL ARCHIVO
+// ============================================================
+
+// 1. Asegurar que la función correcta esté definida
+window.bdRenderProductos = function(data) {
+    if (!window.location.pathname.includes('/productos/base-datos')) {
+        console.log('ℹ️ No estamos en la página de base de datos');
+        return;
+    }
+    
+    console.log('🖥️ Renderizando productos (VERSIÓN CORREGIDA FINAL)...');
+    const tbody = document.getElementById('bdProductTableBody');
+    if (!tbody) {
+        console.error('❌ No se encontró bdProductTableBody');
+        return;
+    }
+    
+    if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="25" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay productos registrados</td></tr>`;
+        document.getElementById('bdTotalRegistros').textContent = '0 registros';
+        document.getElementById('bdPaginaInfo').textContent = '0/0';
+        return;
+    }
+    
+    var total = data.length;
+    var totalPaginas = Math.ceil(total / window.bdPorPagina);
+    if (window.bdPaginaActual > totalPaginas) window.bdPaginaActual = totalPaginas;
+    if (window.bdPaginaActual < 1) window.bdPaginaActual = 1;
+    
+    var inicio = (window.bdPaginaActual - 1) * window.bdPorPagina;
+    var fin = Math.min(inicio + window.bdPorPagina, total);
+    var paginaData = data.slice(inicio, fin);
+    var esVistaCompleta = window.bdVistaActual === 'completa';
+    var html = '';
+    
+    for (var i = 0; i < paginaData.length; i++) {
+        var p = paginaData[i];
+        var index = inicio + i + 1;
+        
+        var estadoClass = 'st-active';
+        var estado = (p.estado || 'activo').toLowerCase();
+        if (estado === 'bajo_pedido') estadoClass = 'st-pending';
+        else if (estado === 'bloqueado') estadoClass = 'st-blocked';
+
+        
+        var estadoMostrado = 'Activo';
+        if (p.estado) {
+            var estadoLower = p.estado.toLowerCase();
+            var estadoMap = {
+                'activo': 'Activo',
+                'bajo_pedido': 'Bajo pedido',
+                'bloqueado': 'Bloqueado'
+            };
+            estadoMostrado = estadoMap[estadoLower] || p.estado.charAt(0).toUpperCase() + p.estado.slice(1).toLowerCase();
+        }
+        
+        var costo = p.costo_unitario ? parseFloat(p.costo_unitario).toFixed(2) : '0.00';
+        var precio = p.precio_unitario ? parseFloat(p.precio_unitario).toFixed(2) : '0.00';
+        var categoria = p.categoria || p.familia || '-';
+        var subcategoria = p.subcategoria || p.categoria_derivada || '-';
+        
+        // ✅ CORREGIDO: usar fecha_creacion (NO created_at)
+        var fechaCreacion = p.fecha_creacion || null;
+        var fechaActualizacion = p.updated_at || null;
+        
+        // ✅ Determinar si fue editado
+        var editado = false;
+        if (fechaCreacion && fechaActualizacion && fechaCreacion !== fechaActualizacion) {
+            try {
+                var created = new Date(fechaCreacion);
+                var updated = new Date(fechaActualizacion);
+                if (!isNaN(created.getTime()) && !isNaN(updated.getTime())) {
+                    var diffMs = updated.getTime() - created.getTime();
+                    editado = diffMs > 60000;
+                }
+            } catch(e) {
+                console.warn('Error comparando fechas:', e);
+            }
+        }
+        
+        var fechaMostrar = editado ? fechaActualizacion : fechaCreacion;
+        var fechaFormateada = formatearFecha(fechaMostrar);
+        
+        html += '<tr>';
+        html += '<td class="bd-col-item" style="text-align:center;color:#94a3b8;font-weight:600;">' + index + '</td>';
+        html += '<td class="bd-col-code"><span class="bd-t-code">' + (p.codigo || '-') + '</span></td>';
+        
+        if (editado) {
+            html += '<td class="bd-col-date"><span class="bd-date-badge editado"><i class="bi bi-pencil-square"></i> ' + fechaFormateada + '</span></td>';
+        } else {
+            html += '<td class="bd-col-date"><span class="bd-date-badge">' + fechaFormateada + '</span></td>';
+        }
+        
+        html += '<td class="bd-col-desc"><strong>' + (p.descripcion || '-') + '</strong></td>';
+        html += '<td class="bd-col-model">' + (p.modelo || '-') + '</td>';
+        html += '<td class="bd-col-brand">' + (p.marca || '-') + '</td>';
+        html += '<td class="bd-col-cat">' + categoria + '</td>';
+        html += '<td class="bd-col-status"><span class="bd-status ' + estadoClass + '"><span class="bd-dot"></span>' + estadoMostrado + '</span></td>';
+        html += '<td class="bd-col-actions"><div class="row-actions">';
+        html += '<button class="btn-action btn-view" onclick="verProducto(' + p.id + ')" title="Ver"><i class="bi bi-eye"></i></button>';
+        html += '<button class="btn-action btn-edit" onclick="editarProducto(' + p.id + ')" title="Editar"><i class="bi bi-pencil"></i></button>';
+        html += '<button class="btn-action btn-delete" onclick="eliminarProducto(' + p.id + ')" title="Eliminar"><i class="bi bi-trash"></i></button>';
+        html += '</div></td>';
+        
+        // COLUMNAS OCULTAS
+        if (esVistaCompleta) {
+            html += '<td class="bd-col-subcat">' + subcategoria + '</td>';
+            html += '<td class="bd-col-weight">' + (p.peso || '0') + '</td>';
+            html += '<td class="bd-col-transport">' + (p.transporte || '-') + '</td>';
+            html += '<td class="bd-col-cost" style="font-weight:600;">S/ ' + costo + '</td>';
+            html += '<td class="bd-col-sale" style="font-weight:700;color:#0066FF;">S/ ' + precio + '</td>';
+            html += '<td class="bd-col-obs">' + (p.observaciones || '-') + '</td>';
+            html += '<td class="bd-col-prov-pres">' + (p.presentacion_proveedor || '-') + '</td>';
+            html += '<td class="bd-col-sale-pres">' + (p.presentacion_venta || '-') + '</td>';
+            html += '<td class="bd-col-min-sale">' + (p.venta_minima || '1') + '</td>';
+            html += '<td class="bd-col-barras">' + (p.codigo_barras || '-') + '</td>';
+            html += '<td class="bd-col-volumen">' + (p.volumen || '0') + '</td>';
+            html += '<td class="bd-col-origen">' + (p.origen || '-') + '</td>';
+            html += '<td class="bd-col-tiempo">' + (p.tiempo_entrega || '-') + '</td>';
+            html += '<td class="bd-col-abast">' + (p.abastecimiento || '-') + '</td>';
+            html += '<td class="bd-col-stock-min">' + (p.stock_minimo || '0') + '</td>';
+            html += '<td class="bd-col-desc-larga" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (p.descripcion_larga || '-') + '</td>';
+        } else {
+            html += '<td class="bd-col-subcat col-oculta">' + subcategoria + '</td>';
+            html += '<td class="bd-col-weight col-oculta">' + (p.peso || '0') + '</td>';
+            html += '<td class="bd-col-transport col-oculta">' + (p.transporte || '-') + '</td>';
+            html += '<td class="bd-col-cost col-oculta" style="font-weight:600;">S/ ' + costo + '</td>';
+            html += '<td class="bd-col-sale col-oculta" style="font-weight:700;color:#0066FF;">S/ ' + precio + '</td>';
+            html += '<td class="bd-col-obs col-oculta">' + (p.observaciones || '-') + '</td>';
+            html += '<td class="bd-col-prov-pres col-oculta">' + (p.presentacion_proveedor || '-') + '</td>';
+            html += '<td class="bd-col-sale-pres col-oculta">' + (p.presentacion_venta || '-') + '</td>';
+            html += '<td class="bd-col-min-sale col-oculta">' + (p.venta_minima || '1') + '</td>';
+            html += '<td class="bd-col-barras col-oculta">' + (p.codigo_barras || '-') + '</td>';
+            html += '<td class="bd-col-volumen col-oculta">' + (p.volumen || '0') + '</td>';
+            html += '<td class="bd-col-origen col-oculta">' + (p.origen || '-') + '</td>';
+            html += '<td class="bd-col-tiempo col-oculta">' + (p.tiempo_entrega || '-') + '</td>';
+            html += '<td class="bd-col-abast col-oculta">' + (p.abastecimiento || '-') + '</td>';
+            html += '<td class="bd-col-stock-min col-oculta">' + (p.stock_minimo || '0') + '</td>';
+            html += '<td class="bd-col-desc-larga col-oculta" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (p.descripcion_larga || '-') + '</td>';
+        }
+        
+        html += '</tr>';
+    }
+    
+    tbody.innerHTML = html;
+    
+    document.getElementById('bdTotalRegistros').textContent = total + ' registros';
+    document.getElementById('bdPaginaInfo').textContent = window.bdPaginaActual + '/' + totalPaginas;
+    document.getElementById('bdPaginaActual').textContent = window.bdPaginaActual;
+    
+    console.log('✅ Renderizado completado con fechas corregidas');
+};
+
+// 2. Forzar ejecución después de cargar la página
+setTimeout(function() {
+    console.log('🔥 Ejecutando carga forzada de productos...');
+    if (window.location.pathname.includes('/productos/base-datos')) {
+        // Primero limpiar productos existentes
+        window.bdProductos = [];
+        window.bdProductosFiltrados = [];
+        // Luego cargar
+        if (typeof cargarProductos === 'function') {
+            cargarProductos();
+        } else {
+            console.error('❌ cargarProductos no está definida');
+        }
+    }
+}, 500);
+
+console.log('✅ Script de corrección definitiva cargado');
+
+// ============================================================
+// INICIALIZAR
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.pathname.includes('/productos/base-datos')) {
+        console.log('🔄 Inicializando Base de datos de productos...');
+        
+        var searchInput = document.getElementById('bdSearchInput');
+        var categoriaFilter = document.getElementById('bdCategoriaFilter');
+        var subcategoriaFilter = document.getElementById('bdSubcategoriaFilter');
+        var marcaFilter = document.getElementById('bdMarcaFilter');
+        var modeloFilter = document.getElementById('bdModeloFilter');
+        var estadoFilter = document.getElementById('bdEstadoFilter');
+        
+        if (searchInput) {
+            var newSearch = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newSearch, searchInput);
+            newSearch.addEventListener('input', bdAplicarFiltros);
+        }
+        
+        if (categoriaFilter) {
+            var newCategoria = categoriaFilter.cloneNode(true);
+            categoriaFilter.parentNode.replaceChild(newCategoria, categoriaFilter);
+            newCategoria.addEventListener('change', bdAplicarFiltros);
+        }
+        
+        if (subcategoriaFilter) {
+            var newSubcategoria = subcategoriaFilter.cloneNode(true);
+            subcategoriaFilter.parentNode.replaceChild(newSubcategoria, subcategoriaFilter);
+            newSubcategoria.addEventListener('change', bdAplicarFiltros);
+        }
+        
+        if (marcaFilter) {
+            var newMarca = marcaFilter.cloneNode(true);
+            marcaFilter.parentNode.replaceChild(newMarca, marcaFilter);
+            newMarca.addEventListener('change', bdAplicarFiltros);
+        }
+        
+        if (modeloFilter) {
+            var newModelo = modeloFilter.cloneNode(true);
+            modeloFilter.parentNode.replaceChild(newModelo, modeloFilter);
+            newModelo.addEventListener('change', bdAplicarFiltros);
+        }
+        
+        if (estadoFilter) {
+            var newEstado = estadoFilter.cloneNode(true);
+            estadoFilter.parentNode.replaceChild(newEstado, estadoFilter);
+            newEstado.addEventListener('change', bdAplicarFiltros);
+        }
+        
+        setTimeout(function() {
+            cargarProductos();
+        }, 200);
+        
+        console.log('✅ Base de datos de productos inicializada');
+    }
+});
+
+// Exponer funciones globalmente
+window.cargarProductos = cargarProductos;
+window.bdRenderProductos = bdRenderProductos;
+window.bdAplicarFiltros = bdAplicarFiltros;
+window.bdLimpiarFiltros = bdLimpiarFiltros;
+window.cambiarVista = cambiarVista;
+window.bdPaginaAnterior = bdPaginaAnterior;
+window.bdPaginaSiguiente = bdPaginaSiguiente;
+window.bdCambiarPorPagina = bdCambiarPorPagina;
+window.verProducto = verProducto;
+window.editarProducto = editarProducto;
+window.eliminarProducto = eliminarProducto;
+window.bdExportarExcel = bdExportarExcel;
+window.formatearFecha = formatearFecha;
+window.fueEditado = fueEditado;
+</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+<!-- MODAL MAESTRO - CON ESTADO VISUAL COMPLETO -->
+<div class="modal-bg" id="masterModal">
+  <div class="master-modal-wrap" style="width:min(1160px,96vw);max-height:92vh;background:#fff;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 26px 70px rgba(15,23,42,.28);">
+    
+    <!-- HEADER -->
+    <div class="mm-head" style="min-height:44px;background:#0F172A;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex:0 0 auto;">
+      <span class="mm-title" style="font-size:15px;font-weight:1000;" id="mmTitle">Nuevo registro</span>
+      <button class="mm-close" style="border:0;background:transparent;color:#fff;font-size:25px;cursor:pointer;" id="mmClose">×</button>
+    </div>
+    
+    <!-- BODY -->
+    <div class="mm-body" style="flex:1 1 auto;overflow:auto;padding:8px 14px 6px; ">
+      
+      <!-- 🔥 NUEVO: ESTADO VISUAL - AGREGADO -->
+      <div class="cm-state-box s-green" id="mmStateBox" style="margin-bottom:12px; margin-left: 650px;">
+        <label>ESTADO *</label>
+        <select id="mm_estado" style="width:100%;height:32px;border-radius:8px;border:1px solid #D1D5DB;background:#fff;color:#0F172A;font-size:12px;padding:0 10px;box-sizing:border-box;">
+          <option value="Activo" selected>Activo</option>
+          <option value="Observado">Observado</option>
+          <option value="Bloqueado">Bloqueado</option>
+         
+        </select>
+        <div class="cm-state-indicator" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding:4px 8px;background:rgba(255,255,255,0.6);border-radius:6px;">
+          <div class="cm-state-helper" style="display:flex;align-items:center;gap:6px;flex:1 1 auto;">
+            <span class="cm-state-helper-dot" id="mmStateDot" style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#84CC16;"></span>
+            <span class="cm-state-helper-text" id="mmStateText" style="font-size:10px;font-weight:600;color:#334155;">Registro habilitado para operar normalmente.</span>
+          </div>
+          <span class="cm-state-pill pill-green" id="mmStatePill" style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#D9F99D;color:#166534;">Activo</span>
+        </div>
+      </div>
+      
+      <div class="help-box" id="mmHelp" style="padding:9px 10px;border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:10px;font-size:11px;font-weight:850;line-height:1.45;margin-bottom:10px;">Completa el registro.</div>
+      <div id="mmFields"></div>
+    </div>
+    
+    <!-- FOOTER -->
+    <div class="mm-foot" style="flex:0 0 auto;border-top:1px solid #E5E7EB;background:#fff;padding:7px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="cm-btn cm-btn-light" style="height:29px;border-radius:999px;padding:0 15px;font-size:11px;font-weight:950;border:1px solid #E5E7EB;background:#fff;color:#111827;cursor:pointer;" id="mmClear">Limpiar</button>
+        <span style="font-size:11px;color:#64748B;" id="mmMode">Modo: creación</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="cm-btn cm-btn-light" style="height:29px;border-radius:999px;padding:0 15px;font-size:11px;font-weight:950;border:1px solid #E5E7EB;background:#fff;color:#111827;cursor:pointer;" id="mmCancel">Cancelar</button>
+        <button class="cm-btn cm-btn-primary" style="height:29px;border-radius:999px;padding:0 15px;font-size:11px;font-weight:950;border:0;background:#2563EB;color:#fff;min-width:170px;cursor:pointer;" id="mmSave">Guardar</button>
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+
+

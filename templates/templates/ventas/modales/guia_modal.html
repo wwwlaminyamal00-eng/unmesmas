@@ -1,0 +1,463 @@
+<!-- MODAL GUÍA DE REMISIÓN - VERSIÓN COMPLETA CON TRANSPORTISTAS Y SELECTOR DE PRODUCTOS -->
+<div class="modal-bg" id="guiaModal">
+
+    <div class="modal-box" style="width:min(1400px,98vw); max-height:95vh; display:flex; flex-direction:column;">
+        
+        <!-- HEADER -->
+        <div class="modal-head" style="padding:8px 16px; min-height:40px; flex-shrink:0; background:#0F172A; border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div>
+                <div class="modal-title" id="guiaModalTitle" style="font-weight:600; font-size:1rem; color:#fff; margin:0;">📦 Nueva Guía de Remisión</div>
+                <p style="color:#94A3B8; font-size:9px; font-weight:700; margin:0;" id="guiaModalSub">Documento de traslado de mercadería</p>
+            </div>
+            <button class="btn btn-secondary" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:4px 14px;min-height:28px;border-radius:20px;font-size:11px;cursor:pointer;" onclick="closeModal('guiaModal')">✕ Cerrar</button>
+        </div>
+        
+        <!-- ============================================================ -->
+        <!-- BODY - SOLO EL CONTENIDO DEL FORMULARIO (SIN FOOTER)         -->
+        <!-- ============================================================ -->
+        <div class="modal-body" id="guiaForm" style="flex:1 1 auto; overflow-y:auto; padding:10px 14px; background:#F8FAFC; ">
+            
+            <!-- ============================================================ -->
+            <!-- FILA 1: REMITENTE Y DESTINATARIO -->
+            <!-- ============================================================ -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                
+                <!-- REMITENTE -->
+                <div class="ficha-section" style="border:1px solid #E2E8F0; border-radius:8px; background:#FFFFFF; overflow:hidden;">
+                    <div class="ficha-section-title" style="padding:4px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; color:#2563EB; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center;">
+                        <span><i class="bi bi-building"></i> Remitente (Origen)</span>
+                        <small style="color:#64748B; font-weight:700; font-size:8px;">🔒 Fijo</small>
+                    </div>
+                    <div style="padding:6px 10px;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">RUC</label>
+                                <input id="guiaRucRemitente" value="20602095704" readonly style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#F1F5F9; font-size:9px; padding:0 6px; color:#64748B; cursor:not-allowed;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cód. Anexo</label>
+                                <input id="guiaRemitenteAnexo" value="0001" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                        </div>
+                        <div class="form-field" style="margin-bottom:2px;">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Razón Social</label>
+                            <input id="guiaRemitenteNombre" value="KCF CORPORACION SAC" readonly style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#F1F5F9; font-size:9px; padding:0 6px; color:#64748B; cursor:not-allowed;">
+                        </div>
+                        <div class="form-field" style="margin-bottom:2px;">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Dirección de Partida <span class="text-danger">*</span></label>
+                            <input id="guiaOrigen" value="JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES" readonly style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#F1F5F9; font-size:9px; padding:0 6px; color:#64748B; cursor:not-allowed;">
+                        </div>
+                        <!-- Ubigeo Remitente - PRESELECCIONADO -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-top:2px;">
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Departamento</label>
+                                <select class="ubigeo-select" id="guiaDeptoOrigen" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#F1F5F9; cursor:not-allowed;">
+                                    <option value="LIMA" selected>LIMA</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Provincia</label>
+                                <select class="ubigeo-select" id="guiaProvOrigen" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#F1F5F9; cursor:not-allowed;">
+                                    <option value="LIMA" selected>LIMA</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Distrito</label>
+                                <select class="ubigeo-select" id="guiaDistOrigen" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#F1F5F9; cursor:not-allowed;">
+                                    <option value="SAN MARTIN DE PORRES" selected>SAN MARTIN DE PORRES</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="font-size:7px; color:#64748B; margin-top:2px;">
+                            <i class="bi bi-geo-alt-fill" style="color:#2563EB;"></i> Ubigeo: <span id="guiaUbigeoOrigenTexto">LIMA - LIMA - SAN MARTIN DE PORRES</span>
+                            <input type="hidden" id="guiaUbigeoOrigen" value="150139">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DESTINATARIO -->
+                <div class="ficha-section" style="border:1px solid #E2E8F0; border-radius:8px; background:#FFFFFF; overflow:hidden;">
+                    <div class="ficha-section-title" style="padding:4px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; color:#059669; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center;">
+                        <span><i class="bi bi-people-fill"></i> Destinatario (Cliente)</span>
+                        <small style="color:#64748B; font-weight:700; font-size:8px;">Buscar por RUC</small>
+                    </div>
+                    <div style="padding:6px 10px;">
+                        <div style="display:grid; grid-template-columns:1fr 60px; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Buscar Cliente</label>
+                                <input id="guiaBuscarCliente" placeholder="Ingresa RUC" maxlength="11" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;" onkeydown="if(event.key==='Enter'){buscarClienteParaGuia();}">
+                            </div>
+                            <button onclick="buscarClienteParaGuia()" style="height:20px; border-radius:4px; font-size:8px; padding:0 6px; background:#2563EB; color:#fff; border:0; font-weight:900; cursor:pointer;">🔍</button>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">RUC <span class="text-danger">*</span></label>
+                                <input id="guiaRuc" placeholder="RUC" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cód. Anexo</label>
+                                <input id="guiaDestAnexo" placeholder="0001" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                        </div>
+                        <div class="form-field" style="margin-bottom:2px;">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Razón Social <span class="text-danger">*</span></label>
+                            <input id="guiaCliente" placeholder="Razón social del cliente" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                        <div class="form-field" style="margin-bottom:2px;">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Dirección de Llegada <span class="text-danger">*</span></label>
+                            <input id="guiaDestino" placeholder="Dirección del cliente" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                        <!-- Ubigeo Destinatario -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-top:2px;">
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Departamento</label>
+                                <select class="ubigeo-select" id="guiaDeptoDestino" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;">
+                                    <option value="">Seleccione</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Provincia</label>
+                                <select class="ubigeo-select" id="guiaProvDestino" disabled style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;">
+                                    <option value="">Primero Departamento</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:6.5px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Distrito</label>
+                                <select class="ubigeo-select" id="guiaDistDestino" disabled style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;">
+                                    <option value="">Primero Provincia</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="font-size:7px; color:#64748B; margin-top:2px;">
+                            <i class="bi bi-geo-alt-fill" style="color:#2563EB;"></i> Ubigeo: <span id="guiaUbigeoDestinoTexto">Ninguno</span>
+                            <input type="hidden" id="guiaUbigeoDestino" value="">
+                        </div>
+                        <!-- Documentos asociados -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-top:4px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Orden Compra</label>
+                                <input id="guiaOrdenCompra" placeholder="OC-04705" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:8px; padding:0 6px;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cotización</label>
+                                <input id="guiaCotizacion" placeholder="COT-2026-0001" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:8px; padding:0 6px;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Factura</label>
+                                <input id="guiaFactura" placeholder="F001-123" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:8px; padding:0 6px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- FILA 2: VEHÍCULO Y TRANSPORTISTA -->
+            <!-- ============================================================ -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                
+                <!-- VEHÍCULO / CONDUCTOR -->
+                <div class="ficha-section" style="border:1px solid #E2E8F0; border-radius:8px; background:#FFFFFF; overflow:hidden;">
+                    <div class="ficha-section-title" style="padding:4px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; color:#EA580C; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center;">
+                        <span><i class="bi bi-truck"></i> Datos de Transporte</span>
+                        <small style="color:#64748B; font-weight:700; font-size:8px;">Obligatorio</small>
+                    </div>
+                    <div style="padding:6px 10px;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Modalidad <span class="text-danger">*</span></label>
+                                <select id="guiaModalidadTransporte" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:9px; padding:0 4px; background:#FFFFFF;" onchange="toggleTransportistaGuia()">
+                                    <option value="PRIVADO">🚛 Transporte Privado</option>
+                                    <option value="PUBLICO">🚚 Transporte Público</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Seleccionar Conductor</label>
+                                <div style="display:flex; gap:4px; align-items:center;">
+                                    <select id="guiaSelectConductor" style="flex:1; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;" onchange="cargarConductorGuia(this.value)">
+                                        <option value="">-- Seleccione --</option>
+                                        <option value="personalizar" style="font-weight:600;color:#2563EB;">✏️ Personalizar</option>
+                                    </select>
+                                    <button onclick="limpiarConductorGuia()" style="height:20px; border-radius:4px; font-size:8px; padding:0 6px; background:#EF4444; color:#fff; border:0; font-weight:900; cursor:pointer; white-space:nowrap;" title="Limpiar campos del conductor">✕</button>
+                                    <button onclick="openNuevoConductorGuia()" style="height:20px; border-radius:4px; font-size:8px; padding:0 8px; background:#2563EB; color:#fff; border:0; font-weight:900; cursor:pointer; white-space:nowrap;">➕ Nuevo</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Placa <span class="text-danger">*</span></label>
+                                <input id="guiaPlaca" placeholder="ABC-123" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px; text-transform:uppercase;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Licencia</label>
+                                <input id="guiaLicencia" placeholder="1234567890" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">DNI Conductor <span class="text-danger">*</span></label>
+                                <input id="guiaConductorDNI" placeholder="DNI" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Nombre Conductor <span class="text-danger">*</span></label>
+                                <input id="guiaConductorNombre" placeholder="Nombre completo" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- TRANSPORTISTA (PÚBLICO) -->
+                <div class="ficha-section" id="guiaTransportistaCard" style="border:1px solid #E2E8F0; border-radius:8px; background:#FFFFFF; overflow:hidden; opacity:0.5;">
+                    <div class="ficha-section-title" style="padding:4px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; color:#DC2626; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center;">
+                        <span><i class="bi bi-building"></i> Datos del Transportista (Público)</span>
+                        <small style="color:#64748B; font-weight:700; font-size:8px;">Solo para Público</small>
+                    </div>
+                    <div style="padding:6px 10px;">
+                        <div style="display:grid; grid-template-columns:1fr 60px; gap:4px; margin-bottom:2px;">
+                            <div class="form-field">
+                                <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">RUC Transportista</label>
+                                <input id="guiaTransportistaRUC" placeholder="RUC empresa" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                            </div>
+                            <button onclick="buscarTransportistaGuia()" style="height:20px; border-radius:4px; font-size:8px; padding:0 6px; background:#2563EB; color:#fff; border:0; font-weight:900; cursor:pointer;">🔍</button>
+                        </div>
+                        <div class="form-field" style="margin-bottom:2px;">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Razón Social</label>
+                            <input id="guiaTransportistaNombre" readonly style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#F1F5F9; font-size:9px; padding:0 6px; color:#64748B; cursor:not-allowed;">
+                        </div>
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Dirección</label>
+                            <input id="guiaTransportistaDireccion" placeholder="Dirección del transportista" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                        <div id="guiaMsgTransportePrivado" style="display:none; margin-top:4px; padding:4px 8px; background:#FFF7ED; border:1px solid #FDBA74; border-radius:4px; font-size:8px; color:#9A3412;">
+                            <i class="bi bi-info-circle"></i> En transporte privado no se requiere transportista.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- FILA 3: TRASLADO -->
+            <!-- ============================================================ -->
+            <div class="ficha-section" style="border:1px solid #E2E8F0; border-radius:8px; background:#FFFFFF; overflow:hidden; margin-bottom:8px;">
+                <div class="ficha-section-title" style="padding:4px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; color:#7C3AED; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center;">
+                    <span><i class="bi bi-file-text"></i> Datos del Traslado</span>
+                    <small style="color:#64748B; font-weight:700; font-size:8px;">Campos SUNAT</small>
+                </div>
+                <div style="padding:6px 10px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:4px; margin-bottom:2px;">
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Motivo <span class="text-danger">*</span></label>
+                            <select id="guiaMotivo" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;">
+                                <option value="VENTA">VENTA</option>
+                                <option value="COMPRA">COMPRA</option>
+                                <option value="TRANSFERENCIA ENTRE ALMACENES">TRANSFERENCIA ENTRE ALMACENES</option>
+                                <option value="DEVOLUCIÓN">DEVOLUCIÓN</option>
+                                <option value="CONSIGNACIÓN">CONSIGNACIÓN</option>
+                                <option value="OTRO">OTRO</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Fecha Emisión</label>
+                            <input id="guiaFechaEmision" type="date" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Fecha Inicio <span class="text-danger">*</span></label>
+                            <input id="guiaFechaInicio" type="date" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° Bultos <span class="text-danger">*</span></label>
+                            <input id="guiaBultos" type="number" value="1" min="0" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:2px;">
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Unidad Peso Bruto <span class="text-danger">*</span></label>
+                            <select id="guiaUnidadPeso" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; font-size:8px; padding:0 4px; background:#FFFFFF;">
+                                <option value="">Cargando...</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Peso Bruto Total <span class="text-danger">*</span></label>
+                            <input id="guiaPeso" type="number" step="0.01" value="0.00" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
+                        </div>
+                    </div>
+                    
+                    <div class="form-field" style="margin-top:4px;">
+                        <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Observaciones</label>
+                        <textarea id="guiaObservaciones" rows="1" placeholder="Notas adicionales..." style="width:100%; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:4px 6px; resize:vertical; min-height:24px;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- FIN DEL MODAL-BODY -->
+        
+        <!-- ============================================================ -->
+        <!-- FOOTER - FUERA DEL BODY, SIEMPRE VISIBLE                      -->
+        <!-- ============================================================ -->
+        <div class="modal-foot" id="guiaModalFooter" style="
+            padding:6px 14px; 
+            gap:6px; 
+            display:flex !important; 
+            align-items:center; 
+            justify-content:flex-end; 
+            flex-shrink:0; 
+            background:#FFFFFF; 
+            border-top:2px solid #E5E7EB; 
+            flex-wrap:wrap;
+            min-height:44px;
+            visibility:visible !important;
+            opacity:1 !important;
+            position:relative !important;
+            z-index:10 !important;
+        ">
+            <button class="btn btn-secondary" onclick="closeModal('guiaModal')" style="
+                height:30px; 
+                padding:0 16px; 
+                font-size:11px; 
+                border-radius:6px; 
+                background:#94A3B8; 
+                color:#fff; 
+                border:1px solid #CBD5E1; 
+                font-weight:700; 
+                cursor:pointer;
+            ">Cancelar</button>
+            
+            <button class="btn btn-warning" onclick="saveGuia('Borrador')" style="
+                height:30px; 
+                padding:0 16px; 
+                font-size:10px; 
+                border-radius:6px; 
+                border:1px solid #FF8C00; 
+                background:#FF8C00; 
+                color:#fff; 
+                font-weight:900; 
+                cursor:pointer; 
+                box-shadow:0 0 15px rgba(255,140,0,0.3);
+            ">💾 Guardar Borrador</button>
+            
+            <button class="btn btn-primary" onclick="enviarGuiaSunat()" style="
+                height:30px; 
+                padding:0 16px; 
+                font-size:10px; 
+                border-radius:6px; 
+                border:1px solid #2563EB; 
+                background:#2563EB; 
+                color:#fff; 
+                font-weight:900; 
+                cursor:pointer; 
+                box-shadow:0 0 15px rgba(37,99,235,0.3);
+            ">📤 Enviar a SUNAT</button>
+            
+            <button class="btn btn-success" onclick="saveGuia('Emitida')" style="
+                height:30px; 
+                padding:0 16px; 
+                font-size:10px; 
+                border-radius:6px; 
+                border:1px solid #16A34A; 
+                background:#16A34A; 
+                color:#fff; 
+                font-weight:900; 
+                cursor:pointer; 
+                box-shadow:0 0 15px rgba(22,163,74,0.3);
+            ">📄 Emitir Guía</button>
+        </div>
+        
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL NUEVO CONDUCTOR (fuera del modal de guía) -->
+<!-- ============================================================ -->
+<div class="modal-bg" id="nuevoConductorGuiaModal">
+    <div class="modal-box" style="width:min(500px,96vw); max-height:80vh;">
+        <div class="modal-head" style="padding:8px 14px; min-height:34px; background:#0F172A;">
+            <div class="modal-title" style="font-weight:600; font-size:1rem; color:#fff; margin:0;">👤 Nuevo Conductor</div>
+            <button class="btn btn-secondary" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:4px 14px;min-height:28px;border-radius:20px;font-size:11px;cursor:pointer;" onclick="closeModal('nuevoConductorGuiaModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" style="padding:12px 16px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">DNI <span class="text-danger">*</span></label>
+                    <input id="nuevoConductorGuiaDNI" placeholder="DNI" maxlength="8" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px;">
+                </div>
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Nombres <span class="text-danger">*</span></label>
+                    <input id="nuevoConductorGuiaNombre" placeholder="Nombre completo" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px;">
+                </div>
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Placa <span class="text-danger">*</span></label>
+                    <input id="nuevoConductorGuiaPlaca" placeholder="ABC-123" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px; text-transform:uppercase;">
+                </div>
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Licencia</label>
+                    <input id="nuevoConductorGuiaLicencia" placeholder="N° Licencia" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px;">
+                </div>
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Teléfono</label>
+                    <input id="nuevoConductorGuiaTelefono" placeholder="Teléfono" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px;">
+                </div>
+                <div class="form-field">
+                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">RUC Empresa</label>
+                    <input id="nuevoConductorGuiaRUC" placeholder="RUC" style="width:100%; height:30px; border:1px solid #CBD5E1; border-radius:4px; padding:0 8px; font-size:11px;">
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot" style="padding:6px 14px; display:flex; gap:8px; justify-content:flex-end; border-top:1px solid #E5E7EB; background:#F8FAFC;">
+            <button class="btn btn-secondary" onclick="closeModal('nuevoConductorGuiaModal')" style="height:30px; padding:0 18px; font-size:11px; border-radius:6px; background:#94A3B8; color:#fff; border:0; font-weight:700; cursor:pointer;">Cancelar</button>
+            <button class="btn btn-primary" onclick="guardarNuevoConductorGuia()" style="height:30px; padding:0 18px; font-size:11px; border-radius:6px; background:#2563EB; color:#fff; border:0; font-weight:900; cursor:pointer;">💾 Guardar Conductor</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL SELECCIÓN DE PRODUCTOS PARA GUÍA (fuera del modal de guía) -->
+<!-- ============================================================ -->
+<div class="modal-bg" id="productSelectorGuiaModal" style="z-index: 999999;">
+    <div class="modal-box" style="width:min(900px,96vw); max-height:85vh;">
+        <div class="modal-head" style="padding:8px 14px; min-height:34px; background:#0F172A;">
+            <div class="modal-title" style="font-weight:600; font-size:1rem; color:#fff; margin:0;">📋 Seleccionar productos para la guía</div>
+            <button class="btn btn-secondary" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:4px 14px;min-height:28px;border-radius:20px;font-size:11px;cursor:pointer;" onclick="closeModal('productSelectorGuiaModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" style="padding:10px 14px; background:#F8FAFC;">
+            
+            <!-- Buscador -->
+            <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
+                <input id="productSelectorGuiaSearch" placeholder="Buscar producto por código o descripción..." style="flex:1; height:32px; border:1px solid #E5E7EB; border-radius:6px; padding:0 12px; font-size:12px; outline:none; min-width:150px;" oninput="renderProductSelectorGuia()">
+                <button class="btn btn-blue" onclick="renderProductSelectorGuia()" style="height:32px; padding:0 16px; font-size:11px; border-radius:6px; background:#2563EB; color:#fff; border:0; font-weight:800; cursor:pointer;">🔍 Buscar</button>
+                <button class="btn btn-green" onclick="selectAllProductsGuia()" style="height:32px; padding:0 12px; font-size:11px; border-radius:6px; background:#16A34A; color:#fff; border:0; font-weight:800; cursor:pointer;">✅ Seleccionar todos</button>
+                <button class="btn btn-secondary" onclick="deselectAllProductsGuia()" style="height:32px; padding:0 12px; font-size:11px; border-radius:6px; background:#F1F5F9; color:#0F172A; border:1px solid #E5E7EB; font-weight:800; cursor:pointer;">⬜ Deseleccionar</button>
+            </div>
+            
+            <!-- Tabla de productos -->
+            <div style="border:1px solid #E5E7EB; border-radius:8px; overflow:auto; max-height:45vh; background:#FFFFFF;">
+                <table class="master-table" style="font-size:10px; width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="width:35px; padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900;">
+                                <input type="checkbox" id="selectAllGuiaCheckbox" onchange="toggleAllProductCheckboxesGuia(this.checked)">
+                            </th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:70px;">Código</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900;">Producto</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:70px;">Marca</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:70px;">Modelo</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:60px;">Unidad</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:50px;">Stock</th>
+                            <th style="padding:4px 6px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:900; width:80px;">Cantidad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productSelectorGuiaRows"></tbody>
+                </table>
+            </div>
+            
+            <!-- Resumen selección -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding:8px 14px; background:#FFFFFF; border-radius:8px; border:1px solid #E5E7EB; flex-wrap:wrap; gap:6px;">
+                <span style="font-weight:800; color:#0F172A; font-size:12px;">Seleccionados: <span id="selectedGuiaCount">0</span> productos</span>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" onclick="closeModal('productSelectorGuiaModal')" style="height:30px; padding:0 16px; font-size:11px; border-radius:6px; background:#F1F5F9; color:#0F172A; border:1px solid #E5E7EB; font-weight:800; cursor:pointer;">Cancelar</button>
+                    <button class="btn btn-green" onclick="addSelectedProductsGuia()" style="height:30px; padding:0 20px; font-size:12px; border-radius:6px; background:#16A34A; color:#fff; border:0; font-weight:900; cursor:pointer;">
+                        ✅ Agregar seleccionados 20202
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,382 @@
+<!-- MODAL ORDEN DE COMPRA - VERSIÓN PROFESIONAL -->
+<div class="modal-bg" id="ordenCompraModal">
+    <div class="modal-box" style="width:min(1200px,97vw); max-height:92vh; display:flex; flex-direction:column;">
+        <div class="modal-head" style="padding:10px 18px; min-height:42px; flex-shrink:0;">
+            <div>
+                <div class="modal-title" id="ordenCompraModalTitle">📄 Nueva orden de compra</div>
+                <p style="color:#94A3B8; font-size:11px; font-weight:700; margin:2px 0 0 0;">
+                    Documento formal que se envía al proveedor
+                </p>
+            </div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('ordenCompraModal')">✕ Cerrar</button>
+        </div>
+
+        <div class="modal-body" id="ordenCompraForm" style="flex:1 1 auto; overflow-y:auto; padding:14px 18px; background:#F8FAFC;">
+
+            <!-- SECCIÓN 1: DATOS DE LA ORDEN -->
+            <div class="ficha-section">
+                <div class="ficha-section-title">📄 Datos de la orden</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-3">
+                        <label>N° Orden <span class="text-danger">*</span></label>
+                        <input id="ordNumero" readonly style="background:#F1F5F9; font-weight:900; color:#2563EB;">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Fecha emisión <span class="text-danger">*</span></label>
+                        <input id="ordFecha" type="date">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Fecha requerida</label>
+                        <input id="ordFechaRequerida" type="date">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Moneda</label>
+                        <select id="ordMoneda" onchange="ordRecalcular()">
+                            <option value="Soles (S/)">Soles (S/)</option>
+                            <option value="Dólares ($)">Dólares ($)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: PROVEEDOR -->
+<div class="ficha-section">
+    <div class="ficha-section-title">🏢 Datos del proveedor</div>
+    <div class="ficha-grid">
+        
+        <!-- Fila 1: RUC (con botón) + Razón social (ancho) -->
+        <div class="form-field col-4">
+            <label>RUC <span class="text-danger">*</span></label>
+            <div style="display:flex; gap:6px; align-items:stretch;">
+                <input id="ordRuc" 
+                       placeholder="11 dígitos" 
+                       maxlength="11" 
+                       style="flex:1; min-width:0;" 
+                       oninput="ordBuscarProveedor()">
+                <button type="button" 
+                        onclick="ordBuscarProveedor(true)" 
+                        title="Consultar SUNAT"
+                        style="height:30px; width:38px; min-width:38px; border-radius:9px; background:#059669; color:#fff; border:0; font-weight:900; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;">
+                    🌞
+                </button>
+            </div>
+        </div>
+        
+        <div class="form-field col-8">
+            <label>Razón social <span class="text-danger">*</span></label>
+            <input id="ordProveedor" 
+                   placeholder="Nombre o razón social del proveedor" 
+                   style="width:100%;">
+        </div>
+
+        <!-- Fila 2: Dirección (ancha) + Contacto + Teléfono -->
+        <div class="form-field col-6">
+            <label>Dirección fiscal</label>
+            <input id="ordDireccion" 
+                   placeholder="Dirección del proveedor" 
+                   style="width:100%;">
+        </div>
+        
+        <div class="form-field col-3">
+            <label>Contacto</label>
+            <input id="ordContacto" 
+                   placeholder="Nombre del contacto" 
+                   style="width:100%;">
+        </div>
+        
+        <div class="form-field col-3">
+            <label>Teléfono</label>
+            <input id="ordTelefono" 
+                   placeholder="999 999 999" 
+                   style="width:100%;">
+        </div>
+
+        <!-- Fila 3: Email (ancho completo o mitad) -->
+        <div class="form-field col-12">
+            <label>Email</label>
+            <input id="ordEmail" 
+                   placeholder="proveedor@email.com" 
+                   type="email" 
+                   style="width:100%;">
+        </div>
+        
+    </div>
+</div>
+            <!-- SECCIÓN 3: CONDICIONES COMERCIALES -->
+            <div class="ficha-section">
+                <div class="ficha-section-title">📋 Condiciones comerciales</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-3">
+                        <label>Condición de pago</label>
+                        <select id="ordCondPago">
+                            <option value="Contado">Contado</option>
+                            <option value="Crédito 15 días">Crédito 15 días</option>
+                            <option value="Crédito 30 días">Crédito 30 días</option>
+                            <option value="Crédito 45 días">Crédito 45 días</option>
+                            <option value="Crédito 60 días">Crédito 60 días</option>
+                            <option value="Crédito 90 días">Crédito 90 días</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Tiempo de entrega</label>
+                        <input id="ordTiempoEntrega" placeholder="Ej: 5 días hábiles" value="5 días hábiles">
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Lugar de entrega</label>
+                        <input id="ordLugarEntrega" placeholder="Dirección de entrega" value="JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES">
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 4: PRODUCTOS -->
+            <div class="ficha-section">
+               <div class="ficha-section-title">
+    📦 Productos
+    <div style="display:flex; gap:6px;">
+        <button type="button" class="btn btn-green" 
+                onclick="openProductSelectorCompras(items => {
+                    items.forEach(it => addOrdenItemRowConDatos(it));
+                })"
+                style="height:26px; padding:0 12px; font-size:10px; border-radius:7px; font-weight:900; background:#16A34A; color:#fff; border:0; cursor:pointer;">
+            📋 Seleccionar productos
+        </button>
+        <button type="button" class="btn btn-blue" onclick="addOrdenItemRow()" style="height:26px; padding:0 12px; font-size:10px; border-radius:7px; font-weight:900;">+ Agregar fila</button>
+    </div>
+</div>
+                <div style="overflow-x:auto; padding:6px 10px 10px;">
+                    <table class="master-table" style="font-size:11px; min-width:1000px; width:100%;">
+                        <thead>
+                            <tr>
+                                <th style="width:35px;">#</th>
+                                <th style="width:110px;">Código</th>
+                                <th>Descripción <span class="text-danger">*</span></th>
+                                <th style="width:70px;">Unidad</th>
+                                <th style="width:80px;">Cantidad</th>
+                                <th style="width:100px;">Precio Unit.</th>
+                                <th style="width:100px;">Total</th>
+                                <th style="width:60px;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordenItemsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 5: RESUMEN -->
+            <div class="ficha-section" style="background:#EFF6FF; border-color:#BFDBFE;">
+                <div class="ficha-grid" style="padding:12px;">
+                    <div class="form-field col-3">
+                        <label>Descuento</label>
+                        <div style="display:flex; gap:4px;">
+                            <input id="ordDescuento" type="number" step="0.01" value="0" oninput="ordRecalcular()" style="flex:1;">
+                            <select id="ordDescuentoTipo" style="width:70px;" onchange="ordRecalcular()">
+                                <option value="porcentaje">%</option>
+                                <option value="monto">S/</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Subtotal</label>
+                        <input id="ordSubtotal" readonly style="background:#FFFFFF; font-weight:900; text-align:right;">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>IGV (18%)</label>
+                        <input id="ordIgv" readonly style="background:#FFFFFF; font-weight:900; text-align:right;">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Total a pagar</label>
+                        <input id="ordTotal" readonly style="background:#DBEAFE; font-weight:1000; color:#1D4ED8; text-align:right; font-size:14px;">
+                    </div>
+                    <div class="form-field col-12">
+                        <label>Notas / Observaciones</label>
+                        <textarea id="ordNotas" placeholder="Notas adicionales para el proveedor..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="modal-foot" style="padding:10px 18px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #E5E7EB; background:#fff; flex-shrink:0;">
+            <button class="btn btn-secondary" onclick="closeModal('ordenCompraModal')" style="height:34px; padding:0 18px; font-size:12px; border-radius:9px; font-weight:800;">Cancelar</button>
+            <button class="btn btn-soft" onclick="saveOrdenCompra('Borrador')" style="height:34px; padding:0 18px; font-size:12px; border-radius:9px; font-weight:800;">💾 Guardar borrador</button>
+            <button class="btn btn-primary" onclick="saveOrdenCompra('Emitida')" style="height:34px; padding:0 18px; font-size:12px; border-radius:9px; font-weight:800;">📄 Emitir orden</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// ORDEN DE COMPRA - FUNCIONES PROFESIONALES
+// ============================================================
+
+function addOrdenItemRow() {
+    const tbody = document.getElementById('ordenItemsBody');
+    if (!tbody) return;
+    const count = tbody.children.length + 1;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td style="font-weight:900; text-align:center;">${count}</td>
+        <td><input class="ord-item-codigo" placeholder="Código" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px;" oninput="ordBuscarProducto(this)"></td>
+        <td><input class="ord-item-desc" placeholder="Descripción del producto" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px;"></td>
+        <td>
+            <select class="ord-item-unidad" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; font-size:10px; padding:0 4px;">
+                <option value="UND">UND</option>
+                <option value="KG">KG</option>
+                <option value="LTS">LTS</option>
+                <option value="MTS">MTS</option>
+                <option value="CJA">CJA</option>
+            </select>
+        </td>
+        <td><input class="ord-item-cant" type="number" value="1" min="0.01" step="0.01" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px; text-align:center;" oninput="ordRecalcular()"></td>
+        <td><input class="ord-item-precio" type="number" step="0.01" value="0" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px; text-align:right;" oninput="ordRecalcular()"></td>
+        <td><input class="ord-item-total" type="number" step="0.01" value="0" readonly style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px; text-align:right; background:#F1F5F9; font-weight:900;"></td>
+        <td style="text-align:center;">
+            <button type="button" onclick="this.closest('tr').remove(); ordReordenar(); ordRecalcular();" style="background:#FEE2E2; border:0; color:#DC2626; cursor:pointer; font-size:12px; font-weight:900; padding:3px 7px; border-radius:6px;">✕</button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    ordRecalcular();
+}
+
+function ordReordenar() {
+    document.querySelectorAll('#ordenItemsBody tr').forEach((row, idx) => {
+        row.querySelector('td:first-child').textContent = idx + 1;
+    });
+}
+
+function ordBuscarProducto(input) {
+    const codigo = (input.value || '').trim();
+    if (!codigo || codigo.length < 2) return;
+    const productos = (typeof PRODUCTOS_MAESTROS !== 'undefined') ? PRODUCTOS_MAESTROS : (window.PRODUCTOS_MAESTROS || []);
+    const p = productos.find(x => (x.codigo || '').toLowerCase() === codigo.toLowerCase());
+    if (p) {
+        const row = input.closest('tr');
+        row.querySelector('.ord-item-desc').value = p.producto || p.descripcion || '';
+        row.querySelector('.ord-item-precio').value = parseFloat(p.valorVenta) || 0;
+        row.querySelector('.ord-item-unidad').value = p.um || 'UND';
+        ordRecalcular();
+    }
+}
+
+let _ordRucTimer = null;
+
+async function ordBuscarProveedor(force = false) {
+    const rucInput = document.getElementById('ordRuc');
+    const ruc = (rucInput.value || '').replace(/\D/g, '').trim();
+
+    if (!force) {
+        clearTimeout(_ordRucTimer);
+        _ordRucTimer = setTimeout(() => {
+            if (ruc.length === 11) ordBuscarProveedor(true);
+        }, 900);
+        return;
+    }
+
+    if (ruc.length !== 11) {
+        showToast('⚠️ El RUC debe tener 11 dígitos', 'warning');
+        return;
+    }
+
+    await consultarRUCConspinner(ruc, (proveedor) => {
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+
+        set('ordProveedor', proveedor.razon_social || proveedor.razon_comercial);
+        set('ordDireccion', proveedor.direccion);
+        set('ordContacto',  proveedor.contacto);
+        set('ordTelefono',  proveedor.telefono);
+        set('ordEmail',     proveedor.email);
+
+        // Condición de pago
+        const condSel = document.getElementById('ordCondPago');
+        if (condSel && proveedor.condicion_pago) {
+            for (let opt of condSel.options) {
+                if (opt.value.toLowerCase().includes((proveedor.condicion_pago || '').toLowerCase())) {
+                    opt.selected = true; break;
+                }
+            }
+        }
+
+        // Moneda
+        const monSel = document.getElementById('ordMoneda');
+        if (monSel && proveedor.moneda) {
+            for (let opt of monSel.options) {
+                if (opt.value.toLowerCase().includes((proveedor.moneda || '').toLowerCase())) {
+                    opt.selected = true; break;
+                }
+            }
+        }
+
+        // Tiempo de crédito → tiempo de entrega
+        if (proveedor.tiempo_credito) {
+            const t = document.getElementById('ordTiempoEntrega');
+            if (t) t.value = proveedor.tiempo_credito;
+        }
+
+        // Descuento
+        if (proveedor.descuento) {
+            const descEl = document.getElementById('ordDescuento');
+            if (descEl) {
+                const num = parseFloat(String(proveedor.descuento).replace('%','')) || 0;
+                descEl.value = num;
+                const tipoEl = document.getElementById('ordDescuentoTipo');
+                if (tipoEl) tipoEl.value = String(proveedor.descuento).includes('%') ? 'porcentaje' : 'monto';
+                if (typeof ordRecalcular === 'function') ordRecalcular();
+            }
+        }
+
+        showToast(`✅ Datos aplicados: ${proveedor.razon_social}`, 'success');
+    });
+}
+
+function addOrdenItemRowConDatos(item) {
+    addOrdenItemRow(); // crea fila vacía
+    const tbody = document.getElementById('ordenItemsBody');
+    const lastRow = tbody.lastElementChild;
+    if (!lastRow) return;
+    lastRow.querySelector('.ord-item-codigo').value = item.codigo || '';
+    lastRow.querySelector('.ord-item-desc').value = item.producto || item.descripcion || '';
+    lastRow.querySelector('.ord-item-unidad').value = item.um || 'UND';
+    lastRow.querySelector('.ord-item-cant').value = item.cantidad || 1;
+    lastRow.querySelector('.ord-item-precio').value = item.precio_unitario || 0;
+    ordRecalcular();
+}
+function ordRecalcular() {
+    let subtotal = 0;
+    document.querySelectorAll('#ordenItemsBody tr').forEach(row => {
+        const cant = parseFloat(row.querySelector('.ord-item-cant')?.value) || 0;
+        const precio = parseFloat(row.querySelector('.ord-item-precio')?.value) || 0;
+        const total = cant * precio;
+        const totalEl = row.querySelector('.ord-item-total');
+        if (totalEl) totalEl.value = total.toFixed(2);
+        subtotal += total;
+    });
+
+    const descVal = parseFloat(document.getElementById('ordDescuento')?.value) || 0;
+    const descTipo = document.getElementById('ordDescuentoTipo')?.value || 'porcentaje';
+    const descuento = descTipo === 'porcentaje' ? subtotal * (descVal / 100) : Math.min(descVal, subtotal);
+
+    const base = subtotal - descuento;
+    const igv = base * 0.18;
+    const total = base + igv;
+
+    document.getElementById('ordSubtotal').value = subtotal.toFixed(2);
+    document.getElementById('ordIgv').value = igv.toFixed(2);
+    document.getElementById('ordTotal').value = total.toFixed(2);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('ordenCompraModal');
+    if (modal) {
+        const observer = new MutationObserver(() => {
+            if (modal.classList.contains('show')) {
+                const tbody = document.getElementById('ordenItemsBody');
+                if (tbody && tbody.children.length === 0) addOrdenItemRow();
+            }
+        });
+        observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    }
+});
+
+console.log('✅ Funciones del modal Orden de Compra cargadas');
+</script>

@@ -1,0 +1,46 @@
+<!-- MODAL AJUSTE DE STOCK -->
+<div class="modal-bg" id="stockModal">
+    <div class="modal-box" style="width:min(800px,96vw); max-height:85vh;">
+        <div class="modal-head">
+            <div class="modal-title" id="stockModalTitle">📊 Ajustar stock de producto</div>
+            <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('stockModal')">✕ Cerrar</button>
+        </div>
+        <div class="modal-body" id="stockForm">
+            <div class="ficha-section">
+                <div class="ficha-section-title">Datos del ajuste</div>
+                <div class="ficha-grid">
+                    <div class="form-field col-4">
+                        <label>Producto / Código</label>
+                        <input id="stkProducto" placeholder="Buscar o ingresar producto...">
+                    </div>
+                    <div class="form-field col-2">
+                        <label>Stock actual</label>
+                        <input id="stkActual" type="number" readonly style="background:#F1F5F9;" value="0">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Nuevo stock</label>
+                        <input id="stkNuevo" type="number" value="0" placeholder="Cantidad final">
+                    </div>
+                    <div class="form-field col-3">
+                        <label>Motivo del ajuste</label>
+                        <select id="stkMotivo">
+                            <option value="Conteo físico">Conteo físico</option>
+                            <option value="Merma">Merma</option>
+                            <option value="Devolución">Devolución</option>
+                            <option value="Error de ingreso">Error de ingreso</option>
+                            <option value="Donación">Donación</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6">
+                        <label>Observación</label>
+                        <textarea id="stkObs" placeholder="Detalle del ajuste..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal('stockModal')">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveAjusteStock()">💾 Guardar ajuste</button>
+        </div>
+    </div>
+</div>

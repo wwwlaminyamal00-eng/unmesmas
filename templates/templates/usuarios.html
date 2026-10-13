@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Usuarios - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a> <span>/</span> <span class="crumb-btn active-crumb">Usuarios y permisos</span>{% endblock %}
+{% block page_title %}Configuración y seguridad{% endblock %}
+{% block subtitle %}Gestión de usuarios, roles y permisos por empresa.{% endblock %}
+
+{% block content %}
+<section id="usuarios" class="section active">
+    <div class="cards">
+        <div class="card"><div class="card-icon">👥</div><div><div class="card-title">Usuarios visibles</div><div class="card-value" id="usuariosVisibles">0</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresa filtro</div><div class="card-value" id="empresaFiltroLabel">Todas</div></div></div>
+        <div class="card"><div class="card-icon">🛡</div><div><div class="card-title">Acceso total</div><div class="card-value" id="usuariosTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">📌</div><div><div class="card-title">Operativos</div><div class="card-value" id="usuariosOperativos">0</div></div></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.2 Usuarios y permisos</div>
+                <div class="panel-help">Filtra por empresa, nivel o usuario.</div>
+            </div>
+            <div class="filters">
+                <select id="filterEmpresaUsuarios" class="table-select">
+                    <option value="TODAS">Todas las empresas</option>
+                    <option value="KCF">Solo KCF</option>
+                    <option value="AGD">Solo AGD</option>
+                </select>
+                <select id="filterNivelUsuarios" class="table-select">
+                    <option value="TODOS">Todos los niveles</option>
+                    <option value="GERENCIA_TOTAL">Gerencia Total</option>
+                    <option value="OPERATIVO_COMERCIAL_LOGISTICA">Operativo</option>
+                </select>
+                <input type="text" id="searchUsuarios" placeholder="Buscar usuario, área o módulo">
+            </div>
+        </div>
+
+        <div class="note">
+            <b>Regla:</b> Los usuarios con rol GERENCIA_TOTAL tienen acceso total. Los operativos acceden a productos, ventas, compras, logística e inventario.
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Usuario</th><th>Área</th><th>Empresas</th><th>Rol</th><th>Config.</th><th>Maestros</th><th>Productos</th><th>Cotiz.</th><th>Ventas</th><th>Compras</th><th>Logística</th><th>Invent.</th><th>CxC</th><th>CxP</th><th>Caja</th><th>Reportes</th><th>SUNAT</th></tr>
+                </thead>
+                <tbody id="tbodyUsuarios"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+
+

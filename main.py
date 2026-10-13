@@ -1,13 +1,23 @@
 import os
 import sys
+import hmac
+import logging
+from datetime import timedelta
 import requests
-import base64
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for, 
     session, flash, jsonify
 )
-from utils import login_required
+from werkzeug.security import check_password_hash
+
+try:
+    from dotenv import load_dotenv  # carga variables desde .env en desarrollo local
+    load_dotenv()
+except ImportError:
+    pass
+
+from utils import login_required, admin_required, es_admin
 from database import (
     verificar_usuario, verificar_usuario_supabase,
     insertar_cliente_completo, obtener_todos_clientes_con_detalles,
@@ -38,11 +48,7 @@ from database import (
     toggle_um_activo
 )
 
-# Configuración de conexión a BD
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres.tkfmwvsenvgpyexvdcat:admin3561967kcf@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
-)
+# La conexión a BD se configura con la variable de entorno DATABASE_URL (ver database.py y .env.example)
 
 # ==========================================
 # IMPORTS DE BLUEPRINTS
@@ -70,7 +76,71 @@ from routes.compras import compras_bp
 # APP CONFIGURACIÓN
 # ==========================================
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-only-change-me")
+# Se acepta SECRET_KEY (nombre usado en .env) o FLASK_SECRET_KEY (nombre usado antes en el código)
+app.secret_key = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET_KEY")
+if not app.secret_key:
+    app.secret_key = os.urandom(32)
+    print("⚠️ SECRET_KEY no configurada: se generó una temporal (las sesiones se cerrarán al reiniciar).")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=int(os.environ.get("SESSION_HORAS", "10"))),
+)
+logging.basicConfig(level=logging.INFO)
+
+
+# ==========================================
+# 🔐 CONTROL DE ACCESO GLOBAL
+# ==========================================
+# Antes muchas rutas (usuarios, empresas, correlativos, parámetros, inventario...) se podían
+# abrir sin iniciar sesión. Ahora toda ruta exige sesión salvo las públicas de esta lista,
+# y la configuración del sistema exige rol administrador.
+RUTAS_PUBLICAS = {'login', 'root', 'logout', 'static'}
+PREFIJOS_SOLO_ADMIN = ('/empresas', '/usuarios', '/correlativos', '/parametros', '/integracion',
+                       '/api/config/usuarios', '/api/config/auditoria')
+# Lecturas de configuración que el resto de módulos necesita (listas de empresas, correlativos, etc.)
+LECTURAS_CONFIG_PERMITIDAS = ('/api/config/session', '/api/config/empresas', '/api/config/correlativos',
+                              '/api/config/parametros', '/api/config/roles', '/api/config/modulos',
+                              '/api/config/submodulos')
+
+
+@app.before_request
+def control_de_acceso():
+    if request.endpoint in RUTAS_PUBLICAS or request.endpoint is None:
+        return None
+    es_api = '/api/' in request.path
+    if 'usuario_id' not in session:
+        if es_api:
+            return jsonify({'success': False, 'error': 'Sesión expirada o no autorizada. Inicia sesión.'}), 401
+        flash('Por favor, inicia sesión para acceder.', 'warning')
+        return redirect(url_for('login'))
+
+    ruta = request.path
+    requiere_admin = ruta.startswith(PREFIJOS_SOLO_ADMIN)
+    if ruta.startswith('/api/config/') and request.method != 'GET' and ruta != '/api/config/correlativos/tomar':
+        requiere_admin = True
+    if ruta.startswith('/api/config/') and request.method == 'GET' and not ruta.startswith(LECTURAS_CONFIG_PERMITIDAS):
+        requiere_admin = True
+    # Cada usuario puede leer su propio registro y sus propios permisos (los usa el menú lateral)
+    if requiere_admin and request.method == 'GET' and (
+            ruta == '/api/config/usuarios' or
+            ruta == f"/api/config/usuarios/{session.get('usuario_id')}/permisos"):
+        requiere_admin = False
+    if requiere_admin and not es_admin():
+        if es_api:
+            return jsonify({'success': False, 'error': 'No tienes permisos de administrador para esta acción.'}), 403
+        flash('No tienes permisos para acceder a esa sección.', 'error')
+        return redirect(url_for('index'))
+    return None
+
+
+@app.after_request
+def cabeceras_seguridad(resp):
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('Referrer-Policy', 'same-origin')
+    return resp
 
 
 # ==========================================
@@ -132,14 +202,36 @@ def root():
         return redirect(url_for('index'))
     return redirect(url_for('login'))
 
+def _verificar_password(stored_password, password):
+    """
+    Verifica la contraseña contra lo almacenado en la tabla usuarios.
+    Soporta hashes werkzeug (scrypt/pbkdf2), bcrypt y, por compatibilidad con datos
+    existentes, contraseñas antiguas en texto plano (se recomienda migrarlas con
+    scripts/hashear_passwords.py).
+    """
+    if not stored_password or not password:
+        return False
+    if stored_password.startswith(('scrypt:', 'pbkdf2:')):
+        try:
+            return check_password_hash(stored_password, password)
+        except Exception:
+            return False
+    if stored_password.startswith(('$2a$', '$2b$', '$2y$')):
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8'))
+        except Exception:
+            return False
+    # Contraseña heredada en texto plano: comparación en tiempo constante
+    if hmac.compare_digest(stored_password.encode('utf-8'), password.encode('utf-8')):
+        app.logger.warning("Usuario con contraseña en texto plano; ejecutar scripts/hashear_passwords.py")
+        return True
+    return False
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    print("=" * 60)
-    print("🚪 INICIO DE LOGIN - NUEVA SOLICITUD")
-    print("=" * 60)
-    
     if 'usuario_id' in session:
-        print("ℹ️ Usuario ya tiene sesión activa, redirigiendo a index")
         return redirect(url_for('index'))
 
     if request.method == "POST":
@@ -147,198 +239,43 @@ def login():
         password = request.form.get("password", "")
         empresa = request.form.get("empresa", "KCF")
 
-        print(f"📝 DATOS RECIBIDOS:")
-        print(f"   👤 Usuario: '{usuario}'")
-        print(f"   🔑 Contraseña: '{password}' (longitud: {len(password)})")
-        print(f"   🏢 Empresa: '{empresa}'")
-
         if not usuario or not password:
-            print("❌ Validación fallida: Usuario o contraseña vacíos")
             flash("Por favor, ingresa usuario y contraseña.", "error")
             return render_template("login.html")
 
         try:
-            from database import db_query
-            
-            print("🔍 PASO 1: Buscando usuario en la base de datos...")
-            
-            # ✅ CORREGIDO: Usar 'password' en lugar de 'password_hash'
             user_result = db_query("""
-                SELECT 
-                    id, auth_user_id, usuario_sistema, nombres_apellidos,
-                    correo, password, rol, area, estado
-                FROM usuarios 
-                WHERE usuario_sistema = %s AND estado = 'activo'
+                SELECT id, auth_user_id, usuario_sistema, nombres_apellidos,
+                       correo, password, rol, area, estado
+                FROM usuarios
+                WHERE (usuario_sistema = %s OR LOWER(correo) = LOWER(%s)) AND estado = 'activo'
+                ORDER BY (usuario_sistema = %s) DESC
                 LIMIT 1
-            """, (usuario,))
-            
-            print(f"📊 RESULTADO BÚSQUEDA POR usuario_sistema:")
-            if user_result:
-                print(f"   ✅ Usuario encontrado por usuario_sistema")
-                print(f"   📋 Datos: {user_result}")
-            else:
-                print(f"   ❌ No encontrado por usuario_sistema")
-            
-            # Si no se encuentra por usuario_sistema, buscar por correo
-            if not user_result:
-                print("🔍 PASO 2: Buscando por correo electrónico...")
-                user_result = db_query("""
-                    SELECT 
-                        id, auth_user_id, usuario_sistema, nombres_apellidos,
-                        correo, password, rol, area, estado
-                    FROM usuarios 
-                    WHERE correo = %s AND estado = 'activo'
-                    LIMIT 1
-                """, (usuario,))
-                
-                if user_result:
-                    print(f"   ✅ Usuario encontrado por correo")
-                    print(f"   📋 Datos: {user_result}")
-                else:
-                    print(f"   ❌ No encontrado por correo")
-            
-            if not user_result:
-                print("❌ USUARIO NO ENCONTRADO en la base de datos")
-                flash("❌ Usuario no encontrado. Verifica tu usuario.", "error")
+            """, (usuario, usuario, usuario))
+
+            user = user_result[0] if user_result else None
+            # Mensaje genérico: no revelar si el usuario existe
+            if not user or not _verificar_password(user.get('password') or '', password):
+                app.logger.info("Intento de inicio de sesión fallido para '%s'", usuario)
+                flash("❌ Usuario o contraseña incorrectos.", "error")
                 return render_template("login.html")
-            
-            user = user_result[0]
-            stored_password = user.get('password', '')
-            
-            print(f"\n🔑 PASO 3: Verificando contraseña")
-            print(f"   👤 Usuario: {user.get('usuario_sistema')}")
-            print(f"   📧 Correo: {user.get('correo')}")
-            print(f"   🏷️  Rol: {user.get('rol')}")
-            print(f"   📍 Área: {user.get('area')}")
-            print(f"   🔐 Hash almacenado: {stored_password[:50]}... (longitud: {len(stored_password)})")
-            print(f"   🔑 Contraseña ingresada: '{password}' (longitud: {len(password)})")
-            
-            # ✅ VERIFICACIÓN 1: Comparación directa
-            print("\n🔍 Verificación 1: Comparación directa")
-            if stored_password == password:
-                print("   ✅ ¡COINCIDENCIA DIRECTA! Contraseña correcta.")
-                print("   ℹ️ La contraseña está almacenada en texto plano.")
-                
-                session.clear()
-                session["usuario_id"] = user["id"]
-                session["usuario"] = user["usuario_sistema"]
-                session["nombre_completo"] = user["nombres_apellidos"] or usuario
-                session["rol"] = user.get("rol", "usuario")
-                session["empresa"] = empresa
-                session["auth_user_id"] = user["auth_user_id"]
-                session.modified = True
-                
-                print(f"✅ SESIÓN CREADA: {session}")
-                flash(f'✅ Bienvenido/a {session["nombre_completo"]}!', "success")
-                return redirect(url_for("index"))
-            else:
-                print("   ❌ No coincide directamente")
-            
-            # ✅ VERIFICACIÓN 2: Intentar verificar con scrypt
-            print("\n🔍 Verificación 2: Verificación con scrypt")
-            if stored_password.startswith('scrypt:'):
-                print("   ℹ️ El hash parece ser de tipo scrypt")
-                try:
-                    from werkzeug.security import check_password_hash
-                    print("   🔄 Intentando verificar con scrypt...")
-                    if check_password_hash(stored_password, password):
-                        print("   ✅ ¡SCRYPT VERIFICADO! Contraseña correcta.")
-                        
-                        session.clear()
-                        session["usuario_id"] = user["id"]
-                        session["usuario"] = user["usuario_sistema"]
-                        session["nombre_completo"] = user["nombres_apellidos"] or usuario
-                        session["rol"] = user.get("rol", "usuario")
-                        session["empresa"] = empresa
-                        session["auth_user_id"] = user["auth_user_id"]
-                        session.modified = True
-                        
-                        print(f"✅ SESIÓN CREADA: {session}")
-                        flash(f'✅ Bienvenido/a {session["nombre_completo"]}!', "success")
-                        return redirect(url_for("index"))
-                    else:
-                        print("   ❌ Scrypt: Contraseña incorrecta")
-                except Exception as e:
-                    print(f"   ⚠️ Error verificando hash scrypt: {e}")
-            else:
-                print("   ℹ️ El hash NO es scrypt, omitiendo verificación")
-            
-            # ✅ VERIFICACIÓN 3: Intentar verificar con bcrypt
-            print("\n🔍 Verificación 3: Verificación con bcrypt")
-            if stored_password.startswith('$2b$'):
-                print("   ℹ️ El hash parece ser de tipo bcrypt")
-                try:
-                    import bcrypt
-                    print("   🔄 Intentando verificar con bcrypt...")
-                    if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
-                        print("   ✅ ¡BCRYPT VERIFICADO! Contraseña correcta.")
-                        
-                        session.clear()
-                        session["usuario_id"] = user["id"]
-                        session["usuario"] = user["usuario_sistema"]
-                        session["nombre_completo"] = user["nombres_apellidos"] or usuario
-                        session["rol"] = user.get("rol", "usuario")
-                        session["empresa"] = empresa
-                        session["auth_user_id"] = user["auth_user_id"]
-                        session.modified = True
-                        
-                        print(f"✅ SESIÓN CREADA: {session}")
-                        flash(f'✅ Bienvenido/a {session["nombre_completo"]}!', "success")
-                        return redirect(url_for("index"))
-                    else:
-                        print("   ❌ Bcrypt: Contraseña incorrecta")
-                except Exception as e:
-                    print(f"   ⚠️ Error verificando hash bcrypt: {e}")
-            else:
-                print("   ℹ️ El hash NO es bcrypt, omitiendo verificación")
-            
-            # ✅ VERIFICACIÓN 4: FALLBACK con contraseñas comunes
-            print("\n🔍 Verificación 4: Fallback con contraseñas comunes")
-            common_passwords = ["admin123", "123456", "erika123", "hellen123", "estrella123", "luis123", "password", "kcf2026"]
-            
-            if password in common_passwords:
-                print(f"   ⚠️ ¡LOGIN DE EMERGENCIA ACTIVADO!")
-                print(f"   ℹ️ Contraseña '{password}' está en la lista de contraseñas comunes")
-                print("   ⚠️ ESTO ES SOLO PARA PRUEBAS - Eliminar en producción")
-                
-                session.clear()
-                session["usuario_id"] = user["id"]
-                session["usuario"] = user["usuario_sistema"]
-                session["nombre_completo"] = user["nombres_apellidos"] or usuario
-                session["rol"] = user.get("rol", "usuario")
-                session["empresa"] = empresa
-                session["auth_user_id"] = user["auth_user_id"]
-                session.modified = True
-                
-                print(f"✅ SESIÓN CREADA (EMERGENCIA): {session}")
-                flash(f'⚠️ Login de emergencia: Bienvenido/a {session["nombre_completo"]}', "warning")
-                return redirect(url_for("index"))
-            else:
-                print(f"   ❌ Contraseña '{password}' no está en la lista de fallback")
-            
-            # ❌ TODAS LAS VERIFICACIONES FALLARON
-            print("\n❌ VERIFICACIÓN FINAL: TODAS FALLARON")
-            print("   Detalles del fallo:")
-            print(f"   - Comparación directa: {'FALLÓ' if stored_password != password else 'ÉXITO'}")
-            print(f"   - Scrypt: {'FALLÓ' if stored_password.startswith('scrypt:') else 'N/A'}")
-            print(f"   - Bcrypt: {'FALLÓ' if stored_password.startswith('$2b$') else 'N/A'}")
-            print(f"   - Fallback: {'FALLÓ' if password not in common_passwords else 'ÉXITO'}")
-            
-            flash("❌ Usuario o contraseña incorrectos.", "error")
-            return render_template("login.html")
-            
+
+            session.clear()
+            session["usuario_id"] = user["id"]
+            session["usuario"] = user["usuario_sistema"]
+            session["nombre_completo"] = user["nombres_apellidos"] or usuario
+            session["rol"] = user.get("rol") or "usuario"
+            session["empresa"] = empresa
+            session["auth_user_id"] = user["auth_user_id"]
+            session.permanent = True
+            flash(f'✅ Bienvenido/a {session["nombre_completo"]}!', "success")
+            return redirect(url_for("index"))
+
         except Exception as e:
-            print(f"\n❌ ERROR EN EL PROCESO DE LOGIN:")
-            print(f"   Tipo de error: {type(e).__name__}")
-            print(f"   Mensaje: {str(e)}")
-            import traceback
-            print("\n📋 TRACEBACK COMPLETO:")
-            traceback.print_exc()
-            
-            flash(f"Error de autenticación: {str(e)}", "error")
+            app.logger.exception("Error en el proceso de login: %s", e)
+            flash("Error de autenticación. Intenta nuevamente o contacta al administrador.", "error")
             return render_template("login.html")
 
-    print("ℹ️ Método GET - Mostrando formulario de login")
     return render_template("login.html")
 
 @app.route("/logout")
@@ -358,17 +295,6 @@ def index():
                           usuario=session.get('usuario', ''),
                           empresa=session.get('empresa', 'KCF'),
                           rol=session.get('rol', 'usuario'))
-
-# ==========================================
-# RUTA DE DEPURACIÓN
-# ==========================================
-@app.route("/debug/session")
-def debug_session():
-    return jsonify({
-        'session': dict(session),
-        'session_keys': list(session.keys()),
-        'is_logged_in': 'usuario_id' in session
-    })
 
 # ==========================================
 # ENDPOINTS CLIENTES API (SOLO LOS QUE NO ESTÁN EN MAESTROS)
@@ -398,7 +324,7 @@ def api_obtener_direcciones_cliente(cliente_id):
         query = """
             SELECT id, direccion, nombre_punto, principal, telefono_contacto, 
                    responsable, condicion_pago, tiempo_credito
-            FROM clientes_punto_entrega
+            FROM clientes_puntos_entrega
             WHERE cliente_id = %s AND activo = true
             ORDER BY principal DESC, nombre_punto
         """
@@ -450,7 +376,7 @@ def api_ultimo_codigo_proveedor():
 @app.route("/api/sunat/consulta", methods=["GET"])
 def api_consulta_sunat():
     ruc = request.args.get('ruc', '')
-    if not ruc or len(ruc) != 11:
+    if not ruc or len(ruc) != 11 or not ruc.isdigit():
         return jsonify({'success': False, 'error': 'RUC inválido, debe tener 11 dígitos'})
     
     try:
@@ -480,108 +406,52 @@ def api_consulta_sunat():
 # ==========================================
 # ENDPOINTS PRODUCTOS API
 # ==========================================
-def get_db_connection():
-    """Obtener conexión a la base de datos usando SQLAlchemy"""
-    try:
-        from sqlalchemy import create_engine, text
-        engine = create_engine(DATABASE_URL)
-        return engine
-    except Exception as e:
-        app.logger.error(f"Error al conectar a BD: {e}")
-        raise
-
+# Antes usaban SQLAlchemy (no instalado y con 'text' sin importar): fallaban siempre con error 500.
 @app.route("/api/productos/buscar", methods=["GET"])
 def api_buscar_productos():
     try:
         q = request.args.get('q', '').strip()
-        if not q or len(q) < 1:
+        if not q:
             return jsonify({'success': True, 'data': []})
-        
-        engine = get_db_connection()
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT id, codigo, descripcion, marca, modelo, stock
-                FROM productos WHERE codigo ILIKE :q OR descripcion ILIKE :q
-                ORDER BY codigo LIMIT 20
-            """), {"q": f'%{q}%'})
-            
-            productos = [{'id': row[0], 'codigo': row[1] or '', 'descripcion': row[2] or '', 
-                         'marca': row[3] or '', 'modelo': row[4] or '', 'stock': row[5] or 0} 
-                        for row in result]
-        
-        return jsonify({'success': True, 'data': productos})
+        rows = db_query("""
+            SELECT id, COALESCE(codigo,'') AS codigo, COALESCE(descripcion,'') AS descripcion,
+                   COALESCE(marca,'') AS marca, COALESCE(modelo,'') AS modelo, COALESCE(stock,0) AS stock
+            FROM productos WHERE codigo ILIKE %s OR descripcion ILIKE %s
+            ORDER BY codigo LIMIT 20
+        """, (f'%{q}%', f'%{q}%'))
+        return jsonify({'success': True, 'data': rows})
     except Exception as e:
         app.logger.error(f"Error en api_buscar_productos: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'No se pudo buscar productos'}), 500
+
 
 @app.route("/api/productos", methods=["GET"])
 def api_listar_productos():
     try:
-        engine = get_db_connection()
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT id, codigo, descripcion, marca, modelo, stock
-                FROM productos ORDER BY codigo LIMIT 100
-            """))
-            
-            productos = [{'id': row[0], 'codigo': row[1] or '', 'descripcion': row[2] or '',
-                         'marca': row[3] or '', 'modelo': row[4] or '', 'stock': row[5] or 0} 
-                        for row in result]
-        
-        return jsonify({'success': True, 'data': productos})
+        rows = db_query("""
+            SELECT id, COALESCE(codigo,'') AS codigo, COALESCE(descripcion,'') AS descripcion,
+                   COALESCE(marca,'') AS marca, COALESCE(modelo,'') AS modelo, COALESCE(stock,0) AS stock
+            FROM productos ORDER BY codigo LIMIT 100
+        """)
+        return jsonify({'success': True, 'data': rows})
     except Exception as e:
         app.logger.error(f"Error en api_listar_productos: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'No se pudo listar productos'}), 500
 
-
-@app.route("/debug/db-test")
-def debug_db_test():
-    """Prueba de conexión a la base de datos"""
-    try:
-        from database import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT 1 as test")
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        return jsonify({
-            "success": True,
-            "message": "✅ Conexión a base de datos exitosa",
-            "result": result[0] if result else None,
-            "database_url": DATABASE_URL.replace(":admin3561967kcf@", ":****@")  # Oculta la contraseña
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "database_url": DATABASE_URL.replace(":admin3561967kcf@", ":****@")
-        }), 500
-    
 
 @app.route('/api/test-db')
+@admin_required
 def test_db():
-    """Endpoint para probar la conexión a la base de datos"""
+    """Prueba de conexión a la base de datos (solo administradores, sin exponer la URL)"""
     try:
-        from database import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT version()")
-        version = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': '✅ Conexión exitosa a Supabase',
-            'database': 'Supabase PostgreSQL',
-            'version': version[0] if version else 'unknown'
-        })
+        rows = db_query("SELECT version() AS version")
+        return jsonify({'status': 'success', 'message': '✅ Conexión exitosa a la base de datos',
+                        'version': rows[0]['version'] if rows else 'unknown'})
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'❌ Error: {str(e)}'
-        }), 500
+        app.logger.error(f"Error test-db: {e}")
+        return jsonify({'status': 'error', 'message': '❌ No se pudo conectar a la base de datos'}), 500
+
+
 if __name__ == "__main__":
     # ✅ Usar configuración estándar para Render
     port = int(os.environ.get("PORT", 10000))  # Render usa 10000 por defecto
@@ -593,7 +463,6 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"📍 Servidor corriendo en:")
     print(f"   👉 http://localhost:{port}")
-    print(f"   👉 https://pruebas-bntn.onrender.com")
     print("=" * 60)
     
     app.run(debug=debug, host=host, port=port)

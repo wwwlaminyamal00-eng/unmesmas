@@ -1,0 +1,51 @@
+{% extends "ventas/index.html" %}
+
+{% block content %}
+<div id="devolucionesContent">
+    <div class="panel">
+        <div class="clean-header">
+            <div class="master-title-wrap">
+                <div class="master-title">🔄 Devoluciones</div>
+                <div class="master-subtitle">Gestión de devoluciones de productos</div>
+            </div>
+            <div class="search-box">
+                <input id="devolucionSearch" placeholder="Buscar por devolución / cliente / RUC...">
+            </div>
+            <div class="clean-actions">
+                <select id="devolucionStatus">
+                    <option value="">Todos los estados</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="En revisión">En revisión</option>
+                    <option value="Aprobada">Aprobada</option>
+                    <option value="Rechazada">Rechazada</option>
+                    <option value="Procesada">Procesada</option>
+                </select>
+                <button class="btn btn-secondary" onclick="exportData('devoluciones')">📥 Exportar</button>
+                <button class="btn btn-primary btn-create" onclick="openDevolucionModal()">+ Nueva devolución</button>
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Fecha</th>
+                        <th>Estado</th>
+                        <th>Devolución</th>
+                        <th>RUC</th>
+                        <th>Cliente</th>
+                        <th>Factura</th>
+                        <th>Guía</th>
+                        <th>Motivo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="devolucionRows"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+

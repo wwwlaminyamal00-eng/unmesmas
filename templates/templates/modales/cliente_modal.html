@@ -1,0 +1,179 @@
+<!-- MODAL CLIENTE - CON ESTILO DE LA IMAGEN -->
+<div class="modal-bg" id="clientModal">
+  <div class="client-modal-wrap">
+    <!-- HEADER -->
+    <div class="cm-head">
+      <span class="cm-head-title" id="cmTitle">Crear cliente</span>
+      <button class="cm-close" id="cmClose">×</button>
+    </div>
+    
+    <!-- BODY -->
+    <div class="cm-body">
+      <!-- Información general -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Información general
+        </div>
+
+        <!-- 🔧 CAMBIO: nuevo contenedor flex que separa la grilla de campos del state-box -->
+        <div class="cm-grid-wrapper">
+
+          <!-- 🔧 CAMBIO: cm-grid-main ahora solo tiene los 6 campos (3 columnas), sin el state-box -->
+          <div class="cm-grid cm-grid-main">
+            <!-- Ámbito -->
+            <div class="cm-field">
+              <label>ÁMBITO *</label>
+              <select id="cli_ambito">
+                <option value="COMPARTIDO">Compartido KCF + AGD</option>
+                <option value="KCF">Solo KCF</option>
+                <option value="AGD">Solo AGD</option>
+              </select>
+            </div>
+            <!-- Tipo documento -->
+            <div class="cm-field">
+              <label>TIPO DOCUMENTO</label>
+              <select id="cli_tipoDoc">
+                <option value="RUC">RUC</option>
+                <option value="DNI">DNI</option>
+                <option value="CE">CE</option>
+              </select>
+            </div>
+            <!-- Número documento -->
+            <div class="cm-field">
+              <label>NÚMERO DOCUMENTO</label>
+              <div class="sunat-group">
+                <input id="cli_numero" type="text" placeholder="RUC/DNI">
+                <button class="sunat-btn" id="btnSunat">SUNAT</button>
+              </div>
+            </div>
+            <!-- Razón social -->
+            <div class="cm-field span-2">
+              <label>RAZÓN SOCIAL *</label>
+              <input id="cli_nombre" type="text">
+            </div>
+            <!-- Nombre comercial -->
+            <div class="cm-field">
+              <label>NOMBRE COMERCIAL</label>
+              <input id="cli_nombreComercial" type="text">
+            </div>
+            <!-- Dirección fiscal -->
+            <div class="cm-field span-3">
+              <label>DIRECCIÓN FISCAL</label>
+              <input id="cli_direccionFiscal" type="text">
+            </div>
+          </div>
+
+          <!-- Estado cliente (misma caja, mismos IDs, ahora como columna aparte) -->
+          <div class="cm-state-box" id="cliStateBox">
+            <label>ESTADO CLIENTE *</label>
+            <select id="cli_estado">
+              <option value="Activo" selected>Activo</option>
+              <option value="Observado">Observado</option>
+              <option value="Bloqueado">Bloqueado</option>
+            </select>
+            <div class="cm-state-indicator">
+              <div class="cm-state-helper">
+                <span class="cm-state-helper-dot" id="cliStateDot"></span>
+                <span class="cm-state-helper-text" id="cliStateText"></span>
+              </div>
+              <span class="cm-state-pill" id="cliStatePill"></span>
+            </div>
+          </div>
+
+        </div>
+        <!-- fin cm-grid-wrapper -->
+
+      </div>
+
+      <!-- Condición comercial -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Condición comercial
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-comercial">
+            <div class="cm-field">
+              <label>CONDICIÓN DE PAGO *</label>
+              <select id="cli_condicion">
+                <option value="Contado">Contado</option>
+                <option value="Crédito aprobado">Crédito aprobado</option>
+                <option value="Bloqueado">Bloqueado</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>DÍAS DE CRÉDITO</label>
+              <div style="display:flex; gap:6px;">
+                <select id="cli_diasCredito" style="flex:1;">
+                  <option value="0">Contado</option>
+                  <option value="7">7 días</option>
+                  <option value="15">15 días</option>
+                  <option value="30">30 días</option>
+                  <option value="45">45 días</option>
+                  <option value="60">60 días</option>
+                  <option value="90">90 días</option>
+                  <option value="120">120 días</option>
+                </select>
+                <button type="button" class="btn btn-sm" style="height: 20px; width: 20px" onclick="personalizarDiasCredito('cli_diasCredito', 'días')"><i class="bi bi-pencil"></i></button> 
+              </div>
+            </div>
+            <div class="cm-field">
+              <label>LÍMITE DE CRÉDITO</label>
+              <input id="cli_limiteCredito" type="text" placeholder="S/ 0.00">
+            </div>
+            <div class="cm-field">
+              <label>DESCUENTO AUTORIZADO</label>
+              <input id="cli_descuento" type="text" placeholder="Ej: 5%">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contactos -->
+      <div class="cm-section">
+        <div class="cm-subtitle-row">
+          <div class="cm-subtitle">
+            <span class="cm-bullet"></span>Contactos
+          </div>
+          <button class="cm-add-btn" id="btnAddContact">+ Agregar</button>
+        </div>
+        <div id="cliContacts"></div>
+      </div>
+
+      <!-- Puntos de entrega -->
+      <div class="cm-section">
+        <div class="cm-subtitle-row">
+          <div class="cm-subtitle">
+            <span class="cm-bullet"></span>Puntos de entrega
+          </div>
+          <button class="cm-add-btn" id="btnAddPoint">+ Agregar</button>
+        </div>
+        <div id="cliPoints"></div>
+      </div>
+
+      <!-- Notas -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Notas aclaratorias
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-field">
+            <label>COMENTARIO INTERNO</label>
+            <textarea id="cli_obs"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="cm-foot">
+      <div class="cm-foot-left">
+        <button class="cm-btn cm-btn-light" id="cmClear">Limpiar</button>
+        <span class="cm-hint" id="cmHint">Modo: creación</span>
+      </div>
+      <div class="cm-foot-right">
+        <button class="cm-btn cm-btn-light" id="cmCancel">Cancelar</button>
+        <button class="cm-btn cm-btn-primary" id="cmSave">Guardar Cliente</button>
+      </div>
+    </div>
+  </div>
+</div>

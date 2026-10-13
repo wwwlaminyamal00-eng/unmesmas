@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Integración - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a> <span>/</span> <span class="crumb-btn active-crumb">Integración ERP</span>{% endblock %}
+{% block page_title %}Configuración y seguridad{% endblock %}
+{% block subtitle %}La idea es simple: el dato se registra una sola vez y luego el ERP lo empuja automáticamente al siguiente módulo.{% endblock %}
+
+{% block content %}
+<section id="integracion" class="section active">
+    <div class="cards integration-cards">
+        <div class="card"><div class="card-icon">🔗</div><div><div class="card-title">Módulos conectados</div><div class="card-value">12</div></div></div>
+        <div class="card"><div class="card-icon">⚙</div><div><div class="card-title">Automatizaciones</div><div class="card-value">7</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">empresa_id obligatorio</div><div class="card-value">Sí</div></div></div>
+        <div class="card"><div class="card-icon">🧾</div><div><div class="card-title">Trazabilidad</div><div class="card-value">100%</div></div></div>
+    </div>
+
+    <div class="panel integration-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.5 Integración ERP</div>
+                <div class="panel-help">La idea es simple: el dato se registra una sola vez y luego el ERP lo empuja automáticamente al siguiente módulo.</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnSimularIntegracion">Simular flujo</button>
+        </div>
+
+        <div class="integration-legend">
+            <div class="legend-item"><span class="legend-dot lg-red"></span>Documento origen</div>
+            <div class="legend-item"><span class="legend-dot lg-blue"></span>Acción automática del ERP</div>
+            <div class="legend-item"><span class="legend-dot lg-green"></span>Resultado final</div>
+            <div class="legend-item"><span class="legend-dot lg-gray"></span>Trazabilidad / control</div>
+        </div>
+
+        <div class="integration-summary-banner">
+            <div class="summary-title">Cómo debe entenderlo tu equipo</div>
+            <div class="summary-text">Cotizo → si se aprueba, el ERP puede generar venta o compra → la recepción actualiza inventario → la venta genera CxC y la compra genera CxP → caja y bancos reciben el movimiento.</div>
+        </div>
+
+        <div class="integration-visual-grid">
+            <div class="visual-panel">
+                <div class="mini-title">Flujo general del ERP</div>
+                <div class="mini-help">Vista rápida del recorrido completo.</div>
+                <div class="flow-ribbon">
+                    <div class="ribbon-step origin"><b>1. Configuración</b><span>Empresas, usuarios, correlativos y parámetros.</span></div>
+                    <div class="ribbon-arrow">→</div>
+                    <div class="ribbon-step base"><b>2. Maestros</b><span>Clientes, proveedores, almacenes, marcas y UM.</span></div>
+                    <div class="ribbon-arrow">→</div>
+                    <div class="ribbon-step product"><b>3. Productos</b><span>SKU, unidad, costo, precio y stock.</span></div>
+                    <div class="ribbon-arrow">→</div>
+                    <div class="ribbon-step process"><b>4. Operación</b><span>Cotización, compra, venta, despacho y recepción.</span></div>
+                    <div class="ribbon-arrow">→</div>
+                    <div class="ribbon-step result"><b>5. Resultado</b><span>Inventario, CxC, CxP, caja, bancos y reportes.</span></div>
+                </div>
+            </div>
+
+            <div class="visual-panel">
+                <div class="mini-title">Flujo explicado en 4 pasos</div>
+                <div class="mini-help">Para que tu gente lo entienda rápido.</div>
+                <div class="explain-cards">
+                    <div class="explain-card"><div class="explain-number">1</div><div><b>Seleccionar empresa</b><p>KCF o AGD define logo, RUC, banco, color y correlativos.</p></div></div>
+                    <div class="explain-card"><div class="explain-number">2</div><div><b>Registrar documento</b><p>La cotización toma cliente, producto, precio, unidad y empresa_id.</p></div></div>
+                    <div class="explain-card"><div class="explain-number">3</div><div><b>Acción automática</b><p>Si se aprueba, puede generar venta, solicitud de compra o despacho.</p></div></div>
+                    <div class="explain-card"><div class="explain-number">4</div><div><b>Impacto final</b><p>Inventario, CxC, CxP, caja y bancos se actualizan según el caso.</p></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel integration-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">Flujo por áreas del negocio</div>
+                <div class="panel-help">Esta gráfica es la más importante para tu equipo: muestra quién hace qué y qué actualiza el ERP.</div>
+            </div>
+        </div>
+
+        <div class="swimlane-wrap">
+            <div class="swimlane-header"><div>Área</div><div>Paso 1</div><div>Paso 2</div><div>Paso 3</div><div>Resultado ERP</div></div>
+            <div class="swimlane-row"><div class="lane-title comercial">Comercial</div><div class="lane-box red">Selecciona empresa y cliente</div><div class="lane-box red">Crea cotización</div><div class="lane-box blue">Aprueba cotización</div><div class="lane-box green">Genera venta o solicitud de compra</div></div>
+            <div class="swimlane-row"><div class="lane-title compras">Compras</div><div class="lane-box gray">Recibe solicitud</div><div class="lane-box red">Hace comparativo / OC</div><div class="lane-box blue">Registra compra</div><div class="lane-box green">Genera CxP y enlaza proveedor</div></div>
+            <div class="swimlane-row"><div class="lane-title logistica">Logística</div><div class="lane-box gray">Recibe orden o despacho</div><div class="lane-box red">Confirma recepción / salida</div><div class="lane-box blue">Actualiza movimiento</div><div class="lane-box green">Actualiza stock y kardex</div></div>
+            <div class="swimlane-row"><div class="lane-title finanzas">Finanzas</div><div class="lane-box gray">Recibe venta o compra</div><div class="lane-box red">Registra cobro / pago</div><div class="lane-box blue">Actualiza caja / bancos</div><div class="lane-box green">Actualiza CxC, CxP y flujo</div></div>
+        </div>
+
+        <div class="integration-note">
+            <b>Lectura simple:</b> Comercial inicia el proceso, Compras y Logística ejecutan la operación y Finanzas cierra el impacto económico. Todo queda enlazado por empresa_id y documento_origen_id.
+        </div>
+    </div>
+
+    <div class="panel integration-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">Automatizaciones clave</div>
+                <div class="panel-help">Qué hace el sistema automáticamente cuando el usuario registra una acción.</div>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table class="integration-table">
+                <thead><tr><th>Origen</th><th>Acción del usuario</th><th>Respuesta automática del ERP</th><th>Módulo alimentado</th><th>Dato clave</th></tr></thead>
+                <tbody>
+                    <tr><td><b>Empresas</b></td><td>Seleccionar KCF o AGD</td><td class="left">Carga logo, color, RUC, banco, cuenta, CCI y correlativo correspondiente.</td><td><span class="badge badge-info">Todos</span></td><td><b>empresa_id</b></td></tr>
+                    <tr><td><b>Productos</b></td><td>Elegir producto</td><td class="left">Arrastra descripción, marca, unidad, costo, precio y stock.</td><td><span class="badge badge-info">Cotizaciones / Compras</span></td><td><b>producto_id</b></td></tr>
+                    <tr><td><b>Cotización</b></td><td>Aprobar cotización</td><td class="left">Genera venta, solicitud de compra o despacho según stock y tipo de operación.</td><td><span class="badge badge-info">Ventas / Compras / Logística</span></td><td><b>cotizacion_id</b></td></tr>
+                    <tr><td><b>Compra</b></td><td>Registrar OC o factura proveedor</td><td class="left">Genera cuenta por pagar y enlaza proveedor, empresa y documento origen.</td><td><span class="badge badge-info">CxP</span></td><td><b>orden_compra_id</b></td></tr>
+                    <tr><td><b>Recepción</b></td><td>Confirmar ingreso</td><td class="left">Actualiza stock, kardex y estado de recepción de mercadería.</td><td><span class="badge badge-info">Inventario</span></td><td><b>recepcion_id</b></td></tr>
+                    <tr><td><b>Venta</b></td><td>Emitir comprobante cliente</td><td class="left">Genera cuenta por cobrar y saldo del cliente.</td><td><span class="badge badge-info">CxC</span></td><td><b>venta_id</b></td></tr>
+                    <tr><td><b>Pago / Cobro</b></td><td>Registrar movimiento</td><td class="left">Actualiza caja, bancos y flujo de caja automáticamente.</td><td><span class="badge badge-info">Tesorería</span></td><td><b>movimiento_id</b></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel integration-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">Bitácora de trazabilidad</div>
+                <div class="panel-help">Ejemplo de cómo debería verse el rastro de operaciones enlazadas.</div>
+            </div>
+        </div>
+        <div class="integration-log" id="integrationLog">
+            <div class="log-row"><span class="badge badge-kcf">KCF</span><b>COT-KCF-2026-0001</b><span>Cotización creada desde Ventas.</span></div>
+            <div class="log-row"><span class="badge badge-info">AUTO</span><b>SC-KCF-2026-0001</b><span>Solicitud de compra generada por producto sin stock.</span></div>
+            <div class="log-row"><span class="badge badge-ok">OK</span><b>KARDEX</b><span>Recepción confirmada y stock actualizado.</span></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+
+

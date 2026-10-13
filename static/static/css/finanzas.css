@@ -1,0 +1,44 @@
+/* Módulo Finanzas - reutiliza los estilos globales (tabs, btn, badge, modal) de style.css */
+.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.fin-kpi{background:#fff;border:1px solid var(--line,#E2E8F0);border-left:5px solid #2563EB;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;box-shadow:0 6px 18px rgba(15,23,42,.05)}
+.fin-kpi small{color:#64748B;font-weight:800;font-size:11px;text-transform:uppercase}
+.fin-kpi b{font-size:19px;color:#0F172A}
+.fin-kpi span{font-size:11px;color:#64748B;font-weight:700}
+.fin-kpi-danger{border-left-color:#EF233C}
+.fin-kpi-warn{border-left-color:#F59E0B}
+.fin-kpi-ok{border-left-color:#16A34A}
+.fin-panel{background:#fff;border:1px solid var(--line,#E2E8F0);border-radius:12px;overflow:hidden}
+.fin-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line,#E2E8F0);flex-wrap:wrap}
+.fin-title{font-size:16px;font-weight:950;color:#0F172A}
+.fin-help{font-size:12px;color:#64748B;font-weight:700}
+.fin-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fin-filters input[type=search],.fin-filters select{height:34px;border:1px solid var(--line,#E2E8F0);border-radius:9px;padding:0 10px;font-weight:700}
+.fin-filters input[type=search]{min-width:240px}
+.fin-check{font-size:12px;font-weight:800;color:#334155;display:flex;gap:4px;align-items:center}
+.fin-table th{background:#FFF1F2;border-color:#FECDD3}
+.fin-table tbody tr:nth-child(even){background:#FFF5F6}
+.fin-table td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fin-table td.saldo{font-weight:950}
+.fin-foot{padding:8px 14px;font-size:12px;font-weight:800;color:#475569;background:#F8FAFC;border-top:1px solid var(--line,#E2E8F0)}
+.sem{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:950;white-space:nowrap}
+.sem-vencido{background:#FEE2E2;color:#B91C1C}
+.sem-por-vencer{background:#FEF3C7;color:#92400E}
+.sem-al-dia{background:#DCFCE7;color:#166534}
+.sem-pagado{background:#E2E8F0;color:#334155}
+.btn-mini{height:28px;border-radius:8px;border:0;padding:0 10px;font-weight:900;cursor:pointer;background:#16A34A;color:#fff;font-size:12px}
+.btn-mini.sec{background:#fff;color:#0F172A;border:1px solid var(--line,#E2E8F0)}
+.btn-mini.danger{background:#fff;color:#DC2626;border:1px solid #FCA5A5}
+.btn-mini:disabled{opacity:.45;cursor:not-allowed}
+.fin-modal{width:min(560px,95vw)}
+.fin-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px}
+.fin-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.fin-form input,.fin-form select,.fin-form textarea{border:1px solid var(--line,#E2E8F0);border-radius:9px;padding:8px 10px;font-weight:700;font-family:inherit}
+.fin-full{grid-column:1/-1}
+.fin-doc{grid-column:1/-1;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;border-radius:9px;padding:10px;font-size:13px;font-weight:800;line-height:1.5}
+.fin-tip{font-size:12px;color:#64748B;font-weight:700}
+.bar-wrap{display:flex;flex-direction:column;gap:3px;min-width:180px}
+.bar{height:8px;border-radius:6px}
+.bar-in{background:#16A34A}
+.bar-out{background:#EF233C}
+.neg{color:#DC2626}
+@media(max-width:700px){.fin-form{grid-template-columns:1fr}.fin-filters input[type=search]{min-width:0;width:100%}}

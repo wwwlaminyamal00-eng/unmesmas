@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Empresas - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a> <span>/</span> <span class="crumb-btn active-crumb">Empresas</span>{% endblock %}
+{% block page_title %}Configuración y seguridad{% endblock %}
+{% block subtitle %}Gestión de empresas, datos fiscales y bancarios.{% endblock %}
+
+{% block content %}
+<section id="empresas" class="section active">
+    <div class="cards">
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value" id="empresasTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">🏦</div><div><div class="card-title">Bancos</div><div class="card-value" id="bancosTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">#</div><div><div class="card-title">Cuentas</div><div class="card-value" id="cuentasTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">✓</div><div><div class="card-title">Activas</div><div class="card-value" id="empresasActivas">0</div></div></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.1 Empresas</div>
+                <div class="panel-help">Datos fiscales y bancarios de cada empresa.</div>
+            </div>
+            <div class="filters">
+                <input type="text" id="searchEmpresas" placeholder="Buscar empresa">
+                <button type="button" class="btn btn-primary">+ Nueva empresa</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Razón social</th>
+                        <th>RUC</th>
+                        <th>Razón Comercial</th>
+                        <th>Banc0</th>
+                        <th>Tipo cuenta</th>
+                        <th>N° cuenta</th>
+                        <th>CCI</th>
+                        <th>Dirección fiscal</th> <!-- Aquí se mostrará el enlace -->
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyEmpresas"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

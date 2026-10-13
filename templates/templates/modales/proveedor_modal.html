@@ -1,0 +1,262 @@
+<!-- MODAL PROVEEDOR - CON ESTILO DE LA IMAGEN -->
+<div class="modal-bg" id="proveedorModal">
+  <div class="client-modal-wrap">
+    <!-- HEADER -->
+    <div class="cm-head">
+      <span class="cm-head-title" id="provTitle">Crear proveedor</span>
+      <button class="cm-close" id="provClose">×</button>
+    </div>
+    
+    <!-- BODY -->
+    <div class="cm-body">
+      <!-- Información general -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Información general
+        </div>
+
+        <!--  mismo wrapper flex usado en el modal cliente -->
+        <div class="cm-grid-wrapper">
+
+          <!-- cm-grid-main ahora solo tiene los 6 campos (3 columnas), sin el state-box -->
+          <div class="cm-grid cm-grid-main">
+            <div class="cm-field">
+              <label>ÁMBITO *</label>
+              <select id="prov_ambito">
+                <option value="COMPARTIDO">Compartido KCF + AGD</option>
+                <option value="KCF">Solo KCF</option>
+                <option value="AGD">Solo AGD</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>TIPO PROVEEDOR</label>
+              <select id="prov_tipo">
+                <option value="Recurrente">Recurrente</option>
+                <option value="Web">Web</option>
+                <option value="Ocasional">Ocasional</option>
+                <option value="Servicio">Servicio</option>
+                <option value="Única compra">Única compra</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>TIPO DOCUMENTO</label>
+              <select id="prov_tipoDoc">
+                <option value="RUC">RUC</option>
+                <option value="DNI">DNI</option>
+                <option value="CE">CE</option>
+              </select>
+            </div>
+            <div class="cm-field span-2">
+              <label>RAZÓN SOCIAL *</label>
+              <input id="prov_razonSocial" type="text">
+            </div>
+            <div class="cm-field">
+              <label>RUC *</label>
+              <div class="sunat-group">
+                <input id="prov_ruc" type="text" placeholder="RUC">
+                <button class="sunat-btn" id="provSunat">SUNAT</button>
+              </div>
+            </div>
+            <div class="cm-field span-3">
+              <label>DIRECCIÓN FISCAL</label>
+              <input id="prov_direccionFiscal" type="text">
+            </div>
+          </div>
+
+          <!-- Estado proveedor  -->
+          <div class="cm-state-box" id="provStateBox">
+            <label>ESTADO PROVEEDOR *</label>
+            <select id="prov_estado">
+              <option value="Activo" selected>Activo</option>
+              <option value="Observado">Observado</option>
+              <option value="Bloqueado">Bloqueado</option>
+            </select>
+            <div class="cm-state-indicator">
+              <div class="cm-state-helper">
+                <span class="cm-state-helper-dot" id="provStateDot"></span>
+                <span class="cm-state-helper-text" id="provStateText"></span>
+              </div>
+              <span class="cm-state-pill" id="provStatePill"></span>
+            </div>
+          </div>
+
+        </div>
+        <!-- fin cm-grid-wrapper -->
+
+      </div>
+
+      <!-- Contacto principal -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Contacto principal
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-contact">
+            <div class="cm-field">
+              <label>NOMBRE CONTACTO *</label>
+              <input id="prov_contacto" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CARGO</label>
+              <input id="prov_cargo" type="text">
+            </div>
+            <div class="cm-field">
+              <label>TELÉFONO</label>
+              <input id="prov_telefono" type="text">
+            </div>
+            <div class="cm-field">
+              <label>EMAIL</label>
+              <input id="prov_email" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Datos bancarios -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Datos bancarios
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-comercial">
+            <div class="cm-field">
+              <label>BANCO</label>
+              <select id="prov_banco">
+                <option value="">Seleccione</option>
+                <option value="BCP">BCP</option>
+                <option value="BBVA">BBVA</option>
+                <option value="Interbank">Interbank</option>
+                <option value="Scotiabank">Scotiabank</option>
+                <option value="Banco de la Nación">Banco de la Nación</option>
+                <option value="BanBif">BanBif</option>
+                <option value="Pichincha">Pichincha</option>
+                <option value="MiBanco">MiBanco</option>
+                <option value="Caja Arequipa">Caja Arequipa</option>
+                <option value="Caja Piura">Caja Piura</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>TIPO CUENTA</label>
+              <select id="prov_tipoCuenta">
+                <option value="Cuenta corriente">Cuenta corriente</option>
+                <option value="Cuenta de ahorros">Cuenta de ahorros</option>
+                <option value="Detracciones">Detracciones</option>
+                <option value="Otra">Otra</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>N° CUENTA</label>
+              <input id="prov_cuenta" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CCI</label>
+              <input id="prov_cci" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Condición comercial -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Condición comercial
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-comercial">
+            <div class="cm-field">
+              <label>CONDICIÓN DE PAGO *</label>
+              <div style="display: flex; gap: 6px;">
+                <select id="prov_condicion" flex:1>
+                  <option value="Contado">Contado</option>
+                  <option value="Crédito 7 días">Crédito 7 días</option>
+                  <option value="Crédito 15 días">Crédito 15 días</option>
+                  <option value="Crédito 30 días">Crédito 30 días</option>
+                  <option value="Crédito 45 días">Crédito 45 días</option>
+                  <option value="Crédito 60 días">Crédito 60 días</option>
+                  <option value="Crédito 90 días">Crédito 90 días</option>
+                </select>
+                <button type="button" class="btn btn-sm" style="height: 20px; width: 20px" onclick="personalizarDiasCredito('prov_condicion', 'dias')"><i class="bi bi-pencil"></i></button>
+              </div>
+            </div>
+            <div class="cm-field">
+              <label>LÍNEA DE CRÉDITO</label>
+              <input id="prov_lineaCredito" type="text" placeholder="S/ 0.00">
+            </div>
+            <div class="cm-field">
+              <label>MONEDA</label>
+              <select id="prov_moneda">
+                <option value="Soles">Soles</option>
+                <option value="Dólares">Dólares</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>DESCUENTO NEGOCIADO</label>
+              <input id="prov_descuento" type="text" placeholder="Ej: 5%">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Punto de recojo -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Punto de recojo / despacho
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-grid cm-grid-delivery">
+            <div class="cm-field">
+              <label>PUNTO DE RECOJO</label>
+              <input id="prov_puntoRecojo" type="text">
+            </div>
+            <div class="cm-field">
+              <label>DIRECCIÓN DE RECOJO</label>
+              <input id="prov_direccionRecojo" type="text">
+            </div>
+            <div class="cm-field">
+              <label>HORARIO DE ATENCIÓN</label>
+              <input id="prov_horarioRecojo" type="text" placeholder="Lun-Vie 9am-5pm">
+            </div>
+            <div class="cm-field">
+              <label>CONTACTO ALMACÉN</label>
+              <input id="prov_contactoRecojo" type="text">
+            </div>
+            <div class="cm-field">
+              <label>TELÉFONO ALMACÉN</label>
+              <input id="prov_telefonoRecojo" type="text">
+            </div>
+            <div class="cm-field full-row">
+              <label>INSTRUCCIONES DE RECOJO</label>
+              <textarea id="prov_instruccionesRecojo"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas -->
+      <div class="cm-section">
+        <div class="cm-section-title">
+          <span class="cm-bullet"></span>Observaciones internas
+        </div>
+        <div class="cm-box-inner">
+          <div class="cm-field">
+            <label>COMENTARIO INTERNO</label>
+            <textarea id="prov_obs"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="cm-foot">
+      <div class="cm-foot-left">
+        <button class="cm-btn cm-btn-light" id="provClear">Limpiar</button>
+        <span class="cm-hint" id="provHint">Modo: creación</span>
+      </div>
+      <div class="cm-foot-right">
+        <button class="cm-btn cm-btn-light" id="provCancel">Cancelar</button>
+        <button class="cm-btn cm-btn-primary" id="provSave">Guardar Proveedor</button>
+      </div>
+    </div>
+  </div>
+</div>

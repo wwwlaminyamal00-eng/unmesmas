@@ -1,0 +1,2330 @@
+{% extends "base.html" %}
+
+{% block title %}Maestros - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}
+<a href="/" class="crumb-btn">Inicio</a>
+<span>/</span>
+<span class="crumb-btn active-crumb">Maestros</span>
+{% endblock %}
+
+{% block page_title %}Maestros{% endblock %}
+
+{% block subtitle %}Módulo maestro del ERP - Gestión de clientes, proveedores, almacenes, categorías, marcas y unidades de medida.{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   MAESTROS - ESTILOS COMPLETOS
+   ============================================================ */
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 6px 18px rgba(15,23,42,.06);
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.tab-btn {
+  border: 0;
+  background: transparent;
+  color: #0F172A;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-weight: 950;
+  white-space: nowrap;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #EF233C;
+  color: #fff;
+}
+
+/* Sections */
+.section {
+  display: none;
+}
+
+.section.active {
+  display: block;
+}
+
+/* Panel */
+.panel {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(15,23,42,.06);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+/* KPI Cards - MÁS COMPACTAS (con !important para sobrescribir) */
+.client-status-board {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) !important;
+  gap: 6px !important;
+  margin-bottom: 6px !important;
+}
+
+.client-status-card {
+  height: 40px !important;
+  background: #fff !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(15,23,42,.05) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 10px !important;
+}
+
+.client-status-dot {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 8px !important;
+  display: grid !important;
+  place-items: center !important;
+  font-size: 10px !important;
+  font-weight: 1000 !important;
+  flex-shrink: 0 !important;
+}
+
+.client-status-card small {
+  display: block !important;
+  font-size: 9px !important;
+  color: #64748B !important;
+  font-weight: 700 !important;
+  margin-bottom: 1px !important;
+  line-height: 1.1 !important;
+}
+
+.client-status-card b {
+  display: block !important;
+  font-size: 14px !important;
+  color: #0F172A !important;
+  line-height: 1.1 !important;
+}
+
+/* Clean Header - ULTRA COMPACTO */
+.clean-header {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px;
+  border-bottom: 1px solid #E5E7EB;
+  background: #FFFFFF;
+}
+
+.master-title-wrap {
+  position: relative;
+  padding-left: 10px;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.master-title-wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 28px;
+  border-radius: 999px;
+  background: #EF233C;
+}
+
+.master-title {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 900;
+  color: #0F172A;
+  letter-spacing: -.02em;
+  padding: 0;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.master-title .highlight {
+  color: #EF233C;
+}
+
+.master-title .count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94A3B8;
+  margin-left: 4px;
+}
+
+.master-subtitle {
+  margin-top: 0px;
+  font-size: 10px;
+  color: #64748B;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.master-subtitle span {
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.search-box {
+  position: relative;
+  z-index: 5;
+  max-width: 220px;
+  width: 100%;
+  justify-self: center;
+}
+
+.search-box::before {
+  content: "🔎";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  opacity: .6;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+  padding-left: 28px;
+  padding-right: 8px;
+  font-weight: 600;
+  font-size: 11px;
+  background: #FFFFFF;
+  color: #0F172A;
+  outline: none;
+  pointer-events: auto !important;
+  cursor: text !important;
+  z-index: 10;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+  border-color: #0066FF;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
+}
+
+.search-box input::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+  font-size: 10px;
+}
+
+.clean-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  justify-self: end;
+}
+
+.clean-actions select {
+  height: 28px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 0 8px;
+  background: #fff;
+  font-weight: 600;
+  font-size: 10px;
+  color: #0F172A;
+  cursor: pointer;
+}
+
+.clean-actions select:focus {
+  border-color: #0066FF;
+  outline: none;
+}
+
+
+/* ============================================================
+   BOTONES - VERSIÓN GRANDE Y AZUL ELÉCTRICO
+   ============================================================ */
+
+.btn {
+  height: 38px;
+  border-radius: 12px;
+  border: 0;
+  padding: 0 16px;
+  font-weight: 900;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.3px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.btn:active {
+  transform: translateY(0px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+}
+
+/* ── BOTÓN PRIMARIO (AZUL ELÉCTRICO) ──────────────────────── */
+.btn-primary {
+  background: #0066FF;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 102, 255, 0.40);
+}
+
+.btn-primary:hover {
+  background: #0052CC;
+  box-shadow: 0 6px 24px rgba(0, 102, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  background: #003D99;
+  transform: translateY(0px);
+}
+
+/* ── BOTÓN CREAR (MÁS GRANDE Y LLAMATIVO) ────────────────── */
+.btn-create {
+  height: 46px;
+  padding: 0 28px;
+  font-size: 15px;
+  font-weight: 900;
+  border-radius: 14px;
+  background: #0066FF;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 4px 18px rgba(0, 102, 255, 0.45);
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+
+.btn-create:hover {
+  background: #0052CC;
+  box-shadow: 0 8px 30px rgba(0, 102, 255, 0.60);
+  transform: translateY(-3px) scale(1.02);
+}
+
+.btn-create:active {
+  background: #003D99;
+  transform: translateY(0px) scale(0.98);
+  box-shadow: 0 2px 12px rgba(0, 102, 255, 0.30);
+}
+
+/* ── BOTÓN SECUNDARIO ──────────────────────────────────────── */
+.btn-secondary {
+  background: #FFFFFF;
+  color: #0F172A;
+  border: 2px solid #E2E8F0;
+}
+
+.btn-secondary:hover {
+  background: #F8FAFC;
+  border-color: #94A3B8;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* ── VARIANTE AZUL PARA BOTONES ESPECÍFICOS ──────────────── */
+.btn-blue {
+  background: #0066FF;
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(0, 102, 255, 0.35);
+}
+
+.btn-blue:hover {
+  background: #0052CC;
+  box-shadow: 0 6px 24px rgba(0, 102, 255, 0.50);
+  transform: translateY(-2px);
+}
+
+/* ── VARIANTE VERDE ────────────────────────────────────────── */
+.btn-green {
+  background: #00B884;
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(0, 184, 132, 0.35);
+}
+
+.btn-green:hover {
+  background: #009A6E;
+  box-shadow: 0 6px 24px rgba(0, 184, 132, 0.50);
+  transform: translateY(-2px);
+}
+
+/* ── EFECTO PULSACIÓN PARA LLAMAR LA ATENCIÓN ────────────── */
+.btn-pulse {
+  animation: pulseBlue 2s infinite;
+}
+
+@keyframes pulseBlue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(0, 102, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 102, 255, 0);
+  }
+}
+
+/* ── BOTÓN ELÉCTRICO (EFECTO BRILLO) ──────────────────────── */
+.btn-electric {
+  position: relative;
+  overflow: hidden;
+  background: #0066FF;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 4px 18px rgba(0, 102, 255, 0.45);
+  transition: all 0.3s ease;
+}
+
+.btn-electric::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+
+.btn-electric:hover::after {
+  opacity: 1;
+}
+
+.btn-electric:hover {
+  background: #0052CC;
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 8px 35px rgba(0, 102, 255, 0.65);
+}
+
+/* Table */
+.table-scroll {
+  overflow: auto;
+  max-height: 52vh;
+  padding: 0 12px 8px;
+}
+
+.master-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.master-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 8px;
+  font-size: 10px;
+  font-weight: 1000;
+  white-space: nowrap;
+  border: 1px solid;
+  box-shadow: 0 2px 4px rgba(15,23,42,.10);
+  background: #FFF1F2 !important;
+  color: #7F1D1D !important;
+  border-color: #FCA5A5 !important;
+}
+
+.master-table td {
+  border: 1px solid #E2E8F0;
+  padding: 7px 8px;
+  font-size: 11px;
+  vertical-align: middle;
+  text-align: center !important;
+}
+
+
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.b-ok {
+  background: #B6FF7A;
+  color: #0B5D1E;
+  border: 1px solid #7CFF3A;
+}
+
+.b-warn {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.b-block {
+  background: #FFE4E6;
+  color: #BE123C;
+  border: 1px solid #FDA4AF;
+}
+
+.b-gray {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.b-kcf {
+  background: #FFE4E6;
+  color: #EF233C;
+  border: 1px solid #FDA4AF;
+}
+
+.b-agd {
+  background: #FFEDD5;
+  color: #FC6200;
+  border: 1px solid #FDBA74;
+}
+
+.b-shared {
+  background: #DBEAFE;
+  color: #0369A1;
+  border: 1px solid #7DD3FC;
+}
+
+.code-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #DBEAFE;
+  color: #1D4ED8;
+  border: 1px solid #93C5FD;
+  font-weight: 1000;
+  font-size: 11px;
+}
+
+/* Action Buttons */
+.action-btn {
+  height: 29px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 950;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  border: 1px solid;
+  cursor: pointer;
+}
+
+.action-view {
+  color: #2563EB;
+  border-color: #BFDBFE;
+  background: #EFF6FF;
+}
+
+.action-edit {
+  color: #D97706;
+  border-color: #FCD34D;
+  background: #FFFBEB;
+}
+
+.action-delete {
+  color: #DC2626;
+  border-color: #FECACA;
+  background: #FEF2F2;
+}
+
+/* Bottom Sheet */
+.bottom-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  border-top: 1px solid #E5E7EB;
+  background: #fff;
+}
+
+.bottom-label {
+  font-size: 10px;
+  color: #475569;
+  font-weight: 950;
+}
+
+.page-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: #F8FAFC;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+}
+
+.page-btn {
+  height: 28px;
+  min-width: 105px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  padding: 0 9px;
+  font-size: 10.5px;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.page-btn.active {
+  background: #EF233C;
+  color: #fff;
+}
+
+.page-btn:not(.active):hover {
+  background: #fff;
+}
+
+
+/* Responsive */
+@media (max-width: 1380px) {
+  .clean-header {
+    grid-template-columns: 1fr;
+  }
+  .client-status-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 920px) {
+  .client-status-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+   INDICADORES - TAMAÑO MEDIO (MÁS LEGIBLE)
+   ============================================================ */
+
+.master-status-board {
+    display: flex !important;
+    gap: 8px !important;
+    margin: 4px 0 !important;
+    padding: 0 !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+}
+
+.master-status-card {
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    padding: 4px 14px 4px 8px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    background: #FFFFFF !important;
+    border-radius: 8px !important;
+    border: 1px solid #E5E7EB !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    transition: all 0.2s ease !important;
+}
+
+.master-status-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.master-status-dot {
+    font-size: 12px !important;
+    line-height: 1 !important;
+    flex-shrink: 0 !important;
+}
+
+.master-status-dot.msd-active { color: #22C55E !important; }
+.master-status-dot.msd-inactive { color: #EF4444 !important; }
+.master-status-dot.msd-total { color: #3B82F6 !important; }
+
+.master-status-card b {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    line-height: 1 !important;
+    min-width: 20px !important;
+    text-align: center !important;
+}
+
+.master-status-card small {
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    color: #64748B !important;
+    line-height: 1 !important;
+    letter-spacing: 0.3px !important;
+}
+
+.master-status-card.active {
+    background: #F0FDF4 !important;
+    border-color: #86EFAC !important;
+}
+.master-status-card.active b { color: #065F46 !important; }
+
+.master-status-card.observed {
+    background: #FEFCE8 !important;
+    border-color: #FDE68A !important;
+}
+.master-status-card.observed b { color: #92400E !important; }
+.master-status-dot.msd-observed { color: #F59E0B !important; }
+
+.master-status-card.blocked {
+    background: #FEF2F2 !important;
+    border-color: #FCA5A5 !important;
+}
+.master-status-card.blocked b { color: #991B1B !important; }
+.master-status-dot.msd-blocked { color: #EF4444 !important; }
+
+
+/* se puede comentar ya que esto no esta modificando nada */
+.master-status-card.inactive {
+    background: #FEF2F2 !important;
+    border-color: #FCA5A5 !important;
+}
+.master-status-card.inactive b { color: #991B1B !important; }
+/* ============================================================ */
+
+
+
+.master-status-card.total {
+    background: #EFF6FF !important;
+    border-color: #93C5FD !important;
+}
+.master-status-card.total b { color: #1E40AF !important; }
+
+@media (max-width: 640px) {
+    .master-status-card {
+        padding: 3px 10px 3px 6px !important;
+        height: 24px !important;
+        min-height: 24px !important;
+    }
+    .master-status-card b {
+        font-size: 13px !important;
+    }
+    .master-status-card small {
+        font-size: 9px !important;
+    }
+    .master-status-dot {
+        font-size: 10px !important;
+    }
+}
+
+
+/* ============================================================
+   CABECERA MÁS ANGOSTA - REDUCCIÓN DE ESPACIO
+   ============================================================ */
+
+/* Clean Header - MÁS ANGOSTO */
+.clean-header {
+    display: grid;
+    grid-template-columns: 220px 1fr auto;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 12px !important;
+    min-height: 36px !important;
+    border-bottom: 1px solid #E5E7EB;
+    background: #FFFFFF;
+}
+
+/* Título más compacto */
+.master-title-wrap {
+    position: relative;
+    padding-left: 8px;
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.master-title-wrap::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 999px;
+    background: #EF233C;
+}
+
+.master-title {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #0F172A;
+    letter-spacing: -.02em;
+    padding: 0;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.master-title .highlight {
+    color: #EF233C;
+}
+
+.master-title .count {
+    font-size: 10px !important;
+    font-weight: 700;
+    color: #94A3B8;
+    margin-left: 3px;
+}
+
+/* Subtítulo más compacto */
+.master-subtitle {
+    margin-top: 0px;
+    font-size: 9px !important;
+    color: #64748B;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.master-subtitle span {
+    font-weight: 700;
+    color: #0F172A;
+}
+
+/* Search box - MÁS ANCHO */
+.search-box {
+    position: relative;
+    z-index: 5;
+    max-width: 350px !important;  /* ← CAMBIA ESTO */
+    width: 100%;
+    justify-self: center;
+}
+
+.search-box::before {
+    content: "🔎";
+    position: absolute;
+    left: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    opacity: .6;
+    z-index: 15;
+    pointer-events: none;
+}
+
+.search-box input {
+    width: 100%;
+    height: 26px !important;
+    border-radius: 6px;
+    border: 1px solid #E2E8F0;
+    padding-left: 24px;
+    padding-right: 8px;
+    font-weight: 600;
+    font-size: 10px !important;
+    background: #FFFFFF;
+    color: #0F172A;
+    outline: none;
+    pointer-events: auto !important;
+    cursor: text !important;
+    z-index: 10;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+    border-color: #0066FF;
+    box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.10);
+}
+
+.search-box input::placeholder {
+    color: #94A3B8;
+    font-weight: 500;
+    font-size: 9px !important;
+}
+
+/* Acciones más compactas */
+.clean-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px !important;
+    flex-wrap: nowrap;
+    justify-self: end;
+}
+
+.clean-actions select {
+    height: 26px !important;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 0 6px;
+    background: #fff;
+    font-weight: 600;
+    font-size: 9px !important;
+    color: #0F172A;
+    cursor: pointer;
+}
+
+.clean-actions select:focus {
+    border-color: #0066FF;
+    outline: none;
+}
+
+/* Botón "Importar" más pequeño */
+.clean-actions .btn-secondary {
+    height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 10px !important;
+    border-radius: 6px !important;
+    border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    color: #0F172A;
+    font-weight: 600;
+}
+
+.clean-actions .btn-secondary:hover {
+    background: #F8FAFC;
+    border-color: #94A3B8;
+}
+
+/* Botón "Crear" - MANTENER TAMAÑO GRANDE */
+.clean-actions .btn-primary.btn-create {
+    height: 32px !important;
+    padding: 0 16px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    background: #0066FF;
+    color: #FFFFFF;
+    border: none;
+    box-shadow: 0 2px 10px rgba(0, 102, 255, 0.35);
+    transition: all 0.25s ease;
+}
+
+.clean-actions .btn-primary.btn-create:hover {
+    background: #0052CC;
+    box-shadow: 0 4px 18px rgba(0, 102, 255, 0.50);
+    transform: translateY(-1px);
+}
+
+.clean-actions .btn-primary.btn-create:active {
+    background: #003D99;
+    transform: translateY(0px);
+}
+
+/* 🔥 RESPONSIVE - MÓVIL */
+@media (max-width: 768px) {
+    .clean-header {
+        grid-template-columns: 1fr;
+        gap: 4px;
+        padding: 6px 10px !important;
+        min-height: auto !important;
+    }
+    
+    .master-title-wrap {
+        padding-left: 8px;
+        min-width: auto;
+    }
+    
+    .search-box {
+        max-width: 100% !important;
+    }
+    
+    .clean-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 4px !important;
+    }
+    
+    .clean-actions .btn-primary.btn-create {
+        height: 30px !important;
+        padding: 0 14px !important;
+        font-size: 11px !important;
+    }
+}
+
+/* 🔥 RESPONSIVE - TABLET */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .clean-header {
+        grid-template-columns: 180px 1fr auto;
+        gap: 4px;
+    }
+    
+    .search-box {
+        max-width: 140px !important;
+    }
+}
+
+/* ============================================================
+   TABLA CON HEADER STICKY (Fijo al hacer scroll)
+   ============================================================ */
+
+/* Contenedor de la tabla con scroll */
+.table-scroll {
+    overflow: auto;
+    max-height: 55vh;
+    padding: 0 12px 8px;
+    position: relative;
+}
+
+/* Tabla */
+.master-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+/* ✅ HEADER STICKY - Se queda fijo al hacer scroll */
+.master-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 8px;
+  font-size: 10px;
+  font-weight: 1000;
+  white-space: nowrap;
+  border: 1px solid;
+  box-shadow: 0 2px 4px rgba(15,23,42,.10);
+  background: #FFF1F2 !important;
+  color: #7F1D1D !important;
+  border-color: #FCA5A5 !important;
+  text-align: center !important;
+}
+
+.master-table td {
+    border: 1px solid #E2E8F0;
+    padding: 6px 10px;
+    font-size: 11px;
+    vertical-align: middle;
+    text-align: center !important;  /* ← CAMBIADO A CENTER */
+    background: #FFFFFF;
+}
+
+/* Efecto hover en filas */
+.master-table tbody tr:hover td {
+    background: #F8FAFC;
+}
+
+/* Columnas con texto centrado */
+.master-table td.center,
+.master-table th.center {
+    text-align: center !important;
+}
+
+/* Columna de acciones - centrada */
+.master-table td:last-child,
+.master-table th:last-child {
+    text-align: center !important;
+}
+
+/* Primera columna (índice) */
+.master-table td:first-child,
+.master-table th:first-child {
+    text-align: center !important;
+    font-weight: 700;
+}
+
+/* Columna de estado - centrada */
+.master-table td .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Sombra en el header cuando scrollea */
+.master-table thead th::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 4px;
+    background: linear-gradient(to bottom, rgba(15,23,42,0.08), transparent);
+    pointer-events: none;
+}
+
+/* ✅ Sombra en el header al hacer scroll (efecto visual) */
+.table-scroll.sticky-shadow .master-table thead th {
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+}
+
+/* Botones de acción en la tabla */
+.action-btn {
+    padding: 3px 10px !important;
+    height: 24px !important;
+    font-size: 10px !important;
+    border-radius: 4px !important;
+    border: none !important;
+    cursor: pointer !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.action-btn:hover {
+    transform: translateY(-1px);
+}
+
+.action-view {
+    background: #E0E7FF !important;
+    color: #3730A3 !important;
+}
+
+.action-view:hover {
+    background: #C7D2FE !important;
+}
+
+.action-edit {
+    background: #DBEAFE !important;
+    color: #1E40AF !important;
+}
+
+.action-edit:hover {
+    background: #BFDBFE !important;
+}
+
+.action-delete {
+    background: #FEE2E2 !important;
+    color: #991B1B !important;
+}
+
+.action-delete:hover {
+    background: #FECACA !important;
+}
+
+.action-activate {
+    background: #D1FAE5 !important;
+    color: #065F46 !important;
+}
+
+.action-activate:hover {
+    background: #A7F3D0 !important;
+}
+
+/* Grupo de acciones */
+.master-table td .actions-group {
+    display: flex !important;
+    gap: 4px !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+}
+
+/* Badge de estado en tabla */
+.master-table .badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+}
+
+.b-ok {
+    background: #D1FAE5 !important;
+    color: #065F46 !important;
+    border: 1px solid #86EFAC !important;
+}
+
+.b-gray {
+    background: #F1F5F9 !important;
+    color: #475569 !important;
+    border: 1px solid #E2E8F0 !important;
+}
+
+.b-kcf {
+    background: #DBEAFE !important;
+    color: #1E40AF !important;
+    border: 1px solid #93C5FD !important;
+}
+
+.b-agd {
+    background: #FEF3C7 !important;
+    color: #92400E !important;
+    border: 1px solid #F59E0B !important;
+}
+
+.b-shared {
+    background: #E0E7FF !important;
+    color: #3730A3 !important;
+    border: 1px solid #A5B4FC !important;
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+    .table-scroll {
+        max-height: 45vh;
+        padding: 0 8px 8px;
+    }
+    
+    .master-table thead th {
+        padding: 6px 6px !important;
+        font-size: 9px !important;
+    }
+    
+    .master-table td {
+        padding: 4px 6px !important;
+        font-size: 10px !important;
+    }
+    
+    .action-btn {
+        padding: 2px 6px !important;
+        height: 20px !important;
+        font-size: 9px !important;
+    }
+}
+
+
+/* ============================================================
+   MODAL CLIENTE - ESTILOS COMPLETOS
+   ============================================================ */
+
+/* ── MODAL OVERLAY ─────────────────────────────────────────── */
+.modal-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 9999;
+  padding: 20px;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.modal-bg.show {
+  display: flex;
+}
+
+/* ── MODAL WRAPPER ─────────────────────────────────────────── */
+.client-modal-wrap {
+  width: min(1180px, 98vw);
+  max-height: 95vh;
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.3);
+}
+
+/* ── HEADER ────────────────────────────────────────────────── */
+.cm-head {
+  min-height: 48px;
+  background: #0F172A;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex: 0 0 auto;
+}
+
+.cm-head-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cm-close {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.cm-close:hover {
+  opacity: 1;
+}
+
+/* ── BODY ──────────────────────────────────────────────────── */
+.cm-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 16px 20px 10px;
+}
+
+/* ── SECCIONES ────────────────────────────────────────────── */
+.cm-section {
+  margin-bottom: 12px;
+}
+
+.cm-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2563EB;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.cm-bullet {
+  width: 4px;
+  height: 18px;
+  border-radius: 999px;
+  background: #2563EB;
+  flex: 0 0 auto;
+}
+
+/* ── GRIDS ──────────────────────────────────────────────────── */
+.cm-grid {
+  display: grid;
+  gap: 6px 10px;
+}
+
+/* 🔧 NUEVO */
+.cm-grid-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cm-grid-wrapper .cm-grid-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 🔧 CAMBIO: de "1fr 1fr 1.1fr 200px" a solo 3 columnas */
+.cm-grid-main {
+  grid-template-columns: 1fr 1fr 1.1fr;
+}
+
+.cm-grid-comercial {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.cm-grid-contact {
+  grid-template-columns: 1fr 1fr 1fr 1.15fr 120px;
+}
+
+.cm-grid-delivery {
+  grid-template-columns: 1fr 1.5fr 0.9fr;
+}
+
+.cm-field {
+  min-width: 0;
+}
+
+.cm-field.span-2 {
+  grid-column: span 2;
+}
+
+.cm-field.span-3 {
+  grid-column: span 3;
+}
+
+.cm-field.full-row {
+  grid-column: 1 / -1;
+}
+
+/* ── LABELS E INPUTS ──────────────────────────────────────── */
+.cm-field label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.cm-field input,
+.cm-field select {
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #D1D5DB;
+  background: #fff;
+  color: #0F172A;
+  font-size: 12px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.cm-field textarea {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid #D1D5DB;
+  padding: 6px 10px;
+  font-size: 12px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.cm-field input:focus,
+.cm-field select:focus,
+.cm-field textarea:focus {
+  border-color: #2563EB;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* ── SUNAT GROUP ───────────────────────────────────────────── */
+.sunat-group {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  width: 100%;
+}
+
+.sunat-group input {
+  border-radius: 8px 0 0 8px !important;
+  border-right: 0 !important;
+}
+
+/* ── SUNAT BUTTON ──────────────────────────────────────────── */
+.sunat-btn {
+  height: 32px;
+  border: 1px solid #0F172A;
+  border-radius: 0 8px 8px 0;
+  background: #0F172A;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.sunat-btn:hover {
+  background: #1F2937;
+}
+
+.sunat-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── STATE BOX ─────────────────────────────────────────────── */
+.cm-state-box {
+  flex: 0 0 200px;          /* 🔧 NUEVO */
+  max-width: 200px;         /* 🔧 NUEVO */
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: #F8FAFC;
+  padding: 4px 8px;
+  min-height: 52px;
+  position: relative;
+}
+
+.cm-state-box::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: #84CC16;
+}
+
+.cm-state-box.s-green {
+  background: #F0FDF4;
+  border-color: #84CC16;
+}
+.cm-state-box.s-green::before { background: #84CC16; }
+
+.cm-state-box.s-yellow {
+  background: #FEFCE8;
+  border-color: #F59E0B;
+}
+.cm-state-box.s-yellow::before { background: #F59E0B; }
+
+.cm-state-box.s-red {
+  background: #FEF2F2;
+  border-color: #FB7185;
+}
+.cm-state-box.s-red::before { background: #FB7185; }
+
+.cm-state-box.s-gray {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+}
+.cm-state-box.s-gray::before { background: #94A3B8; }
+
+.cm-state-box label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.cm-state-box select {
+  width: 100%;
+  height: 28px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.cm-state-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+}
+
+.cm-state-helper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+.cm-state-helper-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.cm-state-helper-text {
+  font-size: 10px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.cm-state-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pill-green { background: #D9F99D; color: #166534; }
+.pill-yellow { background: #FEF3C7; color: #92400E; }
+.pill-red { background: #FEE2E2; color: #991B1B; }
+.pill-gray { background: #E2E8F0; color: #475569; }
+
+/* ── BOXES (CONTACTOS Y PUNTOS) ───────────────────────────── */
+.cm-box {
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  position: relative;
+}
+
+.cm-box-del {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+  color: #EF4444;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.cm-box-del:hover {
+  background: #FEE2E2;
+}
+
+.cm-add-btn {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #2563EB;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cm-add-btn:hover {
+  background: #1D4ED8;
+}
+
+.cm-subtitle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.cm-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #2563EB;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.cm-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none !important;
+}
+
+.cm-checkbox input {
+  width: 14px !important;
+  height: 14px !important;
+  accent-color: #2563EB;
+  flex: 0 0 auto;
+}
+
+.cm-box-inner {
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+}
+
+/* ── FOOTER ─────────────────────────────────────────────────── */
+.cm-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid #E5E7EB;
+  background: #fff;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cm-foot-left,
+.cm-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cm-hint {
+  font-size: 11px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+/* ── FOOTER BUTTONS ────────────────────────────────────────── */
+.cm-btn {
+  height: 34px;
+  border-radius: 999px;
+  padding: 0 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cm-btn-light {
+  background: #fff;
+  border: 1px solid #D1D5DB;
+  color: #1F2937;
+}
+
+.cm-btn-light:hover {
+  background: #F3F4F6;
+  border-color: #9CA3AF;
+}
+
+.cm-btn-primary {
+  background: #2563EB;
+  color: #fff;
+  min-width: 160px;
+}
+
+.cm-btn-primary:hover {
+  background: #1D4ED8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.cm-btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================
+   HEADER STICKY - SOBRESCRIBIR CON !important
+   ============================================================ */
+
+/* ✅ FORZAR EL HEADER STICKY */
+.master-table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    background: #FFF1F2 !important;
+    color: #7F1D1D !important;
+    border-color: #FCA5A5 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10) !important;
+    padding: 8px 10px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    border-bottom: 2px solid #FCA5A5 !important;
+}
+
+/* Asegurar que el contenedor de la tabla permita sticky */
+.table-scroll {
+    overflow: auto !important;
+    max-height: 55vh !important;
+    position: relative !important;
+}
+
+/* Sombra cuando se scrollea */
+.table-scroll.sticky-shadow .master-table thead th {
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.20) !important;
+}
+
+/* ============================================================
+   MODALES ULTRA COMPACTOS - MÁXIMO AHORRO DE ESPACIO
+   ============================================================ */
+
+/* Contenedor principal del modal - AHORA con flex column */
+.client-modal-wrap,
+.proveedor-modal-wrap,
+.almacen-modal-wrap,
+.master-modal-wrap {
+    width: min(850px, 96vw) !important;
+    max-height: 85vh !important;
+    max-width: 850px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+/* Cuerpo del modal - SCROLL VERTICAL */
+.client-modal-wrap .cm-body,
+.proveedor-modal-wrap .mm-body,
+.almacen-modal-wrap .mm-body,
+.master-modal-wrap .mm-body {
+    flex: 1 1 auto !important;
+    padding: 4px 10px 4px !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin;
+    scrollbar-color: #c4cdd8 #edf2f7;
+}
+
+/* Scrollbar personalizado (Chrome/Safari/Edge) */
+.client-modal-wrap .cm-body::-webkit-scrollbar,
+.proveedor-modal-wrap .mm-body::-webkit-scrollbar,
+.almacen-modal-wrap .mm-body::-webkit-scrollbar,
+.master-modal-wrap .mm-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.client-modal-wrap .cm-body::-webkit-scrollbar-track,
+.proveedor-modal-wrap .mm-body::-webkit-scrollbar-track,
+.almacen-modal-wrap .mm-body::-webkit-scrollbar-track,
+.master-modal-wrap .mm-body::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.client-modal-wrap .cm-body::-webkit-scrollbar-thumb,
+.proveedor-modal-wrap .mm-body::-webkit-scrollbar-thumb,
+.almacen-modal-wrap .mm-body::-webkit-scrollbar-thumb,
+.master-modal-wrap .mm-body::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.client-modal-wrap .cm-body::-webkit-scrollbar-thumb:hover,
+.proveedor-modal-wrap .mm-body::-webkit-scrollbar-thumb:hover,
+.almacen-modal-wrap .mm-body::-webkit-scrollbar-thumb:hover,
+.master-modal-wrap .mm-body::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Secciones más compactas */
+.client-modal-wrap .cm-section,
+.proveedor-modal-wrap .cm-section,
+.almacen-modal-wrap .cm-section,
+.master-modal-wrap .cm-section {
+    margin-bottom: 4px !important;
+}
+
+.client-modal-wrap .cm-section-title {
+    font-size: 10px !important;
+    margin-bottom: 2px !important;
+}
+
+.client-modal-wrap .cm-bullet {
+    height: 12px !important;
+}
+
+/* Grids compactos */
+.client-modal-wrap .cm-grid,
+.proveedor-modal-wrap .cm-grid,
+.almacen-modal-wrap .cm-grid,
+.master-modal-wrap .cm-grid {
+    gap: 2px 6px !important;
+}
+
+.client-modal-wrap .cm-grid-main,
+.proveedor-modal-wrap .cm-grid-main,
+.almacen-modal-wrap .cm-grid-main,
+.master-modal-wrap .cm-grid-main {
+    grid-template-columns: 1fr 1fr 1fr !important;
+}
+
+/* Labels e inputs más pequeños */
+.client-modal-wrap .cm-field label,
+.proveedor-modal-wrap .cm-field label,
+.almacen-modal-wrap .cm-field label,
+.master-modal-wrap .cm-field label {
+    font-size: 7px !important;
+    margin-bottom: 0px !important;
+    letter-spacing: 0.2px !important;
+}
+
+.client-modal-wrap .cm-field input,
+.client-modal-wrap .cm-field select,
+.proveedor-modal-wrap .cm-field input,
+.proveedor-modal-wrap .cm-field select,
+.almacen-modal-wrap .cm-field input,
+.almacen-modal-wrap .cm-field select,
+.master-modal-wrap .cm-field input,
+.master-modal-wrap .cm-field select {
+    height: 22px !important;
+    font-size: 10px !important;
+    padding: 0 4px !important;
+    border-radius: 4px !important;
+}
+
+.client-modal-wrap .cm-field textarea,
+.proveedor-modal-wrap .cm-field textarea,
+.almacen-modal-wrap .cm-field textarea,
+.master-modal-wrap .cm-field textarea {
+    height: 24px !important;
+    min-height: 24px !important;
+    font-size: 10px !important;
+    padding: 2px 4px !important;
+}
+
+/* State box compacto */
+.client-modal-wrap .cm-state-box,
+.proveedor-modal-wrap .cm-state-box,
+.almacen-modal-wrap .cm-state-box,
+.master-modal-wrap .cm-state-box {
+    min-height: 30px !important;
+    padding: 2px 4px !important;
+}
+
+.client-modal-wrap .cm-state-box select,
+.proveedor-modal-wrap .cm-state-box select,
+.almacen-modal-wrap .cm-state-box select,
+.master-modal-wrap .cm-state-box select {
+    height: 18px !important;
+    font-size: 10px !important;
+    padding: 0 4px !important;
+}
+
+.client-modal-wrap .cm-state-indicator {
+    padding: 1px 4px !important;
+    margin-top: 1px !important;
+}
+
+.client-modal-wrap .cm-state-helper-text {
+    font-size: 8px !important;
+}
+
+.client-modal-wrap .cm-state-pill {
+    font-size: 8px !important;
+    padding: 0px 4px !important;
+}
+
+/* Boxes compactos */
+.client-modal-wrap .cm-box {
+    padding: 2px 6px !important;
+    margin-bottom: 2px !important;
+}
+
+.client-modal-wrap .cm-box-del {
+    width: 14px !important;
+    height: 14px !important;
+    font-size: 7px !important;
+    right: 2px !important;
+    top: 2px !important;
+}
+
+.client-modal-wrap .cm-add-btn {
+    height: 18px !important;
+    padding: 0 6px !important;
+    font-size: 8px !important;
+}
+
+/* Headers y footers compactos */
+.client-modal-wrap .cm-head,
+.proveedor-modal-wrap .mm-head,
+.almacen-modal-wrap .mm-head,
+.master-modal-wrap .mm-head {
+    min-height: 30px !important;
+    padding: 0 10px !important;
+    flex: 0 0 auto !important;      /* ✅ NUEVO - header no se estira */
+}
+
+.client-modal-wrap .cm-head-title,
+.proveedor-modal-wrap .mm-title,
+.almacen-modal-wrap .mm-title,
+.master-modal-wrap .mm-title {
+    font-size: 13px !important;
+}
+
+.client-modal-wrap .cm-foot,
+.proveedor-modal-wrap .mm-foot,
+.almacen-modal-wrap .mm-foot,
+.master-modal-wrap .mm-foot {
+    padding: 4px 10px !important;
+    min-height: 28px !important;
+    flex: 0 0 auto !important;      /* ✅ NUEVO - footer no se estira */
+}
+
+.client-modal-wrap .cm-btn,
+.proveedor-modal-wrap .cm-btn,
+.almacen-modal-wrap .cm-btn,
+.master-modal-wrap .cm-btn {
+    height: 24px !important;
+    padding: 0 10px !important;
+    font-size: 10px !important;
+    border-radius: 6px !important;
+}
+
+.client-modal-wrap .cm-hint {
+    font-size: 8px !important;
+}
+
+/* SUNAT button */
+.client-modal-wrap .sunat-group {
+    grid-template-columns: 1fr 50px !important;
+}
+
+.client-modal-wrap .sunat-btn {
+    height: 22px !important;
+    font-size: 8px !important;
+    padding: 0 6px !important;
+}
+
+
+
+/* ============================================================
+   CENTRAR TODOS LOS ENCABEZADOS DE LA TABLA
+   ============================================================ */
+
+/* FORZAR CENTRADO EN TODOS LOS HEADERS */
+.master-table thead th,
+.master-table thead th[class*="sticky"],
+.master-table thead th[style*="sticky"] {
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+/* Asegurar que los headers de todas las columnas estén centrados */
+.master-table th {
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+/* Si hay algún header con clase específica, también centrarlo */
+.master-table th.center,
+.master-table th:first-child,
+.master-table th:last-child {
+    text-align: center !important;
+}
+
+
+
+/* Asegurar que los botones de acción también estén centrados */
+.master-table td .actions-group,
+.master-table td .row-actions {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+/* Badges centrados */
+.master-table td .badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Enlaces de email centrados */
+.master-table td a {
+    display: inline-block !important;
+}
+
+/* Código centrado */
+.master-table td .bd-t-code,
+.master-table td .code-pill {
+    display: inline-block !important;
+}
+
+/* Índice/Item centrado */
+.master-table td:first-child,
+.master-table th:first-child {
+    text-align: center !important;
+    font-weight: 700 !important;
+}
+
+/* Columna de acciones centrada */
+.master-table td:last-child,
+.master-table th:last-child {
+    text-align: center !important;
+}
+
+/* Botones de acción alineados */
+.master-table .action-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 2px !important;
+}
+
+
+/* ============================================================
+   HEADER STICKY - PARA VISTA PRINCIPAL Y COMPLETA
+   ============================================================ */
+
+/* Contenedor con scroll */
+.table-scroll {
+    overflow: auto !important;
+    max-height: 55vh !important;
+    position: relative !important;
+}
+
+/* La tabla debe permitir sticky */
+.master-table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+/* THEAD sticky */
+.master-table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+}
+
+/* TH sticky */
+.master-table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    background: #FFF1F2 !important;
+    color: #7F1D1D !important;
+    border-color: #FCA5A5 !important;
+    border-bottom: 2px solid #FCA5A5 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10) !important;
+    padding: 8px 10px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+}
+
+/* Sombra al hacer scroll */
+.table-scroll.sticky-shadow .master-table thead th {
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25) !important;
+}
+
+/* Fondo de celdas */
+.master-table tbody td {
+    background: #FFFFFF !important;
+}
+
+.master-table tbody tr:hover td {
+    background: #F8FAFC !important;
+}
+/* ============================================================
+   🔥 FORZAR HEADER STICKY - MÁXIMA PRIORIDAD
+   ============================================================ */
+
+/* Sobrescribir estilos inyectados por JS */
+.table-scroll {
+    overflow: auto !important;
+    max-height: 55vh !important;
+    position: relative !important;
+}
+
+.master-table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+/* FORZAR STICKY EN EL HEADER */
+.master-table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+}
+
+.master-table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    background: #FFF1F2 !important;
+    color: #7F1D1D !important;
+    border-color: #FCA5A5 !important;
+    border-bottom: 2px solid #FCA5A5 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10) !important;
+    padding: 8px 10px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+}
+
+/* Sombra al hacer scroll */
+.table-scroll.sticky-shadow .master-table thead th {
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25) !important;
+}
+
+/* Asegurar que las celdas tengan fondo blanco */
+.master-table tbody td {
+    background: #FFFFFF !important;
+}
+
+.master-table tbody tr:hover td {
+    background: #F8FAFC !important;
+}
+
+/* ── MODAL MAESTRO ──────────────────────────────────────────── */
+.master-modal-wrap {
+  width: min(1160px, 96vw);
+  max-height: 92vh;
+  background: #fff;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 26px 70px rgba(15,23,42,.28);
+}
+
+.mm-head {
+  min-height: 44px;
+  background: #0F172A;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex: 0 0 auto;
+}
+
+.mm-title {
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.mm-close {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 25px;
+  cursor: pointer;
+}
+
+.mm-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 8px 14px 6px;
+}
+
+.mm-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid #E5E7EB;
+  background: #fff;
+  padding: 7px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 46px;
+}
+
+/* ── HELP BOX ──────────────────────────────────────────────── */
+.help-box {
+  padding: 9px 10px;
+  border: 1px solid #BFDBFE;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  background: #0F172A;
+  color: #fff;
+  border-left: 4px solid #EF233C;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  z-index: 99999;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  animation: slideIn 0.3s ease-out;
+}
+
+/* ── TOAST CUSTOM ──────────────────────────────────────────── */
+.toast-custom {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  z-index: 99999;
+  animation: slideIn 0.3s ease-out;
+  max-width: 450px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  font-size: 14px;
+}
+
+.toast-success { background: #10B981; }
+.toast-error { background: #EF4444; }
+.toast-warning { background: #F59E0B; }
+.toast-info { background: #3B82F6; }
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ── RESPONSIVE ────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+  .cm-grid-main { grid-template-columns: 1fr 1fr 1fr; }
+  .cm-grid-comercial { grid-template-columns: 1fr 1fr; }
+  .cm-grid-contact { grid-template-columns: 1fr 1fr 1fr; }
+  .cm-grid-delivery { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+
+  .cm-grid-wrapper {
+    flex-direction: column;
+  }
+  .cm-state-box {
+    flex-basis: auto;
+    }
+
+  .cm-grid-main,
+  .cm-grid-comercial,
+  .cm-grid-contact,
+  .cm-grid-delivery {
+    grid-template-columns: 1fr;
+  }
+  .cm-field.span-2,
+  .cm-field.span-3 {
+    grid-column: auto;
+  }
+  .cm-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cm-foot-left,
+  .cm-foot-right {
+    justify-content: center;
+  }
+  .clean-header {
+    grid-template-columns: 1fr;
+  }
+  .client-status-board {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- TABS -->
+<div class="tabs" id="tabsRow">
+    <button class="tab-btn active" data-tab="clientes"> Clientes</button>
+    <button class="tab-btn" data-tab="proveedores">Proveedores</button>
+    <button class="tab-btn" data-tab="almacenes">Almacenes</button>
+    <button class="tab-btn" data-tab="categorias">Categorías</button>
+    <button class="tab-btn" data-tab="marcas">Marcas</button>
+    <button class="tab-btn" data-tab="um"> Unidades de medida</button>
+</div>
+
+<!-- CONTENIDO DE CADA MÓDULO -->
+<div id="clientes" class="section active"></div>
+<div id="proveedores" class="section"></div>
+<div id="almacenes" class="section"></div>
+<div id="categorias" class="section"></div>
+<div id="marcas" class="section"></div>
+<div id="um" class="section"></div>
+
+
+<!-- MODALES -->
+{% include "modales/cliente_modal.html" %}
+{% include "modales/proveedor_modal.html" %}
+{% include "modales/almacen_modal.html" %}
+{% include "modales/maestro_modal.html" %}
+{% include "modales/confirmar_modal.html" %}
+{% include "modales/bulk_modal.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/maestros.js') }}"></script>
+{% endblock %}

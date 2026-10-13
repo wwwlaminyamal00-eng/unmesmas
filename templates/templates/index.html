@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ERP Multiempresa{% endblock %}
+
+{% block breadcrumb %}<span class="crumb-btn active-crumb">Dashboard</span>{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block subtitle %}Vista principal del ERP con indicadores y acceso rapido.{% endblock %}
+
+{% block content %}
+<section id="dashboard" class="section active">
+    <div class="cards">
+        <div class="card"><div class="card-icon">⌂</div><div><div class="card-title">Dashboard</div><div class="card-value">ERP</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value" id="dashEmpresas">0</div></div></div>
+        <div class="card"><div class="card-icon">👥</div><div><div class="card-title">Usuarios</div><div class="card-value" id="dashUsuarios">0</div></div></div>
+        <div class="card"><div class="card-icon">⚙</div><div><div class="card-title">Modulos</div><div class="card-value">11</div></div></div>
+    </div>
+    <div class="panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">0. Dashboard</div>
+                <div class="panel-help">Vista principal del ERP.</div>
+            </div>
+        </div>
+        <div class="placeholder-list">
+            <ul>
+                <li>Resumen general del ERP.</li>
+                <li>Indicadores por empresa activa.</li>
+                <li>Atajos hacia Configuracion, Ventas, Compras, Inventario y Finanzas.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- ========================================== -->
+<!-- SECCIONES PARA EMPRESAS, USUARIOS, ETC      -->
+<!-- ========================================== -->
+<!-- Estas secciones son necesarias para que el JS no falle -->
+
+<section id="empresas" class="section">
+    <div class="cards">
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value" id="empresasTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">🏦</div><div><div class="card-title">Bancos</div><div class="card-value" id="bancosTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">#</div><div><div class="card-title">Cuentas</div><div class="card-value" id="cuentasTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">✓</div><div><div class="card-title">Activas</div><div class="card-value" id="empresasActivas">0</div></div></div>
+    </div>
+    <div class="panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.1 Empresas</div>
+                <div class="panel-help">Datos fiscales y bancarios de cada empresa.</div>
+            </div>
+            <div class="filters">
+                <input type="text" id="searchEmpresas" placeholder="Buscar empresa">
+                <button type="button" class="btn btn-primary">+ Nueva empresa</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Código</th><th>Nombre comercial</th><th>Razón social</th><th>RUC</th><th>Banco</th><th>Tipo cuenta</th><th>N° cuenta</th><th>CCI</th><th>Dirección fiscal</th><th>Estado</th></tr>
+                </thead>
+                <tbody id="tbodyEmpresas"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section id="usuarios" class="section">
+    <div class="cards">
+        <div class="card"><div class="card-icon">👥</div><div><div class="card-title">Usuarios visibles</div><div class="card-value" id="usuariosVisibles">0</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresa filtro</div><div class="card-value" id="empresaFiltroLabel">Todas</div></div></div>
+        <div class="card"><div class="card-icon">🛡</div><div><div class="card-title">Acceso total</div><div class="card-value" id="usuariosTotal">0</div></div></div>
+        <div class="card"><div class="card-icon">📌</div><div><div class="card-title">Operativos</div><div class="card-value" id="usuariosOperativos">0</div></div></div>
+    </div>
+    <div class="panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.2 Usuarios y permisos</div>
+                <div class="panel-help">Filtra por empresa, nivel o usuario.</div>
+            </div>
+            <div class="filters">
+                <select id="filterEmpresaUsuarios" class="table-select">
+                    <option value="TODAS">Todas las empresas</option>
+                    <option value="KCF">Solo KCF</option>
+                    <option value="AGD">Solo AGD</option>
+                </select>
+                <select id="filterNivelUsuarios" class="table-select">
+                    <option value="TODOS">Todos los niveles</option>
+                    <option value="GERENCIA_TOTAL">Gerencia Total</option>
+                    <option value="OPERATIVO_COMERCIAL_LOGISTICA">Operativo</option>
+                </select>
+                <input type="text" id="searchUsuarios" placeholder="Buscar usuario, área o módulo">
+            </div>
+        </div>
+        <div class="note">
+            <b>Regla:</b> Los usuarios con rol GERENCIA_TOTAL tienen acceso total. Los operativos acceden a productos, ventas, compras, logística e inventario.
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Usuario</th><th>Área</th><th>Empresas</th><th>Rol</th><th>Config.</th><th>Maestros</th><th>Productos</th><th>Cotiz.</th><th>Ventas</th><th>Compras</th><th>Logística</th><th>Invent.</th><th>CxC</th><th>CxP</th><th>Caja</th><th>Reportes</th><th>SUNAT</th></tr>
+                </thead>
+                <tbody id="tbodyUsuarios"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section id="correlativos" class="section">
+    <div class="cards corr-cards">
+        <div class="card"><div class="card-icon">#</div><div><div class="card-title">Activos</div><div class="card-value" id="totalCorrelativos">0</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value">2</div></div></div>
+        <div class="card"><div class="card-icon">🧾</div><div><div class="card-title">Documentos</div><div class="card-value" id="totalDocumentos">0</div></div></div>
+        <div class="card"><div class="card-icon">✓</div><div><div class="card-title">Validación</div><div class="card-value">OK</div></div></div>
+    </div>
+    <div class="panel corr-panel">
+        <div class="panel-head corr-head">
+            <div>
+                <div class="panel-title">1.3 Correlativos</div>
+                <div class="panel-help">Control de numeración por empresa y documento.</div>
+            </div>
+            <div class="filters">
+                <button type="button" class="btn btn-secondary" id="btnNuevoCorrelativo">Nuevo correlativo</button>
+            </div>
+        </div>
+        <div class="corr-rule">
+            <b>Regla:</b> cada empresa maneja sus propios correlativos. Ejemplo: <b>COT-KCF-2026-0001</b>
+        </div>
+        <div class="corr-workspace">
+            <div class="corr-form-card">
+                <div class="corr-block-title">Datos principales</div>
+                <div class="corr-grid">
+                    <div class="form-field">
+                        <label>Empresa</label>
+                        <select id="corrEmpresa" class="table-select">
+                            <option value="KCF">KCF</option>
+                            <option value="AGD">AGD</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Documento</label>
+                        <select id="corrDocumento" class="table-select">
+                            <option value="Cotización">Cotización</option>
+                            <option value="Orden compra">Orden compra</option>
+                            <option value="Factura cliente">Factura cliente</option>
+                            <option value="Guía remisión">Guía remisión</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Estado</label>
+                        <select id="corrEstado" class="table-select">
+                            <option value="Activo">Activo</option>
+                            <option value="Inactivo">Inactivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="corr-block-title second">Numeración</div>
+                <div class="corr-grid">
+                    <div class="form-field">
+                        <label>Prefijo</label>
+                        <input id="corrPrefijo" class="table-input" value="COT-KCF">
+                    </div>
+                    <div class="form-field">
+                        <label>Año</label>
+                        <input id="corrAnio" type="number" class="table-input" value="2026">
+                    </div>
+                    <div class="form-field">
+                        <label>Último número usado</label>
+                        <input id="corrUltimo" type="number" class="table-input" value="0">
+                    </div>
+                </div>
+                <div class="corr-form-actions">
+                    <span id="corrFormMode">Modo: creando nuevo correlativo</span>
+                    <div class="filters">
+                        <button type="button" class="btn btn-secondary" id="btnLimpiarCorrelativo">Limpiar</button>
+                        <button type="button" class="btn btn-primary" id="btnGuardarCorrelativoForm2">Guardar correlativo</button>
+                    </div>
+                </div>
+            </div>
+            <div class="corr-preview-card">
+                <div class="preview-label">Siguiente correlativo automático</div>
+                <div class="preview-code" id="corrPreview">COT-KCF-2026-0001</div>
+                <div class="corr-mini-guide">
+                    <div><b>1</b><span>Selecciona empresa</span></div>
+                    <div><b>2</b><span>Elige documento</span></div>
+                    <div><b>3</b><span>Define prefijo y año</span></div>
+                    <div><b>4</b><span>Guarda el correlativo</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="panel corr-list-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">Listado de correlativos registrados</div>
+                <div class="panel-help">Separado por empresa para revisar rápido y evitar confusiones.</div>
+            </div>
+            <div class="filters">
+                <input type="text" id="searchCorrelativos" placeholder="Buscar por empresa, documento o prefijo">
+            </div>
+        </div>
+        <div class="company-split">
+            <div class="company-block">
+                <div class="company-block-head kcf-head">
+                    <div class="company-badge-title">
+                        <span class="badge badge-kcf">KCF</span>
+                        <strong class="company-title-kcf">Correlativos KCF</strong>
+                    </div>
+                    <div class="company-counter" id="countKCF">0 registros</div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Documento</th><th>Prefijo</th><th>Año</th><th>Último</th><th>Siguiente</th><th>Estado</th><th>Editar</th><th>Eliminar</th></tr></thead>
+                        <tbody id="tbodyCorrelativosKCF"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="company-block">
+                <div class="company-block-head agd-head">
+                    <div class="company-badge-title">
+                        <span class="badge badge-agd">AGD</span>
+                        <strong class="company-title-agd">Correlativos AGD</strong>
+                    </div>
+                    <div class="company-counter" id="countAGD">0 registros</div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Documento</th><th>Prefijo</th><th>Año</th><th>Último</th><th>Siguiente</th><th>Estado</th><th>Editar</th><th>Eliminar</th></tr></thead>
+                        <tbody id="tbodyCorrelativosAGD"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="parametros" class="section">
+    <div class="cards param-cards">
+        <div class="card"><div class="card-icon">⚙</div><div><div class="card-title">Parámetros activos</div><div class="card-value">12</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Reglas multiempresa</div><div class="card-value">4</div></div></div>
+        <div class="card"><div class="card-icon">🔒</div><div><div class="card-title">Reglas críticas</div><div class="card-value">6</div></div></div>
+        <div class="card"><div class="card-icon">✓</div><div><div class="card-title">Estado</div><div class="card-value">OK</div></div></div>
+    </div>
+    <div class="panel param-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.4 Parámetros generales</div>
+                <div class="panel-help">Reglas base del ERP para que los módulos trabajen conectados y con trazabilidad.</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnGuardarParametros">Guardar parámetros</button>
+        </div>
+        <div class="param-alert">
+            <b>Regla principal:</b> todo documento debe guardar <b>empresa_id</b>, <b>usuario_id</b>, <b>documento_origen_id</b> y trazabilidad.
+        </div>
+        <div class="param-grid">
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>🏢</span>
+                    <div><b>Multiempresa</b><p>Evita mezclar KCF y AGD.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Bloquear documento sin empresa activa</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Usar color, logo y RUC por empresa</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Separar bancos y cuentas por empresa</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Separar correlativos KCF / AGD</span><input type="checkbox" checked></label>
+                </div>
+            </div>
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>🧾</span>
+                    <div><b>Ventas</b><p>Cotización, venta y cuentas por cobrar.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Generar CxC al emitir venta</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Bloquear venta sin cliente</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Usar correlativo por empresa</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Permitir venta sin stock</span><input type="checkbox"></label>
+                </div>
+            </div>
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>🛒</span>
+                    <div><b>Compras</b><p>Solicitud, OC, proveedor y CxP.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Generar CxP al registrar compra</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Exigir proveedor en OC</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Enlazar compra con solicitud origen</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Bloquear OC sin aprobación</span><input type="checkbox" checked></label>
+                </div>
+            </div>
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>📦</span>
+                    <div><b>Inventario</b><p>Stock, kardex, recepción y salida.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Actualizar inventario con recepción</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Generar kardex automático</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Bloquear salida sin sustento</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Permitir stock negativo</span><input type="checkbox"></label>
+                </div>
+            </div>
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>S/</span>
+                    <div><b>Finanzas</b><p>Caja, bancos, CxC, CxP y flujo.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Actualizar caja y bancos con pagos</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Mostrar alertas de vencimiento</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Exigir sustento de pago</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Permitir eliminar pagos</span><input type="checkbox"></label>
+                </div>
+            </div>
+            <div class="param-group">
+                <div class="param-group-head">
+                    <span>🛡</span>
+                    <div><b>Auditoría y seguridad</b><p>Control interno y trazabilidad.</p></div>
+                </div>
+                <div class="param-list">
+                    <label class="param-row"><span>Registrar usuario que crea/edita</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Guardar historial de cambios</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Enviar anulados a papelera</span><input type="checkbox" checked></label>
+                    <label class="param-row"><span>Eliminar definitivo sin permiso</span><input type="checkbox"></label>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="integracion" class="section">
+    <div class="cards integration-cards">
+        <div class="card"><div class="card-icon">🔗</div><div><div class="card-title">Módulos conectados</div><div class="card-value">12</div></div></div>
+        <div class="card"><div class="card-icon">⚙</div><div><div class="card-title">Automatizaciones</div><div class="card-value">7</div></div></div>
+        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">empresa_id obligatorio</div><div class="card-value">Sí</div></div></div>
+        <div class="card"><div class="card-icon">🧾</div><div><div class="card-title">Trazabilidad</div><div class="card-value">100%</div></div></div>
+    </div>
+    <div class="panel integration-panel">
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">1.5 Integración ERP</div>
+                <div class="panel-help">La idea es simple: el dato se registra una sola vez y luego el ERP lo empuja automáticamente al siguiente módulo.</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnSimularIntegracion">Simular flujo</button>
+        </div>
+        <div class="integration-log" id="integrationLog">
+            <div class="log-row"><span class="badge badge-kcf">KCF</span><b>COT-KCF-2026-0001</b><span>Cotización creada desde Ventas.</span></div>
+            <div class="log-row"><span class="badge badge-info">AUTO</span><b>SC-KCF-2026-0001</b><span>Solicitud de compra generada por producto sin stock.</span></div>
+            <div class="log-row"><span class="badge badge-ok">OK</span><b>KARDEX</b><span>Recepción confirmada y stock actualizado.</span></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+
+
