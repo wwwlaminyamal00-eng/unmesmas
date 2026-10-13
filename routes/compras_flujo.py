@@ -17,11 +17,14 @@
 # Tablas: usa las que ya existían (ordenes_compra, ordenes_compra_items, recepciones_mercaderia,
 # comprobantes_proveedor, finanzas_pagos) agregando columnas, y crea com_recepciones,
 # com_recepcion_items, com_incidencias y com_historial. Script: migrations/004_compras.sql
+#
+# IMPORTANTE: erp_empresas.id es UUID, por eso empresa_id usa UUID en todas las tablas.
 import csv
 import io
 import json
 import os
 import threading
+import uuid as _uuid_mod
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -65,10 +68,11 @@ class ErrorCompras(Exception):
 
 # ============================================================
 # TABLAS (se crean solas; script equivalente en migrations/004_compras.sql)
+# empresa_id es UUID porque erp_empresas.id es UUID en Supabase.
 # ============================================================
 SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
-    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id UUID;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS modalidad_entrega VARCHAR(30);
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS direccion_recojo TEXT;
@@ -90,7 +94,7 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cliente VARCHAR(255);
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cantidad_recibida NUMERIC(14,4) DEFAULT 0;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS producto_id INTEGER;
-    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id UUID;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS almacen_id INTEGER;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(16,6);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS com_recepcion_id INTEGER;
@@ -101,7 +105,7 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS guia_proveedor VARCHAR(60);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS lote_serie VARCHAR(120);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
-    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id UUID;
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS monto_esperado NUMERIC(14,2);
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS cuadra BOOLEAN;
@@ -110,7 +114,7 @@ SQL_DDL_COMPRAS = """
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
         orden_compra_id INTEGER NOT NULL,
-        empresa_id INTEGER,
+        empresa_id UUID,
         almacen_id INTEGER NOT NULL,
         guia_proveedor VARCHAR(60) NOT NULL,
         traido_por_tipo VARCHAR(20) NOT NULL,
@@ -229,10 +233,13 @@ def _respuesta_error(e):
     if isinstance(e, PermissionError):
         return jsonify({'success': False, 'error': str(e)}), 403
     print(f'❌ Compras: {e}')
+    import traceback
+    traceback.print_exc()
     return jsonify({'success': False, 'error': 'No se pudo completar la operación. Intenta de nuevo.'}), 500
 
 
 def _entero(valor, nombre):
+    """Convierte a entero positivo (para sede, producto, usuario, etc.)."""
     try:
         n = int(valor)
         if n > 0:
@@ -240,6 +247,16 @@ def _entero(valor, nombre):
     except (TypeError, ValueError):
         pass
     raise ErrorCompras(f'Elige {nombre}.')
+
+
+def _uuid(valor, nombre):
+    """Convierte a UUID validado (para empresa_id, que en Supabase es UUID)."""
+    if valor in (None, ''):
+        raise ErrorCompras(f'Elige {nombre}.')
+    try:
+        return str(_uuid_mod.UUID(str(valor)))
+    except (ValueError, AttributeError, TypeError):
+        raise ErrorCompras(f'Elige {nombre} válido.')
 
 
 def _historial(cur, oc_id, accion, detalle=None):
@@ -723,7 +740,7 @@ def api_ordenes():
         cond, params = [], []
         if request.args.get('empresa_id'):
             cond.append('oc.empresa_id = %s')
-            params.append(int(request.args['empresa_id']))
+            params.append(request.args['empresa_id'])
         estado = request.args.get('estado') or ''
         if estado == 'abiertas':
             cond.append("COALESCE(oc.estado, '') NOT IN ('Cerrada', 'Anulada')")
@@ -857,7 +874,7 @@ def api_orden_guardar():
         return _no_autorizado('Tu usuario no puede preparar órdenes de compra.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _entero(d.get('empresa_id'), 'la empresa que compra')
+        empresa_id = _uuid(d.get('empresa_id'), 'la empresa que compra')
         proveedor_id = _entero(d.get('proveedor_id'), 'el proveedor de la lista')
         almacen_id = _entero(d.get('almacen_entrega_id'), 'la sede donde debe terminar la mercadería')
         condicion = d.get('condicion_pago') or ''
