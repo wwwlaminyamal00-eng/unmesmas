@@ -2086,11 +2086,6 @@ class PDFGenerator:
             return ""
 
 
-# ============================================================
-# INSTANCIA GLOBAL
-# ============================================================
-pdf_generator = PDFGenerator()
-
 
 # ============================================================
 # GENERAR RÓTULO DE GUÍA DE REMISIÓN
@@ -2673,3 +2668,9 @@ def _obtener_template_rotulo_guia(self):
 
 </body>
 </html>"""
+
+
+# ============================================================
+# INSTANCIA GLOBAL
+# ============================================================
+pdf_generator = PDFGenerator()
