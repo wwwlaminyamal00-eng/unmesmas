@@ -1,4 +1,4 @@
-# pdf_generator.py - VERSIÓN CORREGIDA CON RÓTULO DE GUÍA
+# pdf_generator.py - VERSIÓN CORREGIDA CON RÓTULO DE GUÍA (ROJO)
 
 import os
 from jinja2 import Template
@@ -13,7 +13,7 @@ class PDFGenerator:
     def __init__(self):
         self.templates_dir = 'templates/cotizacion_oc/'
         self.logo_base64 = None
-        # Colores corporativos (solo para número y título)
+        # Colores corporativos
         self.COLOR_ROJO = '#CC0000'
         self.COLOR_GRIS = '#999999'
         self.COLOR_GRIS_CLARO = '#cccccc'
@@ -63,10 +63,6 @@ class PDFGenerator:
     # BUSCAR GUÍA DE REMISIÓN VINCULADA A UNA FACTURA
     # ============================================================
     def _buscar_guia_vinculada(self, serie_factura, numero_factura):
-        """
-        Busca en la BD una guía de remisión vinculada a la factura.
-        Retorna 'SERIE-NUMERO' o '' si no encuentra.
-        """
         if not self.db_query:
             return ''
         
@@ -112,7 +108,6 @@ class PDFGenerator:
     # FUNCIÓN PARA CONVERTIR NÚMEROS A LETRAS
     # ============================================================
     def numero_a_letras(self, numero):
-        """Convierte un número a su representación en letras"""
         try:
             numero = float(numero)
             if numero == 0:
@@ -200,7 +195,7 @@ class PDFGenerator:
             return str(numero)
 
     # ============================================================
-    # GENERAR FACTURA / BOLETA - EN NEGRO, SOLO NÚMERO ROJO
+    # GENERAR FACTURA / BOLETA
     # ============================================================
     def _generar_comprobante(self, datos_comprobante):
         try:
@@ -301,7 +296,6 @@ class PDFGenerator:
 
             total_letras = self.numero_a_letras(total)
 
-            # LÓGICA PARA ORDEN DE COMPRA: MANUAL O AUTOMÁTICA
             orden_compra_cliente = datos_comprobante.get('orden_compra_cliente', '').strip()
             
             if not orden_compra_cliente:
@@ -322,7 +316,6 @@ class PDFGenerator:
                     '—'
                 )
 
-            # BUSCAR GUÍA VINCULADA (automáticamente desde BD)
             guia_vinculada = datos_comprobante.get('guia_vinculada', '')
             
             if not guia_vinculada:
@@ -1177,7 +1170,7 @@ class PDFGenerator:
         return motivos.get(codigo, codigo or 'Venta')
 
     # ============================================================
-    # GENERAR RÓTULO DE GUÍA DE REMISIÓN
+    # GENERAR RÓTULO DE GUÍA DE REMISIÓN (DISEÑO ROJO)
     # ============================================================
     def _generar_rotulo_guia(self, datos_guia):
         """Genera el PDF del rótulo para pegar en el paquete/mercadería"""
@@ -1246,6 +1239,8 @@ class PDFGenerator:
                 'cliente_nombre': datos_guia.get('destinatario_nombre', datos_guia.get('cliente', '')),
                 'cliente_ruc': datos_guia.get('ruc_destinatario', datos_guia.get('ruc', '')),
                 'cliente_direccion': datos_guia.get('destinatario_direccion', datos_guia.get('destino', '')),
+                'consignado_nombre': datos_guia.get('consignado_nombre', ''),
+                'consignado_dni': datos_guia.get('consignado_dni', ''),
                 'orden_compra': datos_guia.get('orden_compra_cliente', '—'),
                 'factura': datos_guia.get('factura', '—'),
                 'cotizacion': datos_guia.get('documento_asociado', datos_guia.get('nro_cotizacion', '—')),
@@ -1254,9 +1249,11 @@ class PDFGenerator:
                 'placa': datos_guia.get('placa_vehiculo', '—'),
                 'peso_total': datos_guia.get('peso_total', 0),
                 'bultos': datos_guia.get('numero_bultos', 1),
+                'numero_bultos': f"{str(datos_guia.get('numero_bultos', 1)).zfill(2)}/{str(datos_guia.get('total_bultos', datos_guia.get('numero_bultos', 1))).zfill(2)}",
                 'observaciones': datos_guia.get('observaciones', ''),
                 'items': items_formateados,
-                'total_items': len(items_formateados)
+                'total_items': len(items_formateados),
+                'qr_base64': self._generar_qr_rotulo_guia(datos_guia)
             }
             
             # Generar HTML del rótulo
@@ -1283,32 +1280,80 @@ class PDFGenerator:
             traceback.print_exc()
             return None
 
+    def _generar_qr_rotulo_guia(self, datos_guia):
+        """Genera un QR simple para el rótulo con datos de la guía"""
+        try:
+            import qrcode
+            from io import BytesIO
+            
+            qr_data = {
+                'guia': f"{datos_guia.get('serie', '')}-{datos_guia.get('numero', '')}",
+                'cliente': datos_guia.get('destinatario_nombre', ''),
+                'ruc': datos_guia.get('ruc_destinatario', ''),
+                'factura': datos_guia.get('factura', ''),
+                'fecha': str(datos_guia.get('fecha_emision', ''))
+            }
+            
+            qr = qrcode.QRCode(
+                version=2,
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=6,
+                border=1
+            )
+            qr.add_data(json.dumps(qr_data))
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode()
+            return f"data:image/png;base64,{img_base64}"
+        except Exception as e:
+            print(f"⚠️ Error generando QR de rótulo: {e}")
+            return ""
+
     def _obtener_template_rotulo_guia(self):
-        """Template HTML para el rótulo de guía de remisión (formato A4)"""
+        """Template HTML para el rótulo de guía de remisión (formato A4 - diseño ROJO)"""
         return """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Rótulo {{ serie }}-{{ numero }}</title>
     <style>
-        @page { size: A4; margin: 0.8cm 1cm; }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @page { 
+            size: A4; 
+            margin: 0.6cm 0.8cm; 
+        }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
         body { 
             font-family: 'Helvetica', Arial, sans-serif; 
-            font-size: 10px; 
+            font-size: 11px; 
             color: #1a1a1a;
             background: #ffffff;
-            line-height: 1.4;
+            line-height: 1.3;
         }
+        
+        /* ===== CONTENEDOR PRINCIPAL ===== */
+        .rotulo-wrapper {
+            border: 3px solid #CC0000;
+            border-radius: 6px;
+            padding: 14px 16px;
+            background: #ffffff;
+            min-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* ===== HEADER ===== */
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 10px 14px;
-            border: 3px solid #CC0000;
-            border-radius: 12px;
-            margin-bottom: 10px;
-            background: #FFF5F5;
+            align-items: flex-start;
+            margin-bottom: 14px;
+            padding-bottom: 6px;
         }
         .header-left {
             display: flex;
@@ -1316,364 +1361,379 @@ class PDFGenerator:
             gap: 14px;
         }
         .header-left .logo {
-            width: 100px;
-            height: 65px;
+            width: 90px;
+            height: 75px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
         .header-left .logo img {
-            max-height: 60px;
-            max-width: 95px;
+            max-height: 75px;
+            max-width: 90px;
             object-fit: contain;
         }
-        .header-left .info {
-            font-size: 9px;
-            color: #444;
-            line-height: 1.4;
+        .header-left .empresa-info {
+            line-height: 1.25;
         }
-        .header-left .info .nombre {
-            font-size: 14px;
+        .header-left .empresa-info .nombre {
+            font-size: 22px;
             font-weight: 900;
-            color: #CC0000;
+            color: #1a1a1a;
+            letter-spacing: 0.3px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
             margin-bottom: 1px;
         }
-        .header-left .info .ruc {
-            font-size: 10px;
+        .header-left .empresa-info .ruc {
+            font-size: 16px;
             font-weight: 800;
-            color: #333;
-            margin-bottom: 1px;
+            color: #1a1a1a;
         }
-        .header-left .info .contacto {
-            font-size: 8px;
-            color: #555;
+        
+        .header-center {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
         }
+        .social-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .social-icon svg {
+            width: 18px;
+            height: 18px;
+            fill: #ffffff;
+        }
+        
         .header-right {
-            text-align: center;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .qr-box {
+            width: 82px;
+            height: 82px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .qr-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        /* ===== SECCIÓN CLIENTE ===== */
+        .seccion-cliente {
             border: 2px solid #CC0000;
             border-radius: 10px;
-            padding: 6px 18px;
-            min-width: 200px;
-            background: #FFFFFF;
-        }
-        .header-right .titulo {
-            font-size: 11px;
-            font-weight: 900;
-            color: #CC0000;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        }
-        .header-right .numero {
-            font-size: 20px;
-            font-weight: 900;
-            color: #CC0000;
-            letter-spacing: 1px;
-            margin: 2px 0;
-        }
-        .header-right .fecha {
-            font-size: 9px;
-            font-weight: 700;
-            color: #555;
-        }
-        .destinatario-box {
-            border: 2px solid #1a1a1a;
-            border-radius: 8px;
-            padding: 8px 14px;
-            margin-bottom: 8px;
-            background: #FAFAFA;
-        }
-        .destinatario-box .label {
-            font-size: 8px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 3px;
-        }
-        .destinatario-box .nombre {
-            font-size: 15px;
-            font-weight: 900;
-            color: #1a1a1a;
-            margin-bottom: 3px;
-        }
-        .destinatario-box .detalle {
+            padding: 10px 16px;
+            margin-bottom: 10px;
             display: flex;
-            gap: 20px;
-            font-size: 9px;
-            color: #333;
-        }
-        .destinatario-box .detalle .dato {
-            display: flex;
-            gap: 4px;
-        }
-        .destinatario-box .detalle .dato .lbl {
-            font-weight: 800;
-            color: #555;
-        }
-        .destinatario-box .detalle .dato .val {
-            font-weight: 700;
-            color: #1a1a1a;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 6px;
-            margin-bottom: 8px;
-        }
-        .info-card {
-            border: 1.5px solid #ccc;
-            border-radius: 6px;
-            padding: 6px 10px;
-            background: #FFFFFF;
-        }
-        .info-card .titulo {
-            font-size: 7px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-bottom: 2px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 2px;
-        }
-        .info-card .valor {
-            font-size: 10px;
-            font-weight: 800;
-            color: #1a1a1a;
-        }
-        .productos-titulo {
-            font-size: 11px;
-            font-weight: 900;
-            color: #1a1a1a;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 4px 8px;
-            background: #F1F5F9;
-            border: 2px solid #1a1a1a;
-            border-bottom: none;
-            border-radius: 6px 6px 0 0;
-        }
-        .tabla-productos {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 9.5px;
-            margin-bottom: 8px;
-        }
-        .tabla-productos th {
-            background: #1a1a1a;
-            color: #FFFFFF;
-            padding: 5px 6px;
-            text-align: center;
-            font-weight: 900;
-            font-size: 8.5px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            border: 1px solid #1a1a1a;
-        }
-        .tabla-productos td {
-            padding: 4px 6px;
-            border: 1px solid #ccc;
-            text-align: center;
-            color: #1a1a1a;
-            font-weight: 700;
-        }
-        .tabla-productos td.descripcion {
-            text-align: left;
-            font-weight: 800;
-        }
-        .tabla-productos tr:nth-child(even) td {
-            background: #F9F9F9;
-        }
-        .transporte-box {
-            border: 2px solid #1a1a1a;
-            border-radius: 8px;
-            padding: 6px 12px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-            background: #FAFAFA;
+            gap: 10px;
+            min-height: 48px;
         }
-        .transporte-box .item {
-            text-align: center;
+        .seccion-cliente .label {
+            font-size: 22px;
+            font-weight: 900;
+            color: #1a1a1a;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            flex-shrink: 0;
+        }
+        .seccion-cliente .valor {
+            font-size: 22px;
+            font-weight: 600;
+            color: #1a1a1a;
             flex: 1;
         }
-        .transporte-box .item .lbl {
-            font-size: 7px;
+        
+        /* ===== SECCIÓN DIRECCIÓN ===== */
+        .seccion-direccion {
+            border: 2px solid #CC0000;
+            border-radius: 10px;
+            padding: 10px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 70px;
+        }
+        .seccion-direccion .label {
+            font-size: 22px;
             font-weight: 900;
-            color: #CC0000;
+            color: #1a1a1a;
             text-transform: uppercase;
             letter-spacing: 0.3px;
-            display: block;
-            margin-bottom: 2px;
+            line-height: 1.15;
+            flex-shrink: 0;
+            text-align: left;
         }
-        .transporte-box .item .val {
-            font-size: 10px;
-            font-weight: 800;
+        .seccion-direccion .valor {
+            font-size: 22px;
+            font-weight: 600;
+            color: #1a1a1a;
+            flex: 1;
+            line-height: 1.25;
+        }
+        
+        /* ===== SECCIÓN CONSIGNADOS + BLTS ===== */
+        .seccion-doble {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .caja-consignados {
+            border: 2px solid #CC0000;
+            border-radius: 10px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 62px;
+        }
+        .caja-consignados .label {
+            font-size: 20px;
+            font-weight: 900;
+            color: #1a1a1a;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            flex-shrink: 0;
+        }
+        .caja-consignados .datos {
+            flex: 1;
+            line-height: 1.25;
+        }
+        .caja-consignados .datos .nombre {
+            font-size: 15px;
+            font-weight: 600;
             color: #1a1a1a;
         }
-        .transporte-box .separador {
-            width: 1px;
-            height: 30px;
-            background: #ccc;
-            margin: 0 8px;
+        .caja-consignados .datos .dni {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1a1a1a;
         }
-        .observaciones-box {
-            border: 1.5px solid #F59E0B;
-            background: #FFFBEB;
-            border-radius: 6px;
-            padding: 6px 10px;
-            margin-bottom: 8px;
+        
+        .caja-blts {
+            border: 2px solid #CC0000;
+            border-radius: 10px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 62px;
         }
-        .observaciones-box .titulo {
-            font-size: 8px;
+        .caja-blts .label {
+            font-size: 20px;
             font-weight: 900;
-            color: #B45309;
+            color: #1a1a1a;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+        }
+        .caja-blts .valor {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+            font-style: italic;
+        }
+        
+        /* ===== SECCIÓN GUÍA + FACTURA ===== */
+        .seccion-doble-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .caja-guia, .caja-factura {
+            border: 2px solid #CC0000;
+            border-radius: 10px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 62px;
+        }
+        .caja-guia .label, .caja-factura .label {
+            font-size: 22px;
+            font-weight: 900;
+            color: #1a1a1a;
             text-transform: uppercase;
             letter-spacing: 0.3px;
-            margin-bottom: 2px;
+            flex-shrink: 0;
         }
-        .observaciones-box .texto {
-            font-size: 9px;
-            font-weight: 700;
-            color: #78350F;
-            line-height: 1.4;
+        .caja-guia .valor, .caja-factura .valor {
+            font-size: 22px;
+            font-weight: 600;
+            color: #1a1a1a;
+            font-style: italic;
         }
+        
+        /* ===== FOOTER ===== */
         .footer {
+            margin-top: auto;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-top: 2px solid #CC0000;
-            padding-top: 6px;
-            margin-top: 4px;
-            font-size: 8px;
-            color: #555;
-        }
-        .footer .firma {
-            text-align: center;
-            font-weight: 800;
-        }
-        .footer .firma .linea {
-            width: 180px;
-            border-top: 1px solid #333;
-            margin-top: 20px;
-            padding-top: 3px;
-            font-size: 8px;
-            font-weight: 900;
+            padding: 6px 4px;
+            font-size: 14px;
             color: #1a1a1a;
+            font-weight: 600;
         }
-        .footer .qr {
-            text-align: center;
+        .footer .item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .footer .qr img {
-            width: 70px;
-            height: 70px;
+        .footer .item svg {
+            width: 20px;
+            height: 20px;
+            fill: #1a1a1a;
+            flex-shrink: 0;
         }
-        .footer .qr .texto {
-            font-size: 6.5px;
-            color: #888;
-            margin-top: 2px;
+        
+        /* ===== INFO GRID (OBSERVACIONES) ===== */
+        .info-extra {
+            margin-top: 6px;
+            padding: 8px 12px;
+            border: 1.5px solid #CC0000;
+            border-radius: 8px;
+            font-size: 11px;
+            color: #333;
+            background: #FFF5F5;
+        }
+        .info-extra strong {
+            color: #CC0000;
+            font-weight: 900;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-left">
-            <div class="logo">
-                {% if logo_src %}<img src="{{ logo_src }}" alt="KCF Logo">{% endif %}
+    <div class="rotulo-wrapper">
+
+        <!-- ============================================================ -->
+        <!-- HEADER: LOGO + NOMBRE + REDES SOCIALES + QR                  -->
+        <!-- ============================================================ -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">
+                    {% if logo_src %}
+                    <img src="{{ logo_src }}" alt="KCF Logo">
+                    {% endif %}
+                </div>
+                <div class="empresa-info">
+                    <div class="nombre">{{ empresa_nombre }}</div>
+                    <div class="ruc">RUC: {{ empresa_ruc }}</div>
+                </div>
             </div>
-            <div class="info">
-                <div class="nombre">{{ empresa_nombre }}</div>
-                <div class="ruc">RUC: {{ empresa_ruc }}</div>
-                <div class="contacto">Telf: {{ empresa_telefono }} | Email: {{ empresa_email }}</div>
-                <div class="contacto">Web: {{ empresa_web }}</div>
+
+            <div class="header-center">
+                <div class="social-icon">
+                    <svg viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                </div>
+                <div class="social-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                </div>
+                <div class="social-icon">
+                    <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </div>
+                <div class="social-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="qr-box">
+                    <img src="{{ qr_base64 }}" alt="QR">
+                </div>
             </div>
         </div>
-        <div class="header-right">
-            <div class="titulo">📦 RÓTULO DE ENVÍO</div>
-            <div class="numero">{{ serie }}-{{ numero }}</div>
-            <div class="fecha">Fecha: {{ fecha_emision }}</div>
+
+        <!-- ============================================================ -->
+        <!-- CLIENTE                                                      -->
+        <!-- ============================================================ -->
+        <div class="seccion-cliente">
+            <span class="label">CLIENTE:</span>
+            <span class="valor">{{ cliente_nombre }}</span>
         </div>
-    </div>
 
-    <div class="destinatario-box">
-        <div class="label">📬 DESTINATARIO</div>
-        <div class="nombre">{{ cliente_nombre }}</div>
-        <div class="detalle">
-            <div class="dato"><span class="lbl">RUC:</span><span class="val">{{ cliente_ruc }}</span></div>
-            <div class="dato" style="flex:1;"><span class="lbl">DIRECCIÓN:</span><span class="val">{{ cliente_direccion }}</span></div>
+        <!-- ============================================================ -->
+        <!-- DIRECCIÓN DE ENTREGA                                         -->
+        <!-- ============================================================ -->
+        <div class="seccion-direccion">
+            <span class="label">DIRECCIÓN<br>DE ENTREGA:</span>
+            <span class="valor">{{ cliente_direccion }}</span>
         </div>
-    </div>
 
-    <div class="info-grid">
-        <div class="info-card"><div class="titulo">N° Orden de Compra</div><div class="valor">{{ orden_compra or '—' }}</div></div>
-        <div class="info-card"><div class="titulo">Factura</div><div class="valor">{{ factura or '—' }}</div></div>
-        <div class="info-card"><div class="titulo">Cotización</div><div class="valor">{{ cotizacion or '—' }}</div></div>
-    </div>
-
-    <div class="productos-titulo">📋 DETALLE DE PRODUCTOS ({{ total_items }} items)</div>
-    <table class="tabla-productos">
-        <thead>
-            <tr>
-                <th style="width:35px;">Item</th>
-                <th style="width:80px;">Código</th>
-                <th>Descripción</th>
-                <th style="width:80px;">Marca</th>
-                <th style="width:80px;">Modelo</th>
-                <th style="width:50px;">UM</th>
-                <th style="width:55px;">Cant.</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in items %}
-            <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ item.codigo }}</td>
-                <td class="descripcion">{{ item.descripcion }}</td>
-                <td>{{ item.marca }}</td>
-                <td>{{ item.modelo }}</td>
-                <td>{{ item.unidad }}</td>
-                <td style="font-weight:900;">{{ item.cantidad }}</td>
-            </tr>
-            {% endfor %}
-            {% if not items %}
-            <tr><td colspan="7" style="padding:12px; color:#999;">No hay productos registrados</td></tr>
-            {% endif %}
-        </tbody>
-    </table>
-
-    <div class="transporte-box">
-        <div class="item"><span class="lbl">Transportista</span><span class="val">{{ transportista or '—' }}</span></div>
-        <div class="separador"></div>
-        <div class="item"><span class="lbl">Conductor</span><span class="val">{{ conductor or '—' }}</span></div>
-        <div class="separador"></div>
-        <div class="item"><span class="lbl">Placa</span><span class="val">{{ placa or '—' }}</span></div>
-        <div class="separador"></div>
-        <div class="item"><span class="lbl">Peso Total</span><span class="val">{{ peso_total }} KGM</span></div>
-        <div class="separador"></div>
-        <div class="item"><span class="lbl">Bultos</span><span class="val">{{ bultos }}</span></div>
-    </div>
-
-    {% if observaciones %}
-    <div class="observaciones-box">
-        <div class="titulo">📝 Observaciones</div>
-        <div class="texto">{{ observaciones }}</div>
-    </div>
-    {% endif %}
-
-    <div class="footer">
-        <div class="firma">
-            <div class="linea">Recibí Conforme</div>
-            <div style="font-size:7px; color:#888; margin-top:2px;">Nombre, Firma y DNI</div>
+        <!-- ============================================================ -->
+        <!-- CONSIGNADOS + N° BLTS                                        -->
+        <!-- ============================================================ -->
+        <div class="seccion-doble">
+            <div class="caja-consignados">
+                <span class="label">CONSIGNADOS:</span>
+                <div class="datos">
+                    <div class="nombre">{{ consignado_nombre or '—' }}</div>
+                    <div class="dni">DNI: {{ consignado_dni or '—' }}</div>
+                </div>
+            </div>
+            <div class="caja-blts">
+                <span class="label">N° BLTS:</span>
+                <span class="valor">{{ numero_bultos }}</span>
+            </div>
         </div>
-        <div class="qr">
-            <div class="texto">Documento generado por</div>
-            <div style="font-size:8px; font-weight:900; color:#CC0000;">KCF CORPORACION E.I.R.L</div>
-            <div class="texto" style="margin-top:2px;">Página 1 de 1</div>
+
+        <!-- ============================================================ -->
+        <!-- N° GUÍA + FACTURA                                            -->
+        <!-- ============================================================ -->
+        <div class="seccion-doble-2">
+            <div class="caja-guia">
+                <span class="label">N° GUÍA:</span>
+                <span class="valor">{{ serie }}-{{ numero }}</span>
+            </div>
+            <div class="caja-factura">
+                <span class="label">FACTURA:</span>
+                <span class="valor">{{ factura or '—' }}</span>
+            </div>
         </div>
+
+        <!-- ============================================================ -->
+        <!-- FOOTER: TELÉFONO | EMAIL | WEB                               -->
+        <!-- ============================================================ -->
+        <div class="footer">
+            <div class="item">
+                <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                <span>{{ empresa_telefono }}</span>
+            </div>
+            <div class="item">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                <span>{{ empresa_email }}</span>
+            </div>
+            <div class="item">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                <span>{{ empresa_web }}</span>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- OBSERVACIONES (solo si existen)                              -->
+        <!-- ============================================================ -->
+        {% if observaciones %}
+        <div class="info-extra">
+            <strong>Observaciones:</strong> {{ observaciones }}
+        </div>
+        {% endif %}
+
     </div>
 </body>
 </html>"""
