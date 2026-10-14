@@ -1867,6 +1867,9 @@ def generar_rotulo_guia(guia_id):
                 items = []
         
         # 4. Preparar datos para el rótulo
+               # ============================================================
+        # 4. Preparar datos para el rótulo
+        # ============================================================
         from pdf_generator import pdf_generator
         
         # Formatear fecha de emisión
@@ -1883,6 +1886,15 @@ def generar_rotulo_guia(guia_id):
             except:
                 pass
         
+        print("=" * 60)
+        print("📦 DATOS DE LA GUÍA PARA EL RÓTULO:")
+        print(f"  - Conductor: {guia.get('conductor_nombre')}")
+        print(f"  - DNI: {guia.get('conductor_dni')}")
+        print(f"  - Transportista: {guia.get('transportista_nombre')}")
+        print(f"  - RUC Transportista: {guia.get('transportista_ruc')}")
+        print(f"  - Factura: {guia.get('factura')}")
+        print("=" * 60)
+        
         datos_rotulo = {
             'tipo_documento': 'rotulo_guia',
             'serie': guia.get('serie', 'T001'),
@@ -1891,18 +1903,25 @@ def generar_rotulo_guia(guia_id):
             'destinatario_nombre': guia.get('destinatario_nombre', ''),
             'ruc_destinatario': guia.get('ruc_destinatario', ''),
             'destinatario_direccion': guia.get('destinatario_direccion', ''),
-            'transportista_nombre': guia.get('transportista_nombre', '—'),
-            'conductor_nombre': guia.get('conductor_nombre', '—'),
-            'placa_vehiculo': guia.get('placa_vehiculo', '—'),
-            'peso_total': float(guia.get('peso_total', 0)),
+            # 🔽 CONDUCTOR / CONSIGNADO (¡ESTOS FALTABAN!)
+            'conductor_nombre': guia.get('conductor_nombre') or '',
+            'conductor_dni': guia.get('conductor_dni') or '',
+            # 🔽 TRANSPORTISTA (también para fallback)
+            'transportista_nombre': guia.get('transportista_nombre') or '',
+            'transportista_ruc': guia.get('transportista_ruc') or '',
+            # 🔽 VEHÍCULO
+            'placa_vehiculo': guia.get('placa_vehiculo') or '',
+            'licencia_conductor': guia.get('licencia_conductor') or '',
+            # 🔽 DOCUMENTOS
+            'factura': guia.get('factura') or '',
+            'documento_asociado': guia.get('documento_asociado') or '',
+            'orden_compra_cliente': guia.get('orden_compra_cliente') or '',
+            # 🔽 OTROS
+            'peso_total': float(guia.get('peso_total', 0) or 0),
             'numero_bultos': int(guia.get('numero_bultos', 1) or 1),
-            'orden_compra_cliente': guia.get('orden_compra_cliente', '—'),
-            'factura': guia.get('factura', '—'),
-            'documento_asociado': guia.get('documento_asociado', '—'),
-            'observaciones': guia.get('observaciones', ''),
+            'observaciones': guia.get('observaciones', '') or '',
             'items': items
         }
-        
         # 5. Generar el PDF del rótulo
         pdf_path = pdf_generator._generar_rotulo_guia(datos_rotulo)
         
@@ -1978,9 +1997,12 @@ def preview_rotulo_guia(guia_id):
             except:
                 items = []
         
+              # ============================================================
+        # 4. Preparar datos para el rótulo
+        # ============================================================
         from pdf_generator import pdf_generator
         
-        # Formatear fecha
+        # Formatear fecha de emisión
         fecha_emision = guia.get('fecha_emision')
         if fecha_emision and isinstance(fecha_emision, datetime):
             fecha_emision = fecha_emision.strftime('%d/%m/%Y')
@@ -1994,6 +2016,15 @@ def preview_rotulo_guia(guia_id):
             except:
                 pass
         
+        print("=" * 60)
+        print("📦 DATOS DE LA GUÍA PARA EL RÓTULO:")
+        print(f"  - Conductor: {guia.get('conductor_nombre')}")
+        print(f"  - DNI: {guia.get('conductor_dni')}")
+        print(f"  - Transportista: {guia.get('transportista_nombre')}")
+        print(f"  - RUC Transportista: {guia.get('transportista_ruc')}")
+        print(f"  - Factura: {guia.get('factura')}")
+        print("=" * 60)
+        
         datos_rotulo = {
             'tipo_documento': 'rotulo_guia',
             'serie': guia.get('serie', 'T001'),
@@ -2002,15 +2033,23 @@ def preview_rotulo_guia(guia_id):
             'destinatario_nombre': guia.get('destinatario_nombre', ''),
             'ruc_destinatario': guia.get('ruc_destinatario', ''),
             'destinatario_direccion': guia.get('destinatario_direccion', ''),
-            'transportista_nombre': guia.get('transportista_nombre', '—'),
-            'conductor_nombre': guia.get('conductor_nombre', '—'),
-            'placa_vehiculo': guia.get('placa_vehiculo', '—'),
-            'peso_total': float(guia.get('peso_total', 0)),
+            # 🔽 CONDUCTOR / CONSIGNADO (¡ESTOS FALTABAN!)
+            'conductor_nombre': guia.get('conductor_nombre') or '',
+            'conductor_dni': guia.get('conductor_dni') or '',
+            # 🔽 TRANSPORTISTA (también para fallback)
+            'transportista_nombre': guia.get('transportista_nombre') or '',
+            'transportista_ruc': guia.get('transportista_ruc') or '',
+            # 🔽 VEHÍCULO
+            'placa_vehiculo': guia.get('placa_vehiculo') or '',
+            'licencia_conductor': guia.get('licencia_conductor') or '',
+            # 🔽 DOCUMENTOS
+            'factura': guia.get('factura') or '',
+            'documento_asociado': guia.get('documento_asociado') or '',
+            'orden_compra_cliente': guia.get('orden_compra_cliente') or '',
+            # 🔽 OTROS
+            'peso_total': float(guia.get('peso_total', 0) or 0),
             'numero_bultos': int(guia.get('numero_bultos', 1) or 1),
-            'orden_compra_cliente': guia.get('orden_compra_cliente', '—'),
-            'factura': guia.get('factura', '—'),
-            'documento_asociado': guia.get('documento_asociado', '—'),
-            'observaciones': guia.get('observaciones', ''),
+            'observaciones': guia.get('observaciones', '') or '',
             'items': items
         }
         
