@@ -1,4 +1,4 @@
-# routes/ventas.py - INICIO CORREGIDO
+﻿# routes/ventas.py - INICIO CORREGIDO
 
 import sys
 import os
@@ -1804,6 +1804,233 @@ def api_cotizaciones_eliminar(id):
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
+
+# ============================================================
+# RÓTULO DE GUÍA DE REMISIÓN - GENERAR PDF
+# ============================================================
+
+@ventas_bp.route('/ventas/api/guias/<int:guia_id>/rotulo', methods=['GET'])
+@login_required
+def generar_rotulo_guia(guia_id):
+    """Genera el PDF del rótulo para una guía de remisión (solo si está Generada/Emitida)"""
+    try:
+        print(f"📄 Generando rótulo para guía ID: {guia_id}")
+        
+        # 1. Obtener la guía con todos sus datos
+        query = """
+            SELECT 
+                id, serie, numero, fecha_emision, fecha_traslado,
+                ruc_remitente, remitente_nombre, remitente_direccion,
+                remitente_ubigeo, ruc_destinatario, destinatario_nombre,
+                destinatario_direccion, destinatario_ubigeo,
+                modalidad_transporte, placa_vehiculo, conductor_dni,
+                conductor_nombre, licencia_conductor, transportista_ruc,
+                transportista_nombre, motivo_traslado, documento_asociado,
+                orden_compra_cliente, factura,
+                peso_total, items_json, observaciones, estado_sunat,
+                creado_por, created_at, updated_at
+            FROM guias_remision
+            WHERE id = %s
+        """
+        guia_result = db_query(query, (guia_id,))
+        
+        if not guia_result:
+            return jsonify({'error': 'Guía no encontrada'}), 404
+        
+        guia = guia_result[0]
+        
+        # 2. Validar que la guía esté en estado "Generada" o "Emitida"
+        estado = (guia.get('estado_sunat') or '').upper()
+        estados_permitidos = ('GENERADA', 'EMITIDA', 'EMITIDO', 'ACEPTADA', 'ACEPTADO')
+        
+        if estado not in estados_permitidos:
+            return jsonify({
+                'error': f'La guía debe estar en estado "Generada" o "Emitida" para descargar el rótulo. Estado actual: {guia.get("estado_sunat")}'
+            }), 400
+        
+        print(f"✅ Guía válida: {guia.get('serie')}-{guia.get('numero')} (Estado: {estado})")
+        
+        # 3. Preparar items
+        items = []
+        items_json = guia.get('items_json')
+        if items_json:
+            try:
+                if isinstance(items_json, str):
+                    items = json.loads(items_json)
+                elif isinstance(items_json, (list, dict)):
+                    items = items_json
+            except Exception as e:
+                print(f"⚠️ Error parseando items_json: {e}")
+                items = []
+        
+        # 4. Preparar datos para el rótulo
+        from pdf_generator import pdf_generator
+        
+        # Formatear fecha de emisión
+        fecha_emision = guia.get('fecha_emision')
+        if fecha_emision and isinstance(fecha_emision, datetime):
+            fecha_emision = fecha_emision.strftime('%d/%m/%Y')
+        elif fecha_emision and isinstance(fecha_emision, str):
+            try:
+                if 'T' in fecha_emision:
+                    dt = datetime.fromisoformat(fecha_emision.replace('Z', '+00:00'))
+                    fecha_emision = dt.strftime('%d/%m/%Y')
+                elif '-' in fecha_emision and len(fecha_emision) >= 10:
+                    fecha_emision = datetime.strptime(fecha_emision[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+            except:
+                pass
+        
+        datos_rotulo = {
+            'tipo_documento': 'rotulo_guia',
+            'serie': guia.get('serie', 'T001'),
+            'numero': guia.get('numero', ''),
+            'fecha_emision': fecha_emision,
+            'destinatario_nombre': guia.get('destinatario_nombre', ''),
+            'ruc_destinatario': guia.get('ruc_destinatario', ''),
+            'destinatario_direccion': guia.get('destinatario_direccion', ''),
+            'transportista_nombre': guia.get('transportista_nombre', '—'),
+            'conductor_nombre': guia.get('conductor_nombre', '—'),
+            'placa_vehiculo': guia.get('placa_vehiculo', '—'),
+            'peso_total': float(guia.get('peso_total', 0)),
+            'numero_bultos': int(guia.get('numero_bultos', 1) or 1),
+            'orden_compra_cliente': guia.get('orden_compra_cliente', '—'),
+            'factura': guia.get('factura', '—'),
+            'documento_asociado': guia.get('documento_asociado', '—'),
+            'observaciones': guia.get('observaciones', ''),
+            'items': items
+        }
+        
+        # 5. Generar el PDF del rótulo
+        pdf_path = pdf_generator._generar_rotulo_guia(datos_rotulo)
+        
+        if not pdf_path:
+            return jsonify({'error': 'Error al generar el rótulo'}), 500
+        
+        # 6. Retornar el PDF
+        from flask import send_file
+        filename = f"Rotulo_{guia.get('serie', 'T001')}_{guia.get('numero', '0001')}.pdf"
+        
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ Error generando rótulo de guía: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@ventas_bp.route('/ventas/api/guias/<int:guia_id>/rotulo/preview', methods=['GET'])
+@login_required
+def preview_rotulo_guia(guia_id):
+    """Vista previa del rótulo de una guía de remisión"""
+    try:
+        print(f"👁️ Vista previa de rótulo para guía ID: {guia_id}")
+        
+        # Misma lógica que generar_rotulo_guia pero sin as_attachment
+        query = """
+            SELECT 
+                id, serie, numero, fecha_emision, fecha_traslado,
+                ruc_remitente, remitente_nombre, remitente_direccion,
+                remitente_ubigeo, ruc_destinatario, destinatario_nombre,
+                destinatario_direccion, destinatario_ubigeo,
+                modalidad_transporte, placa_vehiculo, conductor_dni,
+                conductor_nombre, licencia_conductor, transportista_ruc,
+                transportista_nombre, motivo_traslado, documento_asociado,
+                orden_compra_cliente, factura,
+                peso_total, items_json, observaciones, estado_sunat,
+                creado_por, created_at, updated_at
+            FROM guias_remision
+            WHERE id = %s
+        """
+        guia_result = db_query(query, (guia_id,))
+        
+        if not guia_result:
+            return jsonify({'error': 'Guía no encontrada'}), 404
+        
+        guia = guia_result[0]
+        
+        # Validar estado
+        estado = (guia.get('estado_sunat') or '').upper()
+        estados_permitidos = ('GENERADA', 'EMITIDA', 'EMITIDO', 'ACEPTADA', 'ACEPTADO')
+        
+        if estado not in estados_permitidos:
+            return jsonify({
+                'error': f'La guía debe estar en estado "Generada" o "Emitida" para ver el rótulo. Estado actual: {guia.get("estado_sunat")}'
+            }), 400
+        
+        # Preparar items
+        items = []
+        items_json = guia.get('items_json')
+        if items_json:
+            try:
+                if isinstance(items_json, str):
+                    items = json.loads(items_json)
+                elif isinstance(items_json, (list, dict)):
+                    items = items_json
+            except:
+                items = []
+        
+        from pdf_generator import pdf_generator
+        
+        # Formatear fecha
+        fecha_emision = guia.get('fecha_emision')
+        if fecha_emision and isinstance(fecha_emision, datetime):
+            fecha_emision = fecha_emision.strftime('%d/%m/%Y')
+        elif fecha_emision and isinstance(fecha_emision, str):
+            try:
+                if 'T' in fecha_emision:
+                    dt = datetime.fromisoformat(fecha_emision.replace('Z', '+00:00'))
+                    fecha_emision = dt.strftime('%d/%m/%Y')
+                elif '-' in fecha_emision and len(fecha_emision) >= 10:
+                    fecha_emision = datetime.strptime(fecha_emision[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+            except:
+                pass
+        
+        datos_rotulo = {
+            'tipo_documento': 'rotulo_guia',
+            'serie': guia.get('serie', 'T001'),
+            'numero': guia.get('numero', ''),
+            'fecha_emision': fecha_emision,
+            'destinatario_nombre': guia.get('destinatario_nombre', ''),
+            'ruc_destinatario': guia.get('ruc_destinatario', ''),
+            'destinatario_direccion': guia.get('destinatario_direccion', ''),
+            'transportista_nombre': guia.get('transportista_nombre', '—'),
+            'conductor_nombre': guia.get('conductor_nombre', '—'),
+            'placa_vehiculo': guia.get('placa_vehiculo', '—'),
+            'peso_total': float(guia.get('peso_total', 0)),
+            'numero_bultos': int(guia.get('numero_bultos', 1) or 1),
+            'orden_compra_cliente': guia.get('orden_compra_cliente', '—'),
+            'factura': guia.get('factura', '—'),
+            'documento_asociado': guia.get('documento_asociado', '—'),
+            'observaciones': guia.get('observaciones', ''),
+            'items': items
+        }
+        
+        pdf_path = pdf_generator._generar_rotulo_guia(datos_rotulo)
+        
+        if not pdf_path:
+            return jsonify({'error': 'Error al generar el rótulo'}), 500
+        
+        from flask import send_file
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=False
+        )
+        
+    except Exception as e:
+        print(f"❌ Error generando vista previa de rótulo: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # ============================================================
 # GUÍAS - API

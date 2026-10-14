@@ -4859,6 +4859,142 @@ window.previewGuiaPdf = function(id) {
 };
 
 
+// ============================================================
+// DESCARGAR RÓTULO DE GUÍA DE REMISIÓN
+// ============================================================
+window.descargarRotuloGuia = async function(id) {
+    console.log(`🏷️ Descargando rótulo para guía ID: ${id}`);
+
+    try {
+        // Buscar la guía para verificar su estado
+        const guia = guiasData.find(g => g.id === id);
+        
+        if (!guia) {
+            showToast('❌ Guía no encontrada', 'error');
+            return;
+        }
+
+        // Validar que la guía esté en estado "Generada" o "Emitida"
+        const estado = (guia.estado || '').toUpperCase();
+        const estadosPermitidos = ['GENERADA', 'EMITIDA', 'EMITIDO', 'ACEPTADA', 'ACEPTADO'];
+
+        if (!estadosPermitidos.includes(estado)) {
+            showToast(`⚠️ La guía debe estar en estado "Generada" o "Emitida" para descargar el rótulo. Estado actual: ${guia.estado}`, 'warning');
+            return;
+        }
+
+        showToast('⏳ Generando rótulo...', 'info');
+
+        // Hacer la petición al endpoint
+        const response = await fetch(`/ventas/api/guias/${id}/rotulo`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/pdf'
+            }
+        });
+
+        // Manejar errores específicos
+        if (response.status === 401) {
+            showToast('⏳ Tu sesión ha expirado. Redirigiendo al login...', 'warning');
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 2000);
+            return;
+        }
+
+        if (response.status === 404) {
+            showToast('❌ Guía no encontrada.', 'error');
+            return;
+        }
+
+        if (response.status === 400) {
+            // Error de validación (guía no está en estado correcto)
+            let errorMsg = 'La guía no está en un estado válido para generar el rótulo';
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error || errorMsg;
+            } catch (e) {}
+            showToast(`⚠️ ${errorMsg}`, 'warning');
+            return;
+        }
+
+        if (!response.ok) {
+            let errorMsg = `Error ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error || errorData.message || errorMsg;
+            } catch (e) {
+                errorMsg = `Error ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
+        }
+
+        // Obtener el blob del PDF
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+
+        // Obtener nombre del archivo desde el header Content-Disposition
+        let filename = `Rotulo_${guia.serie || 'T001'}_${guia.numero || id}.pdf`;
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (match && match[1]) {
+                filename = match[1].replace(/['"]/g, '');
+            }
+        }
+
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showToast('✅ Rótulo descargado correctamente', 'success');
+
+    } catch (error) {
+        console.error('❌ Error descargando rótulo:', error);
+        showToast(`❌ Error al generar el rótulo: ${error.message}`, 'error');
+    }
+};
+
+
+// ============================================================
+// VISTA PREVIA DEL RÓTULO DE GUÍA
+// ============================================================
+window.previewRotuloGuia = function(id) {
+    console.log(`👁️ Vista previa del rótulo para guía ID: ${id}`);
+
+    try {
+        // Buscar la guía para verificar su estado
+        const guia = guiasData.find(g => g.id === id);
+        
+        if (!guia) {
+            showToast('❌ Guía no encontrada', 'error');
+            return;
+        }
+
+        // Validar que la guía esté en estado "Generada" o "Emitida"
+        const estado = (guia.estado || '').toUpperCase();
+        const estadosPermitidos = ['GENERADA', 'EMITIDA', 'EMITIDO', 'ACEPTADA', 'ACEPTADO'];
+
+        if (!estadosPermitidos.includes(estado)) {
+            showToast(`⚠️ La guía debe estar en estado "Generada" o "Emitida" para ver el rótulo. Estado actual: ${guia.estado}`, 'warning');
+            return;
+        }
+
+        // Abrir en nueva pestaña
+        const url = `/ventas/api/guias/${id}/rotulo/preview`;
+        window.open(url, '_blank');
+        showToast('📄 Abriendo vista previa del rótulo...', 'info');
+
+    } catch (error) {
+        console.error('❌ Error abriendo vista previa del rótulo:', error);
+        showToast('❌ Error al abrir la vista previa: ' + error.message, 'error');
+    }
+};
+
 // En ventas.js - Reemplaza la función createDocFromCotizacion
 window.createDocFromCotizacion = async function(id, tipo) {
     console.log(`📋 Creando ${tipo} desde cotización ID: ${id}`);
@@ -15936,8 +16072,10 @@ function showGuiaMenu(event, id) {
     
     // Buscar la guía para ver su estado
     const guia = guiasData.find(g => g.id === id);
-    const estado = guia?.estado || '';
-    const isEmitida = estado === 'Emitida' || estado === 'Entregada';
+    const estado = (guia?.estado || '').toUpperCase();
+    
+    const isEmitida = estado === 'EMITIDA' || estado === 'ENTREGADA';
+    const isGenerada = estado === 'GENERADA' || estado === 'EMITIDA' || estado === 'EMITIDO' || estado === 'ACEPTADA' || estado === 'ACEPTADO';
     
     let menuHtml = `
         <button onclick="openGuiaModal(${id});this.closest('.menu-pop').remove()">👁 Ver / Editar</button>
@@ -15945,8 +16083,24 @@ function showGuiaMenu(event, id) {
         <button onclick="generateGuiaPdf(${id});this.closest('.menu-pop').remove()">📄 Descargar PDF</button>
     `;
     
+    // 🔽 MOSTRAR OPCIÓN DE RÓTULO SOLO SI ESTÁ GENERADA/EMITIDA 🔽
+    if (isGenerada) {
+        menuHtml += `
+            <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
+            <button onclick="previewRotuloGuia(${id});this.closest('.menu-pop').remove()" 
+                    style="color:#8B5CF6;font-weight:900;">
+                🏷️ Vista Previa Rótulo
+            </button>
+            <button onclick="descargarRotuloGuia(${id});this.closest('.menu-pop').remove()" 
+                    style="color:#7C3AED;font-weight:900;">
+                🏷️ Descargar Rótulo
+            </button>
+        `;
+    }
+    
     if (!isEmitida) {
         menuHtml += `
+            <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
             <button onclick="markGuiaEmitida(${id});this.closest('.menu-pop').remove()">📄 Emitir</button>
         `;
     } else {
@@ -15964,7 +16118,7 @@ function showGuiaMenu(event, id) {
     document.body.appendChild(pop);
 }
 
-// ventas.js - Actualizar la función showComprobanteMenu
+
 
 function showComprobanteMenu(event, id) {
     event.stopPropagation();
@@ -16404,7 +16558,8 @@ window.renderValidacion = renderValidacion;
 // ============================================================
 window.setCotizacionView = setCotizacionView;
 window.setPedidoView = setPedidoView;
-
+window.descargarRotuloGuia = descargarRotuloGuia;
+window.previewRotuloGuia = previewRotuloGuia;
 // ============================================================
 // 4. FUNCIONES DE VALIDACIÓN
 // ============================================================
