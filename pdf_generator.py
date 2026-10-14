@@ -1,4 +1,4 @@
-# pdf_generator.py - VERSIÓN FACTURA EN NEGRO CON NÚMERO ROJO
+# pdf_generator.py - VERSIÓN CORREGIDA CON RÓTULO DE GUÍA
 
 import os
 from jinja2 import Template
@@ -301,12 +301,9 @@ class PDFGenerator:
 
             total_letras = self.numero_a_letras(total)
 
-            # ============================================================
-            # 🔽 LÓGICA PARA ORDEN DE COMPRA: MANUAL O AUTOMÁTICA
-            # ============================================================
+            # LÓGICA PARA ORDEN DE COMPRA: MANUAL O AUTOMÁTICA
             orden_compra_cliente = datos_comprobante.get('orden_compra_cliente', '').strip()
             
-            # Si no se ingresó manualmente, intentar obtener del documento asociado (cotización/PC)
             if not orden_compra_cliente:
                 orden_compra_cliente = datos_comprobante.get('documento_asociado', '') or '—'
                 print(f"📋 Orden de Compra (auto desde documento asociado): {orden_compra_cliente}")
@@ -325,9 +322,7 @@ class PDFGenerator:
                     '—'
                 )
 
-            # ============================================================
             # BUSCAR GUÍA VINCULADA (automáticamente desde BD)
-            # ============================================================
             guia_vinculada = datos_comprobante.get('guia_vinculada', '')
             
             if not guia_vinculada:
@@ -402,7 +397,6 @@ class PDFGenerator:
             traceback.print_exc()
             return None
 
-  
     def _obtener_template_comprobante(self):
         return """<!DOCTYPE html>
 <html>
@@ -418,13 +412,9 @@ class PDFGenerator:
             line-height: 1.5; 
             background: #ffffff;
         }
-        
-        /* ===== COLORES ===== */
         .color-rojo { color: #CC0000; }
         .color-gris { color: #555555; }
         .color-gris-oscuro { color: #333333; }
-        
-        /* ===== HEADER ===== */
         .header-superior { 
             display: flex; 
             justify-content: space-between; 
@@ -434,309 +424,129 @@ class PDFGenerator:
             border-bottom: 2px solid #999999;
             padding-bottom: 6px;
         }
-        .empresa-izquierda { 
-            flex: 1; 
-            display: flex; 
-            align-items: center; 
-            gap: 15px; 
-        }
+        .empresa-izquierda { flex: 1; display: flex; align-items: center; gap: 15px; }
         .empresa-izquierda .logo-container { 
-            flex-shrink: 0; 
-            width: 110px; 
-            height: 70px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+            flex-shrink: 0; width: 110px; height: 70px; 
+            display: flex; align-items: center; justify-content: center; 
         }
         .empresa-izquierda .logo-container img { 
-            max-height: 65px; 
-            max-width: 120px; 
-            object-fit: contain; 
+            max-height: 65px; max-width: 120px; object-fit: contain; 
         }
-        .empresa-izquierda .info-texto { 
-            font-size: 8px; 
-            line-height: 1.4; 
-            color: #444444;
-        }
+        .empresa-izquierda .info-texto { font-size: 8px; line-height: 1.4; color: #444444; }
         .empresa-izquierda .info-texto .nombre { 
-            font-size: 12px; 
-            font-weight: bold; 
-            text-transform: uppercase; 
-            color: #333333;
-            letter-spacing: 0.5px;
-            margin-bottom: 1px;
+            font-size: 12px; font-weight: bold; text-transform: uppercase; 
+            color: #333333; letter-spacing: 0.5px; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .ruc-line {
-            font-size: 8.5px;
-            font-weight: bold;
-            color: #333333;
-            margin-bottom: 1px;
+            font-size: 8.5px; font-weight: bold; color: #333333; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .slogan {
-            font-size: 7.5px;
-            color: #666666;
-            font-style: italic;
-            margin-bottom: 1px;
+            font-size: 7.5px; color: #666666; font-style: italic; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .contacto-line {
-            font-size: 7px;
-            color: #555555;
+            font-size: 7px; color: #555555;
         }
         .recuadro-derecha { 
-            flex-shrink: 0; 
-            border: 2px solid #999999;
-            border-radius: 10px; 
-            padding: 8px 18px; 
-            text-align: center; 
-            min-width: 180px; 
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            flex-shrink: 0; border: 2px solid #999999;
+            border-radius: 10px; padding: 8px 18px; text-align: center; 
+            min-width: 180px; display: flex; flex-direction: column; justify-content: center;
         }
-        .recuadro-derecha .ruc { 
-            font-size: 9px; 
-            font-weight: bold; 
-            color: #333333;
-        }
+        .recuadro-derecha .ruc { font-size: 9px; font-weight: bold; color: #333333; }
         .recuadro-derecha .titulo { 
-            font-size: 12px; 
-            font-weight: bold; 
-            letter-spacing: 1px; 
-            margin: 2px 0; 
-            color: #CC0000;
+            font-size: 12px; font-weight: bold; letter-spacing: 1px; 
+            margin: 2px 0; color: #CC0000;
         }
-        .recuadro-derecha .numero { 
-            font-size: 14px; 
-            font-weight: bold; 
-            color: #CC0000;
-        }
-        
-        /* ===== LAYOUT DOS COLUMNAS - SIMÉTRICAS Y COMPACTAS ===== */
-        .layout-dos-columnas {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 5px;
-        }
+        .recuadro-derecha .numero { font-size: 14px; font-weight: bold; color: #CC0000; }
+        .layout-dos-columnas { display: flex; gap: 12px; margin-bottom: 5px; }
         .layout-dos-columnas .columna {
-            flex: 1;
-            border: 1px solid #cccccc;
-            border-radius: 5px;
-            padding: 4px 10px;
+            flex: 1; border: 1px solid #cccccc; border-radius: 5px; padding: 4px 10px;
         }
         .layout-dos-columnas .columna .seccion-titulo {
-            font-weight: bold;
-            font-size: 8.5px;
-            margin-bottom: 3px;
-            text-transform: uppercase;
-            border-bottom: 1.5px solid #999999;
-            padding-bottom: 1px;
-            color: #333333;
+            font-weight: bold; font-size: 8.5px; margin-bottom: 3px; text-transform: uppercase;
+            border-bottom: 1.5px solid #999999; padding-bottom: 1px; color: #333333;
         }
         .layout-dos-columnas .columna .fila {
-            display: flex;
-            padding: 0.5px 0;
-            align-items: baseline;
-            font-size: 8px;
-            line-height: 1.35;
+            display: flex; padding: 0.5px 0; align-items: baseline; font-size: 8px; line-height: 1.35;
         }
         .layout-dos-columnas .columna .fila .label {
-            font-weight: bold;
-            min-width: 95px;
-            flex-shrink: 0;
-            color: #555555;
+            font-weight: bold; min-width: 95px; flex-shrink: 0; color: #555555;
         }
         .layout-dos-columnas .columna .fila .value {
-            flex: 1;
-            text-align: left;
-            padding-left: 4px;
-            color: #333333;
+            flex: 1; text-align: left; padding-left: 4px; color: #333333;
         }
-        
-        /* ===== SECCIÓN ===== */
-        .seccion { 
-            margin-bottom: 5px; 
-        }
+        .seccion { margin-bottom: 5px; }
         .seccion-titulo { 
-            font-weight: bold; 
-            font-size: 9px; 
-            margin-bottom: 3px; 
-            text-transform: uppercase; 
-            border-bottom: 2px solid #999999;
-            padding-bottom: 2px; 
-            color: #333333;
+            font-weight: bold; font-size: 9px; margin-bottom: 3px; text-transform: uppercase; 
+            border-bottom: 2px solid #999999; padding-bottom: 2px; color: #333333;
         }
-        
-        /* ===== DOCUMENTOS RELACIONADOS EN UNA SOLA LÍNEA ===== */
         .info-linea-unica {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: baseline;
-            gap: 4px 14px;
-            padding: 5px 10px;
-            border: 1px solid #cccccc;
-            border-radius: 5px;
-            background: #ffffff;
-            font-size: 8px;
-            margin-top: 4px;
-            margin-bottom: 4px;
-            width: 100%;
-            box-sizing: border-box;
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+            padding: 5px 10px; border: 1px solid #cccccc; border-radius: 5px;
+            background: #ffffff; font-size: 8px; margin-top: 4px; margin-bottom: 4px;
+            width: 100%; box-sizing: border-box;
         }
-        .info-linea-unica .info-item {
-            display: inline-flex;
-            align-items: baseline;
-            gap: 3px;
-        }
+        .info-linea-unica .info-item { display: inline-flex; align-items: baseline; gap: 3px; }
         .info-linea-unica .info-label {
-            font-weight: bold;
-            color: #555555;
-            text-transform: uppercase;
-            font-size: 7.5px;
+            font-weight: bold; color: #555555; text-transform: uppercase; font-size: 7.5px;
         }
-        .info-linea-unica .info-value {
-            font-weight: 600;
-            color: #333333;
-            font-size: 8px;
-        }
+        .info-linea-unica .info-value { font-weight: 600; color: #333333; font-size: 8px; }
         .info-linea-unica .info-titulo {
-            font-weight: bold;
-            color: #333333;
-            font-size: 8px;
-            text-transform: uppercase;
-            margin-right: 4px;
+            font-weight: bold; color: #333333; font-size: 8px; text-transform: uppercase; margin-right: 4px;
         }
-        
-        /* ===== TABLA DE PRODUCTOS ===== */
-        .products-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 4px 0; 
-            font-size: 8px; 
-        }
+        .products-table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 8px; }
         .products-table th { 
-            color: #333333;
-            padding: 4px 5px; 
-            text-align: center; 
-            border: 1px solid #cccccc;
-            font-weight: bold;
-            background: #f5f5f5;
+            color: #333333; padding: 4px 5px; text-align: center; 
+            border: 1px solid #cccccc; font-weight: bold; background: #f5f5f5;
         }
         .products-table td { 
-            padding: 3px 5px; 
-            border: 1px solid #cccccc;
-            text-align: center; 
-            color: #333333;
+            padding: 3px 5px; border: 1px solid #cccccc; 
+            text-align: center; color: #333333;
         }
-        .products-table td.descripcion { 
-            text-align: left; 
-        }
-        .products-table tr:nth-child(even) td {
-            background: #f9f9f9;
-        }
-        
-        /* ===== TOTALES - CON SON AL LADO IZQUIERDO SIMÉTRICO ===== */
+        .products-table td.descripcion { text-align: left; }
+        .products-table tr:nth-child(even) td { background: #f9f9f9; }
         .totales-wrapper {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            margin-top: 6px;
-            gap: 15px;
+            display: flex; justify-content: space-between; align-items: flex-end;
+            margin-top: 6px; gap: 15px;
         }
         .total-letras {
-            flex: 1;
-            font-size: 8px;
-            color: #333333;
-            font-style: italic;
-            padding-bottom: 6px;
-            line-height: 1.4;
+            flex: 1; font-size: 8px; color: #333333; font-style: italic;
+            padding-bottom: 6px; line-height: 1.4;
         }
-        .total-letras strong {
-            font-style: normal;
-            color: #555555;
-        }
+        .total-letras strong { font-style: normal; color: #555555; }
         .totales-box { 
-            border: 2px solid #999999;
-            border-radius: 6px; 
-            padding: 6px 12px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start;
-            width: 100%;
-            max-width: 300px;
-            flex-shrink: 0;
+            border: 2px solid #999999; border-radius: 6px; padding: 6px 12px; 
+            display: flex; flex-direction: column; align-items: flex-start;
+            width: 100%; max-width: 300px; flex-shrink: 0;
         }
         .totales-box .linea {
-            display: flex;
-            justify-content: space-between;
-            width: 100%;
-            padding: 1px 0;
-            font-size: 7.5px;
-            color: #444444;
-            border-bottom: 1px dotted #e8e8e8;
+            display: flex; justify-content: space-between; width: 100%; padding: 1px 0;
+            font-size: 7.5px; color: #444444; border-bottom: 1px dotted #e8e8e8;
         }
         .totales-box .linea .label-total {
-            font-weight: normal;
-            color: #555555;
-            font-size: 7.5px;
+            font-weight: normal; color: #555555; font-size: 7.5px;
         }
         .totales-box .linea .value-total {
-            font-weight: bold;
-            color: #333333;
-            text-align: right;
-            font-size: 7.5px;
+            font-weight: bold; color: #333333; text-align: right; font-size: 7.5px;
         }
         .totales-box .linea.total {
-            font-weight: bold;
-            font-size: 11px;
-            border-top: 2px solid #999999;
-            border-bottom: none;
-            padding-top: 4px;
-            margin-top: 2px;
-            color: #333333;
+            font-weight: bold; font-size: 11px; border-top: 2px solid #999999;
+            border-bottom: none; padding-top: 4px; margin-top: 2px; color: #333333;
         }
-        .totales-box .linea.total .label-total {
-            font-weight: bold;
-            font-size: 11px;
-            color: #333333;
-        }
-        .totales-box .linea.total .value-total {
-            font-weight: bold;
-            font-size: 14px;
-            color: #333333;
-        }
-        
-        /* ===== QR ===== */
+        .totales-box .linea.total .label-total { font-weight: bold; font-size: 11px; color: #333333; }
+        .totales-box .linea.total .value-total { font-weight: bold; font-size: 14px; color: #333333; }
         .qr-container { 
-            text-align: center; 
-            margin: 5px 0 3px 0; 
-            padding: 4px; 
-            border: 2px solid #999999;
-            border-radius: 8px; 
+            text-align: center; margin: 5px 0 3px 0; padding: 4px; 
+            border: 2px solid #999999; border-radius: 8px; 
         }
-        .qr-container img { 
-            width: 75px; 
-            height: 75px; 
-        }
-        .qr-container .qr-text { 
-            font-size: 6.5px; 
-            color: #888888;
-            margin-top: 2px; 
-        }
-        
-        /* ===== FOOTER ===== */
+        .qr-container img { width: 75px; height: 75px; }
+        .qr-container .qr-text { font-size: 6.5px; color: #888888; margin-top: 2px; }
         .footer { 
-            margin-top: 8px; 
-            text-align: center; 
-            font-size: 7px; 
-            color: #888888;
-            padding-top: 4px; 
+            margin-top: 8px; text-align: center; font-size: 7px; 
+            color: #888888; padding-top: 4px; 
         }
     </style>
 </head>
 <body>
-    <!-- ============================================================ -->
-    <!-- HEADER CON BORDE GRIS                                        -->
-    <!-- ============================================================ -->
     <div class="header-superior">
         <div class="empresa-izquierda">
             <div class="logo-container"><img src="{{ logo_src }}" alt="Logo"></div>
@@ -755,9 +565,6 @@ class PDFGenerator:
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- DATOS DEL CLIENTE Y COMPROBANTE - COMPACTOS                 -->
-    <!-- ============================================================ -->
     <div class="layout-dos-columnas">
         <div class="columna">
             <div class="seccion-titulo">DATOS DEL CLIENTE</div>
@@ -778,9 +585,6 @@ class PDFGenerator:
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- DOCUMENTOS RELACIONADOS EN UNA SOLA LÍNEA                   -->
-    <!-- ============================================================ -->
     <div class="info-linea-unica">
         <span class="info-titulo">Documentos relacionados:</span>
         <div class="info-item">
@@ -797,9 +601,6 @@ class PDFGenerator:
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- DETALLE DE PRODUCTOS                                         -->
-    <!-- ============================================================ -->
     <div class="seccion">
         <div class="seccion-titulo">DETALLE DE PRODUCTOS</div>
         <table class="products-table">
@@ -834,9 +635,6 @@ class PDFGenerator:
         </table>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- TOTALES - CON SON A LA IZQUIERDA DEL TOTAL                  -->
-    <!-- ============================================================ -->
     <div class="totales-wrapper">
         <div class="total-letras">
             <strong>SON:</strong> {{ total_letras }}
@@ -873,9 +671,6 @@ class PDFGenerator:
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- OBSERVACIONES - UNA SOLA LÍNEA                              -->
-    <!-- ============================================================ -->
     {% if observaciones %}
     <div class="info-linea-unica" style="margin-top: 6px;">
         <div class="info-item">
@@ -885,17 +680,11 @@ class PDFGenerator:
     </div>
     {% endif %}
 
-    <!-- ============================================================ -->
-    <!-- QR - SIN LÍNEA ADICIONAL DESPUÉS                           -->
-    <!-- ============================================================ -->
     <div class="qr-container">
         <img src="{{ qr_base64 }}" alt="QR">
         <div class="qr-text">Representación impresa del {{ tipo }}</div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- FOOTER                                                       -->
-    <!-- ============================================================ -->
     <div class="footer">
         <div>Pag. 1 de 1</div>
         <div>Powered by KCF CORPORACION</div>
@@ -971,8 +760,6 @@ class PDFGenerator:
             html = re.sub(r'{{.*?}}', '', html, flags=re.DOTALL)
             
             return html
-
-
 
     def _generar_qr_comprobante(self, datos_comprobante):
         try:
@@ -1058,227 +845,103 @@ class PDFGenerator:
             margin-top: 10px;
             background: #ffffff;
         }
-        
         .header-superior { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: stretch; 
-            margin-bottom: 10px; 
-            gap: 18px; 
-            padding-top: 5px;
-            border-bottom: 1px solid #999999;
-            padding-bottom: 6px;
+            display: flex; justify-content: space-between; align-items: stretch; 
+            margin-bottom: 10px; gap: 18px; padding-top: 5px;
+            border-bottom: 1px solid #999999; padding-bottom: 6px;
         }
-        .empresa-izquierda { 
-            flex: 1; 
-            display: flex; 
-            align-items: center; 
-            gap: 15px; 
-        }
+        .empresa-izquierda { flex: 1; display: flex; align-items: center; gap: 15px; }
         .empresa-izquierda .logo-container { 
-            flex-shrink: 0; 
-            width: 110px; 
-            height: 70px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+            flex-shrink: 0; width: 110px; height: 70px; 
+            display: flex; align-items: center; justify-content: center; 
         }
         .empresa-izquierda .logo-container img { 
-            max-height: 65px; 
-            max-width: 120px; 
-            object-fit: contain; 
+            max-height: 65px; max-width: 120px; object-fit: contain; 
         }
-        .empresa-izquierda .info-texto { 
-            font-size: 8px; 
-            line-height: 1.4; 
-            color: #444444;
-        }
+        .empresa-izquierda .info-texto { font-size: 8px; line-height: 1.4; color: #444444; }
         .empresa-izquierda .info-texto .nombre { 
-            font-size: 12px; 
-            font-weight: bold; 
-            text-transform: uppercase; 
-            color: #000000;
-            letter-spacing: 0.5px;
-            margin-bottom: 1px;
+            font-size: 12px; font-weight: bold; text-transform: uppercase; 
+            color: #000000; letter-spacing: 0.5px; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .ruc-line {
-            font-size: 8.5px;
-            font-weight: bold;
-            color: #333333;
-            margin-bottom: 1px;
+            font-size: 8.5px; font-weight: bold; color: #333333; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .slogan {
-            font-size: 7.5px;
-            color: #666666;
-            font-style: italic;
-            margin-bottom: 1px;
+            font-size: 7.5px; color: #666666; font-style: italic; margin-bottom: 1px;
         }
-        .empresa-izquierda .info-texto .contacto-line {
-            font-size: 7px;
-            color: #555555;
-        }
+        .empresa-izquierda .info-texto .contacto-line { font-size: 7px; color: #555555; }
         .recuadro-derecha { 
-            flex-shrink: 0; 
-            border: 1px solid #999999;
-            border-radius: 4px; 
-            padding: 6px 16px; 
-            text-align: center; 
-            min-width: 170px; 
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            flex-shrink: 0; border: 1px solid #999999; border-radius: 4px; 
+            padding: 6px 16px; text-align: center; min-width: 170px; 
+            display: flex; flex-direction: column; justify-content: center;
         }
-        .recuadro-derecha .ruc { 
-            font-size: 9px; 
-            font-weight: bold; 
-            color: #333333;
-        }
+        .recuadro-derecha .ruc { font-size: 9px; font-weight: bold; color: #333333; }
         .recuadro-derecha .titulo { 
-            font-size: 10px; 
-            font-weight: bold; 
-            letter-spacing: 0.5px; 
-            margin: 2px 0; 
-            color: #000000;
+            font-size: 10px; font-weight: bold; letter-spacing: 0.5px; 
+            margin: 2px 0; color: #000000;
         }
         .recuadro-derecha .numero { 
-            font-size: 15px; 
-            font-weight: bold; 
-            color: #CC0000;
-            letter-spacing: 1px;
+            font-size: 15px; font-weight: bold; color: #CC0000; letter-spacing: 1px;
         }
-        
-        .seccion { 
-            margin-bottom: 5px; 
-        }
-        
+        .seccion { margin-bottom: 5px; }
         .seccion-con-borde {
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            padding: 0;
-            margin-bottom: 4px;
-            overflow: hidden;
+            border: 1px solid #cccccc; border-radius: 4px; padding: 0; 
+            margin-bottom: 4px; overflow: hidden;
         }
         .seccion-con-borde .seccion-titulo {
-            font-weight: bold;
-            font-size: 8px;
-            text-transform: uppercase;
-            color: #000000;
-            padding: 2px 10px;
-            margin: 0;
-            border-bottom: 1px solid #cccccc;
-            letter-spacing: 0.3px;
-            background: #f5f5f5;
+            font-weight: bold; font-size: 8px; text-transform: uppercase; 
+            color: #000000; padding: 2px 10px; margin: 0; 
+            border-bottom: 1px solid #cccccc; letter-spacing: 0.3px; background: #f5f5f5;
         }
         .seccion-con-borde .seccion-contenido {
-            padding: 3px 10px;
-            background: #ffffff;
+            padding: 3px 10px; background: #ffffff;
         }
-        
         .fila { 
-            display: flex; 
-            padding: 0.5px 0; 
-            align-items: baseline; 
-            font-size: 8px;
+            display: flex; padding: 0.5px 0; align-items: baseline; font-size: 8px;
         }
         .fila .label { 
-            font-weight: bold; 
-            min-width: 190px; 
-            flex-shrink: 0; 
-            color: #555555;
+            font-weight: bold; min-width: 190px; flex-shrink: 0; color: #555555;
         }
         .fila .value { 
-            flex: 1; 
-            text-align: left; 
-            padding-left: 5px; 
-            color: #333333;
+            flex: 1; text-align: left; padding-left: 5px; color: #333333;
         }
         .products-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 3px 0; 
-            font-size: 7.5px; 
+            width: 100%; border-collapse: collapse; margin: 3px 0; font-size: 7.5px; 
         }
         .products-table th { 
-            color: #000000;
-            padding: 3px 5px; 
-            text-align: center; 
-            border: 1px solid #cccccc;
-            font-weight: bold;
-            background: #f5f5f5;
+            color: #000000; padding: 3px 5px; text-align: center; 
+            border: 1px solid #cccccc; font-weight: bold; background: #f5f5f5;
         }
         .products-table td { 
-            padding: 2px 5px; 
-            border: 1px solid #cccccc;
-            text-align: center; 
-            color: #333333;
+            padding: 2px 5px; border: 1px solid #cccccc; 
+            text-align: center; color: #333333;
         }
-        .products-table td.descripcion { 
-            text-align: left; 
-        }
-        .products-table tr:nth-child(even) td {
-            background: #f9f9f9;
-        }
+        .products-table td.descripcion { text-align: left; }
+        .products-table tr:nth-child(even) td { background: #f9f9f9; }
         .qr-container { 
-            text-align: center; 
-            margin: 6px 0 4px 0; 
-            padding: 5px; 
-            border: 1px solid #999999;
-            border-radius: 4px; 
+            text-align: center; margin: 6px 0 4px 0; padding: 5px; 
+            border: 1px solid #999999; border-radius: 4px; 
         }
-        .qr-container img { 
-            width: 75px; 
-            height: 75px; 
-        }
-        .qr-container .qr-text { 
-            font-size: 6.5px; 
-            color: #666666;
-            margin-top: 2px; 
-        }
+        .qr-container img { width: 75px; height: 75px; }
+        .qr-container .qr-text { font-size: 6.5px; color: #666666; margin-top: 2px; }
         .footer { 
-            margin-top: 10px; 
-            text-align: center; 
-            font-size: 7px; 
-            color: #888888;
-            padding-top: 5px; 
+            margin-top: 10px; text-align: center; font-size: 7px; 
+            color: #888888; padding-top: 5px; 
         }
-        
-        /* ===== REFERENCIAS Y OBSERVACIONES EN UNA LÍNEA - ANCHO COMPLETO ===== */
         .info-linea-unica {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: baseline;
-            gap: 4px 14px;
-            padding: 5px 10px;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            background: #ffffff;
-            font-size: 8px;
-            margin-bottom: 4px;
-            width: 100%;
-            box-sizing: border-box;
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+            padding: 5px 10px; border: 1px solid #cccccc; border-radius: 4px;
+            background: #ffffff; font-size: 8px; margin-bottom: 4px; 
+            width: 100%; box-sizing: border-box;
         }
-        .info-linea-unica .info-item {
-            display: inline-flex;
-            align-items: baseline;
-            gap: 3px;
-        }
+        .info-linea-unica .info-item { display: inline-flex; align-items: baseline; gap: 3px; }
         .info-linea-unica .info-label {
-            font-weight: bold;
-            color: #555555;
-            text-transform: uppercase;
-            font-size: 7.5px;
+            font-weight: bold; color: #555555; text-transform: uppercase; font-size: 7.5px;
         }
-        .info-linea-unica .info-value {
-            font-weight: 600;
-            color: #333333;
-            font-size: 8px;
-        }
+        .info-linea-unica .info-value { font-weight: 600; color: #333333; font-size: 8px; }
         .info-linea-unica .info-titulo {
-            font-weight: bold;
-            color: #333333;
-            font-size: 8px;
-            text-transform: uppercase;
-            margin-right: 4px;
+            font-weight: bold; color: #333333; font-size: 8px; 
+            text-transform: uppercase; margin-right: 4px;
         }
     </style>
 </head>
@@ -1356,9 +1019,6 @@ class PDFGenerator:
         </div>
     </div>
     
-    <!-- ============================================================ -->
-    <!-- DOCUMENTOS RELACIONADOS + OBSERVACIONES EN UNA SOLA LÍNEA   -->
-    <!-- ============================================================ -->
     <div class="info-linea-unica">
         <span class="info-titulo">Documentos relacionados:</span>
         <div class="info-item">
@@ -1517,6 +1177,508 @@ class PDFGenerator:
         return motivos.get(codigo, codigo or 'Venta')
 
     # ============================================================
+    # GENERAR RÓTULO DE GUÍA DE REMISIÓN
+    # ============================================================
+    def _generar_rotulo_guia(self, datos_guia):
+        """Genera el PDF del rótulo para pegar en el paquete/mercadería"""
+        try:
+            print("📄 Generando PDF de Rótulo de Guía de Remisión...")
+            
+            # Obtener logo
+            logo_base64 = self._obtener_logo_base64()
+            logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
+            
+            # Procesar items
+            items = datos_guia.get('items', [])
+            if isinstance(items, str):
+                try:
+                    items = json.loads(items)
+                except:
+                    items = []
+            
+            items_formateados = []
+            for item in items:
+                if isinstance(item, dict):
+                    items_formateados.append({
+                        'codigo': item.get('codigo', ''),
+                        'descripcion': item.get('producto', item.get('descripcion', '')),
+                        'marca': item.get('marca', ''),
+                        'modelo': item.get('modelo', ''),
+                        'unidad': item.get('um', 'NIU'),
+                        'cantidad': float(item.get('cantidad', 1))
+                    })
+                elif isinstance(item, (list, tuple)):
+                    items_formateados.append({
+                        'codigo': item[0] if len(item) > 0 else '',
+                        'descripcion': item[1] if len(item) > 1 else '',
+                        'marca': item[2] if len(item) > 2 else '',
+                        'modelo': item[3] if len(item) > 3 else '',
+                        'unidad': 'NIU',
+                        'cantidad': float(item[4] if len(item) > 4 else 1)
+                    })
+            
+            # Formatear fecha
+            fecha_emision = datos_guia.get('fecha_emision')
+            if fecha_emision:
+                if isinstance(fecha_emision, datetime):
+                    fecha_emision = fecha_emision.strftime('%d/%m/%Y')
+                elif isinstance(fecha_emision, str):
+                    try:
+                        if 'T' in fecha_emision:
+                            dt = datetime.fromisoformat(fecha_emision.replace('Z', '+00:00'))
+                            fecha_emision = dt.strftime('%d/%m/%Y')
+                        elif '-' in fecha_emision and len(fecha_emision) >= 10:
+                            fecha_emision = datetime.strptime(fecha_emision[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+                    except:
+                        pass
+            
+            # Datos para el template
+            datos_rotulo = {
+                'logo_src': logo_src,
+                'empresa_nombre': 'KCF CORPORACION E.I.R.L',
+                'empresa_ruc': '20602095704',
+                'empresa_telefono': '999 932 051',
+                'empresa_email': 'ventas@kcfcorporacion.com',
+                'empresa_web': 'https://kcfcorporacion.com/',
+                'serie': datos_guia.get('serie', 'T001'),
+                'numero': datos_guia.get('numero', ''),
+                'fecha_emision': fecha_emision or '',
+                'cliente_nombre': datos_guia.get('destinatario_nombre', datos_guia.get('cliente', '')),
+                'cliente_ruc': datos_guia.get('ruc_destinatario', datos_guia.get('ruc', '')),
+                'cliente_direccion': datos_guia.get('destinatario_direccion', datos_guia.get('destino', '')),
+                'orden_compra': datos_guia.get('orden_compra_cliente', '—'),
+                'factura': datos_guia.get('factura', '—'),
+                'cotizacion': datos_guia.get('documento_asociado', datos_guia.get('nro_cotizacion', '—')),
+                'transportista': datos_guia.get('transportista_nombre', '—'),
+                'conductor': datos_guia.get('conductor_nombre', '—'),
+                'placa': datos_guia.get('placa_vehiculo', '—'),
+                'peso_total': datos_guia.get('peso_total', 0),
+                'bultos': datos_guia.get('numero_bultos', 1),
+                'observaciones': datos_guia.get('observaciones', ''),
+                'items': items_formateados,
+                'total_items': len(items_formateados)
+            }
+            
+            # Generar HTML del rótulo
+            html_content = self._obtener_template_rotulo_guia()
+            
+            try:
+                html_content = Template(html_content).render(**datos_rotulo)
+            except Exception as e:
+                print(f"❌ Error renderizando template de rótulo: {e}")
+            
+            # Generar PDF
+            fecha = datetime.now().strftime('%Y%m%d_%H%M%S')
+            nombre_archivo = f"rotulo_{datos_rotulo['serie']}_{datos_rotulo['numero']}_{fecha}.pdf"
+            
+            base_url = f"file://{os.getcwd()}/"
+            HTML(string=html_content, base_url=base_url).write_pdf(nombre_archivo)
+            
+            print(f"✅ Rótulo generado: {nombre_archivo}")
+            return nombre_archivo
+            
+        except Exception as e:
+            print(f"❌ Error en _generar_rotulo_guia: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _obtener_template_rotulo_guia(self):
+        """Template HTML para el rótulo de guía de remisión (formato A4)"""
+        return """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Rótulo {{ serie }}-{{ numero }}</title>
+    <style>
+        @page { size: A4; margin: 0.8cm 1cm; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Helvetica', Arial, sans-serif; 
+            font-size: 10px; 
+            color: #1a1a1a;
+            background: #ffffff;
+            line-height: 1.4;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border: 3px solid #CC0000;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            background: #FFF5F5;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .header-left .logo {
+            width: 100px;
+            height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .header-left .logo img {
+            max-height: 60px;
+            max-width: 95px;
+            object-fit: contain;
+        }
+        .header-left .info {
+            font-size: 9px;
+            color: #444;
+            line-height: 1.4;
+        }
+        .header-left .info .nombre {
+            font-size: 14px;
+            font-weight: 900;
+            color: #CC0000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1px;
+        }
+        .header-left .info .ruc {
+            font-size: 10px;
+            font-weight: 800;
+            color: #333;
+            margin-bottom: 1px;
+        }
+        .header-left .info .contacto {
+            font-size: 8px;
+            color: #555;
+        }
+        .header-right {
+            text-align: center;
+            border: 2px solid #CC0000;
+            border-radius: 10px;
+            padding: 6px 18px;
+            min-width: 200px;
+            background: #FFFFFF;
+        }
+        .header-right .titulo {
+            font-size: 11px;
+            font-weight: 900;
+            color: #CC0000;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+        .header-right .numero {
+            font-size: 20px;
+            font-weight: 900;
+            color: #CC0000;
+            letter-spacing: 1px;
+            margin: 2px 0;
+        }
+        .header-right .fecha {
+            font-size: 9px;
+            font-weight: 700;
+            color: #555;
+        }
+        .destinatario-box {
+            border: 2px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 8px;
+            background: #FAFAFA;
+        }
+        .destinatario-box .label {
+            font-size: 8px;
+            font-weight: 900;
+            color: #CC0000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+        .destinatario-box .nombre {
+            font-size: 15px;
+            font-weight: 900;
+            color: #1a1a1a;
+            margin-bottom: 3px;
+        }
+        .destinatario-box .detalle {
+            display: flex;
+            gap: 20px;
+            font-size: 9px;
+            color: #333;
+        }
+        .destinatario-box .detalle .dato {
+            display: flex;
+            gap: 4px;
+        }
+        .destinatario-box .detalle .dato .lbl {
+            font-weight: 800;
+            color: #555;
+        }
+        .destinatario-box .detalle .dato .val {
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .info-card {
+            border: 1.5px solid #ccc;
+            border-radius: 6px;
+            padding: 6px 10px;
+            background: #FFFFFF;
+        }
+        .info-card .titulo {
+            font-size: 7px;
+            font-weight: 900;
+            color: #CC0000;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 2px;
+        }
+        .info-card .valor {
+            font-size: 10px;
+            font-weight: 800;
+            color: #1a1a1a;
+        }
+        .productos-titulo {
+            font-size: 11px;
+            font-weight: 900;
+            color: #1a1a1a;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 4px 8px;
+            background: #F1F5F9;
+            border: 2px solid #1a1a1a;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+        }
+        .tabla-productos {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5px;
+            margin-bottom: 8px;
+        }
+        .tabla-productos th {
+            background: #1a1a1a;
+            color: #FFFFFF;
+            padding: 5px 6px;
+            text-align: center;
+            font-weight: 900;
+            font-size: 8.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            border: 1px solid #1a1a1a;
+        }
+        .tabla-productos td {
+            padding: 4px 6px;
+            border: 1px solid #ccc;
+            text-align: center;
+            color: #1a1a1a;
+            font-weight: 700;
+        }
+        .tabla-productos td.descripcion {
+            text-align: left;
+            font-weight: 800;
+        }
+        .tabla-productos tr:nth-child(even) td {
+            background: #F9F9F9;
+        }
+        .transporte-box {
+            border: 2px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #FAFAFA;
+        }
+        .transporte-box .item {
+            text-align: center;
+            flex: 1;
+        }
+        .transporte-box .item .lbl {
+            font-size: 7px;
+            font-weight: 900;
+            color: #CC0000;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .transporte-box .item .val {
+            font-size: 10px;
+            font-weight: 800;
+            color: #1a1a1a;
+        }
+        .transporte-box .separador {
+            width: 1px;
+            height: 30px;
+            background: #ccc;
+            margin: 0 8px;
+        }
+        .observaciones-box {
+            border: 1.5px solid #F59E0B;
+            background: #FFFBEB;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+        }
+        .observaciones-box .titulo {
+            font-size: 8px;
+            font-weight: 900;
+            color: #B45309;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+        .observaciones-box .texto {
+            font-size: 9px;
+            font-weight: 700;
+            color: #78350F;
+            line-height: 1.4;
+        }
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 2px solid #CC0000;
+            padding-top: 6px;
+            margin-top: 4px;
+            font-size: 8px;
+            color: #555;
+        }
+        .footer .firma {
+            text-align: center;
+            font-weight: 800;
+        }
+        .footer .firma .linea {
+            width: 180px;
+            border-top: 1px solid #333;
+            margin-top: 20px;
+            padding-top: 3px;
+            font-size: 8px;
+            font-weight: 900;
+            color: #1a1a1a;
+        }
+        .footer .qr {
+            text-align: center;
+        }
+        .footer .qr img {
+            width: 70px;
+            height: 70px;
+        }
+        .footer .qr .texto {
+            font-size: 6.5px;
+            color: #888;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">
+                {% if logo_src %}<img src="{{ logo_src }}" alt="KCF Logo">{% endif %}
+            </div>
+            <div class="info">
+                <div class="nombre">{{ empresa_nombre }}</div>
+                <div class="ruc">RUC: {{ empresa_ruc }}</div>
+                <div class="contacto">Telf: {{ empresa_telefono }} | Email: {{ empresa_email }}</div>
+                <div class="contacto">Web: {{ empresa_web }}</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="titulo">📦 RÓTULO DE ENVÍO</div>
+            <div class="numero">{{ serie }}-{{ numero }}</div>
+            <div class="fecha">Fecha: {{ fecha_emision }}</div>
+        </div>
+    </div>
+
+    <div class="destinatario-box">
+        <div class="label">📬 DESTINATARIO</div>
+        <div class="nombre">{{ cliente_nombre }}</div>
+        <div class="detalle">
+            <div class="dato"><span class="lbl">RUC:</span><span class="val">{{ cliente_ruc }}</span></div>
+            <div class="dato" style="flex:1;"><span class="lbl">DIRECCIÓN:</span><span class="val">{{ cliente_direccion }}</span></div>
+        </div>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-card"><div class="titulo">N° Orden de Compra</div><div class="valor">{{ orden_compra or '—' }}</div></div>
+        <div class="info-card"><div class="titulo">Factura</div><div class="valor">{{ factura or '—' }}</div></div>
+        <div class="info-card"><div class="titulo">Cotización</div><div class="valor">{{ cotizacion or '—' }}</div></div>
+    </div>
+
+    <div class="productos-titulo">📋 DETALLE DE PRODUCTOS ({{ total_items }} items)</div>
+    <table class="tabla-productos">
+        <thead>
+            <tr>
+                <th style="width:35px;">Item</th>
+                <th style="width:80px;">Código</th>
+                <th>Descripción</th>
+                <th style="width:80px;">Marca</th>
+                <th style="width:80px;">Modelo</th>
+                <th style="width:50px;">UM</th>
+                <th style="width:55px;">Cant.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ item.codigo }}</td>
+                <td class="descripcion">{{ item.descripcion }}</td>
+                <td>{{ item.marca }}</td>
+                <td>{{ item.modelo }}</td>
+                <td>{{ item.unidad }}</td>
+                <td style="font-weight:900;">{{ item.cantidad }}</td>
+            </tr>
+            {% endfor %}
+            {% if not items %}
+            <tr><td colspan="7" style="padding:12px; color:#999;">No hay productos registrados</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <div class="transporte-box">
+        <div class="item"><span class="lbl">Transportista</span><span class="val">{{ transportista or '—' }}</span></div>
+        <div class="separador"></div>
+        <div class="item"><span class="lbl">Conductor</span><span class="val">{{ conductor or '—' }}</span></div>
+        <div class="separador"></div>
+        <div class="item"><span class="lbl">Placa</span><span class="val">{{ placa or '—' }}</span></div>
+        <div class="separador"></div>
+        <div class="item"><span class="lbl">Peso Total</span><span class="val">{{ peso_total }} KGM</span></div>
+        <div class="separador"></div>
+        <div class="item"><span class="lbl">Bultos</span><span class="val">{{ bultos }}</span></div>
+    </div>
+
+    {% if observaciones %}
+    <div class="observaciones-box">
+        <div class="titulo">📝 Observaciones</div>
+        <div class="texto">{{ observaciones }}</div>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <div class="firma">
+            <div class="linea">Recibí Conforme</div>
+            <div style="font-size:7px; color:#888; margin-top:2px;">Nombre, Firma y DNI</div>
+        </div>
+        <div class="qr">
+            <div class="texto">Documento generado por</div>
+            <div style="font-size:8px; font-weight:900; color:#CC0000;">KCF CORPORACION E.I.R.L</div>
+            <div class="texto" style="margin-top:2px;">Página 1 de 1</div>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    # ============================================================
     # GENERAR COTIZACIÓN
     # ============================================================
     def _generar_cotizacion(self, datos):
@@ -1649,10 +1811,8 @@ class PDFGenerator:
             line-height: 1.8;
             background: #ffffff;
         }
-        
         .color-rojo { color: #CC0000; }
         .color-gris { color: #555555; }
-        
         .header-superior {
             display: flex;
             justify-content: space-between;
@@ -1662,259 +1822,121 @@ class PDFGenerator:
             border-bottom: 2px solid #999999;
             padding-bottom: 8px;
         }
-        .empresa-izquierda {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            gap: 18px;
-        }
+        .empresa-izquierda { flex: 1; display: flex; align-items: center; gap: 18px; }
         .empresa-izquierda .logo-container {
-            flex-shrink: 0;
-            width: 100px;
-            height: 70px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            flex-shrink: 0; width: 100px; height: 70px;
+            display: flex; align-items: center; justify-content: center;
         }
         .empresa-izquierda .logo-container img {
-            max-height: 65px;
-            max-width: 110px;
-            object-fit: contain;
+            max-height: 65px; max-width: 110px; object-fit: contain;
         }
-        .empresa-izquierda .info-texto {
-            font-size: 8.5px;
-            line-height: 1.5;
-            color: #444444;
-        }
+        .empresa-izquierda .info-texto { font-size: 8.5px; line-height: 1.5; color: #444444; }
         .empresa-izquierda .info-texto .nombre {
-            font-size: 13px;
-            font-weight: bold;
-            text-transform: uppercase;
-            color: #333333;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
+            font-size: 13px; font-weight: bold; text-transform: uppercase;
+            color: #333333; letter-spacing: 0.5px; margin-bottom: 2px;
         }
         .empresa-izquierda .info-texto .ruc-line {
-            font-size: 9px;
-            font-weight: bold;
-            color: #333333;
-            margin-bottom: 1px;
+            font-size: 9px; font-weight: bold; color: #333333; margin-bottom: 1px;
         }
         .empresa-izquierda .info-texto .slogan {
-            font-size: 8px;
-            color: #666666;
-            font-style: italic;
-            margin-bottom: 1px;
+            font-size: 8px; color: #666666; font-style: italic; margin-bottom: 1px;
         }
-        .empresa-izquierda .info-texto .contacto-line {
-            font-size: 7.5px;
-            color: #555555;
-        }
+        .empresa-izquierda .info-texto .contacto-line { font-size: 7.5px; color: #555555; }
         .recuadro-derecha {
-            flex-shrink: 0;
-            border: 2px solid #999999;
-            border-radius: 12px;
-            padding: 10px 20px;
-            text-align: center;
-            min-width: 200px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            flex-shrink: 0; border: 2px solid #999999; border-radius: 12px;
+            padding: 10px 20px; text-align: center; min-width: 200px;
+            display: flex; flex-direction: column; justify-content: center;
         }
-        .recuadro-derecha .ruc {
-            font-size: 10px;
-            font-weight: bold;
-            color: #333333;
-        }
+        .recuadro-derecha .ruc { font-size: 10px; font-weight: bold; color: #333333; }
         .recuadro-derecha .titulo {
-            font-size: 13px;
-            font-weight: bold;
-            letter-spacing: 1px;
-            margin: 2px 0;
-            color: #CC0000;
+            font-size: 13px; font-weight: bold; letter-spacing: 1px;
+            margin: 2px 0; color: #CC0000;
         }
-        .recuadro-derecha .numero {
-            font-size: 15px;
-            font-weight: bold;
-            color: #CC0000;
-        }
-        
-        .seccion {
-            margin-bottom: 8px;
-        }
+        .recuadro-derecha .numero { font-size: 15px; font-weight: bold; color: #CC0000; }
+        .seccion { margin-bottom: 8px; }
         .seccion-titulo {
-            font-weight: bold;
-            font-size: 9.5px;
-            margin-bottom: 3px;
-            text-transform: uppercase;
-            border-bottom: 2px solid #999999;
-            padding-bottom: 2px;
-            color: #333333;
+            font-weight: bold; font-size: 9.5px; margin-bottom: 3px;
+            text-transform: uppercase; border-bottom: 2px solid #999999;
+            padding-bottom: 2px; color: #333333;
         }
         .info-cliente {
-            border: 1px solid #cccccc;
-            border-radius: 8px;
-            padding: 6px 12px;
-            margin-bottom: 6px;
+            border: 1px solid #cccccc; border-radius: 8px;
+            padding: 6px 12px; margin-bottom: 6px;
         }
-        .fila {
-            display: flex;
-            padding: 1px 0;
-            align-items: baseline;
-        }
+        .fila { display: flex; padding: 1px 0; align-items: baseline; }
         .fila .label {
-            font-weight: bold;
-            min-width: 120px;
-            flex-shrink: 0;
-            color: #555555;
+            font-weight: bold; min-width: 120px; flex-shrink: 0; color: #555555;
         }
         .fila .value {
-            flex: 1;
-            text-align: left;
-            padding-left: 5px;
-            color: #333333;
+            flex: 1; text-align: left; padding-left: 5px; color: #333333;
         }
-        
         .products-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 4px 0;
-            font-size: 8.5px;
+            width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 8.5px;
         }
         .products-table th {
-            color: #333333;
-            padding: 4px 5px;
-            text-align: center;
-            border: 1px solid #cccccc;
-            background: #f5f5f5;
+            color: #333333; padding: 4px 5px; text-align: center;
+            border: 1px solid #cccccc; background: #f5f5f5;
         }
         .products-table td {
-            padding: 3px 5px;
-            border: 1px solid #cccccc;
-            text-align: center;
-            color: #333333;
+            padding: 3px 5px; border: 1px solid #cccccc;
+            text-align: center; color: #333333;
         }
-        .products-table td.descripcion {
-            text-align: left;
-        }
-        .products-table tr:nth-child(even) td {
-            background: #f9f9f9;
-        }
-        
+        .products-table td.descripcion { text-align: left; }
+        .products-table tr:nth-child(even) td { background: #f9f9f9; }
         .totales-box {
-            border: 2px solid #999999;
-            border-radius: 8px;
-            padding: 8px 12px;
-            margin-top: 6px;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
+            border: 2px solid #999999; border-radius: 8px; padding: 8px 12px;
+            margin-top: 6px; display: flex; flex-direction: column; align-items: flex-end;
         }
         .totales-box .linea {
-            display: flex;
-            justify-content: space-between;
-            width: 220px;
-            padding: 2px 0;
-            color: #444444;
+            display: flex; justify-content: space-between; width: 220px;
+            padding: 2px 0; color: #444444;
         }
         .totales-box .linea.total {
-            font-weight: bold;
-            font-size: 12px;
-            border-top: 2px solid #999999;
-            padding-top: 4px;
-            margin-top: 4px;
-            color: #333333;
+            font-weight: bold; font-size: 12px; border-top: 2px solid #999999;
+            padding-top: 4px; margin-top: 4px; color: #333333;
         }
-        .totales-box .linea.total .value-total {
-            color: #333333;
-            font-size: 14px;
-        }
-        
+        .totales-box .linea.total .value-total { color: #333333; font-size: 14px; }
         .referencias {
-            border: 1px solid #cccccc;
-            border-radius: 8px;
-            padding: 6px 12px;
-            margin-bottom: 6px;
+            border: 1px solid #cccccc; border-radius: 8px;
+            padding: 6px 12px; margin-bottom: 6px;
         }
         .referencias-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
-            padding: 6px 0;
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px; padding: 6px 0;
         }
-        .ref-item {
-            text-align: center;
-        }
+        .ref-item { text-align: center; }
         .ref-item .ref-label {
-            font-weight: bold;
-            display: block;
-            font-size: 7.5px;
-            color: #777777;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
+            font-weight: bold; display: block; font-size: 7.5px;
+            color: #777777; text-transform: uppercase; letter-spacing: 0.3px;
         }
-        .ref-item .ref-value {
-            font-size: 9px;
-            font-weight: 600;
-            color: #333333;
-        }
-        
+        .ref-item .ref-value { font-size: 9px; font-weight: 600; color: #333333; }
         .qr-container {
-            text-align: center;
-            margin: 8px 0 5px 0;
-            padding: 6px;
-            border: 2px solid #999999;
-            border-radius: 8px;
+            text-align: center; margin: 8px 0 5px 0; padding: 6px;
+            border: 2px solid #999999; border-radius: 8px;
         }
-        .qr-container img {
-            width: 90px;
-            height: 90px;
-        }
-        .qr-container .qr-text {
-            font-size: 7px;
-            color: #888888;
-            margin-top: 2px;
-        }
+        .qr-container img { width: 90px; height: 90px; }
+        .qr-container .qr-text { font-size: 7px; color: #888888; margin-top: 2px; }
         .footer {
-            margin-top: 12px;
-            text-align: center;
-            font-size: 7.5px;
-            color: #888888;
-            padding-top: 6px;
+            margin-top: 12px; text-align: center; font-size: 7.5px;
+            color: #888888; padding-top: 6px;
         }
         .footer .condicion-pago {
-            margin: 4px 0;
-            font-size: 8.5px;
-            font-weight: bold;
-            color: #333333;
+            margin: 4px 0; font-size: 8.5px; font-weight: bold; color: #333333;
         }
         .observaciones {
-            margin-top: 6px;
-            padding: 6px 10px;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            font-size: 8.5px;
-            color: #555555;
+            margin-top: 6px; padding: 6px 10px;
+            border: 1px solid #e5e7eb; border-radius: 6px;
+            font-size: 8.5px; color: #555555;
         }
         .condiciones {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4px 20px;
-            padding: 4px 0;
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 4px 20px; padding: 4px 0;
         }
         .condiciones .cond-item {
-            display: flex;
-            gap: 4px;
-            font-size: 8.5px;
+            display: flex; gap: 4px; font-size: 8.5px;
         }
-        .condiciones .cond-label {
-            font-weight: bold;
-            color: #555555;
-        }
-        .condiciones .cond-value {
-            font-weight: 600;
-            color: #333333;
-        }
+        .condiciones .cond-label { font-weight: bold; color: #555555; }
+        .condiciones .cond-value { font-weight: 600; color: #333333; }
     </style>
 </head>
 <body>
@@ -2084,590 +2106,6 @@ class PDFGenerator:
         except Exception as e:
             print(f"⚠️ Error generando QR: {e}")
             return ""
-
-
-
-# ============================================================
-# GENERAR RÓTULO DE GUÍA DE REMISIÓN
-# ============================================================
-def _generar_rotulo_guia(self, datos_guia):
-    """Genera el PDF del rótulo para pegar en el paquete/mercadería"""
-    try:
-        print("📄 Generando PDF de Rótulo de Guía de Remisión...")
-        
-        # Obtener logo
-        logo_base64 = self._obtener_logo_base64()
-        logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
-        
-        # Procesar items
-        items = datos_guia.get('items', [])
-        if isinstance(items, str):
-            try:
-                items = json.loads(items)
-            except:
-                items = []
-        
-        items_formateados = []
-        for item in items:
-            if isinstance(item, dict):
-                items_formateados.append({
-                    'codigo': item.get('codigo', ''),
-                    'descripcion': item.get('producto', item.get('descripcion', '')),
-                    'marca': item.get('marca', ''),
-                    'modelo': item.get('modelo', ''),
-                    'unidad': item.get('um', 'NIU'),
-                    'cantidad': float(item.get('cantidad', 1))
-                })
-            elif isinstance(item, (list, tuple)):
-                items_formateados.append({
-                    'codigo': item[0] if len(item) > 0 else '',
-                    'descripcion': item[1] if len(item) > 1 else '',
-                    'marca': item[2] if len(item) > 2 else '',
-                    'modelo': item[3] if len(item) > 3 else '',
-                    'unidad': 'NIU',
-                    'cantidad': float(item[4] if len(item) > 4 else 1)
-                })
-        
-        # Formatear fecha
-        fecha_emision = datos_guia.get('fecha_emision')
-        if fecha_emision:
-            if isinstance(fecha_emision, datetime):
-                fecha_emision = fecha_emision.strftime('%d/%m/%Y')
-            elif isinstance(fecha_emision, str):
-                try:
-                    if 'T' in fecha_emision:
-                        dt = datetime.fromisoformat(fecha_emision.replace('Z', '+00:00'))
-                        fecha_emision = dt.strftime('%d/%m/%Y')
-                    elif '-' in fecha_emision and len(fecha_emision) >= 10:
-                        fecha_emision = datetime.strptime(fecha_emision[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
-                except:
-                    pass
-        
-        # Datos para el template
-        datos_rotulo = {
-            'logo_src': logo_src,
-            'empresa_nombre': 'KCF CORPORACION E.I.R.L',
-            'empresa_ruc': '20602095704',
-            'empresa_telefono': '999 932 051',
-            'empresa_email': 'ventas@kcfcorporacion.com',
-            'empresa_web': 'https://kcfcorporacion.com/',
-            'serie': datos_guia.get('serie', 'T001'),
-            'numero': datos_guia.get('numero', ''),
-            'fecha_emision': fecha_emision or '',
-            'cliente_nombre': datos_guia.get('destinatario_nombre', datos_guia.get('cliente', '')),
-            'cliente_ruc': datos_guia.get('ruc_destinatario', datos_guia.get('ruc', '')),
-            'cliente_direccion': datos_guia.get('destinatario_direccion', datos_guia.get('destino', '')),
-            'orden_compra': datos_guia.get('orden_compra_cliente', '—'),
-            'factura': datos_guia.get('factura', '—'),
-            'cotizacion': datos_guia.get('documento_asociado', datos_guia.get('nro_cotizacion', '—')),
-            'transportista': datos_guia.get('transportista_nombre', '—'),
-            'conductor': datos_guia.get('conductor_nombre', '—'),
-            'placa': datos_guia.get('placa_vehiculo', '—'),
-            'peso_total': datos_guia.get('peso_total', 0),
-            'bultos': datos_guia.get('numero_bultos', 1),
-            'observaciones': datos_guia.get('observaciones', ''),
-            'items': items_formateados,
-            'total_items': len(items_formateados)
-        }
-        
-        # Generar HTML del rótulo
-        html_content = self._obtener_template_rotulo_guia()
-        
-        try:
-            html_content = Template(html_content).render(**datos_rotulo)
-        except Exception as e:
-            print(f"❌ Error renderizando template de rótulo: {e}")
-        
-        # Generar PDF
-        fecha = datetime.now().strftime('%Y%m%d_%H%M%S')
-        nombre_archivo = f"rotulo_{datos_rotulo['serie']}_{datos_rotulo['numero']}_{fecha}.pdf"
-        
-        base_url = f"file://{os.getcwd()}/"
-        HTML(string=html_content, base_url=base_url).write_pdf(nombre_archivo)
-        
-        print(f"✅ Rótulo generado: {nombre_archivo}")
-        return nombre_archivo
-        
-    except Exception as e:
-        print(f"❌ Error en _generar_rotulo_guia: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def _obtener_template_rotulo_guia(self):
-    """Template HTML para el rótulo de guía de remisión (formato A4)"""
-    return """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Rótulo {{ serie }}-{{ numero }}</title>
-    <style>
-        @page { 
-            size: A4; 
-            margin: 0.8cm 1cm; 
-        }
-        * { 
-            margin: 0; 
-            padding: 0; 
-            box-sizing: border-box; 
-        }
-        body { 
-            font-family: 'Helvetica', Arial, sans-serif; 
-            font-size: 10px; 
-            color: #1a1a1a;
-            background: #ffffff;
-            line-height: 1.4;
-        }
-        
-        /* ===== HEADER ===== */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 14px;
-            border: 3px solid #CC0000;
-            border-radius: 12px;
-            margin-bottom: 10px;
-            background: #FFF5F5;
-        }
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-        .header-left .logo {
-            width: 100px;
-            height: 65px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        .header-left .logo img {
-            max-height: 60px;
-            max-width: 95px;
-            object-fit: contain;
-        }
-        .header-left .info {
-            font-size: 9px;
-            color: #444;
-            line-height: 1.4;
-        }
-        .header-left .info .nombre {
-            font-size: 14px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 1px;
-        }
-        .header-left .info .ruc {
-            font-size: 10px;
-            font-weight: 800;
-            color: #333;
-            margin-bottom: 1px;
-        }
-        .header-left .info .contacto {
-            font-size: 8px;
-            color: #555;
-        }
-        
-        .header-right {
-            text-align: center;
-            border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 6px 18px;
-            min-width: 200px;
-            background: #FFFFFF;
-        }
-        .header-right .titulo {
-            font-size: 11px;
-            font-weight: 900;
-            color: #CC0000;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        }
-        .header-right .numero {
-            font-size: 20px;
-            font-weight: 900;
-            color: #CC0000;
-            letter-spacing: 1px;
-            margin: 2px 0;
-        }
-        .header-right .fecha {
-            font-size: 9px;
-            font-weight: 700;
-            color: #555;
-        }
-        
-        /* ===== DESTINATARIO ===== */
-        .destinatario-box {
-            border: 2px solid #1a1a1a;
-            border-radius: 8px;
-            padding: 8px 14px;
-            margin-bottom: 8px;
-            background: #FAFAFA;
-        }
-        .destinatario-box .label {
-            font-size: 8px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 3px;
-        }
-        .destinatario-box .nombre {
-            font-size: 15px;
-            font-weight: 900;
-            color: #1a1a1a;
-            margin-bottom: 3px;
-        }
-        .destinatario-box .detalle {
-            display: flex;
-            gap: 20px;
-            font-size: 9px;
-            color: #333;
-        }
-        .destinatario-box .detalle .dato {
-            display: flex;
-            gap: 4px;
-        }
-        .destinatario-box .detalle .dato .lbl {
-            font-weight: 800;
-            color: #555;
-        }
-        .destinatario-box .detalle .dato .val {
-            font-weight: 700;
-            color: #1a1a1a;
-        }
-        
-        /* ===== INFO GRID ===== */
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 6px;
-            margin-bottom: 8px;
-        }
-        .info-card {
-            border: 1.5px solid #ccc;
-            border-radius: 6px;
-            padding: 6px 10px;
-            background: #FFFFFF;
-        }
-        .info-card .titulo {
-            font-size: 7px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-bottom: 2px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 2px;
-        }
-        .info-card .valor {
-            font-size: 10px;
-            font-weight: 800;
-            color: #1a1a1a;
-        }
-        
-        /* ===== TABLA DE PRODUCTOS ===== */
-        .productos-titulo {
-            font-size: 11px;
-            font-weight: 900;
-            color: #1a1a1a;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 4px 8px;
-            background: #F1F5F9;
-            border: 2px solid #1a1a1a;
-            border-bottom: none;
-            border-radius: 6px 6px 0 0;
-        }
-        .tabla-productos {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 9.5px;
-            margin-bottom: 8px;
-        }
-        .tabla-productos th {
-            background: #1a1a1a;
-            color: #FFFFFF;
-            padding: 5px 6px;
-            text-align: center;
-            font-weight: 900;
-            font-size: 8.5px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            border: 1px solid #1a1a1a;
-        }
-        .tabla-productos td {
-            padding: 4px 6px;
-            border: 1px solid #ccc;
-            text-align: center;
-            color: #1a1a1a;
-            font-weight: 700;
-        }
-        .tabla-productos td.descripcion {
-            text-align: left;
-            font-weight: 800;
-        }
-        .tabla-productos tr:nth-child(even) td {
-            background: #F9F9F9;
-        }
-        
-        /* ===== TRANSPORTE ===== */
-        .transporte-box {
-            border: 2px solid #1a1a1a;
-            border-radius: 8px;
-            padding: 6px 12px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #FAFAFA;
-        }
-        .transporte-box .item {
-            text-align: center;
-            flex: 1;
-        }
-        .transporte-box .item .lbl {
-            font-size: 7px;
-            font-weight: 900;
-            color: #CC0000;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            display: block;
-            margin-bottom: 2px;
-        }
-        .transporte-box .item .val {
-            font-size: 10px;
-            font-weight: 800;
-            color: #1a1a1a;
-        }
-        .transporte-box .separador {
-            width: 1px;
-            height: 30px;
-            background: #ccc;
-            margin: 0 8px;
-        }
-        
-        /* ===== OBSERVACIONES ===== */
-        .observaciones-box {
-            border: 1.5px solid #F59E0B;
-            background: #FFFBEB;
-            border-radius: 6px;
-            padding: 6px 10px;
-            margin-bottom: 8px;
-        }
-        .observaciones-box .titulo {
-            font-size: 8px;
-            font-weight: 900;
-            color: #B45309;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-bottom: 2px;
-        }
-        .observaciones-box .texto {
-            font-size: 9px;
-            font-weight: 700;
-            color: #78350F;
-            line-height: 1.4;
-        }
-        
-        /* ===== FOOTER ===== */
-        .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-top: 2px solid #CC0000;
-            padding-top: 6px;
-            margin-top: 4px;
-            font-size: 8px;
-            color: #555;
-        }
-        .footer .firma {
-            text-align: center;
-            font-weight: 800;
-        }
-        .footer .firma .linea {
-            width: 180px;
-            border-top: 1px solid #333;
-            margin-top: 20px;
-            padding-top: 3px;
-            font-size: 8px;
-            font-weight: 900;
-            color: #1a1a1a;
-        }
-        .footer .qr {
-            text-align: center;
-        }
-        .footer .qr img {
-            width: 70px;
-            height: 70px;
-        }
-        .footer .qr .texto {
-            font-size: 6.5px;
-            color: #888;
-            margin-top: 2px;
-        }
-    </style>
-</head>
-<body>
-
-    <!-- ============================================================ -->
-    <!-- HEADER CON LOGO Y NÚMERO DE GUÍA                             -->
-    <!-- ============================================================ -->
-    <div class="header">
-        <div class="header-left">
-            <div class="logo">
-                {% if logo_src %}
-                <img src="{{ logo_src }}" alt="KCF Logo">
-                {% endif %}
-            </div>
-            <div class="info">
-                <div class="nombre">{{ empresa_nombre }}</div>
-                <div class="ruc">RUC: {{ empresa_ruc }}</div>
-                <div class="contacto">Telf: {{ empresa_telefono }} | Email: {{ empresa_email }}</div>
-                <div class="contacto">Web: {{ empresa_web }}</div>
-            </div>
-        </div>
-        <div class="header-right">
-            <div class="titulo">📦 RÓTULO DE ENVÍO</div>
-            <div class="numero">{{ serie }}-{{ numero }}</div>
-            <div class="fecha">Fecha: {{ fecha_emision }}</div>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- DESTINATARIO                                                 -->
-    <!-- ============================================================ -->
-    <div class="destinatario-box">
-        <div class="label">📬 DESTINATARIO</div>
-        <div class="nombre">{{ cliente_nombre }}</div>
-        <div class="detalle">
-            <div class="dato">
-                <span class="lbl">RUC:</span>
-                <span class="val">{{ cliente_ruc }}</span>
-            </div>
-            <div class="dato" style="flex:1;">
-                <span class="lbl">DIRECCIÓN:</span>
-                <span class="val">{{ cliente_direccion }}</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- DOCUMENTOS RELACIONADOS                                      -->
-    <!-- ============================================================ -->
-    <div class="info-grid">
-        <div class="info-card">
-            <div class="titulo">N° Orden de Compra</div>
-            <div class="valor">{{ orden_compra or '—' }}</div>
-        </div>
-        <div class="info-card">
-            <div class="titulo">Factura</div>
-            <div class="valor">{{ factura or '—' }}</div>
-        </div>
-        <div class="info-card">
-            <div class="titulo">Cotización</div>
-            <div class="valor">{{ cotizacion or '—' }}</div>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- TABLA DE PRODUCTOS                                           -->
-    <!-- ============================================================ -->
-    <div class="productos-titulo">📋 DETALLE DE PRODUCTOS ({{ total_items }} items)</div>
-    <table class="tabla-productos">
-        <thead>
-            <tr>
-                <th style="width:35px;">Item</th>
-                <th style="width:80px;">Código</th>
-                <th>Descripción</th>
-                <th style="width:80px;">Marca</th>
-                <th style="width:80px;">Modelo</th>
-                <th style="width:50px;">UM</th>
-                <th style="width:55px;">Cant.</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in items %}
-            <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ item.codigo }}</td>
-                <td class="descripcion">{{ item.descripcion }}</td>
-                <td>{{ item.marca }}</td>
-                <td>{{ item.modelo }}</td>
-                <td>{{ item.unidad }}</td>
-                <td style="font-weight:900;">{{ item.cantidad }}</td>
-            </tr>
-            {% endfor %}
-            {% if not items %}
-            <tr>
-                <td colspan="7" style="padding:12px; color:#999;">No hay productos registrados</td>
-            </tr>
-            {% endif %}
-        </tbody>
-    </table>
-
-    <!-- ============================================================ -->
-    <!-- DATOS DE TRANSPORTE                                          -->
-    <!-- ============================================================ -->
-    <div class="transporte-box">
-        <div class="item">
-            <span class="lbl">Transportista</span>
-            <span class="val">{{ transportista or '—' }}</span>
-        </div>
-        <div class="separador"></div>
-        <div class="item">
-            <span class="lbl">Conductor</span>
-            <span class="val">{{ conductor or '—' }}</span>
-        </div>
-        <div class="separador"></div>
-        <div class="item">
-            <span class="lbl">Placa</span>
-            <span class="val">{{ placa or '—' }}</span>
-        </div>
-        <div class="separador"></div>
-        <div class="item">
-            <span class="lbl">Peso Total</span>
-            <span class="val">{{ peso_total }} KGM</span>
-        </div>
-        <div class="separador"></div>
-        <div class="item">
-            <span class="lbl">Bultos</span>
-            <span class="val">{{ bultos }}</span>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- OBSERVACIONES                                                -->
-    <!-- ============================================================ -->
-    {% if observaciones %}
-    <div class="observaciones-box">
-        <div class="titulo">📝 Observaciones</div>
-        <div class="texto">{{ observaciones }}</div>
-    </div>
-    {% endif %}
-
-    <!-- ============================================================ -->
-    <!-- FOOTER CON FIRMA                                             -->
-    <!-- ============================================================ -->
-    <div class="footer">
-        <div class="firma">
-            <div class="linea">Recibí Conforme</div>
-            <div style="font-size:7px; color:#888; margin-top:2px;">Nombre, Firma y DNI</div>
-        </div>
-        <div class="qr">
-            <div class="texto">Documento generado por</div>
-            <div style="font-size:8px; font-weight:900; color:#CC0000;">KCF CORPORACION E.I.R.L</div>
-            <div class="texto" style="margin-top:2px;">Página 1 de 1</div>
-        </div>
-    </div>
-
-</body>
-</html>"""
 
 
 # ============================================================
