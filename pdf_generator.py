@@ -1226,6 +1226,38 @@ class PDFGenerator:
                         pass
             
 
+         
+                            # ============================================================
+            # DATOS PARA EL TEMPLATE DEL RÓTULO
+            # ============================================================
+            # Consignado = Conductor de la guía (mismo campo que usa el PDF de guías)
+            consignado_nombre = (
+                datos_guia.get('conductor_nombre') 
+                or datos_guia.get('transportista_nombre')
+                or '—'
+            )
+            consignado_dni = (
+                datos_guia.get('conductor_dni')
+                or datos_guia.get('transportista_ruc')
+                or '—'
+            )
+            
+            # N° Factura vinculada
+            factura_numero = (
+                datos_guia.get('factura')
+                or datos_guia.get('factura_numero')
+                or datos_guia.get('numero_factura')
+                or '—'
+            )
+            
+            # N° BLTS: formato 01/02
+            num_bultos = int(datos_guia.get('numero_bultos', 1) or 1)
+            total_bultos = int(datos_guia.get('total_bultos', num_bultos) or num_bultos)
+            bultos_formato = f"{str(num_bultos).zfill(2)}/{str(total_bultos).zfill(2)}"
+            
+            print(f"📦 Rótulo - Consignado: {consignado_nombre} | DNI: {consignado_dni}")
+            print(f"📦 Rótulo - Factura: {factura_numero} | Bultos: {bultos_formato}")
+            
             datos_rotulo = {
                 'logo_src': logo_src,
                 'empresa_nombre': 'KCF CORPORACION E.I.R.L',
@@ -1239,32 +1271,21 @@ class PDFGenerator:
                 'cliente_nombre': datos_guia.get('destinatario_nombre', datos_guia.get('cliente', '')),
                 'cliente_ruc': datos_guia.get('ruc_destinatario', datos_guia.get('ruc', '')),
                 'cliente_direccion': datos_guia.get('destinatario_direccion', datos_guia.get('destino', '')),
-                # 🔽 CONSIGNADO = CONDUCTOR / TRANSPORTISTA
-                'consignado_nombre': (
-                    datos_guia.get('conductor_nombre')
-                    or datos_guia.get('transportista_nombre')
-                    or '—'
-                ),
-                'consignado_dni': (
-                    datos_guia.get('conductor_dni')
-                    or datos_guia.get('transportista_ruc')
-                    or '—'
-                ),
-                # 🔽 N° FACTURA (número real de la factura, no la serie-numero)
-                'factura': (
-                    datos_guia.get('factura')
-                    or datos_guia.get('factura_numero')
-                    or datos_guia.get('numero_factura')
-                    or '—'
-                ),
+                # 🔽 CONSIGNADO
+                'consignado_nombre': consignado_nombre,
+                'consignado_dni': consignado_dni,
+                # 🔽 FACTURA
+                'factura': factura_numero,
+                # 🔽 BLTS
+                'numero_bultos': bultos_formato,
+                # Extras
                 'orden_compra': datos_guia.get('orden_compra_cliente', '—'),
                 'cotizacion': datos_guia.get('documento_asociado', datos_guia.get('nro_cotizacion', '—')),
                 'transportista': datos_guia.get('transportista_nombre', '—'),
-                'conductor': datos_guia.get('conductor_nombre', '—'),
+                'conductor': consignado_nombre,
                 'placa': datos_guia.get('placa_vehiculo', '—'),
                 'peso_total': datos_guia.get('peso_total', 0),
-                'bultos': datos_guia.get('numero_bultos', 1),
-                'numero_bultos': f"{str(datos_guia.get('numero_bultos', 1)).zfill(2)}/{str(datos_guia.get('total_bultos', datos_guia.get('numero_bultos', 1))).zfill(2)}",
+                'bultos': num_bultos,
                 'observaciones': datos_guia.get('observaciones', ''),
                 'items': items_formateados,
                 'total_items': len(items_formateados),
@@ -1327,14 +1348,13 @@ class PDFGenerator:
             return ""
 
     def _obtener_template_rotulo_guia(self):
-        """Template HTML para el rótulo de guía de remisión (formato A5 horizontal - diseño ROJO)"""
+        """Template HTML para el rótulo de guía de remisión (A5 horizontal - diseño ROJO)"""
         return """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Rótulo {{ serie }}-{{ numero }}</title>
     <style>
-        /* 🔽 A5 HORIZONTAL (210mm x 148mm) */
         @page { 
             size: A5 landscape; 
             margin: 0.4cm; 
@@ -1352,7 +1372,6 @@ class PDFGenerator:
             line-height: 1.25;
         }
         
-        /* ===== CONTENEDOR PRINCIPAL ===== */
         .rotulo-wrapper {
             border: 3px solid #CC0000;
             border-radius: 6px;
@@ -1370,11 +1389,13 @@ class PDFGenerator:
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
+            gap: 10px;
         }
         .header-left {
             display: flex;
             align-items: center;
             gap: 10px;
+            flex-shrink: 0;
         }
         .header-left .logo {
             width: 65px;
@@ -1409,6 +1430,7 @@ class PDFGenerator:
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-shrink: 0;
         }
         .social-icon {
             width: 24px;
@@ -1426,21 +1448,29 @@ class PDFGenerator:
             fill: #ffffff;
         }
         
-        .header-right .qr-box {
-            width: 58px;
-            height: 58px;
+        /* 🔽 QR CORREGIDO - tamaño fijo y centrado */
+        .header-right {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        .qr-box {
+            width: 60px;
+            height: 60px;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
+            overflow: hidden;
         }
-        .header-right .qr-box img {
-            width: 100%;
-            height: 100%;
+        .qr-box img {
+            width: 60px;
+            height: 60px;
+            display: block;
             object-fit: contain;
         }
         
-        /* ===== SECCIÓN CLIENTE ===== */
+        /* ===== SECCIONES ===== */
         .seccion-cliente {
             border: 2px solid #CC0000;
             border-radius: 8px;
@@ -1465,7 +1495,6 @@ class PDFGenerator:
             flex: 1;
         }
         
-        /* ===== SECCIÓN DIRECCIÓN ===== */
         .seccion-direccion {
             border: 2px solid #CC0000;
             border-radius: 8px;
@@ -1492,7 +1521,6 @@ class PDFGenerator:
             line-height: 1.15;
         }
         
-        /* ===== SECCIÓN CONSIGNADOS + BLTS ===== */
         .seccion-doble {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -1553,7 +1581,6 @@ class PDFGenerator:
             font-style: italic;
         }
         
-        /* ===== SECCIÓN GUÍA + FACTURA ===== */
         .seccion-doble-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1583,7 +1610,6 @@ class PDFGenerator:
             font-style: italic;
         }
         
-        /* ===== FOOTER ===== */
         .footer {
             margin-top: auto;
             display: flex;
@@ -1606,7 +1632,6 @@ class PDFGenerator:
             flex-shrink: 0;
         }
         
-        /* ===== INFO GRID (OBSERVACIONES) ===== */
         .info-extra {
             margin-top: 4px;
             padding: 4px 10px;
@@ -1625,9 +1650,6 @@ class PDFGenerator:
 <body>
     <div class="rotulo-wrapper">
 
-        <!-- ============================================================ -->
-        <!-- HEADER: LOGO + NOMBRE + REDES SOCIALES + QR                  -->
-        <!-- ============================================================ -->
         <div class="header">
             <div class="header-left">
                 <div class="logo">
@@ -1663,25 +1685,16 @@ class PDFGenerator:
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- CLIENTE                                                      -->
-        <!-- ============================================================ -->
         <div class="seccion-cliente">
             <span class="label">CLIENTE:</span>
             <span class="valor">{{ cliente_nombre }}</span>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- DIRECCIÓN DE ENTREGA                                         -->
-        <!-- ============================================================ -->
         <div class="seccion-direccion">
             <span class="label">DIRECCIÓN<br>DE ENTREGA:</span>
             <span class="valor">{{ cliente_direccion }}</span>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- CONSIGNADOS + N° BLTS                                        -->
-        <!-- ============================================================ -->
         <div class="seccion-doble">
             <div class="caja-consignados">
                 <span class="label">CONSIGNADOS:</span>
@@ -1696,9 +1709,6 @@ class PDFGenerator:
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- N° GUÍA + FACTURA                                            -->
-        <!-- ============================================================ -->
         <div class="seccion-doble-2">
             <div class="caja-guia">
                 <span class="label">N° GUÍA:</span>
@@ -1710,9 +1720,6 @@ class PDFGenerator:
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- FOOTER: TELÉFONO | EMAIL | WEB                               -->
-        <!-- ============================================================ -->
         <div class="footer">
             <div class="item">
                 <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
@@ -1728,9 +1735,6 @@ class PDFGenerator:
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- OBSERVACIONES (solo si existen)                              -->
-        <!-- ============================================================ -->
         {% if observaciones %}
         <div class="info-extra">
             <strong>Observaciones:</strong> {{ observaciones }}
@@ -1740,7 +1744,6 @@ class PDFGenerator:
     </div>
 </body>
 </html>"""
-
 
     # ============================================================
     # GENERAR COTIZACIÓN
