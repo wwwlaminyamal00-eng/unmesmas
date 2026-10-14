@@ -1225,7 +1225,7 @@ class PDFGenerator:
                     except:
                         pass
             
-            # Datos para el template
+
             datos_rotulo = {
                 'logo_src': logo_src,
                 'empresa_nombre': 'KCF CORPORACION E.I.R.L',
@@ -1239,10 +1239,25 @@ class PDFGenerator:
                 'cliente_nombre': datos_guia.get('destinatario_nombre', datos_guia.get('cliente', '')),
                 'cliente_ruc': datos_guia.get('ruc_destinatario', datos_guia.get('ruc', '')),
                 'cliente_direccion': datos_guia.get('destinatario_direccion', datos_guia.get('destino', '')),
-                'consignado_nombre': datos_guia.get('consignado_nombre', ''),
-                'consignado_dni': datos_guia.get('consignado_dni', ''),
+                # 🔽 CONSIGNADO = CONDUCTOR / TRANSPORTISTA
+                'consignado_nombre': (
+                    datos_guia.get('conductor_nombre')
+                    or datos_guia.get('transportista_nombre')
+                    or '—'
+                ),
+                'consignado_dni': (
+                    datos_guia.get('conductor_dni')
+                    or datos_guia.get('transportista_ruc')
+                    or '—'
+                ),
+                # 🔽 N° FACTURA (número real de la factura, no la serie-numero)
+                'factura': (
+                    datos_guia.get('factura')
+                    or datos_guia.get('factura_numero')
+                    or datos_guia.get('numero_factura')
+                    or '—'
+                ),
                 'orden_compra': datos_guia.get('orden_compra_cliente', '—'),
-                'factura': datos_guia.get('factura', '—'),
                 'cotizacion': datos_guia.get('documento_asociado', datos_guia.get('nro_cotizacion', '—')),
                 'transportista': datos_guia.get('transportista_nombre', '—'),
                 'conductor': datos_guia.get('conductor_nombre', '—'),
@@ -1255,7 +1270,7 @@ class PDFGenerator:
                 'total_items': len(items_formateados),
                 'qr_base64': self._generar_qr_rotulo_guia(datos_guia)
             }
-            
+
             # Generar HTML del rótulo
             html_content = self._obtener_template_rotulo_guia()
             
@@ -1312,16 +1327,17 @@ class PDFGenerator:
             return ""
 
     def _obtener_template_rotulo_guia(self):
-        """Template HTML para el rótulo de guía de remisión (formato A4 - diseño ROJO)"""
+        """Template HTML para el rótulo de guía de remisión (formato A5 horizontal - diseño ROJO)"""
         return """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Rótulo {{ serie }}-{{ numero }}</title>
     <style>
+        /* 🔽 A5 HORIZONTAL (210mm x 148mm) */
         @page { 
-            size: A4; 
-            margin: 0.6cm 0.8cm; 
+            size: A5 landscape; 
+            margin: 0.4cm; 
         }
         * { 
             margin: 0; 
@@ -1330,62 +1346,61 @@ class PDFGenerator:
         }
         body { 
             font-family: 'Helvetica', Arial, sans-serif; 
-            font-size: 11px; 
+            font-size: 9px; 
             color: #1a1a1a;
             background: #ffffff;
-            line-height: 1.3;
+            line-height: 1.25;
         }
         
         /* ===== CONTENEDOR PRINCIPAL ===== */
         .rotulo-wrapper {
             border: 3px solid #CC0000;
             border-radius: 6px;
-            padding: 14px 16px;
+            padding: 10px 12px;
             background: #ffffff;
-            min-height: calc(100vh - 30px);
+            height: calc(148mm - 0.8cm - 6px);
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
         }
         
         /* ===== HEADER ===== */
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 14px;
-            padding-bottom: 6px;
+            align-items: center;
+            margin-bottom: 8px;
         }
         .header-left {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 10px;
         }
         .header-left .logo {
-            width: 90px;
-            height: 75px;
+            width: 65px;
+            height: 55px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
         .header-left .logo img {
-            max-height: 75px;
-            max-width: 90px;
+            max-height: 55px;
+            max-width: 65px;
             object-fit: contain;
         }
         .header-left .empresa-info {
-            line-height: 1.25;
+            line-height: 1.15;
         }
         .header-left .empresa-info .nombre {
-            font-size: 22px;
+            font-size: 16px;
             font-weight: 900;
             color: #1a1a1a;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
             text-transform: uppercase;
-            margin-bottom: 1px;
         }
         .header-left .empresa-info .ruc {
-            font-size: 16px;
+            font-size: 12px;
             font-weight: 800;
             color: #1a1a1a;
         }
@@ -1393,12 +1408,11 @@ class PDFGenerator:
         .header-center {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-top: 8px;
+            gap: 6px;
         }
         .social-icon {
-            width: 34px;
-            height: 34px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             background: #1a1a1a;
             display: flex;
@@ -1407,25 +1421,20 @@ class PDFGenerator:
             flex-shrink: 0;
         }
         .social-icon svg {
-            width: 18px;
-            height: 18px;
+            width: 12px;
+            height: 12px;
             fill: #ffffff;
         }
         
-        .header-right {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-        }
-        .qr-box {
-            width: 82px;
-            height: 82px;
+        .header-right .qr-box {
+            width: 58px;
+            height: 58px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
-        .qr-box img {
+        .header-right .qr-box img {
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -1434,24 +1443,23 @@ class PDFGenerator:
         /* ===== SECCIÓN CLIENTE ===== */
         .seccion-cliente {
             border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 10px 16px;
-            margin-bottom: 10px;
+            border-radius: 8px;
+            padding: 5px 12px;
+            margin-bottom: 6px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            min-height: 48px;
+            gap: 8px;
+            min-height: 34px;
         }
         .seccion-cliente .label {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 900;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
             flex-shrink: 0;
         }
         .seccion-cliente .valor {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 600;
             color: #1a1a1a;
             flex: 1;
@@ -1460,90 +1468,86 @@ class PDFGenerator:
         /* ===== SECCIÓN DIRECCIÓN ===== */
         .seccion-direccion {
             border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 10px 16px;
-            margin-bottom: 10px;
+            border-radius: 8px;
+            padding: 5px 12px;
+            margin-bottom: 6px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            min-height: 70px;
+            gap: 8px;
+            min-height: 44px;
         }
         .seccion-direccion .label {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 900;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
-            line-height: 1.15;
+            line-height: 1.05;
             flex-shrink: 0;
-            text-align: left;
         }
         .seccion-direccion .valor {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 600;
             color: #1a1a1a;
             flex: 1;
-            line-height: 1.25;
+            line-height: 1.15;
         }
         
         /* ===== SECCIÓN CONSIGNADOS + BLTS ===== */
         .seccion-doble {
             display: grid;
             grid-template-columns: 2fr 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 6px;
         }
         .caja-consignados {
             border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 8px 14px;
+            border-radius: 8px;
+            padding: 4px 12px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            min-height: 62px;
+            gap: 8px;
+            min-height: 44px;
         }
         .caja-consignados .label {
-            font-size: 20px;
+            font-size: 14px;
             font-weight: 900;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 0.2px;
             flex-shrink: 0;
         }
         .caja-consignados .datos {
             flex: 1;
-            line-height: 1.25;
+            line-height: 1.2;
         }
         .caja-consignados .datos .nombre {
-            font-size: 15px;
+            font-size: 12px;
             font-weight: 600;
             color: #1a1a1a;
         }
         .caja-consignados .datos .dni {
-            font-size: 15px;
+            font-size: 12px;
             font-weight: 600;
             color: #1a1a1a;
         }
         
         .caja-blts {
             border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 8px 14px;
+            border-radius: 8px;
+            padding: 4px 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
-            min-height: 62px;
+            min-height: 44px;
         }
         .caja-blts .label {
-            font-size: 20px;
+            font-size: 14px;
             font-weight: 900;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 0.2px;
         }
         .caja-blts .valor {
-            font-size: 20px;
+            font-size: 14px;
             font-weight: 600;
             color: #1a1a1a;
             font-style: italic;
@@ -1553,28 +1557,27 @@ class PDFGenerator:
         .seccion-doble-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 14px;
+            gap: 6px;
+            margin-bottom: 8px;
         }
         .caja-guia, .caja-factura {
             border: 2px solid #CC0000;
-            border-radius: 10px;
-            padding: 8px 16px;
+            border-radius: 8px;
+            padding: 5px 12px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            min-height: 62px;
+            gap: 8px;
+            min-height: 42px;
         }
         .caja-guia .label, .caja-factura .label {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 900;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
             flex-shrink: 0;
         }
         .caja-guia .valor, .caja-factura .valor {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: 600;
             color: #1a1a1a;
             font-style: italic;
@@ -1586,30 +1589,30 @@ class PDFGenerator:
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 6px 4px;
-            font-size: 14px;
+            padding: 4px 4px 0;
+            font-size: 10px;
             color: #1a1a1a;
             font-weight: 600;
         }
         .footer .item {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
         }
         .footer .item svg {
-            width: 20px;
-            height: 20px;
+            width: 14px;
+            height: 14px;
             fill: #1a1a1a;
             flex-shrink: 0;
         }
         
         /* ===== INFO GRID (OBSERVACIONES) ===== */
         .info-extra {
-            margin-top: 6px;
-            padding: 8px 12px;
+            margin-top: 4px;
+            padding: 4px 10px;
             border: 1.5px solid #CC0000;
-            border-radius: 8px;
-            font-size: 11px;
+            border-radius: 6px;
+            font-size: 9px;
             color: #333;
             background: #FFF5F5;
         }
@@ -1737,6 +1740,7 @@ class PDFGenerator:
     </div>
 </body>
 </html>"""
+
 
     # ============================================================
     # GENERAR COTIZACIÓN
