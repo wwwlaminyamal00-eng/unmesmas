@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
 from utils import login_required
 from database import db_query
+from routes.multiempresa import visible_por_ambito
 from psycopg2.extras import RealDictCursor
 import traceback
 import psycopg2
@@ -52,7 +53,7 @@ def api_clientes_listar():
             ORDER BY id DESC
         """
         cur.execute(query_clientes)
-        clientes = cur.fetchall()
+        clientes = [c for c in cur.fetchall() if visible_por_ambito(c.get('ambito'))]  # empresa elegida arriba
         
         if not clientes:
             cur.close()
@@ -700,7 +701,7 @@ def api_proveedores_listar():
             WHERE p.activo = true
             ORDER BY id DESC
         """
-        proveedores = db_query(query)
+        proveedores = [p for p in db_query(query) if visible_por_ambito(p.get('ambito'))]  # empresa elegida arriba
         
         # Asegurar valores por defecto
         for prov in proveedores:

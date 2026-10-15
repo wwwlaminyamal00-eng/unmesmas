@@ -34,6 +34,7 @@ from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, tasa
 from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, _siguiente_numero, _fila, _empresas, _sedes, \
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
 from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
+from routes.multiempresa import filtrar_filas, filtro_sql, empresa_para_crear, empresa_filtro
 
 compras_flujo_bp = Blueprint('compras_flujo', __name__)
 
@@ -365,6 +366,8 @@ def _pedidos_por_comprar(todos=False, pedido_id=None):
         WHERE COALESCE(UPPER(estado), '') <> ALL(%s) AND (%s::int IS NULL OR id = %s::int)
         ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 300
     """, (list(ESTADOS_PC_FUERA), pedido_id, pedido_id))
+    if pedido_id is None:
+        filas = filtrar_filas('pedido_compra_pc', filas)   # solo los pedidos de la empresa elegida arriba
     comprado = _comprado_por_pedido()
     pedidos, ids = [], set()
     for pc in filas:
@@ -532,7 +535,10 @@ def _oc_dict(o):
 
 
 def _listar_ocs(where='', params=()):
-    filas = db_query(SQL_OC_LISTA + (' WHERE ' + where if where else '') + ' ORDER BY oc.id DESC LIMIT 500', params)
+    # Solo las órdenes de la empresa elegida arriba ("Todas" = sin filtro)
+    sql_emp, par_emp = filtro_sql('oc.empresa_id')
+    where = '(' + (where or 'TRUE') + ')' + sql_emp
+    filas = db_query(SQL_OC_LISTA + ' WHERE ' + where + ' ORDER BY oc.id DESC LIMIT 500', tuple(params) + par_emp)
     return [_oc_dict(f) for f in filas]
 
 
@@ -643,8 +649,8 @@ def api_resumen():
         cxp = db_query("""
             SELECT COUNT(*) AS n, COALESCE(SUM(monto), 0) AS m FROM comprobantes_proveedor
             WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA', 'PAGADO')
-              AND fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
-        """)[0]
+              AND fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + 7""" + filtro_sql('empresa_id')[0],
+            filtro_sql('empresa_id')[1])[0]
         if cxp['n']:
             alerta('warn', f"<b>{cxp['n']} factura(s) a crédito vencen esta semana</b> (S/ {float(cxp['m']):,.2f}). Ver Finanzas ▸ Cuentas por pagar.",
                    None, cxp['n'])
@@ -1113,9 +1119,13 @@ def api_orden_pago(oc_id):
                 INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre,
                     tercero_documento, fecha, monto, metodo, banco, numero_operacion, observaciones, usuario_id, usuario_nombre)
                 VALUES ('PAGO', 'ordenes_compra', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (oc_id, oc['numero_orden'], oc['razon_social'], oc['ruc'], fecha, monto, metodo,
                   (d.get('banco') or '').strip() or None, operacion or None, (d.get('observaciones') or '').strip() or None,
                   uid, unom))
+            # El pago queda en la empresa de la orden de compra
+            cur.execute("UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM ordenes_compra WHERE id = %s) WHERE id = %s",
+                        (oc_id, cur.fetchone()['id']))
             _historial(cur, oc_id, 'Pago registrado', f'S/ {monto} · {metodo} · Op. {operacion or "-"}')
         resto = saldo - monto
         return jsonify({'success': True, 'message': f'Pago registrado. ' + (

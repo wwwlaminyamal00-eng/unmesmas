@@ -178,6 +178,9 @@ app.register_blueprint(compras_bp)
 app.register_blueprint(compras_flujo_bp)
 app.register_blueprint(abastecimiento_bp)
 app.register_blueprint(stock_auto_bp)
+# Empresa activa (KCF / AGD / Todas), filtros y colores por empresa
+from routes import multiempresa
+multiempresa.registrar(app)
 
 # ==========================================
 # HELPERS

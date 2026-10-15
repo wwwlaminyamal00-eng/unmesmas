@@ -14,6 +14,7 @@ from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_execute, db_tx
 from utils import a_decimal, redondear, es_admin, es_aprobador
+from routes.multiempresa import filtro_sql
 
 finanzas_bp = Blueprint('finanzas', __name__)
 
@@ -106,10 +107,10 @@ SQL_CXC = """
         GROUP BY documento_id
     ),
     nc AS (
-        SELECT comprobante_asociado, SUM(monto) AS monto_nc
+        SELECT comprobante_asociado, empresa_id, SUM(monto) AS monto_nc
         FROM notas_credito
         WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR')
-        GROUP BY comprobante_asociado
+        GROUP BY comprobante_asociado, empresa_id
     )
     SELECT c.id, c.tipo_comprobante, c.serie, c.numero,
            COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0') AS documento,
@@ -128,6 +129,7 @@ SQL_CXC = """
     LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero::text, LPAD(c.numero::text, 8, '0'),
                                                 COALESCE(c.serie, '') || '-' || COALESCE(c.numero::text, ''),
                                                 COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0'))
+                  AND (nc.empresa_id IS NULL OR c.empresa_id IS NULL OR nc.empresa_id = c.empresa_id)
     WHERE COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
 """
 
@@ -165,7 +167,9 @@ def _cuentas(tipo, incluir_borradores=False):
     sql = SQL_CXC if tipo == 'cxc' else SQL_CXP
     if tipo == 'cxc' and not incluir_borradores:
         sql += " AND COALESCE(UPPER(c.estado_sunat), 'BORRADOR') <> 'BORRADOR'"
-    filas = db_query(sql + " ORDER BY 1 DESC")
+    # Solo la empresa elegida arriba ("Todas" = consolidado)
+    sql_emp, par_emp = filtro_sql('c.empresa_id' if tipo == 'cxc' else 'cp.empresa_id')
+    filas = db_query(sql + sql_emp + " ORDER BY 1 DESC", par_emp)
     hoy = date.today()
     resultado = []
     for f in filas:
@@ -210,10 +214,10 @@ def api_resumen():
         cxp = _cuentas('cxp')
         hoy = date.today()
         inicio_mes = hoy.replace(day=1)
+        sql_emp, par_emp = filtro_sql('empresa_id')
         mov = db_query("""
             SELECT tipo, COALESCE(SUM(monto), 0) AS total FROM finanzas_pagos
-            WHERE estado <> 'Anulado' AND fecha >= %s GROUP BY tipo
-        """, (inicio_mes,))
+            WHERE estado <> 'Anulado' AND fecha >= %s""" + sql_emp + " GROUP BY tipo", (inicio_mes,) + par_emp)
         mov = {m['tipo']: float(m['total']) for m in mov}
 
         def suma(lista, cond=lambda x: True):
@@ -274,10 +278,11 @@ def api_movimientos():
     try:
         asegurar_tablas_finanzas()
         tipo = (request.args.get('tipo') or '').upper()
-        sql = "SELECT * FROM finanzas_pagos"
-        params = []
+        sql_emp, par_emp = filtro_sql('empresa_id')
+        sql = "SELECT * FROM finanzas_pagos WHERE TRUE" + sql_emp
+        params = list(par_emp)
         if tipo in ('COBRO', 'PAGO'):
-            sql += " WHERE tipo = %s"
+            sql += " AND tipo = %s"
             params.append(tipo)
         sql += " ORDER BY fecha DESC, id DESC LIMIT 500"
         filas = db_query(sql, params)
@@ -351,6 +356,9 @@ def api_registrar_movimiento():
                   (data.get('observaciones') or '').strip() or None,
                   session.get('usuario_id'), session.get('nombre_completo')))
             nuevo_id = cur.fetchone()['id']
+            # El cobro/pago queda en la empresa del documento
+            cur.execute(f"UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM {tabla} WHERE id = %s) WHERE id = %s",
+                        (documento_id, nuevo_id))
             saldo_final = saldo - monto
             if saldo_final <= 0:
                 if tipo == 'COBRO':

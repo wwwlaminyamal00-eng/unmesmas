@@ -79,10 +79,11 @@
                         <option value="Lento">Lento</option>
                         <option value="Inmovilizado">Inmovilizado</option>
                     </select>
-                    <label class="inv-check"><input type="checkbox" id="conTodos"> Ver también sin stock</label>
+                    <label class="inv-check"><input type="checkbox" id="conTodos" checked> Ver también sin stock</label>
                     <a class="btn btn-secondary" id="conExportar" href="/inventario/api/consolidado/exportar">⬇ Excel (CSV)</a>
                 </div>
             </div>
+            <div id="conPendientes"></div>
             <div class="table-wrap">
                 <table class="inv-table" id="conTabla">
                     <thead id="conHead"></thead>

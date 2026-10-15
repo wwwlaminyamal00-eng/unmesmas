@@ -1,5 +1,5 @@
         <!DOCTYPE html>
-        <html lang="es">
+        <html lang="es"{% if emp_ctx %} data-empresa="{{ emp_ctx.codigo }}" style="{{ emp_ctx.estilo }}"{% endif %}>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +7,15 @@
             
             <!-- CSS EXTERNO -->
             <link rel="stylesheet" href="/static/css/style.css">
+            <!-- Colores de la empresa elegida arriba (salen de Configuración ▸ Empresas) -->
+            <link rel="stylesheet" href="/static/css/tema_empresa.css">
+            <script>window.EMPRESA_ACTIVA = {{ (emp_ctx or {})|tojson }};</script>
 
             <!-- Bootstrap Icons -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
         {% block extra_css %}{% endblock %}
         </head>
-        <body>
+        <body data-empresa="{{ emp_ctx.codigo if emp_ctx else 'KCF' }}">
 
 
         <div class="app">
@@ -20,7 +23,7 @@
         <!-- SIDEBAR                                  -->
         <!-- ======================================== -->
         <aside class="sidebar">
-            <div class="logo" id="logoEmpresa">KCF</div>
+            <div class="logo" id="logoEmpresa">{{ emp_ctx.corto if emp_ctx else 'KCF' }}</div>
             <div class="brand-sub">ERP Multiempresa</div>
             <div class="divider"></div>
             <div class="side-title">Estructura ERP</div>
@@ -411,9 +414,16 @@
 <div class="top-actions">
     <div class="select-box">
         <label>Empresa activa</label>
-        <select id="empresaActiva">
+        <select id="empresaActiva" title="Todo el sistema muestra y guarda datos de esta empresa">
+            {% if emp_ctx and emp_ctx.opciones %}
+            {% for o in emp_ctx.opciones %}
+            <option value="{{ o.codigo }}" {% if emp_ctx.codigo == o.codigo %}selected{% endif %}>{{ o.nombre }}</option>
+            {% endfor %}
+            <option value="TODAS" {% if emp_ctx.codigo == 'TODAS' %}selected{% endif %}>🏢 Todas las empresas (consolidado)</option>
+            {% else %}
             <option value="KCF" {% if session.get('empresa') == 'KCF' %}selected{% endif %}>KC</option>
             <option value="AGD" {% if session.get('empresa') == 'AGD' %}selected{% endif %}>AGD Group S.A.C.</option>
+            {% endif %}
         </select>
     </div>
     <div class="user-box" id="userBox">
@@ -4221,6 +4231,14 @@ function renderCorrelativos(filter) {
      
         function applyTheme(code){
     var root = document.documentElement;
+    // Multiempresa: los colores vienen del servidor (erp_empresas). Ya están puestos en <html>.
+    if (window.EMPRESA_ACTIVA && window.EMPRESA_ACTIVA.tema) {
+        root.setAttribute('data-empresa', window.EMPRESA_ACTIVA.codigo);
+        Object.keys(window.EMPRESA_ACTIVA.tema).forEach(function (k) { root.style.setProperty(k, window.EMPRESA_ACTIVA.tema[k]); });
+        var lg = document.getElementById("logoEmpresa");
+        if (lg) lg.textContent = window.EMPRESA_ACTIVA.corto || window.EMPRESA_ACTIVA.codigo;
+        return;
+    }
     root.setAttribute('data-empresa', code);
     
     if(code === "AGD"){
@@ -4318,7 +4336,7 @@ async function initDashboard(){
     if (userNameEl) userNameEl.textContent = session.name || session.user;
     if (userAvatarEl) userAvatarEl.textContent = (session.name || session.user)[0].toUpperCase();
     
-    const empresaSession = session.empresa || 'KCF';
+    const empresaSession = (window.EMPRESA_ACTIVA && window.EMPRESA_ACTIVA.codigo) || session.empresa || 'KCF';
     if (empresaActivaEl) empresaActivaEl.value = empresaSession;
     if (logoEmpresaEl) applyTheme(empresaSession);
     
@@ -4425,6 +4443,7 @@ async function initDashboard(){
     const empresaActiva = document.getElementById("empresaActiva");
     if (empresaActiva) {
         empresaActiva.addEventListener("change", function(e){
+            return;  // Multiempresa: el cambio lo maneja cambiarEmpresaActiva() (guarda en el servidor y recarga)
             const empresa = e.target.value;
             
             // Aplicar tema completo
@@ -4602,6 +4621,26 @@ window.bdPorPagina = 20;
 
        
 // ============================================================
+// 🏢 MULTIEMPRESA: cambiar la empresa activa (KCF / AGD / Todas) y recargar todo
+// ============================================================
+function cambiarEmpresaActiva(codigo) {
+    var sel = document.getElementById('empresaActiva');
+    if (sel) sel.disabled = true;
+    fetch('/api/empresa_activa', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ codigo: codigo })
+    }).then(function (r) { return r.json(); }).then(function (r) {
+        if (!r.success) { alert(r.error || 'No se pudo cambiar la empresa'); if (sel) sel.disabled = false; return; }
+        try {
+            var s = JSON.parse(localStorage.getItem('erp_session') || 'null');
+            if (s) { s.empresa = codigo; localStorage.setItem('erp_session', JSON.stringify(s)); }
+        } catch (err) {}
+        window.location.reload();
+    }).catch(function () { alert('No se pudo cambiar la empresa. Revisa tu conexión.'); if (sel) sel.disabled = false; });
+}
+window.cambiarEmpresaActiva = cambiarEmpresaActiva;
+
+// ============================================================
 // 🔥 INICIALIZACIÓN PRINCIPAL - UN SOLO EVENTO
 // ============================================================
 
@@ -4617,6 +4656,7 @@ document.addEventListener('DOMContentLoaded', function() {
         newSelect.addEventListener('change', function(e) {
             var empresa = e.target.value;
             console.log('🔄 Cambiando empresa a:', empresa);
+            if (window.EMPRESA_ACTIVA && window.EMPRESA_ACTIVA.opciones) { cambiarEmpresaActiva(empresa); return; }
             
             var root = document.documentElement;
             root.setAttribute('data-empresa', empresa);

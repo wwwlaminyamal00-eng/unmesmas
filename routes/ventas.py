@@ -18,6 +18,9 @@ from pdf_generator import pdf_generator
 
 # Importar desde database.py
 from database import db_query, db_execute, db_tx, get_connection, buscar_cliente_por_ruc
+from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, empresa_de, marcar_empresa,
+                                 empresa_por_id, empresas, datos_empresa_documento, empresa_id_por_ruc,
+                                 empresa_por_codigo, marca_pdf)
 from psycopg2.extras import RealDictCursor
 from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
                    totales_consistentes, bloquear_numeracion)
@@ -1079,6 +1082,9 @@ def guardar_pc_db(data):
         cotizacion_id = data.get('cotizacion_id')
         if cotizacion_id is None or cotizacion_id == '':
             cotizacion_id = None
+        # El PC queda en la empresa de su cotización (o en la elegida arriba)
+        empresa_pc = empresa_para_crear(empresa_de(None, 'cotizaciones', 'id', cotizacion_id)
+                                        or empresa_de(None, 'cotizaciones', 'numero_cotizacion', data.get('cotizacion_numero')))
         
         query = """
             INSERT INTO pedido_compra_pc (
@@ -1137,6 +1143,8 @@ def guardar_pc_db(data):
         
         result = db_query(query, params)
         print(f"✅ Resultado INSERT: {result}")
+        if result:
+            marcar_empresa(None, 'pedido_compra_pc', result[0]['id'], empresa_pc)
         return result[0] if result else None
         
     except Exception as e:
@@ -1361,6 +1369,7 @@ def api_cotizaciones_listar():
         print("🔍 API COTIZACIONES LLAMADA")
         
         data = obtener_cotizaciones_db()
+        data = filtrar_filas('cotizaciones', data)  # solo la empresa elegida arriba
         print(f"📊 Cotizaciones encontradas: {len(data)}")
         
         formatted_data = []
@@ -1581,6 +1590,7 @@ def api_cotizaciones_guardar():
                 """, valores + (numero, codigo, correlativo))
                 fila = cur.fetchone()
                 cotizacion_id = fila['id']
+                marcar_empresa(cur, 'cotizaciones', cotizacion_id, empresa_para_crear())
 
             # Registro de quién validó (cuando el aprobador guarda con estado validado)
             if estado_nuevo in ESTADOS_VALIDADOS and estado_actual not in ESTADOS_VALIDADOS:
@@ -1843,7 +1853,7 @@ def generar_rotulo_guia(guia_id):
                 transportista_nombre, motivo_traslado, documento_asociado,
                 orden_compra_cliente, factura,
                 peso_total, items_json, observaciones, estado_sunat,
-                creado_por, created_at, updated_at
+                creado_por, created_at, updated_at, empresa_id
             FROM guias_remision
             WHERE id = %s
         """
@@ -1909,6 +1919,7 @@ def generar_rotulo_guia(guia_id):
         
         datos_rotulo = {
             'tipo_documento': 'rotulo_guia',
+            'empresa': datos_empresa_documento(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente'))),   # logo, datos y color de la empresa
             'serie': guia.get('serie', 'T001'),
             'numero': guia.get('numero', ''),
             'fecha_emision': fecha_emision,
@@ -1977,7 +1988,7 @@ def preview_rotulo_guia(guia_id):
                 transportista_nombre, motivo_traslado, documento_asociado,
                 orden_compra_cliente, factura,
                 peso_total, items_json, observaciones, estado_sunat,
-                creado_por, created_at, updated_at
+                creado_por, created_at, updated_at, empresa_id
             FROM guias_remision
             WHERE id = %s
         """
@@ -2039,6 +2050,7 @@ def preview_rotulo_guia(guia_id):
         
         datos_rotulo = {
             'tipo_documento': 'rotulo_guia',
+            'empresa': datos_empresa_documento(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente'))),   # logo, datos y color de la empresa
             'serie': guia.get('serie', 'T001'),
             'numero': guia.get('numero', ''),
             'fecha_emision': fecha_emision,
@@ -2084,6 +2096,68 @@ def preview_rotulo_guia(guia_id):
         return jsonify({'error': str(e)}), 500
 
 # ============================================================
+# RÓTULO DE PC Y DE DESPACHO (pedido de Erika, 15/10/2026)
+# Mismo diseño que el rótulo de la guía, con el logo, datos y color de la empresa del documento.
+# ============================================================
+@ventas_bp.route('/ventas/api/rotulo/<tipo>/<int:doc_id>', methods=['GET'])
+@login_required
+def rotulo_documento(tipo, doc_id):
+    try:
+        if tipo == 'pc':
+            filas = db_query("SELECT * FROM pedido_compra_pc WHERE id = %s", (doc_id,))
+        elif tipo == 'despacho':
+            filas = db_query("SELECT * FROM despachos WHERE id = %s", (doc_id,))
+        else:
+            return jsonify({'success': False, 'error': 'Tipo de documento no válido'}), 400
+        if not filas:
+            return jsonify({'success': False, 'error': 'Documento no encontrado'}), 404
+        d = filas[0]
+        items = d.get('items_json') or d.get('items') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        direccion = d.get('destino') or d.get('lugar_entrega') or d.get('entrega') or ''
+        if not direccion and d.get('cotizacion_numero'):
+            cot = db_query("SELECT direccion_entrega FROM cotizaciones WHERE numero_cotizacion = %s", (d['cotizacion_numero'],))
+            direccion = (cot[0].get('direccion_entrega') if cot else '') or ''
+        total = min(max(request.args.get('bultos', 1, type=int) or 1, 1), 99)   # cuántas cajas (una hoja por caja)
+        datos = {
+            'empresa': datos_empresa_documento(d.get('empresa_id') or (empresa_por_codigo(d.get('empresa')) or {}).get('id')),
+            'doc_label': 'N° PEDIDO:' if tipo == 'pc' else 'N° DESPACHO:',
+            'doc_valor': d.get('numero') or '',
+            'serie': '', 'numero': d.get('numero') or '',
+            'fecha_emision': d.get('fecha_despacho') or d.get('fecha'),
+            'destinatario_nombre': d.get('cliente') or '',
+            'ruc_destinatario': d.get('ruc') or '',
+            'destinatario_direccion': direccion,
+            'conductor_nombre': d.get('transportista') or d.get('responsable') or '',
+            'factura': d.get('factura') or d.get('comprobante') or '',
+            'documento_asociado': d.get('cotizacion_numero') or '',
+            'numero_bultos': 1, 'total_bultos': total, 'una_hoja_por_bulto': True,
+            'observaciones': d.get('observaciones') or '',
+            'items': items,
+        }
+        pdf_path = pdf_generator._generar_rotulo_guia(datos)
+        if not pdf_path:
+            return jsonify({'success': False, 'error': 'No se pudo generar el rótulo'}), 500
+        from flask import send_file
+        import io
+        with open(pdf_path, 'rb') as f:
+            contenido = io.BytesIO(f.read())
+        try:
+            os.remove(pdf_path)  # no dejar PDFs acumulados en el servidor
+        except OSError:
+            pass
+        return send_file(contenido, mimetype='application/pdf', as_attachment=False,
+                         download_name=f"Rotulo_{d.get('numero') or doc_id}.pdf")
+    except Exception as e:
+        print(f"❌ Error generando rótulo de {tipo}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
 # GUÍAS - API
 # ============================================================
 
@@ -2092,6 +2166,7 @@ def preview_rotulo_guia(guia_id):
 def api_guias_listar():
     try:
         data = obtener_guias_db()
+        data = filtrar_filas('guias_remision', data)  # solo la empresa elegida arriba
         formatted_data = []
         for row in data:
             items = []
@@ -2228,16 +2303,34 @@ def api_guias_guardar():
                                 'data': {'id': fila['id'], 'numero': fila['numero']}})
             return jsonify({'success': False, 'error': 'No se pudo actualizar la guía'}), 400
 
+        # La guía queda en la empresa de su despacho / PC / cotización (o la elegida arriba).
+        # El remitente es esa empresa (antes siempre salía KCF) y la numeración es por empresa (cada RUC tiene la suya).
+        doc = (data.get('documento_asociado') or '').strip()
+        empresa_guia = empresa_para_crear(empresa_de(None, 'despachos', 'numero', data.get('despacho_numero'))
+                                          or empresa_de(None, 'pedido_compra_pc', 'numero', data.get('pc_numero'))
+                                          or empresa_de(None, 'cotizaciones', 'numero_cotizacion', doc)
+                                          or empresa_de(None, 'pedido_compra_pc', 'numero', doc))
+        emp = empresa_por_id(empresa_guia)
+        if emp:
+            rucs_grupo = {e['ruc'] for e in empresas()}
+            if not data.get('ruc_remitente') or (data.get('ruc_remitente') in rucs_grupo and data.get('ruc_remitente') != emp['ruc']):
+                data['ruc_remitente'] = emp['ruc']
+                data['remitente_nombre'] = emp['razon_social']
+                data['remitente_direccion'] = emp.get('direccion_fiscal') or ''
+                if emp.get('ubigeo'):
+                    data['remitente_ubigeo'] = emp['ubigeo']
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             if numero:
                 bloquear_numeracion(cur, f"guias_remision:{serie}")
-                cur.execute("SELECT 1 FROM guias_remision WHERE serie = %s AND numero = %s", (serie, numero))
+                cur.execute("SELECT 1 FROM guias_remision WHERE serie = %s AND numero = %s AND empresa_id IS NOT DISTINCT FROM %s",
+                            (serie, numero, empresa_guia))
                 if cur.fetchone():
                     return jsonify({'success': False,
                                     'error': f'Ya existe la guía {serie}-{numero}. Deja el número vacío para asignarlo automáticamente.'}), 409
             else:
-                numero = _siguiente_numero(cur, 'guias_remision', serie)
+                numero = _siguiente_numero(cur, 'guias_remision', serie, extra_where='AND empresa_id IS NOT DISTINCT FROM %s',
+                                           extra_params=(empresa_guia,))
             data['numero'] = numero
         
         params = (
@@ -2283,6 +2376,7 @@ def api_guias_guardar():
                 guia_numero = row[1] if len(row) > 1 else None
             
             if guia_id:
+                marcar_empresa(None, 'guias_remision', guia_id, empresa_guia)
                 return jsonify({
                     'success': True,
                     'message': 'Guía creada correctamente',
@@ -2373,6 +2467,7 @@ def api_guias_eliminar_permanente(id):
 def api_comprobantes_listar():
     try:
         data = obtener_comprobantes_db()
+        data = filtrar_filas('comprobantes', data)  # solo la empresa elegida arriba
         formatted_data = []
         for row in data:
             items = []
@@ -2716,14 +2811,21 @@ def api_comprobantes_guardar():
         # CREAR NUEVO COMPROBANTE
         # ============================================================
         numero_enviado = str(comprobante_data['numero'] or '').strip()
+        # La factura queda en la empresa de su guía / PC / cotización (o la elegida arriba).
+        # La numeración es por empresa: cada RUC tiene su propia serie F001.
+        empresa_comp = empresa_para_crear(
+            empresa_de(None, 'guias_remision', "serie || '-' || numero", comprobante_data.get('guia_vinculada'))
+            or empresa_de(None, 'pedido_compra_pc', 'numero', comprobante_data.get('pc_vinculado'))
+            or empresa_de(None, 'cotizaciones', 'numero_cotizacion', comprobante_data.get('documento_asociado')))
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             # Numeración correlativa por tipo y serie, sin duplicados aunque se guarde en simultáneo
             bloquear_numeracion(cur, f"comprobantes:{comprobante_data['tipo_comprobante']}:{comprobante_data['serie']}")
             if numero_enviado:
                 cur.execute("SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s "
-                            "AND NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint = %s::bigint",
-                            (comprobante_data['tipo_comprobante'], comprobante_data['serie'], numero_enviado))
+                            "AND NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint = %s::bigint "
+                            "AND empresa_id IS NOT DISTINCT FROM %s",
+                            (comprobante_data['tipo_comprobante'], comprobante_data['serie'], numero_enviado, empresa_comp))
                 if cur.fetchone():
                     return jsonify({'success': False,
                                     'error': f"Ya existe el comprobante {comprobante_data['serie']}-{numero_enviado}. "
@@ -2732,11 +2834,13 @@ def api_comprobantes_guardar():
             else:
                 cur.execute("""
                     SELECT COALESCE(MAX(NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
-                    FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s
-                """, (comprobante_data['tipo_comprobante'], comprobante_data['serie']))
+                    FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND empresa_id IS NOT DISTINCT FROM %s
+                """, (comprobante_data['tipo_comprobante'], comprobante_data['serie'], empresa_comp))
                 comprobante_data['numero'] = str(cur.fetchone()['siguiente']).zfill(8)
             cur.execute(_SQL_INSERT_COMPROBANTE, _params_insert_comprobante(comprobante_data))
             fila = cur.fetchone()
+            if fila:
+                marcar_empresa(cur, 'comprobantes', fila['id'], empresa_comp)
         result = [_numero_8(dict(fila))] if fila else []
         if result:
             return jsonify({
@@ -2900,6 +3004,7 @@ def api_comprobantes_eliminar_permanente(id):
 def api_notas_credito_listar():
     try:
         data = obtener_notas_credito_db()
+        data = filtrar_filas('notas_credito', data)  # solo la empresa elegida arriba
         formatted_data = []
         for row in data:
             formatted_data.append({
@@ -2935,16 +3040,19 @@ def api_notas_credito_guardar():
 
         # La nota de crédito no puede superar el saldo del comprobante que corrige
         asociado = (data.get('comprobante_asociado') or '').strip()
+        empresa_nc = None
         if asociado:
+            sql_emp, par_emp = filtro_sql('empresa_id')
             comp = db_query("""
-                SELECT id, total, cliente_tipo_doc, cliente_numero_doc, cliente_nombre FROM comprobantes
-                WHERE numero::text = %s OR LPAD(numero::text, 8, '0') = %s
+                SELECT id, total, cliente_tipo_doc, cliente_numero_doc, cliente_nombre, empresa_id FROM comprobantes
+                WHERE (numero::text = %s OR LPAD(numero::text, 8, '0') = %s
                    OR (serie || '-' || numero::text) = %s
                    OR (serie || '-' || LTRIM(numero::text, '0')) = %s
-                   OR (serie || '-' || LPAD(numero::text, 8, '0')) = %s
+                   OR (serie || '-' || LPAD(numero::text, 8, '0')) = %s)""" + sql_emp + """
                 ORDER BY id DESC LIMIT 1
-            """, (asociado,) * 5)
+            """, (asociado,) * 5 + par_emp)
             if comp:
+                empresa_nc = comp[0].get('empresa_id')
                 # Los datos del cliente salen del comprobante si no vinieron (en Supabase son obligatorios)
                 if not str(data.get('cliente_numero_doc') or '').strip():
                     data['cliente_numero_doc'] = comp[0].get('cliente_numero_doc')
@@ -2969,8 +3077,10 @@ def api_notas_credito_guardar():
                 cur = conn.cursor(cursor_factory=RealDictCursor)
                 data['numero'] = _siguiente_numero(cur, 'notas_credito', data.get('serie') or 'FC01')
         
+        empresa_nc = empresa_para_crear(empresa_nc)   # la de la factura que corrige
         result = guardar_nota_credito_db(data)
         if result:
+            marcar_empresa(None, 'notas_credito', result['id'], empresa_nc)
             return jsonify({'success': True, 'message': 'Nota de crédito creada', 'data': result})
         return jsonify({'success': False, 'error': 'No se pudo crear'}), 400
             
@@ -3025,6 +3135,7 @@ def api_notas_credito_eliminar_permanente(id):
 def api_pedido_compra_listar():
     try:
         data = obtener_pc_db()
+        data = filtrar_filas('pedido_compra_pc', data)  # solo la empresa elegida arriba
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3204,6 +3315,7 @@ def api_despachos_listar():
             ORDER BY d.id DESC
         """
         data = db_query(query)
+        data = filtrar_filas('despachos', data)  # solo la empresa elegida arriba
         print(f"📊 Despachos encontrados: {len(data) if data else 0}")
 
         # ============================================================
@@ -3423,6 +3535,10 @@ def api_despachos_guardar():
         # GUARDAR ITEMS COMO JSON
         # ============================================================
         items_json = json.dumps(data.get('items', []))
+        # El despacho queda en la empresa de su PC (o de la cotización, o la elegida arriba)
+        empresa_desp = empresa_para_crear(empresa_de(None, 'pedido_compra_pc', 'id', data.get('pc_id'))
+                                          or empresa_de(None, 'pedido_compra_pc', 'numero', data.get('pc_numero'))
+                                          or empresa_de(None, 'cotizaciones', 'id', data.get('cotizacion_id')))
         
         # ============================================================
         # GUARDAR DESPACHO CON ITEMS
@@ -3466,6 +3582,7 @@ def api_despachos_guardar():
         print(f"✅ Resultado: {result}")
         
         if result:
+            marcar_empresa(None, 'despachos', result[0]['id'], empresa_desp)
             return jsonify({'success': True, 'message': 'Despacho guardado', 'data': result})
         
         return jsonify({'success': False, 'error': 'No se pudo guardar'}), 400
@@ -3485,6 +3602,7 @@ def api_despachos_guardar():
 def api_devoluciones_listar():
     try:
         data = obtener_devoluciones_db()
+        data = filtrar_filas('devoluciones', data)  # solo la empresa elegida arriba
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3500,8 +3618,10 @@ def api_devoluciones_guardar():
         if not data.get('numero'):
             data['numero'] = f"DEV-{datetime.now().strftime('%Y%m%d')}-{str(datetime.now().timestamp()).split('.')[0][-4:]}"
         
+        empresa_dev = empresa_para_crear(empresa_de(None, 'comprobantes', 'id', data.get('comprobante_id')))
         result = guardar_devolucion_db(data)
         if result:
+            marcar_empresa(None, 'devoluciones', result['id'], empresa_dev)
             return jsonify({'success': True, 'message': 'Devolución guardada', 'data': result})
         return jsonify({'success': False, 'error': 'No se pudo guardar'}), 400
             
@@ -3998,7 +4118,9 @@ def api_cotizaciones_obtener_completa(id):
                 'marca': p.get('marca') or '',
                 'um': p.get('um') or 'NIU',
                 'cantidad': float(p.get('cantidad') or 1),
-                'valorVenta': float(p.get('valorVenta') or p.get('precio_unitario') or 0),
+                # PostgreSQL devuelve el alias en minúsculas (valorventa): antes se perdía el precio cotizado
+                # y se mostraba el precio actual del producto
+                'valorVenta': float(p.get('valorventa') or p.get('valorVenta') or p.get('precio_unitario') or 0),
                 'stock': int(p.get('stock') or 0),
                 'costo_unitario': float(p.get('costo_unitario') or p.get('costo') or 0),
                 'subtotal_venta': float(p.get('subtotal_venta') or 0),
@@ -4129,6 +4251,9 @@ def api_cotizaciones_duplicar(id):
             result = cur.fetchone()
             nueva_cotizacion_id = result['id']
             nuevo_numero = result['numero_cotizacion']
+            # La copia queda en la misma empresa que la original
+            marcar_empresa(cur, 'cotizaciones', nueva_cotizacion_id,
+                           empresa_para_crear(empresa_de(cur, 'cotizaciones', 'id', id)))
             
             print(f"✅ Nueva cotización creada con ID: {nueva_cotizacion_id}")
             
@@ -4247,7 +4372,7 @@ def api_cotizaciones_generar_pdf(id):
         # 1. Obtener cabecera de la cotización
         query_cabecera = """
             SELECT 
-                c.id, c.numero_cotizacion, c.codigo_cotizacion,
+                c.id, c.empresa_id, c.numero_cotizacion, c.codigo_cotizacion,
                 c.cliente_id, c.fecha_creacion, c.estado,
                 c.subtotal, c.igv, c.total, c.notas,
                 c.forma_pago, c.tiempo_entrega, c.almacen, c.validez_oferta,
@@ -4335,7 +4460,8 @@ def api_cotizaciones_generar_pdf(id):
         hora_actual = datetime.now().strftime('%H:%M')
         
         # Obtener logo en base64
-        logo_base64 = obtener_logo_base64_para_pdf()
+        emp = marca_pdf(c.get('empresa_id'))
+        logo_base64 = emp['logo_src'].split('base64,', 1)[1] if 'base64,' in emp['logo_src'] else None
         print(f"📷 Logo cargado: {'Sí' if logo_base64 else 'No'}")
         
         # 4. Preparar datos para el template
@@ -4344,6 +4470,10 @@ def api_cotizaciones_generar_pdf(id):
             'fecha_actual': fecha_actual,
             'hora_actual': hora_actual,
             'logo_base64': logo_base64,
+            'logo_mime': emp['logo_src'][5:emp['logo_src'].find(';')] if logo_base64 else 'image/png',
+            'emp_nombre': emp['nombre'], 'emp_ruc': emp['ruc'], 'emp_corto': emp['corto'],
+            'emp_telefono': emp['telefono'], 'emp_email': emp['email'], 'emp_web': emp['web'],
+            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': emp.get('cuentas') or [],
             'cliente_razon_social': cliente_razon_social,
             'cliente_ruc': cliente_ruc,
             'cliente_direccion': cliente_direccion,
@@ -4352,7 +4482,7 @@ def api_cotizaciones_generar_pdf(id):
             'telefono_contacto': c.get('cliente_telefono') or c.get('telefono_cliente') or '---',
             'numero_requerimiento': c.get('requerimiento') or '---',
             'asesor_comercial': 'Helen Blas Príncipe',
-            'email_contacto': 'ventas@kcfcorporacion.com',
+            'email_contacto': emp['email'],
             'telefono_contacto_user': '999932051',
             'condicion_pago': c.get('condicion_pago') or c.get('forma_pago') or 'Contado',
             'tiempo_entrega': c.get('tiempo_entrega') or '5 días hábiles',
@@ -4374,7 +4504,7 @@ def api_cotizaciones_generar_pdf(id):
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Cotización - KCF CORPORACION E.I.R.L</title>
+    <title>Cotización - {{ emp_nombre }}</title>
     <style>
         @page {
             size: A4;
@@ -4394,10 +4524,10 @@ def api_cotizaciones_generar_pdf(id):
         }
         
         /* ===== COLORES CORPORATIVOS ===== */
-        .color-rojo { color: #CC0000; }
+        .color-rojo { color: {{ emp_color }}; }
         .color-rojo-oscuro { color: #990000; }
         .color-azul-chiyon { color: #0033A0; }
-        .border-rojo { border-color: #CC0000; }
+        .border-rojo { border-color: {{ emp_color }}; }
         
         /* ===== HEADER CON BORDE ROJO ===== */
         .header-superior {
@@ -4407,7 +4537,7 @@ def api_cotizaciones_generar_pdf(id):
             margin-bottom: 12px;
             gap: 20px;
             padding-bottom: 8px;
-            border-bottom: 2px solid #CC0000;
+            border-bottom: 2px solid {{ emp_color }};
         }
         .empresa-izquierda {
             flex: 1;
@@ -4460,7 +4590,7 @@ def api_cotizaciones_generar_pdf(id):
         
         .recuadro-derecha {
             flex-shrink: 0;
-            border: 2px solid #CC0000;
+            border: 2px solid {{ emp_color }};
             border-radius: 10px;
             padding: 6px 18px;
             text-align: center;
@@ -4484,7 +4614,7 @@ def api_cotizaciones_generar_pdf(id):
         .recuadro-derecha .numero {
             font-size: 14px;
             font-weight: bold;
-            color: #CC0000;
+            color: {{ emp_color }};
         }
         
         /* ===== LAYOUT PRINCIPAL ===== */
@@ -4501,7 +4631,7 @@ def api_cotizaciones_generar_pdf(id):
         }
         .seccion-cliente h3, .seccion-condiciones h3 { 
             color: #990000;
-            border-bottom: 2px solid #CC0000;
+            border-bottom: 2px solid {{ emp_color }};
             padding-bottom: 3px; 
             font-size: 9.5px; 
             margin-top: 0; 
@@ -4553,7 +4683,7 @@ def api_cotizaciones_generar_pdf(id):
         .tabla-productos th { 
             color: #333333;
             padding: 5px 4px; 
-            border: 1px solid #CC0000;
+            border: 1px solid {{ emp_color }};
             font-weight: bold; 
             text-align: center; 
             vertical-align: middle; 
@@ -4601,7 +4731,7 @@ def api_cotizaciones_generar_pdf(id):
             margin-right: 0; 
             margin-top: 8px; 
             margin-bottom: 10px; 
-            border: 2px solid #CC0000;
+            border: 2px solid {{ emp_color }};
             border-radius: 8px;
             padding: 8px 12px; 
         }
@@ -4625,7 +4755,7 @@ def api_cotizaciones_generar_pdf(id):
         
         /* 🔵 TOTAL A PAGAR - AZUL CHIYÓN */
         .total-final { 
-            border-top: 3px solid #CC0000; 
+            border-top: 3px solid {{ emp_color }}; 
             padding-top: 8px; 
             margin-top: 6px; 
             font-weight: bold; 
@@ -4641,7 +4771,7 @@ def api_cotizaciones_generar_pdf(id):
         .seccion-aclaratoria { 
             margin: 10px 0; 
             padding: 10px 16px; 
-            border: 2px solid #CC0000;
+            border: 2px solid {{ emp_color }};
             border-radius: 8px;
             font-size: 8.5px; 
             text-align: justify;
@@ -4665,13 +4795,13 @@ def api_cotizaciones_generar_pdf(id):
         .cuentas-bancarias { 
             margin-top: 8px; 
             padding: 8px 14px; 
-            border: 2px solid #CC0000;
+            border: 2px solid {{ emp_color }};
             border-radius: 8px;
             font-size: 8px; 
         }
         .cuentas-bancarias h3 { 
             color: #990000;
-            border-bottom: 2px solid #CC0000;
+            border-bottom: 2px solid {{ emp_color }};
             padding-bottom: 3px; 
             font-size: 9.5px; 
             margin-top: 0; 
@@ -4709,7 +4839,7 @@ def api_cotizaciones_generar_pdf(id):
         /* ===== CONTACTO FINAL ===== */
         .seccion-contacto { 
             margin-top: 12px; 
-            border-top: 2px solid #CC0000;
+            border-top: 2px solid {{ emp_color }};
             padding-top: 10px; 
             text-align: left; 
             font-size: 8.5px; 
@@ -4738,19 +4868,21 @@ def api_cotizaciones_generar_pdf(id):
         <div class="empresa-izquierda">
             <div class="logo-container">
                 {% if logo_base64 %}
-                <img src="data:image/png;base64,{{ logo_base64 }}" alt="KCF Logo">
+                <img src="data:{{ logo_mime }};base64,{{ logo_base64 }}" alt="Logo {{ emp_corto }}">
+                {% else %}
+                <div style="font-size:26px;font-weight:900;color:{{ emp_color }};padding-top:12px;">{{ emp_corto }}</div>
                 {% endif %}
             </div>
             <div class="info-texto">
-                <div class="nombre">KCF CORPORACION E.I.R.L</div>
-                <div class="ruc-line">RUC: 20602095704</div>
+                <div class="nombre">{{ emp_nombre }}</div>
+                <div class="ruc-line">RUC: {{ emp_ruc }}</div>
                 <div class="slogan">Soluciones integrales en abastecimientos</div>
-                <div class="contacto-line">Telf: 999 932 051 | Email: ventas@kcfcorporacion.com</div>
-                <div class="contacto-line">Web: https://kcfcorporacion.com/</div>
+                <div class="contacto-line">{% if emp_telefono %}Telf: {{ emp_telefono }} | {% endif %}Email: {{ emp_email }}</div>
+                {% if emp_web %}<div class="contacto-line">Web: {{ emp_web }}</div>{% endif %}
             </div>
         </div>
         <div class="recuadro-derecha">
-            <div class="ruc">R.U.C. Nº 20602095704</div>
+            <div class="ruc">R.U.C. Nº {{ emp_ruc }}</div>
             <div class="titulo">COTIZACIÓN</div>
             <div class="numero">{{ codigo_cotizacion }}</div>
         </div>
@@ -4838,8 +4970,8 @@ def api_cotizaciones_generar_pdf(id):
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
         {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
-        Para más información visítanos en 
-        <a href="https://kcfcorporacion.com" class="web-link">www.kcfcorporacion.com</a>
+        {% if emp_web %}Para más información visítanos en 
+        <a href="{{ emp_web }}" class="web-link">{{ emp_web_corta }}</a>{% endif %}
     </div>
 
     <!-- ============================================================ -->
@@ -4848,7 +4980,7 @@ def api_cotizaciones_generar_pdf(id):
     <div class="seccion-totales">
         <div class="total-line"><span>Subtotal (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta|default(0)) }}</span></div>
         {% if hay_descuentos %}
-        <div class="total-line"><span>Descuentos aplicados (S/):</span><span class="numero-formateado" style="color:#CC0000;">- S/ {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
+        <div class="total-line"><span>Descuentos aplicados (S/):</span><span class="numero-formateado" style="color:{{ emp_color }};">- S/ {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
         {% endif %}
         <div class="total-line"><span>Subtotal con descuento (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta_desc|default(0)) }}</span></div>
         <div class="total-line"><span>IGV (18%):</span><span class="numero-formateado">S/ {{ "%.2f"|format(summary_igv|default(0)) }}</span></div>
@@ -4861,12 +4993,21 @@ def api_cotizaciones_generar_pdf(id):
     <!-- ============================================================ -->
     <div class="cuentas-bancarias">
         <h3>💰 CUENTAS BANCARIAS</h3>
+        {% for cb in emp_cuentas %}
+        <div class="cuenta-line">
+            <span class="banco">🏛️ {{ cb.banco }}</span>
+            <span class="tipo">| {{ cb.tipo_cuenta or 'Cuenta' }}{% if cb.moneda %} ({{ cb.moneda }}){% endif %}</span><br>
+            <span class="numero">Cuenta: {{ cb.numero_cuenta }}</span><br>
+            {% if cb.cci %}<span class="cci">CCI: {{ cb.cci }}</span>{% endif %}
+        </div>
+        {% else %}{% if emp_ruc == '20602095704' %}
         <div class="cuenta-line">
             <span class="banco">🏛️ BBVA</span>
             <span class="tipo">| Cuenta Corriente empresa</span><br>
             <span class="numero">Cuenta: 0011-0319-1601-00022197</span><br>
             <span class="cci">CCI: 011-319-000100022197-16</span>
         </div>
+        {% endif %}{% endfor %}
     </div>
 
     <!-- ============================================================ -->
@@ -4876,10 +5017,10 @@ def api_cotizaciones_generar_pdf(id):
         <div class="contacto-nombre">Cordialmente,</div>
         <div class="contacto-nombre">HELLEN BLAS PRINCIPE</div>
         <div class="contacto-line">Ejecutiva Comercial</div>
-        <div class="contacto-line">KCF CORPORACIÓN</div>
-        <div class="contacto-line">📞 (+51) 999932051</div>
-        <div class="contacto-line">✉ Ventas@kcfcorporacion.com</div>
-        <div class="contacto-line">🌐 www.kcfcorporacion.com</div>
+        <div class="contacto-line">{{ emp_corto }}</div>
+        {% if emp_telefono %}<div class="contacto-line">📞 (+51) {{ emp_telefono }}</div>{% endif %}
+        <div class="contacto-line">✉ {{ emp_email }}</div>
+        {% if emp_web %}<div class="contacto-line">🌐 {{ emp_web_corta }}</div>{% endif %}
     </div>
 
 </body>
@@ -4933,7 +5074,7 @@ def generar_pdf_guia_endpoint(guia_id):
                 transportista_nombre, motivo_traslado, documento_asociado,
                 orden_compra_cliente, factura,
                 peso_total, items_json, observaciones, estado_sunat,
-                creado_por, created_at, updated_at
+                creado_por, created_at, updated_at, empresa_id
             FROM guias_remision
             WHERE id = %s
         """
@@ -5102,6 +5243,7 @@ def generar_pdf_guia_endpoint(guia_id):
         }
         
         # 5. Generar el PDF
+        datos_guia['empresa_pdf'] = marca_pdf(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente')))
         pdf_path = pdf_generator.generar_pdf_universal(datos_guia)
         
         if not pdf_path:
@@ -5180,7 +5322,7 @@ def preview_pdf_guia(guia_id):
                 transportista_nombre, motivo_traslado, documento_asociado,
                 orden_compra_cliente, factura,
                 peso_total, items_json, observaciones, estado_sunat,
-                creado_por, created_at, updated_at
+                creado_por, created_at, updated_at, empresa_id
             FROM guias_remision
             WHERE id = %s
         """
@@ -5198,6 +5340,7 @@ def preview_pdf_guia(guia_id):
         from pdf_generator import pdf_generator
         datos_guia = preparar_datos_guia_pdf(guia)  # Función auxiliar
         
+        datos_guia['empresa_pdf'] = marca_pdf(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente')))
         pdf_path = pdf_generator.generar_pdf_universal(datos_guia)
         
         if not pdf_path:
@@ -5401,6 +5544,7 @@ def api_cotizaciones_buscar():
         """
         search_pattern = f'%{q}%'
         results = db_query(query, (search_pattern, search_pattern, search_pattern, search_pattern, search_pattern))
+        results = filtrar_filas('cotizaciones', results)
         
         # Formatear respuesta
         formatted_data = []
@@ -5961,7 +6105,7 @@ def api_cotizaciones_preview_pdf(id):
         # 1. Obtener cabecera
         query_cabecera = """
             SELECT 
-                c.id, c.numero_cotizacion, c.codigo_cotizacion,
+                c.id, c.empresa_id, c.numero_cotizacion, c.codigo_cotizacion,
                 c.cliente_id, c.fecha_creacion, c.estado,
                 c.subtotal, c.igv, c.total, c.notas,
                 c.forma_pago, c.tiempo_entrega, c.almacen, c.validez_oferta,
@@ -6044,7 +6188,8 @@ def api_cotizaciones_preview_pdf(id):
         hora_actual = now_peru.strftime('%H:%M')
         print(f"📅 Hora Perú: {fecha_actual} {hora_actual}")
         
-        logo_base64 = obtener_logo_base64_para_pdf()
+        emp = marca_pdf(c.get('empresa_id'))
+        logo_base64 = emp['logo_src'].split('base64,', 1)[1] if 'base64,' in emp['logo_src'] else None
         print(f"📷 Logo cargado: {'Sí' if logo_base64 else 'No'}")
         
         # 🔽 OBTENER REQUERIMIENTO
@@ -6056,6 +6201,10 @@ def api_cotizaciones_preview_pdf(id):
             'fecha_actual': fecha_actual,
             'hora_actual': hora_actual,
             'logo_base64': logo_base64,
+            'logo_mime': emp['logo_src'][5:emp['logo_src'].find(';')] if logo_base64 else 'image/png',
+            'emp_nombre': emp['nombre'], 'emp_ruc': emp['ruc'], 'emp_corto': emp['corto'],
+            'emp_telefono': emp['telefono'], 'emp_email': emp['email'], 'emp_web': emp['web'],
+            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': emp.get('cuentas') or [],
             'cliente_razon_social': cliente_razon_social,
             'cliente_ruc': cliente_ruc,
             'cliente_direccion': cliente_direccion,
@@ -6064,7 +6213,7 @@ def api_cotizaciones_preview_pdf(id):
             'telefono_contacto': c.get('cliente_telefono') or c.get('telefono_cliente') or '---',
             'numero_requerimiento': requerimiento,
             'asesor_comercial': 'Helen Blas Príncipe',
-            'email_contacto': 'ventas@kcfcorporacion.com',
+            'email_contacto': emp['email'],
             'telefono_contacto_user': '999932051',
             'condicion_pago': c.get('condicion_pago') or c.get('forma_pago') or 'Contado',
             'tiempo_entrega': c.get('tiempo_entrega') or '5 días hábiles',
@@ -6084,7 +6233,7 @@ def api_cotizaciones_preview_pdf(id):
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Cotización - KCF CORPORACION E.I.R.L</title>
+    <title>Cotización - {{ emp_nombre }}</title>
     <style>
         @page {
             size: A4;
@@ -6104,7 +6253,7 @@ def api_cotizaciones_preview_pdf(id):
         }
         
         /* ===== COLORES ===== */
-        .color-rojo { color: #CC0000; }
+        .color-rojo { color: {{ emp_color }}; }
         .color-gris { color: #555555; }
         .color-gris-oscuro { color: #333333; }
         
@@ -6188,12 +6337,12 @@ def api_cotizaciones_preview_pdf(id):
             font-weight: bold;
             letter-spacing: 1px;
             margin: 2px 0;
-            color: #CC0000;
+            color: {{ emp_color }};
         }
         .recuadro-derecha .numero {
             font-size: 14px;
             font-weight: bold;
-            color: #CC0000;
+            color: {{ emp_color }};
         }
         
         /* ===== LAYOUT PRINCIPAL ===== */
@@ -6449,19 +6598,21 @@ def api_cotizaciones_preview_pdf(id):
         <div class="empresa-izquierda">
             <div class="logo-container">
                 {% if logo_base64 %}
-                <img src="data:image/png;base64,{{ logo_base64 }}" alt="KCF Logo">
+                <img src="data:{{ logo_mime }};base64,{{ logo_base64 }}" alt="Logo {{ emp_corto }}">
+                {% else %}
+                <div style="font-size:26px;font-weight:900;color:{{ emp_color }};padding-top:12px;">{{ emp_corto }}</div>
                 {% endif %}
             </div>
             <div class="info-texto">
-                <div class="nombre">KCF CORPORACION E.I.R.L</div>
-                <div class="ruc-line">RUC: 20602095704</div>
+                <div class="nombre">{{ emp_nombre }}</div>
+                <div class="ruc-line">RUC: {{ emp_ruc }}</div>
                 <div class="slogan">Soluciones integrales en abastecimientos</div>
-                <div class="contacto-line">Telf: 999 932 051 | Email: ventas@kcfcorporacion.com</div>
-                <div class="contacto-line">Web: https://kcfcorporacion.com/</div>
+                <div class="contacto-line">{% if emp_telefono %}Telf: {{ emp_telefono }} | {% endif %}Email: {{ emp_email }}</div>
+                {% if emp_web %}<div class="contacto-line">Web: {{ emp_web }}</div>{% endif %}
             </div>
         </div>
         <div class="recuadro-derecha">
-            <div class="ruc">RUC: Nº 20602095704</div>
+            <div class="ruc">RUC: Nº {{ emp_ruc }}</div>
             <div class="titulo">COTIZACIÓN</div>
             <div class="numero">{{ codigo_cotizacion }}</div>
         </div>
@@ -6551,8 +6702,8 @@ def api_cotizaciones_preview_pdf(id):
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
         {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
-        Para más información visítanos en 
-        <a href="https://kcfcorporacion.com" class="web-link">www.kcfcorporacion.com</a>
+        {% if emp_web %}Para más información visítanos en 
+        <a href="{{ emp_web }}" class="web-link">{{ emp_web_corta }}</a>{% endif %}
     </div>
 
     <!-- ============================================================ -->
@@ -6574,12 +6725,21 @@ def api_cotizaciones_preview_pdf(id):
     <!-- ============================================================ -->
     <div class="cuentas-bancarias">
         <h3>💰 CUENTAS BANCARIAS</h3>
+        {% for cb in emp_cuentas %}
+        <div class="cuenta-line">
+            <span class="banco">🏛️ {{ cb.banco }}</span>
+            <span class="tipo">| {{ cb.tipo_cuenta or 'Cuenta' }}{% if cb.moneda %} ({{ cb.moneda }}){% endif %}</span><br>
+            <span class="numero">Cuenta: {{ cb.numero_cuenta }}</span><br>
+            {% if cb.cci %}<span class="cci">CCI: {{ cb.cci }}</span>{% endif %}
+        </div>
+        {% else %}{% if emp_ruc == '20602095704' %}
         <div class="cuenta-line">
             <span class="banco">🏛️ BBVA</span>
             <span class="tipo">| Cuenta Corriente empresa</span><br>
             <span class="numero">Cuenta: 0011-0319-1601-00022197</span><br>
             <span class="cci">CCI: 011-319-000100022197-16</span>
         </div>
+        {% endif %}{% endfor %}
     </div>
 
     <!-- ============================================================ -->
@@ -6589,10 +6749,10 @@ def api_cotizaciones_preview_pdf(id):
         <div class="contacto-nombre">Cordialmente,</div>
         <div class="contacto-nombre">HELLEN BLAS PRINCIPE</div>
         <div class="contacto-line">Ejecutiva Comercial</div>
-        <div class="contacto-line">KCF CORPORACIÓN</div>
-        <div class="contacto-line">📞 (+51) 999932051</div>
-        <div class="contacto-line">✉ Ventas@kcfcorporacion.com</div>
-        <div class="contacto-line">🌐 www.kcfcorporacion.com</div>
+        <div class="contacto-line">{{ emp_corto }}</div>
+        {% if emp_telefono %}<div class="contacto-line">📞 (+51) {{ emp_telefono }}</div>{% endif %}
+        <div class="contacto-line">✉ {{ emp_email }}</div>
+        {% if emp_web %}<div class="contacto-line">🌐 {{ emp_web_corta }}</div>{% endif %}
     </div>
 
 </body>
@@ -6717,7 +6877,7 @@ def preview_pdf_comprobante(comp_id):
                 cliente_nombre, cliente_direccion, cliente_email,
                 cliente_telefono, subtotal, igv, total,
                 items_json, observaciones, estado_sunat,
-                documento_asociado
+                documento_asociado, empresa_id
             FROM comprobantes
             WHERE id = %s
         """
@@ -6835,6 +6995,7 @@ def preview_pdf_comprobante(comp_id):
             'qr_base64': ''
         }
         
+        datos_comprobante['empresa_pdf'] = marca_pdf(comp.get('empresa_id'))
         pdf_path = pdf_generator.generar_pdf_universal(datos_comprobante)
         
         if not pdf_path:
@@ -6869,7 +7030,7 @@ def generar_pdf_comprobante(comp_id):
                 cliente_telefono, subtotal, igv, total,
                 items_json, observaciones, estado_sunat,
                 creado_por, documento_asociado, guia_vinculada,
-                fecha_vencimiento, condicion_pago
+                fecha_vencimiento, condicion_pago, empresa_id
             FROM comprobantes
             WHERE id = %s
         """
@@ -7013,6 +7174,7 @@ def generar_pdf_comprobante(comp_id):
         }
         
         # Generar el PDF
+        datos_comprobante['empresa_pdf'] = marca_pdf(comp.get('empresa_id'))
         pdf_path = pdf_generator.generar_pdf_universal(datos_comprobante)
         
         if not pdf_path:
@@ -7364,7 +7526,7 @@ def api_cotizaciones_revision():
             ORDER BY c.fecha_creacion DESC
         """
         
-        results = db_query(query)
+        results = filtrar_filas('cotizaciones', db_query(query))
         
         formatted_data = []
         for row in results:

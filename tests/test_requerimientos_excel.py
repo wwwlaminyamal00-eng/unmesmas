@@ -99,8 +99,10 @@ def test_vista_de_ventas_tiene_los_cambios_del_excel(vendedor):
     menu = menu[:menu.index('createMenuWithClose')]
     pos = [menu.index("'despacho'"), menu.index("'guia'"), menu.index("'factura'")]
     assert pos == sorted(pos) and 'Crear factura en KCF' in menu
-    # 5. Guías de remisión con botón para crear la factura
-    assert 'crearFacturaDesdeGuia' in js[js.index('function renderGuias'):js.index('function renderComprobantes')]
+    # 5. Guías de remisión: "Crear factura" va DENTRO del menú ⋮ (pedido de Erika del 15/10), no afuera
+    assert 'crearFacturaDesdeGuia' not in js[js.index('function renderGuias'):js.index('function renderComprobantes')]
+    menu_guia = js[js.index('function showGuiaMenu'):]
+    assert 'crearFacturaDesdeGuia' in menu_guia[:menu_guia.index('createMenuWithClose') if 'createMenuWithClose' in menu_guia else 4000]
     # 1. Despacho destacado en negro sobre azulito
     css = vendedor.get('/static/css/ventas.css').get_data(as_text=True)
     assert '.fila-despachada' in css

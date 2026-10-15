@@ -1082,6 +1082,32 @@
                     <div class="state-chip blocked"><span class="dot"></span>Bloqueado</div>
                 </div>
             </div>
+            {% if not producto %}
+            <!-- Stock inicial (opcional): queda en Inventario con empresa y sede -->
+            <div class="card state-card" id="cardStockInicial">
+                <h3 class="card-title"><i class="bi bi-box-seam"></i> Stock inicial <span class="optional">(opcional)</span></h3>
+                <p style="margin:0 0 8px;font-size:12px;color:#6B7280;">Solo si ya tienes unidades guardadas. Se registra en Inventario con su empresa y sede, al costo de arriba.</p>
+                <div class="field"><label>Cantidad</label>
+                    <input name="stock_inicial_cantidad" id="stockInicialCantidad" type="number" min="0" step="1" placeholder="0" />
+                </div>
+                <div class="field"><label>Empresa</label>
+                    <select name="stock_inicial_empresa" id="stockInicialEmpresa"><option value="">Cargando...</option></select>
+                </div>
+                <div class="field"><label>Sede</label>
+                    <select name="stock_inicial_almacen" id="stockInicialAlmacen"><option value="">Cargando...</option></select>
+                </div>
+            </div>
+            <script>
+            (function () {
+                fetch('/inventario/api/catalogos').then(function (r) { return r.json(); }).then(function (c) {
+                    if (!c.success) return;
+                    var e = document.getElementById('stockInicialEmpresa'), s = document.getElementById('stockInicialAlmacen');
+                    e.innerHTML = c.empresas.map(function (x) { return '<option value="' + x.id + '"' + (x.id === c.empresa_defecto ? ' selected' : '') + '>' + x.nombre + '</option>'; }).join('');
+                    s.innerHTML = c.sedes.map(function (x) { return '<option value="' + x.id + '">' + x.nombre + '</option>'; }).join('');
+                }).catch(function () {});
+            })();
+            </script>
+            {% endif %}
         </div>
     </div>
 </form>

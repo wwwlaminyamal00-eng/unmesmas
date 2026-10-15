@@ -3267,3 +3267,17 @@ tr.fila-despachada > td .left { color: #000000 !important; }
 /* Anular un despacho: el stock vuelve al inventario (15/10/2026) */
 .btn-anular-despacho{margin-left:6px;padding:3px 8px;font-size:10px;font-weight:800;border-radius:6px;border:1px solid #DC2626;background:#fff;color:#DC2626;cursor:pointer}
 .btn-anular-despacho:hover{background:#FEE2E2}
+
+/* Botón "Rótulo" en Despachos (pedido de Erika, 15/10/2026) */
+.btn-rotulo {
+    margin-left: 4px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 6px;
+    border: 1px solid var(--empresa, #7C3AED);
+    background: #FFFFFF;
+    color: var(--empresa, #7C3AED);
+    cursor: pointer;
+}
+.btn-rotulo:hover { background: var(--empresa-soft, #F5F3FF); }

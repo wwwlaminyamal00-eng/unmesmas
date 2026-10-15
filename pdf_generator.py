@@ -62,6 +62,20 @@ class PDFGenerator:
     # ============================================================
     # BUSCAR GUÍA DE REMISIÓN VINCULADA A UNA FACTURA
     # ============================================================
+    def _emisora(self, datos):
+        """Empresa que emite el documento. La ruta la manda en datos['empresa_pdf'] (KCF, AGD...);
+        si no la manda, se usan los datos de KCF como siempre."""
+        e = (datos or {}).get('empresa_pdf')
+        if e:
+            return e
+        logo_base64 = self._obtener_logo_base64()
+        return {
+            'ruc': '20602095704', 'nombre': 'KCF CORPORACION E.I.R.L', 'corto': 'KCF',
+            'direccion': 'JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES',
+            'telefono': '999 932 051', 'email': 'ventas@kcfcorporacion.com', 'web': 'https://kcfcorporacion.com/',
+            'color': '#CC0000', 'logo_src': f"data:image/png;base64,{logo_base64}" if logo_base64 else "",
+        }
+
     def _buscar_guia_vinculada(self, serie_factura, numero_factura):
         if not self.db_query:
             return ''
@@ -201,17 +215,8 @@ class PDFGenerator:
         try:
             print("📄 Generando PDF de comprobante...")
 
-            EMPRESA = {
-                'ruc': '20602095704',
-                'nombre': 'KCF CORPORACION E.I.R.L',
-                'direccion': 'JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES',
-                'telefono': '999 932 051',
-                'email': 'ventas@kcfcorporacion.com',
-                'web': 'https://kcfcorporacion.com/'
-            }
-
-            logo_base64 = self._obtener_logo_base64()
-            logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
+            EMPRESA = self._emisora(datos_comprobante)
+            logo_src = EMPRESA.get('logo_src', '')
 
             items = datos_comprobante.get('items', [])
             
@@ -337,6 +342,8 @@ class PDFGenerator:
 
             datos_mapeados = {
                 'logo_src': logo_src,
+                'empresa_corto': EMPRESA.get('corto', ''),
+                'color_empresa': EMPRESA.get('color') or '#CC0000',
                 'empresa_ruc': EMPRESA['ruc'],
                 'empresa_nombre': EMPRESA['nombre'],
                 'empresa_telefono': EMPRESA['telefono'],
@@ -405,7 +412,7 @@ class PDFGenerator:
             line-height: 1.5; 
             background: #ffffff;
         }
-        .color-rojo { color: #CC0000; }
+        .color-rojo { color: {{ color_empresa }}; }
         .color-gris { color: #555555; }
         .color-gris-oscuro { color: #333333; }
         .header-superior { 
@@ -447,9 +454,9 @@ class PDFGenerator:
         .recuadro-derecha .ruc { font-size: 9px; font-weight: bold; color: #333333; }
         .recuadro-derecha .titulo { 
             font-size: 12px; font-weight: bold; letter-spacing: 1px; 
-            margin: 2px 0; color: #CC0000;
+            margin: 2px 0; color: {{ color_empresa }};
         }
-        .recuadro-derecha .numero { font-size: 14px; font-weight: bold; color: #CC0000; }
+        .recuadro-derecha .numero { font-size: 14px; font-weight: bold; color: {{ color_empresa }}; }
         .layout-dos-columnas { display: flex; gap: 12px; margin-bottom: 5px; }
         .layout-dos-columnas .columna {
             flex: 1; border: 1px solid #cccccc; border-radius: 5px; padding: 4px 10px;
@@ -542,7 +549,7 @@ class PDFGenerator:
 <body>
     <div class="header-superior">
         <div class="empresa-izquierda">
-            <div class="logo-container"><img src="{{ logo_src }}" alt="Logo"></div>
+            <div class="logo-container">{% if logo_src %}<img src="{{ logo_src }}" alt="Logo">{% else %}<div style="font-size:26px;font-weight:900;color:{{ color_empresa }};padding-top:12px;">{{ empresa_corto }}</div>{% endif %}</div>
             <div class="info-texto">
                 <div class="nombre">{{ empresa_nombre }}</div>
                 <div class="ruc-line">RUC: {{ empresa_ruc }}</div>
@@ -680,7 +687,7 @@ class PDFGenerator:
 
     <div class="footer">
         <div>Pag. 1 de 1</div>
-        <div>Powered by KCF CORPORACION</div>
+        <div>Powered by {{ empresa_corto or 'KCF' }}</div>
     </div>
 </body>
 </html>"""
@@ -763,7 +770,7 @@ class PDFGenerator:
                 'tipo': datos_comprobante.get('tipo', 'FACTURA'),
                 'serie': datos_comprobante.get('serie', 'F001'),
                 'numero': datos_comprobante.get('numero', ''),
-                'ruc_emisor': '20602095704',
+                'ruc_emisor': (datos_comprobante.get('empresa_pdf') or {}).get('ruc') or '20602095704',
                 'ruc_cliente': datos_comprobante.get('ruc', ''),
                 'fecha_emision': self._formatear_fecha(datos_comprobante.get('fecha_emision')),
                 'total': str(datos_comprobante.get('total', 0))
@@ -874,7 +881,7 @@ class PDFGenerator:
             margin: 2px 0; color: #000000;
         }
         .recuadro-derecha .numero { 
-            font-size: 15px; font-weight: bold; color: #CC0000; letter-spacing: 1px;
+            font-size: 15px; font-weight: bold; color: {{ color_empresa }}; letter-spacing: 1px;
         }
         .seccion { margin-bottom: 5px; }
         .seccion-con-borde {
@@ -941,7 +948,7 @@ class PDFGenerator:
 <body>
     <div class="header-superior">
         <div class="empresa-izquierda">
-            <div class="logo-container"><img src="{{ logo_src }}" alt="Logo" style="max-height:65px;"></div>
+            <div class="logo-container">{% if logo_src %}<img src="{{ logo_src }}" alt="Logo" style="max-height:65px;">{% else %}<div style="font-size:26px;font-weight:900;color:{{ color_empresa }};padding-top:12px;">{{ empresa_corto }}</div>{% endif %}</div>
             <div class="info-texto">
                 <div class="nombre">{{ remitente_nombre }}</div>
                 <div class="ruc-line">RUC: {{ ruc_remitente }}</div>
@@ -952,7 +959,7 @@ class PDFGenerator:
         </div>
         <div class="recuadro-derecha">
             <div class="ruc">RUC Nº {{ ruc_remitente }}</div>
-            <div class="titulo" style="color: #CC0000;">GUIA DE REMISIÓN REMITENTE</div>
+            <div class="titulo" style="color: {{ color_empresa }};">GUIA DE REMISIÓN REMITENTE</div>
             <div class="numero">{{ serie }}-{{ numero }}</div>
         </div>
     </div>
@@ -1039,23 +1046,14 @@ class PDFGenerator:
     
     <div class="footer">
         <div>Pag. 1 de 1</div>
-        <div>Powered by KCF CORPORACION</div>
+        <div>Powered by {{ empresa_corto or 'KCF' }}</div>
     </div>
 </body>
 </html>"""
 
     def _mapear_datos_guia(self, datos_guia):
-        EMPRESA = {
-            'ruc': '20602095704',
-            'nombre': 'KCF CORPORACION E.I.R.L',
-            'direccion': 'JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES',
-            'telefono': '999 932 051',
-            'email': 'ventas@kcfcorporacion.com',
-            'web': 'https://kcfcorporacion.com/'
-        }
-        
-        logo_base64 = self._obtener_logo_base64()
-        logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
+        EMPRESA = self._emisora(datos_guia)
+        logo_src = EMPRESA.get('logo_src', '')
         
         items = datos_guia.get('items', [])
         if isinstance(items, str):
@@ -1089,6 +1087,8 @@ class PDFGenerator:
         
         return {
             'logo_src': logo_src,
+            'empresa_corto': EMPRESA.get('corto', ''),
+            'color_empresa': EMPRESA.get('color') or '#CC0000',
             'ruc_remitente': datos_guia.get('ruc_remitente', EMPRESA['ruc']),
             'remitente_nombre': datos_guia.get('remitente_nombre', EMPRESA['nombre']),
             'remitente_direccion': datos_guia.get('remitente_direccion', EMPRESA['direccion']),
@@ -1177,9 +1177,13 @@ class PDFGenerator:
         try:
             print("📄 Generando PDF de Rótulo de Guía de Remisión...")
             
-            # Obtener logo
-            logo_base64 = self._obtener_logo_base64()
-            logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
+            # Empresa dueña del documento (multiempresa). Sin datos: KCF como antes.
+            emp = datos_guia.get('empresa') or {}
+            if emp:
+                logo_src = emp.get('logo_src') or ""
+            else:
+                logo_base64 = self._obtener_logo_base64()
+                logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
             
             # Procesar items
             items = datos_guia.get('items', [])
@@ -1260,11 +1264,16 @@ class PDFGenerator:
             
             datos_rotulo = {
                 'logo_src': logo_src,
-                'empresa_nombre': 'KCF CORPORACION E.I.R.L',
-                'empresa_ruc': '20602095704',
-                'empresa_telefono': '999 932 051',
-                'empresa_email': 'ventas@kcfcorporacion.com',
-                'empresa_web': 'https://kcfcorporacion.com/',
+                'empresa_nombre': emp.get('razon_social') or 'KCF CORPORACION E.I.R.L',
+                'empresa_corto': emp.get('codigo') or emp.get('nombre_corto') or 'KCF',
+                'empresa_ruc': emp.get('ruc') or '20602095704',
+                'empresa_telefono': emp.get('telefono') or ('' if emp else '999 932 051'),
+                'empresa_email': (emp.get('correo_rotulo') or emp.get('correo_documentos')) if emp else 'ventas@kcfcorporacion.com',
+                'empresa_web': emp.get('pagina_web') if emp else 'https://kcfcorporacion.com/',
+                'color': emp.get('color_primario') or '#CC0000',
+                # Rótulo de PC o despacho: el documento que se muestra en lugar del N° de guía
+                'doc_label': datos_guia.get('doc_label') or 'N° GUÍA:',
+                'doc_valor': datos_guia.get('doc_valor') or f"{datos_guia.get('serie', 'T001')}-{datos_guia.get('numero', '')}",
                 'serie': datos_guia.get('serie', 'T001'),
                 'numero': datos_guia.get('numero', ''),
                 'fecha_emision': fecha_emision or '',
@@ -1293,19 +1302,29 @@ class PDFGenerator:
             }
 
             # Generar HTML del rótulo
-            html_content = self._obtener_template_rotulo_guia()
-            
-            try:
-                html_content = Template(html_content).render(**datos_rotulo)
-            except Exception as e:
-                print(f"❌ Error renderizando template de rótulo: {e}")
+            plantilla = self._obtener_template_rotulo_guia()
             
             # Generar PDF
             fecha = datetime.now().strftime('%Y%m%d_%H%M%S')
             nombre_archivo = f"rotulo_{datos_rotulo['serie']}_{datos_rotulo['numero']}_{fecha}.pdf"
             
             base_url = f"file://{os.getcwd()}/"
-            HTML(string=html_content, base_url=base_url).write_pdf(nombre_archivo)
+            if datos_guia.get('una_hoja_por_bulto') and total_bultos > 1:
+                # Una hoja por bulto: 01/03, 02/03, 03/03 (para pegar una en cada caja)
+                primero, paginas = None, []
+                for k in range(1, total_bultos + 1):
+                    datos_rotulo['numero_bultos'] = f"{str(k).zfill(2)}/{str(total_bultos).zfill(2)}"
+                    doc = HTML(string=Template(plantilla).render(**datos_rotulo), base_url=base_url).render()
+                    primero = primero or doc
+                    paginas.extend(doc.pages)
+                primero.copy(paginas).write_pdf(nombre_archivo)
+            else:
+                try:
+                    html_content = Template(plantilla).render(**datos_rotulo)
+                except Exception as e:
+                    print(f"❌ Error renderizando template de rótulo: {e}")
+                    html_content = plantilla
+                HTML(string=html_content, base_url=base_url).write_pdf(nombre_archivo)
             
             print(f"✅ Rótulo generado: {nombre_archivo}")
             return nombre_archivo
@@ -1373,7 +1392,7 @@ class PDFGenerator:
         }
         
         .rotulo-wrapper {
-            border: 3px solid #CC0000;
+            border: 3px solid {{ color }};
             border-radius: 6px;
             padding: 10px 12px;
             background: #ffffff;
@@ -1472,7 +1491,7 @@ class PDFGenerator:
         
         /* ===== SECCIONES ===== */
         .seccion-cliente {
-            border: 2px solid #CC0000;
+            border: 2px solid {{ color }};
             border-radius: 8px;
             padding: 5px 12px;
             margin-bottom: 6px;
@@ -1496,7 +1515,7 @@ class PDFGenerator:
         }
         
         .seccion-direccion {
-            border: 2px solid #CC0000;
+            border: 2px solid {{ color }};
             border-radius: 8px;
             padding: 5px 12px;
             margin-bottom: 6px;
@@ -1528,7 +1547,7 @@ class PDFGenerator:
             margin-bottom: 6px;
         }
         .caja-consignados {
-            border: 2px solid #CC0000;
+            border: 2px solid {{ color }};
             border-radius: 8px;
             padding: 4px 12px;
             display: flex;
@@ -1559,7 +1578,7 @@ class PDFGenerator:
         }
         
         .caja-blts {
-            border: 2px solid #CC0000;
+            border: 2px solid {{ color }};
             border-radius: 8px;
             padding: 4px 12px;
             display: flex;
@@ -1588,7 +1607,7 @@ class PDFGenerator:
             margin-bottom: 8px;
         }
         .caja-guia, .caja-factura {
-            border: 2px solid #CC0000;
+            border: 2px solid {{ color }};
             border-radius: 8px;
             padding: 5px 12px;
             display: flex;
@@ -1635,14 +1654,14 @@ class PDFGenerator:
         .info-extra {
             margin-top: 4px;
             padding: 4px 10px;
-            border: 1.5px solid #CC0000;
+            border: 1.5px solid {{ color }};
             border-radius: 6px;
             font-size: 9px;
             color: #333;
             background: #FFF5F5;
         }
         .info-extra strong {
-            color: #CC0000;
+            color: {{ color }};
             font-weight: 900;
         }
     </style>
@@ -1654,7 +1673,9 @@ class PDFGenerator:
             <div class="header-left">
                 <div class="logo">
                     {% if logo_src %}
-                    <img src="{{ logo_src }}" alt="KCF Logo">
+                    <img src="{{ logo_src }}" alt="Logo {{ empresa_corto }}">
+                    {% else %}
+                    <div style="width:65px;height:55px;border-radius:8px;background:{{ color }};color:#fff;font-weight:900;font-size:18px;display:flex;align-items:center;justify-content:center;">{{ empresa_corto }}</div>
                     {% endif %}
                 </div>
                 <div class="empresa-info">
@@ -1711,8 +1732,8 @@ class PDFGenerator:
 
         <div class="seccion-doble-2">
             <div class="caja-guia">
-                <span class="label">N° GUÍA:</span>
-                <span class="valor">{{ serie }}-{{ numero }}</span>
+                <span class="label">{{ doc_label }}</span>
+                <span class="valor">{{ doc_valor }}</span>
             </div>
             <div class="caja-factura">
                 <span class="label">FACTURA:</span>
@@ -1729,10 +1750,10 @@ class PDFGenerator:
                 <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
                 <span>{{ empresa_email }}</span>
             </div>
-            <div class="item">
+            {% if empresa_web %}<div class="item">
                 <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                 <span>{{ empresa_web }}</span>
-            </div>
+            </div>{% endif %}
         </div>
 
         {% if observaciones %}
@@ -1752,17 +1773,8 @@ class PDFGenerator:
         try:
             print("📄 Generando PDF de cotización...")
             
-            logo_base64 = self._obtener_logo_base64()
-            logo_src = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
-            
-            EMPRESA = {
-                'ruc': '20602095704',
-                'nombre': 'KCF CORPORACION E.I.R.L',
-                'direccion': 'JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES',
-                'telefono': '999 932 051',
-                'email': 'ventas@kcfcorporacion.com',
-                'web': 'https://kcfcorporacion.com/'
-            }
+            EMPRESA = self._emisora(datos)
+            logo_src = EMPRESA.get('logo_src', '')
             
             items = datos.get('items', [])
             if isinstance(items, str):
@@ -1812,6 +1824,8 @@ class PDFGenerator:
             
             datos_template = {
                 'logo_src': logo_src,
+                'empresa_corto': EMPRESA.get('corto', ''),
+                'color_empresa': EMPRESA.get('color') or '#CC0000',
                 'empresa_ruc': EMPRESA['ruc'],
                 'empresa_nombre': EMPRESA['nombre'],
                 'empresa_telefono': EMPRESA['telefono'],
@@ -1878,7 +1892,7 @@ class PDFGenerator:
             line-height: 1.8;
             background: #ffffff;
         }
-        .color-rojo { color: #CC0000; }
+        .color-rojo { color: {{ color_empresa }}; }
         .color-gris { color: #555555; }
         .header-superior {
             display: flex;
@@ -1917,9 +1931,9 @@ class PDFGenerator:
         .recuadro-derecha .ruc { font-size: 10px; font-weight: bold; color: #333333; }
         .recuadro-derecha .titulo {
             font-size: 13px; font-weight: bold; letter-spacing: 1px;
-            margin: 2px 0; color: #CC0000;
+            margin: 2px 0; color: {{ color_empresa }};
         }
-        .recuadro-derecha .numero { font-size: 15px; font-weight: bold; color: #CC0000; }
+        .recuadro-derecha .numero { font-size: 15px; font-weight: bold; color: {{ color_empresa }}; }
         .seccion { margin-bottom: 8px; }
         .seccion-titulo {
             font-weight: bold; font-size: 9.5px; margin-bottom: 3px;
@@ -2010,7 +2024,7 @@ class PDFGenerator:
     <div class="header-superior">
         <div class="empresa-izquierda">
             <div class="logo-container">
-                <img src="{{ logo_src }}" alt="Logo" style="max-height:65px;">
+                {% if logo_src %}<img src="{{ logo_src }}" alt="Logo" style="max-height:65px;">{% else %}<div style="font-size:26px;font-weight:900;color:{{ color_empresa }};padding-top:12px;">{{ empresa_corto }}</div>{% endif %}
             </div>
             <div class="info-texto">
                 <div class="nombre">{{ empresa_nombre }}</div>
@@ -2139,7 +2153,7 @@ class PDFGenerator:
     <div class="footer">
         <div>Pag. 1 de 1</div>
         <div class="condicion-pago">** {{ condicion_pago }} **</div>
-        <div>Powered by KCF CORPORACION</div>
+        <div>Powered by {{ empresa_corto or 'KCF' }}</div>
     </div>
 </body>
 </html>"""
@@ -2153,7 +2167,7 @@ class PDFGenerator:
                 'tipo': datos.get('tipo_documento', 'COTIZACIÓN'),
                 'serie': datos.get('serie', 'COT'),
                 'numero': datos.get('numero', datos.get('numero_cotizacion', '')),
-                'ruc_emisor': '20602095704',
+                'ruc_emisor': (datos.get('empresa_pdf') or {}).get('ruc') or '20602095704',
                 'ruc_cliente': datos.get('cliente_ruc', datos.get('ruc', '')),
                 'fecha_emision': self._formatear_fecha(datos.get('fecha_emision', datos.get('fecha'))),
                 'total': str(datos.get('total', datos.get('monto', 0)))

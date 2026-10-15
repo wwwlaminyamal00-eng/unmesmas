@@ -1,6 +1,7 @@
 ﻿# routes/productos.py
 from flask import Blueprint, render_template, request, jsonify, session, flash, redirect, url_for, Response
 from utils import login_required
+from routes.multiempresa import empresa_filtro
 from database import db_query, db_execute, db_tx
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
@@ -221,7 +222,11 @@ def get_productos():
                 p.modelo, p.marca, p.familia as categoria,
                 p.categoria_derivada as subcategoria,
                 p.unidad, p.peso, p.volumen, p.observaciones, p.transporte,
-                p.costo_unitario, p.precio_unitario, p.stock, p.stock_minimo,
+                p.costo_unitario, p.precio_unitario,
+                -- stock de la empresa elegida arriba (con "Todas" = todo el grupo)
+                CASE WHEN %s IS NULL THEN p.stock
+                     ELSE COALESCE((SELECT SUM(s.cantidad) FROM inv_stock s WHERE s.producto_id = p.id AND s.empresa_id = %s), 0)
+                END AS stock, p.stock AS stock_grupo, p.stock_minimo,
                 p.estado, p.presentacion_proveedor, p.presentacion_venta,
                 p.venta_minima, p.codigo_barras, p.origen, p.tiempo_entrega,
                 p.abastecimiento, p.activo, p.fecha_creacion, p.updated_at,
@@ -230,8 +235,11 @@ def get_productos():
             LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
             WHERE p.activo = TRUE
         """
-        params = []
-        condiciones = []
+        ef = empresa_filtro()
+        params = [ef, ef]
+        # Productos del grupo (sin empresa) o de la empresa elegida
+        condiciones = ["(%s IS NULL OR p.empresa_id IS NULL OR p.empresa_id = %s)"]
+        params += [ef, ef]
 
         if busqueda:
             condiciones.append("(p.codigo ILIKE %s OR p.descripcion ILIKE %s OR p.modelo ILIKE %s OR p.marca ILIKE %s)")
@@ -395,15 +403,32 @@ def create_producto():
             resultado = cur.fetchone()
             print(f"✅ Producto insertado: ID={resultado['id']}, Código={resultado['codigo']}")
 
+            # Stock inicial (opcional): queda en el inventario con empresa y sede, como cualquier movimiento
+            mensaje_stock = ''
+            if safe_float(data.get('stock_inicial_cantidad')) > 0:
+                from routes.inventario import registrar_stock_inicial, ErrorInventario, asegurar_tablas_inventario
+                asegurar_tablas_inventario()
+                try:
+                    mov, pendiente = registrar_stock_inicial(
+                        cur, producto_id=resultado['id'], empresa_id=data.get('stock_inicial_empresa'),
+                        almacen_id=data.get('stock_inicial_almacen'), cantidad=data.get('stock_inicial_cantidad'),
+                        costo_unitario=safe_float(data.get('costo_unitario')))
+                except ErrorInventario as e:
+                    raise ValueError(f'Stock inicial: {e}')
+                mensaje_stock = (f" Stock inicial {mov['numero']}: queda pendiente hasta que un supervisor lo apruebe."
+                                 if pendiente else f" Stock inicial registrado ({mov['numero']}).")
+
             return jsonify({
                 'success': True,
                 'data': {
                     'id': resultado['id'],
                     'codigo': resultado['codigo']
                 },
-                'message': f'Producto creado exitosamente con código {resultado["codigo"]}'
+                'message': f'Producto creado exitosamente con código {resultado["codigo"]}.' + mensaje_stock
             })
 
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         print(f"❌ Error en create_producto: {e}")
         import traceback

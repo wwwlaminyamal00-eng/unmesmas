@@ -22,6 +22,12 @@ from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_tx
 from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, bloquear_numeracion, id_empresa
+from routes.multiempresa import empresa_filtro
+
+
+def _empresa_vista():
+    """Empresa para filtrar listas: la pedida en la URL o la elegida arriba (None = todas)."""
+    return id_empresa(request.args.get('empresa_id')) or id_empresa(empresa_filtro())
 
 inventario_bp = Blueprint('inventario', __name__, url_prefix='/inventario')
 
@@ -483,6 +489,23 @@ def aplicar_movimiento(cur, *, empresa_id, almacen_id, producto_id, motivo, cant
     return mov
 
 
+def registrar_stock_inicial(cur, *, producto_id, empresa_id, almacen_id, cantidad, costo_unitario, observaciones=None):
+    """Stock que ya existía (ej. al crear un producto). Si quien lo registra no puede aprobar, queda Pendiente.
+    Devuelve (movimiento, pendiente)."""
+    empresa_id = _empresa(empresa_id, 'la empresa del stock inicial')
+    almacen_id = _entero(almacen_id, 'la sede del stock inicial')
+    cantidad = _num(cantidad)
+    _validar_empresa_sede(cur, empresa_id, almacen_id)
+    datos = dict(empresa_id=empresa_id, almacen_id=almacen_id, producto_id=producto_id, motivo='STOCK_INICIAL',
+                 cantidad=cantidad, costo_unitario=costo_unitario or 0, documento_tipo=None, documento_numero=None,
+                 tercero=None, lote_serie=None, fecha_vencimiento=None,
+                 observaciones=observaciones or 'Stock inicial registrado al crear el producto')
+    if not puede_aprobar():
+        return _registrar_pendiente(cur, **datos), True
+    _, unom = _usuario()
+    return aplicar_movimiento(cur, **datos, aprobado_por=unom), False
+
+
 def _registrar_pendiente(cur, **d):
     """Guarda un movimiento que espera aprobación. No cambia el stock hasta que se apruebe."""
     uid, unom = _usuario()
@@ -537,6 +560,7 @@ def api_catalogos():
                        empresas[0]['id'] if empresas else None)
         return jsonify({'success': True, 'empresas': empresas, 'sedes': sedes,
                         'registro_sunat': [_fila(r) for r in registro], 'empresa_defecto': defecto,
+                        'empresa_activa': empresa_filtro(),
                         'motivos': {k: {'tipo': v[0], 'texto': v[1], 'sunat': v[2]} for k, v in MOTIVOS.items()},
                         'usuario_id': session.get('usuario_id')})
     except Exception as e:
@@ -625,6 +649,24 @@ def _consolidado(empresa_id=None, almacen_id=None, q='', solo_con_stock=True):
             p['ultimo_movimiento'] = f['ultimo_movimiento']
         referencia = f['ultima_venta'] or f['primer_ingreso']
         p['dias_sin_vender'] = (hoy - referencia).days if referencia else None
+    if not solo_con_stock:
+        # Productos que nunca tuvieron stock en esta empresa/sede: también se muestran (en 0) para que se vea
+        # que existen y se les pueda cargar el "Stock inicial".
+        for f in db_query("""
+            SELECT p.id, p.codigo, p.descripcion, p.marca, p.modelo, p.unidad, COALESCE(p.stock_minimo, 0) AS stock_minimo
+            FROM productos p
+            WHERE COALESCE(p.activo, true) = true
+              AND (%s = '' OR p.codigo ILIKE %s OR p.descripcion ILIKE %s OR COALESCE(p.marca, '') ILIKE %s
+                   OR COALESCE(p.modelo, '') ILIKE %s)
+              AND NOT EXISTS (SELECT 1 FROM inv_stock s WHERE s.producto_id = p.id
+                              AND (%s IS NULL OR s.empresa_id = %s) AND (%s IS NULL OR s.almacen_id = %s))
+            ORDER BY p.descripcion
+        """, (q, f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%', empresa_id, empresa_id, almacen_id, almacen_id)):
+            productos.setdefault(f['id'], {
+                'producto_id': f['id'], 'codigo': f['codigo'], 'descripcion': f['descripcion'], 'marca': f['marca'],
+                'modelo': f['modelo'], 'unidad': f['unidad'], 'stock_minimo': float(f['stock_minimo']), 'vendido_90': 0.0,
+                'total': 0.0, 'separado': 0.0, 'disponible': 0.0, 'valor': 0.0, 'celdas': {}, 'por_empresa': {},
+                'ultimo_movimiento': None, 'dias_sin_vender': None})
     salida = []
     for p in productos.values():
         p['rotacion'] = _clasificar_rotacion(p.get('dias_sin_vender')) if p['total'] > 0 else 'Sin stock'
@@ -637,14 +679,18 @@ def _consolidado(empresa_id=None, almacen_id=None, q='', solo_con_stock=True):
 @inventario_bp.route('/api/consolidado')
 def api_consolidado():
     try:
-        empresa_id = id_empresa(request.args.get('empresa_id'))
+        empresa_id = _empresa_vista()
         almacen_id = request.args.get('almacen_id', type=int)
         data = _consolidado(empresa_id, almacen_id, (request.args.get('q') or '').strip(),
                             request.args.get('todos') != 'true')
         rot = request.args.get('rotacion')
         if rot:
             data = [p for p in data if p['rotacion'] == rot]
-        return jsonify({'success': True, 'data': data})
+        data.sort(key=lambda p: ((p['descripcion'] or '').upper(), p['producto_id']))
+        pendientes = db_query("""SELECT COUNT(*) AS n, COALESCE(SUM(cantidad), 0) AS unidades FROM inv_movimientos
+                                 WHERE estado = 'Pendiente' AND (%s IS NULL OR empresa_id = %s)""", (empresa_id, empresa_id))[0]
+        return jsonify({'success': True, 'data': data,
+                        'pendientes': {'cantidad': int(pendientes['n']), 'unidades': float(pendientes['unidades'])}})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -653,7 +699,10 @@ def api_consolidado():
 def api_consolidado_exportar():
     empresas = {e['id']: e['nombre'] for e in _empresas()}
     sedes = {s['id']: s['nombre'] for s in _sedes()}
-    data = _consolidado(q=(request.args.get('q') or '').strip())
+    ev = _empresa_vista()
+    if ev is not None:
+        empresas = {k: v for k, v in empresas.items() if str(k) == str(ev)}
+    data = _consolidado(empresa_id=ev, q=(request.args.get('q') or '').strip())
     columnas = [(e, s) for e in empresas for s in sedes]
     lineas = [';'.join(['Código', 'Producto', 'Unidad'] + [f'{empresas[e]} - {sedes[s]}' for e, s in columnas] +
                        [f'Total {empresas[e]}' for e in empresas] + ['Total', 'Separado', 'Disponible', 'Valor S/', 'Rotación'])]
@@ -843,7 +892,7 @@ def api_kardex():
     """Kardex valorizado. Con producto, empresa y sede: saldo exacto de esa ubicación."""
     try:
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = id_empresa(request.args.get('empresa_id'))
+        empresa_id = _empresa_vista()
         almacen_id = request.args.get('almacen_id', type=int)
         desde = request.args.get('desde') or None
         hasta = request.args.get('hasta') or None
@@ -880,7 +929,7 @@ def api_kardex():
 @inventario_bp.route('/api/kardex/exportar')
 def api_kardex_exportar():
     """Registro de inventario permanente valorizado (estructura del formato 13.1 de SUNAT) en CSV."""
-    empresa_id = id_empresa(request.args.get('empresa_id'))
+    empresa_id = _empresa_vista()
     producto_id = request.args.get('producto_id', type=int)
     desde = request.args.get('desde') or None
     hasta = request.args.get('hasta') or None
@@ -1025,10 +1074,10 @@ def api_traslados():
             LEFT JOIN almacenes d ON d.id = t.destino_id
             LEFT JOIN inv_traslado_items i ON i.traslado_id = t.id
             LEFT JOIN productos p ON p.id = i.producto_id
-            WHERE (%s = '' OR t.estado = %s)
+            WHERE (%s = '' OR t.estado = %s) AND (%s IS NULL OR t.empresa_id = %s)
             GROUP BY t.id, e.nombre_corto, e.codigo, o.nombre, d.nombre
             ORDER BY (t.estado = 'En camino') DESC, t.fecha DESC LIMIT 300
-        """, (estado, estado))
+        """, (estado, estado, _empresa_vista(), _empresa_vista()))
         ahora = datetime.now()
         data = []
         for f in filas:
@@ -1292,7 +1341,7 @@ def api_separaciones():
     try:
         estado = request.args.get('estado') or 'Activa'
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = id_empresa(request.args.get('empresa_id'))
+        empresa_id = _empresa_vista()
         almacen_id = request.args.get('almacen_id', type=int)
         filas = db_query("""
             SELECT s.*, p.codigo, p.descripcion, p.unidad, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
@@ -1377,8 +1426,9 @@ def api_conteos():
                    (SELECT COALESCE(SUM((i.cantidad_contada - i.stock_sistema) * i.costo_promedio), 0)
                       FROM inv_conteo_items i WHERE i.conteo_id = c.id AND i.stock_sistema IS NOT NULL) AS valor_diferencia
             FROM inv_conteos c LEFT JOIN erp_empresas e ON e.id = c.empresa_id LEFT JOIN almacenes a ON a.id = c.almacen_id
+            WHERE (%s IS NULL OR c.empresa_id = %s)
             ORDER BY (c.estado IN ('En conteo', 'Por aprobar')) DESC, c.fecha DESC LIMIT 200
-        """)
+        """, (_empresa_vista(), _empresa_vista()))
         return jsonify({'success': True, 'data': [_fila(f) for f in filas]})
     except Exception as e:
         return _respuesta_error(e)
@@ -1583,10 +1633,12 @@ def api_resumen():
     try:
         empresas = {e['id']: e['nombre'] for e in _empresas()}
         sedes = {s['id']: s['nombre'] for s in _sedes()}
+        ev = _empresa_vista()   # empresa elegida arriba (None = todas)
+        pe = (ev, ev)
         valor = db_query("""SELECT empresa_id, almacen_id, SUM(valor) AS valor, SUM(cantidad) AS unidades,
                                    COUNT(*) FILTER (WHERE cantidad > 0) AS productos
-                            FROM inv_stock GROUP BY 1, 2""")
-        consolidado = _consolidado()
+                            FROM inv_stock WHERE (%s IS NULL OR empresa_id = %s) GROUP BY 1, 2""", pe)
+        consolidado = _consolidado(empresa_id=ev)
         lento = [p for p in consolidado if p['rotacion'] == 'Lento']
         inmovil = [p for p in consolidado if p['rotacion'] == 'Inmovilizado']
         perdidas = db_query("""
@@ -1595,28 +1647,31 @@ def api_resumen():
             FROM inv_movimientos m JOIN productos p ON p.id = m.producto_id
             LEFT JOIN erp_empresas e ON e.id = m.empresa_id LEFT JOIN almacenes a ON a.id = m.almacen_id
             WHERE m.estado = 'Registrado' AND m.motivo IN ('MERMA', 'VENCIMIENTO', 'PERDIDA_ROBO', 'FALTANTE_CONTEO', 'FALTANTE_TRASLADO')
-              AND m.fecha >= date_trunc('month', NOW())
+              AND m.fecha >= date_trunc('month', NOW()) AND (%s IS NULL OR m.empresa_id = %s)
             ORDER BY m.fecha DESC
-        """)
+        """, pe)
         pendientes = db_query("""
             SELECT m.id, m.numero, m.fecha, m.motivo, m.cantidad, m.costo_unitario, m.observaciones, m.usuario_nombre,
                    m.usuario_id, p.codigo, p.descripcion, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
                    a.nombre AS sede
             FROM inv_movimientos m JOIN productos p ON p.id = m.producto_id
             LEFT JOIN erp_empresas e ON e.id = m.empresa_id LEFT JOIN almacenes a ON a.id = m.almacen_id
-            WHERE m.estado = 'Pendiente' ORDER BY m.fecha
-        """)
+            WHERE m.estado = 'Pendiente' AND (%s IS NULL OR m.empresa_id = %s) ORDER BY m.fecha
+        """, pe)
         traslados = db_query("""SELECT t.id, t.numero, t.fecha, t.encargado, o.nombre AS origen, d.nombre AS destino
                                 FROM inv_traslados t LEFT JOIN almacenes o ON o.id = t.origen_id
                                 LEFT JOIN almacenes d ON d.id = t.destino_id
-                                WHERE t.estado = 'En camino' AND t.fecha < NOW() - INTERVAL '24 hours'""")
+                                WHERE t.estado = 'En camino' AND t.fecha < NOW() - INTERVAL '24 hours'
+                                  AND (%s IS NULL OR t.empresa_id = %s)""", pe)
         ic_sin_factura = db_query("""SELECT DISTINCT grupo FROM inv_movimientos
                                      WHERE motivo = 'INTERCOMPANY_SALIDA' AND estado = 'Registrado'
                                        AND documento_numero IS NULL""")
         sep_vencidas = db_query("""SELECT s.id, s.numero, s.cliente, s.cantidad, s.vence_el, p.descripcion
                                    FROM inv_separaciones s JOIN productos p ON p.id = s.producto_id
-                                   WHERE s.estado = 'Activa' AND s.vence_el < CURRENT_DATE""")
-        conteos = db_query("SELECT id, numero, estado FROM inv_conteos WHERE estado IN ('En conteo', 'Por aprobar')")
+                                   WHERE s.estado = 'Activa' AND s.vence_el < CURRENT_DATE
+                                     AND (%s IS NULL OR s.empresa_id = %s)""", pe)
+        conteos = db_query("SELECT id, numero, estado FROM inv_conteos WHERE estado IN ('En conteo', 'Por aprobar') "
+                           "AND (%s IS NULL OR empresa_id = %s)", pe)
         ultimo_conteo = db_query("""SELECT empresa_id, almacen_id, MAX(aprobado_en) AS ultimo FROM inv_conteos
                                     WHERE estado = 'Aprobado' GROUP BY 1, 2""")
         sin_ubicar = db_query("""SELECT p.id, p.codigo, p.descripcion, p.stock, p.unidad, COALESCE(p.costo_unitario, 0) AS costo_unitario

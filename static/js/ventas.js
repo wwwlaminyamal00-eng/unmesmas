@@ -1429,6 +1429,7 @@ function renderDespachos() {
                     `<span class="badge b-ok">✅ ${r.estado || 'Completado'}</span>
                      <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>`
                 }
+                <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">🏷️ Rótulo</button>
             </td>
         </tr>`;
     }).join('');
@@ -1706,8 +1707,7 @@ function renderGuias() {
             <td>${sd(r.origen)}</td>
             <td>${sd(r.destino)}</td>
             <td style="white-space:nowrap;">
-                ${!r.comprobante ? `<button class="btn-factura-guia" onclick="crearFacturaDesdeGuia(${r.id})" title="Crear la factura con los datos de esta guía">🧾 Crear factura</button>` : ''}
-                <button class="kebab" onclick="showGuiaMenu(event, ${r.id})">⋮</button>
+                <button class="kebab" onclick="showGuiaMenu(event, ${r.id})" title="Opciones (Crear factura, PDF, rótulo...)">⋮</button>
             </td>
         </tr>
     `).join('');
@@ -3108,8 +3108,8 @@ async function saveGuia(estado) {
             fecha_traslado: fechaSolo,
 
             // ---- REMITENTE (fijo) ----
-            ruc_remitente: document.getElementById('guiaRucRemitente')?.value || '20602095704',
-            remitente_nombre: document.getElementById('guiaRemitenteNombre')?.value || 'KCF CORPORACION E.I.R.L',
+            ruc_remitente: document.getElementById('guiaRucRemitente')?.value || (window.EMPRESA_ACTIVA || {}).ruc || '20602095704',
+            remitente_nombre: document.getElementById('guiaRemitenteNombre')?.value || (window.EMPRESA_ACTIVA || {}).razon_social || 'KCF CORPORACION E.I.R.L',
             remitente_direccion: document.getElementById('guiaOrigen')?.value || '',
             remitente_ubigeo: document.getElementById('guiaUbigeoOrigen')?.value || '150139',
 
@@ -4574,6 +4574,7 @@ async function marcarDespachado(id) {
                     direccion: 'JR. LAS ALMENDRAS VERDES NRO. 284 URB. VIRGEN DEL ROSARIO LIMA - LIMA - SAN MARTIN DE PORRES',
                     ubigeo: '150139'
                 };
+                aplicarEmpresaAlOrigen(ORIGEN_FIJO);   // multiempresa: remitente = empresa elegida arriba
                 
                 // ✅ GENERAR NÚMERO DE GUÍA
                 const numeroGuia = `G-${year}${month}${day}-${String(ahora.getTime()).slice(-4)}`;
@@ -6761,10 +6762,26 @@ if (c.direccion_entrega) {
     cargarDireccionEntregaExistente(c.direccion_entrega);
 }
         
-        // Nota interna
-        if (c.nota_cotizacion && document.getElementById('fNotaInterna')) {
-            document.getElementById('fNotaInterna').value = c.nota_cotizacion;
-        }
+        // Punto 4: seguimiento, motivo, transporte, parihuela y nota interna (antes no se cargaban al reabrir)
+        const ponerValor = (idCampo, valor) => {
+            const el = document.getElementById(idCampo);
+            if (!el || valor === undefined || valor === null || valor === '') return;
+            if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === valor)) {
+                el.add(new Option(valor, valor));   // valor guardado que ya no está en la lista: se respeta
+            }
+            el.value = valor;
+        };
+        ponerValor('fSeguimiento', c.seguimiento);
+        ponerValor('fMotivo', c.motivo);
+        ponerValor('fTransporte', c.transporte);
+        ponerValor('fParihuela', c.parihuela);
+        ponerValor('fNotaInterna', c.nota_interna);
+
+        // Punto 3 del resumen: descuento en % o en S/ (antes se perdía al reabrir)
+        const tipoDesc = (c.descuento_tipo === 'S/' || c.descuento_tipo === 'monto') ? 'S/' : '%';
+        const valorDesc = tipoDesc === '%' ? Number(c.descuento_porcentaje || 0) : Number(c.descuento_monto || 0);
+        if (document.getElementById('fDiscountType')) document.getElementById('fDiscountType').value = tipoDesc;
+        if (document.getElementById('fDiscountValue')) document.getElementById('fDiscountValue').value = valorDesc;
         
         // Requerimiento
         if (c.requerimiento && document.getElementById('fReq')) {
@@ -7853,6 +7870,7 @@ function recolectarDatosGuia() {
         provincia: 'LIMA',
         distrito: 'SAN MARTIN DE PORRES'
     };
+    aplicarEmpresaAlOrigen(ORIGEN_FIJO);   // multiempresa: remitente = empresa elegida arriba
     
     const items = [];
     document.querySelectorAll('#guiaProductosBody tr').forEach((row, idx) => {
@@ -9859,6 +9877,7 @@ function openGuiaModal(id = null) {
         provincia: 'LIMA',
         distrito: 'SAN MARTIN DE PORRES'
     };
+    aplicarEmpresaAlOrigen(ORIGEN_FIJO);   // multiempresa: remitente = empresa elegida arriba
     
     // Establecer título
     const titleEl = document.getElementById('guiaModalTitle');
@@ -10349,6 +10368,7 @@ async function cargarGuiaParaEditar(id) {
             provincia: 'LIMA',
             distrito: 'SAN MARTIN DE PORRES'
         };
+        aplicarEmpresaAlOrigen(ORIGEN_FIJO);   // multiempresa: remitente = empresa elegida arriba
 
         // ============================================================
         // 🔒 setSelectValue BLINDADO
@@ -16071,6 +16091,7 @@ function showPedidoMenu(event, id) {
         <button onclick="createDespachoFromPedido(${id});this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
         <button onclick="createGuiaFromPedido(${id});this.closest('.menu-pop').remove()">📦 Crear guía</button>
         <button onclick="createFacturaFromPedido(${id});this.closest('.menu-pop').remove()">🧾 Crear factura</button>
+        <button onclick="imprimirRotulo('pc', ${id});this.closest('.menu-pop').remove()" style="color:#7C3AED;font-weight:900;">🏷️ Imprimir rótulo</button>
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
         <button class="danger" onclick="deletePedidoCompra(${id});this.closest('.menu-pop').remove()">
             🗑 Eliminar permanentemente ${estado !== 'Anulado' ? '(Se anulará primero)' : ''}
@@ -16080,6 +16101,31 @@ function showPedidoMenu(event, id) {
     pop.innerHTML = menuHtml;
     document.body.appendChild(pop);
 }
+
+// ============================================================
+// 🏢 MULTIEMPRESA: el remitente de la guía es la empresa elegida arriba (antes siempre KCF)
+// ============================================================
+function aplicarEmpresaAlOrigen(origen) {
+    const e = window.EMPRESA_ACTIVA || {};
+    if (!e.ruc || e.ruc === origen.ruc) return origen;
+    origen.ruc = e.ruc;
+    origen.nombre = e.razon_social || origen.nombre;
+    origen.direccion = e.direccion_fiscal || origen.direccion;
+    if (e.ubigeo) origen.ubigeo = e.ubigeo;
+    return origen;
+}
+window.aplicarEmpresaAlOrigen = aplicarEmpresaAlOrigen;
+
+// ============================================================
+// 🏷️ RÓTULO DE PC Y DESPACHO (con logo, datos y color de la empresa del documento)
+// ============================================================
+function imprimirRotulo(tipo, id) {
+    const n = prompt('¿Cuántas cajas o bultos son? Sale una hoja por caja (01/03, 02/03...).', '1');
+    if (n === null) return;
+    const bultos = Math.max(1, Math.min(99, parseInt(n, 10) || 1));
+    window.open(`/ventas/api/rotulo/${tipo}/${id}?bultos=${bultos}`, '_blank');
+}
+window.imprimirRotulo = imprimirRotulo;
 
 function showGuiaMenu(event, id) {
     event.stopPropagation();
@@ -16112,7 +16158,7 @@ function showGuiaMenu(event, id) {
             <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
             <button onclick="previewRotuloGuia(${id});this.closest('.menu-pop').remove()" 
                     style="color:#8B5CF6;font-weight:900;">
-                🏷️ Vista Previa Rótulo
+                🏷️ Imprimir rótulo
             </button>
             <button onclick="descargarRotuloGuia(${id});this.closest('.menu-pop').remove()" 
                     style="color:#7C3AED;font-weight:900;">

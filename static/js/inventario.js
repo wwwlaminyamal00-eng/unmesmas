@@ -11,7 +11,9 @@
         admin: app.dataset.admin === 'true'
     };
     const DIAS_SEP = parseInt(app.dataset.diasSeparacion || '7', 10);
-    const cat = { empresas: [], sedes: [], registro: [], empresaDefecto: null, usuarioId: null };
+    const cat = { empresas: [], sedes: [], registro: [], empresaDefecto: null, usuarioId: null, empresaActiva: null };
+    // Empresas que se ven según la empresa elegida arriba (todas si se eligió "Todas las empresas")
+    const empresasVista = () => cat.empresaActiva ? cat.empresas.filter(e => String(e.id) === String(cat.empresaActiva)) : cat.empresas;
     const pickers = {};
     let trasladoItems = [];
     let trasladosCache = [];
@@ -130,8 +132,10 @@
     function llenarSelects() {
         document.querySelectorAll('select[data-empresas]').forEach(s => {
             const todas = s.dataset.todas === 'true';
-            s.innerHTML = (todas ? '<option value="">Todas las empresas</option>' : '') +
-                cat.empresas.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('');
+            // Filtros: si arriba se eligió una empresa, solo se ve esa (con "Todas las empresas" se ve el grupo)
+            const lista = todas && cat.empresaActiva ? empresasVista() : cat.empresas;
+            s.innerHTML = (todas && !cat.empresaActiva ? '<option value="">Todas las empresas</option>' : '') +
+                lista.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('');
             if (!todas && cat.empresaDefecto) s.value = cat.empresaDefecto;
         });
         document.querySelectorAll('select[data-sedes]').forEach(s => {
@@ -146,7 +150,7 @@
     async function cargarCatalogos() {
         const r = await api('/inventario/api/catalogos');
         cat.empresas = r.empresas; cat.sedes = r.sedes; cat.registro = r.registro_sunat;
-        cat.empresaDefecto = r.empresa_defecto; cat.usuarioId = r.usuario_id;
+        cat.empresaDefecto = r.empresa_defecto; cat.usuarioId = r.usuario_id; cat.empresaActiva = r.empresa_activa || null;
         llenarSelects();
         if (!cat.empresas.length || !cat.sedes.length) {
             $('resAlertas').innerHTML = `<div class="inv-alerta danger"><b>Falta configurar.</b> Crea las empresas en Configuración ▸ Empresas
@@ -245,7 +249,7 @@
     async function cargarConsolidado() {
         const params = new URLSearchParams({ q: $('conBuscar').value.trim(), rotacion: $('conRotacion').value, todos: $('conTodos').checked });
         $('conExportar').href = '/inventario/api/consolidado/exportar?q=' + encodeURIComponent($('conBuscar').value.trim());
-        const E = cat.empresas, S = cat.sedes;
+        const E = empresasVista(), S = cat.sedes;
         $('conHead').innerHTML = `
             <tr><th rowspan="2" class="left">Producto</th>
                 ${E.map(e => `<th colspan="${S.length + 1}" class="emp-col">${esc(e.nombre)}</th>`).join('')}
@@ -255,9 +259,14 @@
         const ncols = 7 + E.length * (S.length + 1);
         $('conBody').innerHTML = `<tr><td colspan="${ncols}">Cargando...</td></tr>`;
         try {
-            const { data } = await api('/inventario/api/consolidado?' + params);
+            const r = await api('/inventario/api/consolidado?' + params);
+            const data = r.data;
+            const pend = r.pendientes || { cantidad: 0 };
+            $('conPendientes').innerHTML = pend.cantidad ? `<div class="inv-alerta warn"><div><b>🕒 ${pend.cantidad} movimiento(s) esperan aprobación (${cant(pend.unidades)} und)</b>
+                <div>Todavía NO suman al stock. Un supervisor debe aprobarlos en "Resumen".</div></div>
+                <button class="btn-mini sec" data-ir="resumen">Ver y aprobar</button></div>` : '';
             if (!data.length) {
-                $('conBody').innerHTML = `<tr><td colspan="${ncols}">No hay productos con stock para este filtro.</td></tr>`;
+                $('conBody').innerHTML = `<tr><td colspan="${ncols}">${$('conTodos').checked ? 'No hay productos para este filtro.' : 'No hay productos con stock para este filtro. Marca "Ver también sin stock" para ver todos los productos.'}</td></tr>`;
                 $('conFoot').textContent = '';
                 return;
             }
@@ -279,11 +288,13 @@
                     <td class="num">${soles(p.valor)}</td>
                     <td><span class="rot rot-${(p.rotacion || '').toLowerCase().replace(/\s+/g, '-')}">${esc(p.rotacion)}</span>${p.dias_sin_vender != null && p.total > 0 ? `<small class="dias">${p.dias_sin_vender} días sin vender</small>` : ''}</td>
                     <td><button class="btn-mini sec" data-kardex="${p.producto_id}" data-txt="${esc(p.codigo + ' · ' + p.descripcion)}">Kardex</button>
-                        <button class="btn-mini sec" data-donde="${p.producto_id}" data-txt="${esc(p.codigo + ' · ' + p.descripcion)}">¿Dónde?</button></td>
+                        <button class="btn-mini sec" data-donde="${p.producto_id}" data-txt="${esc(p.codigo + ' · ' + p.descripcion)}">¿Dónde?</button>
+                        ${!p.total && PUEDE.operar ? `<button class="btn-mini" data-stock-inicial="${p.producto_id}" data-txt="${esc(p.codigo + ' · ' + p.descripcion)}">➕ Stock inicial</button>` : ''}</td>
                 </tr>`;
             }).join('');
             const tot = data.reduce((a, p) => ({ u: a.u + p.total, v: a.v + p.valor }), { u: 0, v: 0 });
-            $('conFoot').textContent = `${data.length} productos · ${cant(tot.u)} unidades · ${soles(tot.v)} al costo promedio`;
+            const conStock = data.filter(p => p.total > 0).length;
+            $('conFoot').textContent = `${data.length} productos (${conStock} con stock) · ${cant(tot.u)} unidades · ${soles(tot.v)} al costo promedio`;
         } catch (e) {
             $('conBody').innerHTML = `<tr><td colspan="${ncols}" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
@@ -726,6 +737,8 @@
                     cantidad: r.cantidad, documento: r.orden_compra, docTipo: 'Orden de compra', tercero: r.proveedor_nombre,
                     recepcion_id: r.id, obs: 'Recepción ' + r.numero_recepcion });
             }
+        } else if (d.stockInicial) {
+            abrirMovimiento('ENTRADA', { motivo: 'STOCK_INICIAL', producto_id: Number(d.stockInicial), texto: d.txt });
         } else if (d.ubicar) {
             const s = JSON.parse(d.ubicar);
             abrirMovimiento('ENTRADA', { motivo: 'STOCK_INICIAL', producto_id: s.id, texto: s.txt, cantidad: s.stock, costo: s.costo });

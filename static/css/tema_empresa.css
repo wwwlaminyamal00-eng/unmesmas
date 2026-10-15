@@ -1,0 +1,86 @@
+/* ============================================================
+   Colores por empresa (pedido de Erika, 15/10/2026)
+   Las variables (--empresa, --empresa-soft, --empresa-sidebar, --empresa-dark, --topbar-*) las pone el
+   servidor en <html style="..."> con los colores de Configuración ▸ Empresas (erp_empresas).
+   Este archivo solo hace que los módulos que tenían colores fijos usen esas variables.
+   ============================================================ */
+
+/* Selector de empresa: se nota en qué empresa estás */
+.top-actions #empresaActiva {
+  border: 2px solid var(--empresa) !important;
+  color: var(--empresa-dark) !important;
+  font-weight: 800 !important;
+  background: var(--empresa-soft) !important;
+}
+
+/* Franja superior del color de la empresa */
+html[data-empresa] .main::before,
+html[data-empresa] main::before {
+  content: "";
+  display: block;
+  height: 4px;
+  background: var(--empresa);
+  margin: -1px 0 0;
+}
+
+/* Logo / sidebar */
+html[data-empresa] .sidebar .logo { color: var(--empresa) !important; }
+html[data-empresa] .sidebar { background: var(--empresa-sidebar); }
+
+/* Botones principales */
+html[data-empresa] .btn-primary,
+html[data-empresa] .btn.btn-primary,
+html[data-empresa] .btn-create {
+  background: var(--empresa) !important;
+  border-color: var(--empresa) !important;
+  color: #FFFFFF !important;
+}
+html[data-empresa] .btn-primary:hover,
+html[data-empresa] .btn.btn-primary:hover,
+html[data-empresa] .btn-create:hover { background: var(--empresa-hover, var(--empresa)) !important; }
+html[data-empresa] .btn-secondary:hover { border-color: var(--empresa) !important; color: var(--empresa) !important; }
+
+/* Pestañas */
+html[data-empresa] .tab-btn.active {
+  background: var(--empresa) !important;
+  border-color: var(--empresa) !important;
+  color: #FFFFFF !important;
+}
+html[data-empresa] .tab-btn.active .tab-badge { background: #FFFFFF !important; color: var(--empresa) !important; }
+
+/* Tarjetas e indicadores */
+html[data-empresa] .inv-kpi,
+html[data-empresa] .fin-kpi,
+html[data-empresa] .card { border-top: 3px solid var(--empresa); }
+html[data-empresa] .card-icon { color: var(--empresa) !important; }
+html[data-empresa] .inv-title,
+html[data-empresa] .fin-head h2,
+html[data-empresa] .clean-header h2 { color: var(--empresa-dark); }
+
+/* Encabezados de tablas y modales */
+html[data-empresa] .inv-table thead th,
+html[data-empresa] .fin-table thead th,
+html[data-empresa] .master-table thead th {
+  border-bottom: 2px solid var(--empresa) !important;
+}
+html[data-empresa] .modal-head { border-bottom: 3px solid var(--empresa) !important; }
+
+/* Etiquetas (badges) de la empresa */
+html[data-empresa] .badge-empresa,
+html[data-empresa] .company-badge-title {
+  background: var(--empresa-soft) !important;
+  color: var(--empresa) !important;
+  border: 1px solid var(--empresa) !important;
+}
+
+/* Títulos de las listas (antes rojos fijos) */
+html[data-empresa] .master-title-wrap::before { background: var(--empresa) !important; }
+html[data-empresa] .master-title { color: var(--empresa) !important; }
+
+/* Campos con foco */
+html[data-empresa] input:focus,
+html[data-empresa] select:focus,
+html[data-empresa] textarea:focus { outline-color: var(--empresa); }
+
+/* Aviso cuando se ven todas las empresas */
+html[data-empresa="TODAS"] .top-actions #empresaActiva { background: #F1F5F9 !important; }
