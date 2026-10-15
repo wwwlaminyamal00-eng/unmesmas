@@ -226,14 +226,14 @@
     // FORMULARIO DE ORDEN DE COMPRA
     // ========================================================
     function sedeDeclarada(empresaId, sedeId) {
-        const r = cat.registro.find(x => Number(x.empresa_id) === Number(empresaId) && Number(x.almacen_id) === Number(sedeId));
+        const r = cat.registro.find(x => String(x.empresa_id) === String(empresaId) && Number(x.almacen_id) === Number(sedeId));
         if (!r) return null;
         return !!(r.registrado_sunat || r.es_domicilio_fiscal);
     }
 
     function avisoSunat() {
         const ok = sedeDeclarada($('ocEmp').value, $('ocSede').value);
-        const emp = (cat.empresas.find(e => e.id === Number($('ocEmp').value)) || {}).nombre || '';
+        const emp = (cat.empresas.find(e => String(e.id) === String($('ocEmp').value)) || {}).nombre || '';
         const sede = (cat.sedes.find(s => s.id === Number($('ocSede').value)) || {}).nombre || '';
         $('ocSunat').innerHTML = ok === false
             ? `<div class="inv-aviso">⚠️ ${esc(sede)} no está declarada en SUNAT como establecimiento de ${esc(emp)}. La guía del proveedor debe llegar a un local de la empresa que compra. Pide a contabilidad que la declare (Inventario ▸ Sedes y SUNAT) o elige otra sede.</div>`

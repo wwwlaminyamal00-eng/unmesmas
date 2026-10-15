@@ -3,7 +3,9 @@ Configuración de pruebas.
 Las pruebas usan una base PostgreSQL LOCAL y VACÍA (nunca la de producción):
     export TEST_DATABASE_URL="postgresql://postgres@localhost:5432/erp_pruebas"
     pytest -q tests
-La base se recrea desde tests/schema_pruebas.sql en cada ejecución.
+La base se recrea en cada ejecución. Por defecto con tests/schema_supabase_real.sql, la estructura
+real de Supabase (ERP_KCF, leída el 14/10/2026, sin datos). Para usar el esquema reconstruido anterior:
+    export TEST_ESQUEMA=reconstruido
 """
 import os
 import sys
@@ -19,6 +21,8 @@ if 'supabase' in TEST_DB:
 os.environ['DATABASE_URL'] = TEST_DB
 os.environ.setdefault('SECRET_KEY', 'clave-solo-para-pruebas')
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ESQUEMA = os.environ.get('TEST_ESQUEMA', 'real')
+ARCHIVO_ESQUEMA = 'schema_pruebas.sql' if ESQUEMA == 'reconstruido' else 'schema_supabase_real.sql'
 sys.path.insert(0, RAIZ)
 
 
@@ -26,17 +30,17 @@ def _recrear_esquema():
     conn = psycopg2.connect(TEST_DB)
     conn.autocommit = True
     cur = conn.cursor()
-    cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
-    with open(os.path.join(RAIZ, 'tests', 'schema_pruebas.sql'), encoding='utf-8') as f:
+    cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS auth CASCADE;")
+    with open(os.path.join(RAIZ, 'tests', ARCHIVO_ESQUEMA), encoding='utf-8') as f:
         cur.execute(f.read())
     from werkzeug.security import generate_password_hash
     cur.execute("""
-        INSERT INTO usuarios (usuario_sistema, nombres_apellidos, correo, password, rol, estado) VALUES
-        ('admin', 'Admin Pruebas', 'admin@test.pe', %s, 'administrador', 'activo'),
-        ('vendedor', 'Vendedor Pruebas', 'vend@test.pe', %s, 'vendedor', 'activo'),
-        ('hellen', 'Hellen Validadora', 'hellen@test.pe', %s, 'hellen', 'activo'),
-        ('legado', 'Usuario Antiguo', 'legado@test.pe', 'clave-plana-123', 'vendedor', 'activo'),
-        ('inactivo', 'Usuario Inactivo', 'inac@test.pe', %s, 'vendedor', 'inactivo')
+        INSERT INTO usuarios (usuario_sistema, usuario, nombres_apellidos, nombre_completo, correo, password, rol, estado) VALUES
+        ('admin', 'admin', 'Admin Pruebas', 'Admin Pruebas', 'admin@test.pe', %s, 'administrador', 'activo'),
+        ('vendedor', 'vendedor', 'Vendedor Pruebas', 'Vendedor Pruebas', 'vend@test.pe', %s, 'vendedor', 'activo'),
+        ('hellen', 'hellen', 'Hellen Validadora', 'Hellen Validadora', 'hellen@test.pe', %s, 'hellen', 'activo'),
+        ('legado', 'legado', 'Usuario Antiguo', 'Usuario Antiguo', 'legado@test.pe', 'clave-plana-123', 'vendedor', 'activo'),
+        ('inactivo', 'inactivo', 'Usuario Inactivo', 'Usuario Inactivo', 'inac@test.pe', %s, 'vendedor', 'inactivo')
     """, (generate_password_hash('Admin#2026!'), generate_password_hash('Vende#2026!'),
           generate_password_hash('Valida#2026!'), generate_password_hash('Inac#2026!')))
     cur.execute("""
@@ -44,9 +48,9 @@ def _recrear_esquema():
         VALUES ('RUC', '20100070970', 'CLIENTE INDUSTRIAL S.A.C.', 'Av. Principal 123, Lima', 'CLI-0001', true);
         INSERT INTO proveedores (razon_social, ruc, direccion, codigo_proveedor, activo)
         VALUES ('PROVEEDOR ACEROS S.A.C.', '20600011111', 'Av. Industrial 1', 'PROV-0001', true);
-        INSERT INTO productos (codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo)
-        VALUES ('PRD-0001', 'GUANTE DE NITRILO', 'ANSELL', 'PAR', 10, 15, 0, true),
-               ('PRD-0002', 'CASCO DE SEGURIDAD', '3M', 'UND', 20, 32, 0, true);
+        INSERT INTO productos (familia, codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo)
+        VALUES ('GENERAL', 'PRD-0001', 'GUANTE DE NITRILO', 'ANSELL', 'PAR', 10, 15, 0, true),
+               ('GENERAL', 'PRD-0002', 'CASCO DE SEGURIDAD', '3M', 'UND', 20, 32, 0, true);
     """)
     cur.close()
     conn.close()

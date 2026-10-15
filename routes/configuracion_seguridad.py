@@ -14,6 +14,7 @@ from datetime import datetime
 import json
 from database import db_query, db_execute, db_tx, get_connection
 from psycopg2.extras import RealDictCursor
+from utils import columnas_usuario_antiguas
 
 # ============================================================
 # BLUEPRINT
@@ -385,8 +386,9 @@ def create_usuario():
             cur.execute("""
                 INSERT INTO usuarios (
                     auth_user_id, usuario_sistema, nombres_apellidos,
-                    area, correo, celular, estado
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    area, correo, celular, estado,
+                    usuario, nombre_completo, password, rol
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 data.get('auth_user_id'),
@@ -396,7 +398,7 @@ def create_usuario():
                 data.get('correo'),
                 data.get('celular'),
                 data.get('estado', 'activo')
-            ))
+            ) + columnas_usuario_antiguas(data))
             
             usuario_id = cur.fetchone()['id']
             

@@ -1120,13 +1120,15 @@ def obtener_usuario_por_id(usuario_id):
         return None
 
 def crear_usuario(data):
+    from utils import columnas_usuario_antiguas
     try:
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("""
-                INSERT INTO usuarios (auth_user_id, usuario_sistema, nombres_apellidos, area, correo, celular, estado)
-                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
-            """, (data.get('auth_user_id'), data.get('usuario_sistema'), data.get('nombres_apellidos'), data.get('area'), data.get('correo'), data.get('celular'), data.get('estado', 'activo')))
+                INSERT INTO usuarios (auth_user_id, usuario_sistema, nombres_apellidos, area, correo, celular, estado,
+                                      usuario, nombre_completo, password, rol)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            """, (data.get('auth_user_id'), data.get('usuario_sistema'), data.get('nombres_apellidos'), data.get('area'), data.get('correo'), data.get('celular'), data.get('estado', 'activo')) + columnas_usuario_antiguas(data))
             usuario_id = cur.fetchone()['id']
             for acceso in data.get('empresas_acceso', []):
                 if acceso.get('empresa_id') and acceso.get('rol_id'):

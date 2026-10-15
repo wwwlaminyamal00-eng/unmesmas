@@ -163,6 +163,8 @@ function badgeStatus(s) {
         'aceptado por cliente': 'b-accepted',
         'anulada': 'b-canceled',
         'anulado': 'b-canceled',
+        'rechazada': 'b-rejected',
+        'rechazado': 'b-rejected',
         'cancelada': 'b-canceled',
         'cancelado': 'b-canceled',
         'no concretada': 'b-lost',
@@ -890,10 +892,10 @@ function renderPedidos() {
             const fechaDisplay = formatearFechaSinZona(r.fecha || r.created_at);
             
             return `
-            <tr>
+            <tr class="${pcDespachado(r) ? 'fila-despachada' : ''}">
                 <td>${i + 1}</td>
                 <td class="date-cell">${fechaDisplay}</td>
-                <td>${estadoBadge}</td>
+                <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
                 <td><b>${r.numero || '-'}</b>${badgeNuevo(r, 'created_at')}</td>
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
@@ -978,10 +980,10 @@ function renderPedidos() {
         const fechaDisplay = formatearFechaSinZona(r.fecha || r.created_at);
         
         return `
-        <tr>
+        <tr class="${pcDespachado(r) ? 'fila-despachada' : ''}">
             <td>${i + 1}</td>
             <td class="date-cell">${fechaDisplay}</td>
-            <td>${estadoBadge}</td>
+            <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
             <td><b>${r.numero || '-'}</b></td>
             <td>${r.cotizacion_numero || '-'}</td>
             <td class="left"><b>${r.cliente || '-'}</b></td>
@@ -1115,7 +1117,8 @@ function renderCotizaciones() {
                 'aceptada por cliente': ['aceptada por cliente', 'aceptada', 'aceptado', 'aceptado por cliente'],
                 'aceptada': ['aceptada por cliente', 'aceptada', 'aceptado', 'aceptado por cliente'],
                 'no concretada': ['no concretada', 'no concretado', 'perdida', 'perdido'],
-                'anulada': ['anulada', 'anulado', 'cancelada', 'cancelado']
+                'anulada': ['anulada', 'anulado', 'cancelada', 'cancelado'],
+                'rechazada': ['rechazada', 'rechazado']
             };
             
             const variaciones = estadoMap[estadoFiltro] || [estadoFiltro];
@@ -1139,6 +1142,7 @@ if (kpiContainer) {
     const porValidar = cotizacionesData.filter(x => x.estado === 'Por validar').length;  // 🔽 NUEVO
     const generadas = cotizacionesData.filter(x => x.estado === 'Generada').length;
     const aceptadas = cotizacionesData.filter(x => x.estado === 'Aceptada por Cliente' || x.estado === 'Aceptada').length;
+    const rechazadas = cotizacionesData.filter(x => x.estado === 'Rechazada').length;
     
     kpiContainer.innerHTML = `
         <div class="status-card"><div class="status-dot dot-total-plomo">T</div><div><small>Total</small><b>${total}</b></div></div>
@@ -1146,6 +1150,7 @@ if (kpiContainer) {
         <div class="status-card"><div class="status-dot dot-pending">⭐</div><div><small>Por validar</small><b>${porValidar}</b></div></div>
         <div class="status-card"><div class="status-dot dot-send">E</div><div><small>Generadas</small><b>${generadas}</b></div></div>
         <div class="status-card"><div class="status-dot dot-ok">A</div><div><small>Aceptadas</small><b>${aceptadas}</b></div></div>
+        <div class="status-card"><div class="status-dot dot-rechazada">R</div><div><small>Rechazadas</small><b>${rechazadas}</b></div></div>
     `;
 }
     
@@ -1187,7 +1192,7 @@ if (cotizacionViewMode === 'principal') {
         <tr>
             <td><b>${i + 1}</b></td>
             <td class="date-cell">${formatFecha(r.fecha)}</td>
-            <td>${badgeStatus(r.estado)}</td>
+            <td>${badgeStatus(r.estado)}${abastBadge('cotizaciones', r.id)}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
@@ -1250,7 +1255,7 @@ if (cotizacionViewMode === 'principal') {
         <tr>
             <td><b>${i + 1}</b></td>
             <td class="date-cell">${formatFecha(r.fecha)}</td>
-            <td>${badgeStatus(r.estado)}</td>
+            <td>${badgeStatus(r.estado)}${abastBadge('cotizaciones', r.id)}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b></td>
             <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
@@ -1406,11 +1411,12 @@ function renderDespachos() {
             }
         }
         
+        const despachado = r.estado === 'Despachado' || r.estado === 'Entregado';
         return `
-        <tr>
+        <tr class="${despachado ? 'fila-despachada' : ''}">
             <td>${i + 1}</td>
             <td class="date-cell">${fechaDisplay}</td>
-            <td>${badgeStatus(r.estado)}</td>
+            <td>${despachado ? `<span class="badge badge-despachado">🚚 ${r.estado}</span>` : badgeStatus(r.estado)}${despachado ? '' : abastBadge('despachos', r.id)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.pc_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
@@ -1420,7 +1426,8 @@ function renderDespachos() {
             <td>
                 ${r.estado !== 'Despachado' && r.estado !== 'Entregado' ? 
                     `<button class="btn btn-sm btn-green" onclick="marcarDespachado(${r.id})" style="padding:4px 10px; font-size:10px; border-radius:6px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer;">🚚 Despachar</button>` : 
-                    `<span class="badge b-ok">✅ ${r.estado || 'Completado'}</span>`
+                    `<span class="badge b-ok">✅ ${r.estado || 'Completado'}</span>
+                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>`
                 }
             </td>
         </tr>`;
@@ -1698,7 +1705,8 @@ function renderGuias() {
             <td>${sd(r.comprobante)}</td>
             <td>${sd(r.origen)}</td>
             <td>${sd(r.destino)}</td>
-            <td>
+            <td style="white-space:nowrap;">
+                ${!r.comprobante ? `<button class="btn-factura-guia" onclick="crearFacturaDesdeGuia(${r.id})" title="Crear la factura con los datos de esta guía">🧾 Crear factura</button>` : ''}
                 <button class="kebab" onclick="showGuiaMenu(event, ${r.id})">⋮</button>
             </td>
         </tr>
@@ -4411,18 +4419,27 @@ async function marcarDespachado(id) {
     const numero = despacho.numero || 'DESP-XXXXXX';
     const cliente = despacho.cliente || 'Cliente';
     
+    // De qué empresa y sede sale la mercadería: el stock se descuenta de ahí (Inventario)
+    const ubic = await prepararUbicacionDespacho(id);
+    if (!ubic) return;
+    
     showConfirmModal(
         '🚚 ¿Marcar como despachado?',
-        `Estás a punto de marcar como <b>"Despachado"</b> el despacho <b>${numero}</b> del cliente <b>${cliente}</b>.`,
-        '⚠️ Esta acción creará una Guía de Remisión y es irreversible.',
+        `Estás a punto de marcar como <b>"Despachado"</b> el despacho <b>${numero}</b> del cliente <b>${cliente}</b>.${ubic.html}`,
+        '⚠️ Se descontará el stock de la empresa y sede elegidas y se creará una Guía de Remisión.',
         async function() {
             try {
+                const [empresaId, almacenId] = String(window._despUbicacion || '|').split('|');
+                if (!empresaId || !almacenId) {
+                    showToast('❌ Elige de qué empresa y sede sale la mercadería', 'error');
+                    return;
+                }
                 showToast('⏳ Procesando despacho...', 'info');
                 
-                // PASO 1: Cambiar estado del despacho
+                // PASO 1: Cambiar estado del despacho (y descontar el stock)
                 const response = await apiFetch(`/ventas/api/despachos/${id}/toggle`, {
                     method: 'PUT',
-                    body: JSON.stringify({ estado: 'Despachado' })
+                    body: JSON.stringify({ estado: 'Despachado', empresa_id: empresaId, almacen_id: almacenId })
                 });
                 
                 if (!response.success) {
@@ -4430,7 +4447,7 @@ async function marcarDespachado(id) {
                     return;
                 }
                 
-                showToast('✅ Despacho marcado como Despachado', 'success');
+                showToast('✅ ' + (response.message || 'Despacho marcado como Despachado'), 'success');
                 
                 // ============================================================
                 // OBTENER LOS ITEMS DEL DESPACHO
@@ -5681,17 +5698,19 @@ function showCotizacionMenu(event, id) {
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
     `;
     
-    // Mostrar "Crear guía" solo si está aceptada
+    // Orden pedido en el Excel de pendientes: 1) Crear despacho, 2) Crear guía, 3) Crear factura en KCF
+    menuHtml += `
+        <button onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
+    `;
     if (isAccepted) {
         menuHtml += `
-            <button class="menu-accepted" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">🚚 Crear guía</button>
-            <button class="menu-accepted" onclick="createDocFromCotizacion(${id},'factura');this.closest('.menu-pop').remove()">🧾 Crear factura</button>
+            <button class="menu-accepted" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">📦 Crear guía</button>
+            <button class="menu-accepted" onclick="createDocFromCotizacion(${id},'factura');this.closest('.menu-pop').remove()">🧾 Crear factura en KCF</button>
         `;
     }
     
     menuHtml += `
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
-        <button onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
         <button class="danger" onclick="deleteCotizacion(${id});this.closest('.menu-pop').remove()">🗑 Eliminar</button>
     `;
     
@@ -15977,15 +15996,18 @@ function showCotizacionMenu(event, id) {
         `;
     }
     
+    // Orden pedido en el Excel de pendientes: 1) Crear despacho, 2) Crear guía, 3) Crear factura en KCF
+    menuHtml += `
+        <button class="menu-despacho" onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
+    `;
     if (isAccepted) {
         menuHtml += `
-            <button class="menu-guia" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">🚚 Crear guía</button>
-            <button class="menu-factura" onclick="createDocFromCotizacion(${id},'factura');this.closest('.menu-pop').remove()">🧾 Crear factura</button>
+            <button class="menu-guia" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">📦 Crear guía</button>
+            <button class="menu-factura" onclick="createDocFromCotizacion(${id},'factura');this.closest('.menu-pop').remove()">🧾 Crear factura en KCF</button>
         `;
     }
     
     menuHtml += `
-        <button class="menu-despacho" onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
         <div class="menu-divider"></div>
         <button class="danger" onclick="deleteCotizacion(${id});this.closest('.menu-pop').remove()">🗑 Eliminar</button>
     `;
@@ -16081,6 +16103,7 @@ function showGuiaMenu(event, id) {
         <button onclick="openGuiaModal(${id});this.closest('.menu-pop').remove()">👁 Ver / Editar</button>
         <button onclick="previewGuiaPdf(${id});this.closest('.menu-pop').remove()" style="color:#8B5CF6;font-weight:900;">👁️ Vista Previa</button>
         <button onclick="generateGuiaPdf(${id});this.closest('.menu-pop').remove()">📄 Descargar PDF</button>
+        <button onclick="crearFacturaDesdeGuia(${id});this.closest('.menu-pop').remove()" style="color:#1D4ED8;font-weight:900;">🧾 Crear factura</button>
     `;
     
     // 🔽 MOSTRAR OPCIÓN DE RÓTULO SOLO SI ESTÁ GENERADA/EMITIDA 🔽
@@ -16735,3 +16758,134 @@ window.now = now;
 
 
 console.log('✅ Todas las funciones exportadas al window correctamente');
+
+
+// ============================================================
+// REQUERIMIENTOS DEL EXCEL DE PENDIENTES (14/10/2026)
+// ============================================================
+
+// 1) PC despachado: letras negras con fondo azulito (CSS .fila-despachada en ventas.css)
+function pcDespachado(r) {
+    return r && (r.despacho_estado === 'Despachado' || r.despacho_estado === 'Entregado');
+}
+function badgeDespachoPc(r) {
+    return pcDespachado(r) ? `<br><span class="badge badge-despachado">🚚 ${r.despacho_estado}</span>` : '';
+}
+
+// 4) "Pendiente por compra" / "Pendiente por recojo": lo calcula el servidor con el stock libre del grupo
+//    (Inventario) y las órdenes de compra aprobadas (Compras). Ver routes/abastecimiento.py
+const abastData = { pc: {}, cotizaciones: {}, despachos: {} };
+const ABAST_ESTILOS = {
+    'Pendiente por compra': { icono: '🛒', clase: 'abast-compra' },
+    'Pendiente por recojo': { icono: '🚚', clase: 'abast-recojo' },
+    'Por llegar': { icono: '📦', clase: 'abast-llegar' },
+    'Con stock': { icono: '✅', clase: 'abast-ok' }
+};
+function abastBadge(tipo, id) {
+    const info = (abastData[tipo] || {})[id];
+    if (!info || !info.estado) return '';
+    const est = ABAST_ESTILOS[info.estado] || { icono: '•', clase: 'abast-ok' };
+    const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
+    return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono} ${info.estado}</span>`;
+}
+async function cargarAbastecimiento() {
+    const tipos = ['pc', 'cotizaciones', 'despachos'];
+    const respuestas = await Promise.all(tipos.map(t =>
+        fetch(`/api/abastecimiento/${t}`, { credentials: 'same-origin' })
+            .then(r => r.ok ? r.json() : null).catch(() => null)));
+    respuestas.forEach((r, i) => { if (r && r.success) abastData[tipos[i]] = r.data || {}; });
+    if (typeof pedidosData !== 'undefined' && pedidosData.length) renderPedidos();
+    if (typeof cotizacionesData !== 'undefined' && cotizacionesData.length) renderCotizaciones();
+    if (typeof despachosData !== 'undefined' && despachosData.length) renderDespachos();
+}
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(cargarAbastecimiento, 1500);
+    setInterval(cargarAbastecimiento, 120000);
+});
+window.cargarAbastecimiento = cargarAbastecimiento;
+
+// 5) Crear la factura desde una guía de remisión: abre el comprobante con la guía ya vinculada
+async function crearFacturaDesdeGuia(id) {
+    const guia = (guiasData || []).find(g => g.id === id);
+    if (!guia) {
+        showToast('❌ Guía no encontrada', 'error');
+        return;
+    }
+    if (guia.comprobante) {
+        showToast(`ℹ️ Esta guía ya tiene el comprobante ${guia.comprobante}`, 'info');
+        return;
+    }
+    await openComprobanteModal();
+    const valor = `${guia.serie}-${guia.numero}`;
+    const sel = document.getElementById('compGuia');
+    if (!sel) return;
+    if (![...sel.options].some(o => o.value === valor)) sel.add(new Option(valor, valor));
+    sel.value = valor;
+    loadComprobanteFromGuia(valor);
+    if (typeof actualizarObservacionesComprobante === 'function') actualizarObservacionesComprobante();
+    showToast(`🧾 Factura preparada con los datos de la guía ${valor}. Revisa y guarda.`, 'success');
+}
+window.crearFacturaDesdeGuia = crearFacturaDesdeGuia;
+
+// ============================================================
+// STOCK AUTOMÁTICO AL DESPACHAR / ANULAR (15/10/2026)
+// ============================================================
+async function prepararUbicacionDespacho(id) {
+    let info;
+    try {
+        info = await apiFetch(`/ventas/api/despachos/${id}/ubicaciones`);
+    } catch (e) {
+        showToast('❌ No se pudo consultar el stock: ' + e.message, 'error');
+        return null;
+    }
+    const opciones = info.opciones || [];
+    if (!opciones.length) {
+        showToast('❌ No hay empresas o sedes registradas', 'error');
+        return null;
+    }
+    const primera = opciones[0];
+    window._despUbicacion = primera.alcanza ? `${primera.empresa_id}|${primera.almacen_id}` : '';
+    const opts = opciones.map(o => {
+        const valor = `${o.empresa_id}|${o.almacen_id}`;
+        const texto = o.alcanza ? `✅ ${o.empresa} · ${o.sede} (hay todo)`
+                                : `⚠️ ${o.empresa} · ${o.sede} (falta ${o.faltan.length} producto(s))`;
+        return `<option value="${valor}" ${valor === window._despUbicacion ? 'selected' : ''}>${texto}</option>`;
+    }).join('');
+    const productos = (info.productos || []).map(p => `${p.cantidad} × ${p.producto}`).join('<br>');
+    const aviso = (info.sin_codigo || []).length
+        ? `<div style="color:#B45309;font-size:12px;margin-top:6px">Sin código del catálogo (no se descuentan): ${info.sin_codigo.join(', ')}</div>` : '';
+    const html = `
+        <div style="text-align:left;margin-top:14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px">
+            <label style="font-weight:800;font-size:13px;color:#0F172A">¿De qué empresa y sede sale?</label>
+            <select id="despUbicacion" onchange="window._despUbicacion=this.value"
+                    style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid #CBD5E1;font-size:13px">
+                ${window._despUbicacion ? '' : '<option value="" selected>— Elige empresa y sede —</option>'}${opts}
+            </select>
+            <div style="font-size:12px;color:#475569;margin-top:8px;max-height:90px;overflow:auto">${productos}</div>${aviso}
+        </div>`;
+    return { html };
+}
+
+function anularDespacho(id) {
+    const despacho = (despachosData || []).find(d => d.id === id) || {};
+    showDeleteConfirmModal(
+        '↩️ ¿Anular despacho?',
+        `Vas a anular el despacho <b>${despacho.numero || ''}</b> de <b>${despacho.cliente || ''}</b>.`,
+        '⚠️ La mercadería vuelve al stock de la misma empresa y sede, y vuelve a quedar separada para el cliente.',
+        async function(motivo) {
+            try {
+                const r = await apiFetch(`/ventas/api/despachos/${id}`, {
+                    method: 'DELETE',
+                    body: JSON.stringify({ motivo: motivo })
+                });
+                showToast('✅ ' + (r.message || 'Despacho anulado'), 'success');
+                if (typeof loadDespachos === 'function') loadDespachos();
+            } catch (e) {
+                showToast('❌ ' + e.message, 'error');
+            }
+        },
+        '↩️ Sí, anular'
+    );
+}
+window.anularDespacho = anularDespacho;
+window.prepararUbicacionDespacho = prepararUbicacionDespacho;

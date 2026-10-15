@@ -4,7 +4,7 @@
 -- Seguro de ejecutar varias veces: solo AGREGA columnas y tablas (IF NOT EXISTS). No borra ni cambia datos.
 BEGIN;
 ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
-ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id UUID;
 ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
 ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS modalidad_entrega VARCHAR(30);
 ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS direccion_recojo TEXT;
@@ -26,7 +26,7 @@ ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS pedido_numero VARCHAR(
 ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cliente VARCHAR(255);
 ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cantidad_recibida NUMERIC(14,4) DEFAULT 0;
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS producto_id INTEGER;
-ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id UUID;
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS almacen_id INTEGER;
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(16,6);
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS com_recepcion_id INTEGER;
@@ -37,7 +37,7 @@ ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS cliente VARCHAR(255)
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS guia_proveedor VARCHAR(60);
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS lote_serie VARCHAR(120);
 ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
-ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
+ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id UUID;
 ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
 ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS monto_esperado NUMERIC(14,2);
 ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS cuadra BOOLEAN;
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS com_recepciones (
     numero VARCHAR(30) UNIQUE,
     fecha TIMESTAMP NOT NULL DEFAULT NOW(),
     orden_compra_id INTEGER NOT NULL,
-    empresa_id INTEGER,
+    empresa_id UUID,
     almacen_id INTEGER NOT NULL,
     guia_proveedor VARCHAR(60) NOT NULL,
     traido_por_tipo VARCHAR(20) NOT NULL,

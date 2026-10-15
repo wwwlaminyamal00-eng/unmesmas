@@ -435,8 +435,8 @@ def update_producto(producto_id):
         db_execute("""
             UPDATE productos SET
                 descripcion = %s, descripcion_larga = %s,
-                modelo = %s, marca = %s, familia = %s, categoria_derivada = %s,
-                unidad = %s, peso = %s, volumen = %s,
+                modelo = %s, marca = %s, familia = COALESCE(NULLIF(%s, ''), familia), categoria_derivada = %s,
+                unidad = COALESCE(NULLIF(%s, ''), unidad), peso = %s, volumen = %s,
                 observaciones = %s, transporte = %s,
                 costo_unitario = %s, precio_unitario = %s,
                 stock = CASE WHEN EXISTS (SELECT 1 FROM inv_stock WHERE producto_id = productos.id)
@@ -454,7 +454,7 @@ def update_producto(producto_id):
             data.get('descripcion_larga', ''),
             data.get('modelo'),
             data.get('marca'),
-            data.get('familia'),
+            data.get('familia') or data.get('categoria'),
             data.get('categoria_derivada', '') or data.get('subcategoria', ''),
             data.get('unidad'),
             safe_float(data.get('peso')),

@@ -24,21 +24,21 @@ def _sql(q, params=None, fetch=True):
 def esc(app):
     """Crea empresas, sedes, productos y usuarios de almacén y de control."""
     _sql("""
-        INSERT INTO erp_empresas (codigo, nombre_corto, razon_social, ruc, estado) VALUES
-            ('KCF', 'KCF', 'KCF S.A.C.', '20111111111', 'activo'),
-            ('AGD', 'AGD', 'AGD S.A.C.', '20222222222', 'activo');
+        INSERT INTO erp_empresas (codigo, nombre_corto, nombre_comercial, razon_social, ruc, estado, color_primario, color_secundario, color_pastel) VALUES
+            ('KCF', 'KCF', 'KCF', 'KCF S.A.C.', '20111111111', 'activo', '#D6243A', '#1D1A1F', '#FDE8EB'),
+            ('AGD', 'AGD', 'AGD', 'AGD S.A.C.', '20222222222', 'activo', '#1E3A8A', '#1D1A1F', '#DBEAFE');
         INSERT INTO almacenes (codigo, nombre, direccion, activo) VALUES
             ('SMP', 'San Martín de Porres', 'Av. Perú 123, SMP', true),
             ('BRE', 'Breña', 'Jr. Huaraz 456, Breña', true);
-        INSERT INTO productos (codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo) VALUES
-            ('INV-001', 'IPHONE 17 PRO MAX NARANJA', 'APPLE', 'UND', 5000, 6500, 0, true),
-            ('INV-002', 'GUANTE ANTICORTE', '3M', 'PAR', 10, 18, 0, true),
-            ('INV-003', 'LENTE DE SEGURIDAD', 'STEELPRO', 'UND', 5, 9, 7, true);
+        INSERT INTO productos (familia, codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo) VALUES
+            ('GENERAL', 'INV-001', 'IPHONE 17 PRO MAX NARANJA', 'APPLE', 'UND', 5000, 6500, 0, true),
+            ('GENERAL', 'INV-002', 'GUANTE ANTICORTE', '3M', 'PAR', 10, 18, 0, true),
+            ('GENERAL', 'INV-003', 'LENTE DE SEGURIDAD', 'STEELPRO', 'UND', 5, 9, 7, true);
     """, fetch=False)
-    _sql("""INSERT INTO usuarios (usuario_sistema, nombres_apellidos, correo, password, rol, estado) VALUES
-            ('alm1', 'Almacén Uno', 'a1@t.pe', %s, 'almacen', 'activo'),
-            ('alm2', 'Almacén Dos', 'a2@t.pe', %s, 'almacen', 'activo'),
-            ('ctrl', 'Control Inventario', 'c@t.pe', %s, 'control', 'activo')""",
+    _sql("""INSERT INTO usuarios (usuario_sistema, usuario, nombres_apellidos, nombre_completo, correo, password, rol, estado) VALUES
+            ('alm1', 'alm1', 'Almacén Uno', 'Almacén Uno', 'a1@t.pe', %s, 'almacen', 'activo'),
+            ('alm2', 'alm2', 'Almacén Dos', 'Almacén Dos', 'a2@t.pe', %s, 'almacen', 'activo'),
+            ('ctrl', 'ctrl', 'Control Inventario', 'Control Inventario', 'c@t.pe', %s, 'control', 'activo')""",
          (generate_password_hash('Alm#2026!'), generate_password_hash('Alm#2026!'), generate_password_hash('Ctrl#2026!')),
          fetch=False)
     emp = dict(_sql("SELECT codigo, id FROM erp_empresas"))

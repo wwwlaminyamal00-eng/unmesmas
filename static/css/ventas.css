@@ -3209,3 +3209,61 @@ body.kcf-theme {
     }
 }
 
+/* ============================================================ */
+/* REQUERIMIENTOS DEL EXCEL DE PENDIENTES (14/10/2026)          */
+/* ============================================================ */
+
+/* 1) Despacho / PC despachado: letras negras con fondo azulito */
+tr.fila-despachada > td {
+    background: #CFE7FF !important;
+    color: #000000 !important;
+    font-weight: 700;
+}
+tr.fila-despachada > td b,
+tr.fila-despachada > td .left { color: #000000 !important; }
+.badge.badge-despachado {
+    background: #9CCBFF !important;
+    color: #000000 !important;
+    border: 1px solid #5EA9F5;
+    font-weight: 900;
+}
+
+/* 2) Cotización rechazada por Hellen */
+.badge.b-rejected { background: #DC2626 !important; color: #fff !important; }
+.dot-rechazada { background: #DC2626; color: #fff; }
+
+/* 4) Pendiente por compra / por recojo */
+.abast-badge {
+    display: inline-block;
+    margin-top: 3px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: help;
+}
+.abast-compra { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+.abast-recojo { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+.abast-llegar { background: #E0E7FF; color: #3730A3; border: 1px solid #A5B4FC; }
+.abast-ok     { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+.abast-sin    { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
+
+/* 5) Guías de remisión: botón Crear factura */
+.btn-factura-guia {
+    height: 24px;
+    padding: 0 10px;
+    margin-right: 4px;
+    border: 0;
+    border-radius: 6px;
+    background: #1D4ED8;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-factura-guia:hover { background: #1E40AF; }
+/* Anular un despacho: el stock vuelve al inventario (15/10/2026) */
+.btn-anular-despacho{margin-left:6px;padding:3px 8px;font-size:10px;font-weight:800;border-radius:6px;border:1px solid #DC2626;background:#fff;color:#DC2626;cursor:pointer}
+.btn-anular-despacho:hover{background:#FEE2E2}

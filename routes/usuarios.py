@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, jsonify, session
 from database import db_query, db_execute, db_tx
 from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash
-from utils import es_admin
+from utils import es_admin, columnas_usuario_antiguas
 
 
 def _password_valida(pwd):
@@ -150,8 +150,9 @@ def create_usuario():
             cur.execute("""
                 INSERT INTO usuarios (
                     auth_user_id, usuario_sistema, nombres_apellidos,
-                    area, correo, celular, estado
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    area, correo, celular, estado,
+                    usuario, nombre_completo, password, rol
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 data.get('auth_user_id'),
@@ -161,7 +162,7 @@ def create_usuario():
                 data.get('correo'),
                 data.get('celular'),
                 data.get('estado', 'activo')
-            ))
+            ) + columnas_usuario_antiguas(data))
             
             usuario_id = cur.fetchone()['id']
 
@@ -198,6 +199,9 @@ def create_usuario():
             
     except Exception as e:
         print(f"❌ Error en create_usuario: {e}")
+        if 'auth_user_id' in str(e) and ('foreign key' in str(e).lower() or 'uuid' in str(e).lower()):
+            return jsonify({'success': False, 'error': 'Ese usuario no existe en Supabase Auth. Créalo primero en '
+                                                       'Supabase (Authentication ▸ Users) y copia su ID.'}), 400
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

@@ -1,4 +1,4 @@
-﻿# routes/ventas.py - INICIO CORREGIDO
+# routes/ventas.py - INICIO CORREGIDO
 
 import sys
 import os
@@ -394,7 +394,12 @@ def obtener_guias_db():
                 transportista_nombre, motivo_traslado, documento_asociado,
                 orden_compra_cliente, factura,
                 peso_total, items_json, observaciones, estado_sunat,
-                cdr_response, sunat_response, creado_por, created_at, updated_at
+                cdr_response, sunat_response, creado_por, created_at, updated_at,
+                COALESCE(NULLIF(factura, ''),
+                         (SELECT c.serie || '-' || c.numero FROM comprobantes c
+                          WHERE c.guia_vinculada = guias_remision.serie || '-' || guias_remision.numero
+                            AND COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
+                          ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada
             FROM guias_remision
             ORDER BY id DESC
         """
@@ -674,16 +679,21 @@ def guardar_comprobante_db(data):
 
 
 def actualizar_estado_comprobante_db(comp_id, nuevo_estado):
-    """Actualiza el estado de un comprobante"""
+    """Actualiza el estado de un comprobante. Si se anula, sus cobros en caja se anulan en la misma operación."""
     try:
-        query = """
-            UPDATE comprobantes 
-            SET estado_sunat = %s, updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, estado_sunat
-        """
-        result = db_query(query, (nuevo_estado, comp_id))
-        return result[0] if result else None
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""
+                UPDATE comprobantes 
+                SET estado_sunat = %s, updated_at = NOW()
+                WHERE id = %s
+                RETURNING id, estado_sunat
+            """, (nuevo_estado, comp_id))
+            fila = cur.fetchone()
+            if fila and (nuevo_estado or '').upper() in ('ANULADO', 'ANULADA'):
+                from routes.stock_automatico import anular_cobros_comprobante
+                fila['cobros_anulados'] = anular_cobros_comprobante(cur, comp_id, 'Anulación automática: el comprobante fue anulado')
+        return dict(fila) if fila else None
     except Exception as e:
         print(f"❌ Error en actualizar_estado_comprobante_db: {e}")
         raise
@@ -765,7 +775,9 @@ def obtener_pc_db():
                 medio, entrega, req_compra, guia, factura,
                 condicion_pago, vendedor,
                 created_at, updated_at,
-                items_json
+                items_json,
+                (SELECT d.estado FROM despachos d WHERE d.pc_id = pedido_compra_pc.id
+                 ORDER BY d.id DESC LIMIT 1) AS despacho_estado
             FROM pedido_compra_pc
             ORDER BY id DESC
         """
@@ -2084,8 +2096,12 @@ def api_guias_listar():
         for row in data:
             items = []
             try:
-                if row.get('items_json'):
-                    items = json.loads(row.get('items_json'))
+                crudo = row.get('items_json')
+                # items_json es JSONB en Supabase: llega ya como lista (antes json.loads fallaba y la guía salía sin productos)
+                if isinstance(crudo, list):
+                    items = crudo
+                elif crudo:
+                    items = json.loads(crudo)
             except:
                 pass
             
@@ -2108,7 +2124,8 @@ def api_guias_listar():
                 'ruc': row.get('ruc_destinatario'),
                 'cliente': row.get('destinatario_nombre'),
                 'cotizacion': row.get('documento_asociado'),
-                'comprobante': row.get('documento_asociado'),
+                # Antes mostraba la cotización como si fuera el comprobante: ahora es la factura de verdad
+                'comprobante': row.get('factura_vinculada') or '',
                 'origen': row.get('remitente_direccion'),
                 'destino': row.get('destinatario_direccion'),
                 'motivo': row.get('motivo_traslado'),
@@ -2386,6 +2403,14 @@ def api_comprobantes_listar():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _numero_8(fila):
+    """Número de comprobante con 8 dígitos (en Supabase la columna es numérica y se pierde el relleno)."""
+    fila = dict(fila)
+    if fila.get('numero') is not None and str(fila['numero']).isdigit():
+        fila['numero'] = str(fila['numero']).zfill(8)
+    return fila
+
+
 _SQL_INSERT_COMPROBANTE = """
     INSERT INTO comprobantes (
         tipo_comprobante, serie, numero, fecha_emision,
@@ -2596,6 +2621,12 @@ def api_comprobantes_guardar():
             'obs_retencion': obs_retencion,
             'creado_por': usuario_id
         }
+
+        # El número del comprobante es solo dígitos (en Supabase la columna es numérica)
+        numero_txt = str(comprobante_data['numero'] or '').strip()
+        if numero_txt and not numero_txt.isdigit():
+            return jsonify({'success': False, 'error': 'El número del comprobante solo debe tener dígitos (sin la serie).'}), 400
+        comprobante_data['numero'] = numero_txt.zfill(8) if numero_txt else None
         
         # ============================================================
         # SI TIENE ID, ACTUALIZAR
@@ -2609,8 +2640,11 @@ def api_comprobantes_guardar():
                 return jsonify({'success': False,
                                 'error': f'El comprobante está "{actual[0].get("estado_sunat")}" y ya no se puede modificar. '
                                          f'Para corregirlo emite una nota de crédito.'}), 409
+            if not comprobante_data['numero']:
+                comprobante_data['numero'] = actual[0].get('numero')
             if comprobante_data['numero'] and db_query(
-                    "SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND numero = %s AND id <> %s",
+                    "SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s "
+                    "AND NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint = %s::bigint AND id <> %s",
                     (comprobante_data['tipo_comprobante'], comprobante_data['serie'], comprobante_data['numero'], data['id'])):
                 return jsonify({'success': False, 'error': f"Ya existe el comprobante {comprobante_data['serie']}-{comprobante_data['numero']}"}), 409
             query = """
@@ -2675,7 +2709,7 @@ def api_comprobantes_guardar():
             result = db_query(query, params)
             
             if result:
-                return jsonify({'success': True, 'message': 'Comprobante actualizado', 'data': result[0]})
+                return jsonify({'success': True, 'message': 'Comprobante actualizado', 'data': _numero_8(result[0])})
             return jsonify({'success': False, 'error': 'No se pudo actualizar'}), 400
         
         # ============================================================
@@ -2687,7 +2721,8 @@ def api_comprobantes_guardar():
             # Numeración correlativa por tipo y serie, sin duplicados aunque se guarde en simultáneo
             bloquear_numeracion(cur, f"comprobantes:{comprobante_data['tipo_comprobante']}:{comprobante_data['serie']}")
             if numero_enviado:
-                cur.execute("SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND numero = %s",
+                cur.execute("SELECT 1 FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s "
+                            "AND NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint = %s::bigint",
                             (comprobante_data['tipo_comprobante'], comprobante_data['serie'], numero_enviado))
                 if cur.fetchone():
                     return jsonify({'success': False,
@@ -2696,13 +2731,13 @@ def api_comprobantes_guardar():
                 comprobante_data['numero'] = numero_enviado
             else:
                 cur.execute("""
-                    SELECT COALESCE(MAX(NULLIF(regexp_replace(numero, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
+                    SELECT COALESCE(MAX(NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
                     FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s
                 """, (comprobante_data['tipo_comprobante'], comprobante_data['serie']))
                 comprobante_data['numero'] = str(cur.fetchone()['siguiente']).zfill(8)
             cur.execute(_SQL_INSERT_COMPROBANTE, _params_insert_comprobante(comprobante_data))
             fila = cur.fetchone()
-        result = [dict(fila)] if fila else []
+        result = [_numero_8(dict(fila))] if fila else []
         if result:
             return jsonify({
                 'success': True,
@@ -2808,7 +2843,10 @@ def api_comprobantes_eliminar(id):
     try:
         result = actualizar_estado_comprobante_db(id, 'ANULADO')
         if result:
-            return jsonify({'success': True, 'message': 'Comprobante anulado'})
+            mensaje = 'Comprobante anulado'
+            if result.get('cobros_anulados'):
+                mensaje += f". Se anularon {result['cobros_anulados']} cobro(s) en caja"
+            return jsonify({'success': True, 'message': mensaje})
         return jsonify({'success': False, 'error': 'No se pudo anular'}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -2899,12 +2937,20 @@ def api_notas_credito_guardar():
         asociado = (data.get('comprobante_asociado') or '').strip()
         if asociado:
             comp = db_query("""
-                SELECT id, total FROM comprobantes
-                WHERE numero = %s OR (serie || '-' || numero) = %s
-                   OR (serie || '-' || LTRIM(numero, '0')) = %s
+                SELECT id, total, cliente_tipo_doc, cliente_numero_doc, cliente_nombre FROM comprobantes
+                WHERE numero::text = %s OR LPAD(numero::text, 8, '0') = %s
+                   OR (serie || '-' || numero::text) = %s
+                   OR (serie || '-' || LTRIM(numero::text, '0')) = %s
+                   OR (serie || '-' || LPAD(numero::text, 8, '0')) = %s
                 ORDER BY id DESC LIMIT 1
-            """, (asociado, asociado, asociado))
+            """, (asociado,) * 5)
             if comp:
+                # Los datos del cliente salen del comprobante si no vinieron (en Supabase son obligatorios)
+                if not str(data.get('cliente_numero_doc') or '').strip():
+                    data['cliente_numero_doc'] = comp[0].get('cliente_numero_doc')
+                    data['cliente_tipo_doc'] = data.get('cliente_tipo_doc') or comp[0].get('cliente_tipo_doc')
+                if not str(data.get('cliente_nombre') or '').strip():
+                    data['cliente_nombre'] = comp[0].get('cliente_nombre')
                 ya_emitido = db_query("""
                     SELECT COALESCE(SUM(monto), 0) AS total FROM notas_credito
                     WHERE comprobante_asociado = %s AND COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO')
@@ -2914,6 +2960,9 @@ def api_notas_credito_guardar():
                     return jsonify({'success': False,
                                     'error': f'El monto (S/ {monto:.2f}) supera el saldo del comprobante {asociado} '
                                              f'(S/ {saldo:.2f})'}), 400
+
+        if not str(data.get('cliente_numero_doc') or '').strip() or not str(data.get('cliente_nombre') or '').strip():
+            return jsonify({'success': False, 'error': 'Indica el cliente y su RUC o DNI, o el comprobante que corrige.'}), 400
 
         if not str(data.get('numero') or '').strip():
             with db_tx() as conn:
@@ -3554,22 +3603,10 @@ def api_despachos_toggle(id):
         if nuevo_estado not in estados_validos:
             return jsonify({'success': False, 'error': f'Estado inválido. Permitidos: {", ".join(estados_validos)}'}), 400
         
-        query = """
-            UPDATE despachos 
-            SET estado = %s, updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, estado
-        """
-        result = db_query(query, (nuevo_estado, id))
-        
-        if result:
-            return jsonify({
-                'success': True, 
-                'message': f'Despacho actualizado a {nuevo_estado}',
-                'data': result[0]
-            })
-        
-        return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+        # Al despachar se descuenta el stock de la empresa y sede elegidas (routes/stock_automatico.py)
+        from routes.stock_automatico import cambiar_estado_despacho
+        respuesta, codigo = cambiar_estado_despacho(id, nuevo_estado, data.get('empresa_id'), data.get('almacen_id'))
+        return jsonify(respuesta), codigo
         
     except Exception as e:
         print(f"❌ Error en api_despachos_toggle: {e}")
@@ -3579,20 +3616,12 @@ def api_despachos_toggle(id):
 @ventas_bp.route('/ventas/api/despachos/<int:id>', methods=['DELETE'])
 @login_required
 def api_despachos_eliminar(id):
-    """Elimina (anula) un despacho"""
+    """Elimina (anula) un despacho. Si ya había salido, el stock vuelve al inventario."""
     try:
-        query = """
-            UPDATE despachos 
-            SET estado = 'Anulado', updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, estado
-        """
-        result = db_query(query, (id,))
-        
-        if result:
-            return jsonify({'success': True, 'message': 'Despacho anulado', 'data': result[0]})
-        
-        return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+        from routes.stock_automatico import cambiar_estado_despacho
+        data = request.get_json(silent=True) or {}
+        respuesta, codigo = cambiar_estado_despacho(id, 'Anulado', motivo=(data.get('motivo') or '').strip() or 'despacho anulado')
+        return jsonify(respuesta), codigo
         
     except Exception as e:
         print(f"❌ Error en api_despachos_eliminar: {e}")
@@ -3754,18 +3783,16 @@ def api_comprobantes_toggle(id):
             return jsonify({'success': False,
                             'error': f'No se puede pasar un comprobante de "{estado_actual}" a "{nuevo_estado}"'}), 409
 
-        query = """
-            UPDATE comprobantes 
-            SET estado_sunat = %s, updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, estado_sunat as estado
-        """
-        result = db_query(query, (nuevo_estado, id))
+        fila = actualizar_estado_comprobante_db(id, nuevo_estado)
+        result = [{'id': fila['id'], 'estado': fila['estado_sunat']}] if fila else None
         
         if result:
+            mensaje = f'Comprobante actualizado a {nuevo_estado}'
+            if fila.get('cobros_anulados'):
+                mensaje += f". Se anularon {fila['cobros_anulados']} cobro(s) en caja"
             return jsonify({
                 'success': True, 
-                'message': f'Comprobante actualizado a {nuevo_estado}',
+                'message': mensaje,
                 'data': result[0]
             })
         
@@ -7510,11 +7537,12 @@ def api_cotizaciones_rechazar(id):
                 'error': 'Cotización no encontrada o no está en estado "Validado por Hellen"'
             }), 404
         
-        # Actualizar estado a "Borrador" para que el vendedor la corrija y reenvíe
+        # Queda "Rechazada" (no "Observada" ni "Borrador"): se ve clara en la lista y el vendedor
+        # la corrige directamente y la vuelve a enviar a validación.
         query_update = """
             UPDATE cotizaciones 
             SET 
-                estado = 'Borrador',
+                estado = 'Rechazada',
                 motivo_rechazo = %s,
                 fecha_rechazo = NOW(),
                 usuario_rechazo_id = %s,
@@ -7529,7 +7557,7 @@ def api_cotizaciones_rechazar(id):
         if result:
             return jsonify({
                 'success': True, 
-                'message': 'Cotización rechazada y devuelta a Borrador',
+                'message': 'Cotización RECHAZADA. El vendedor puede corregirla y volver a enviarla a validación.',
                 'data': result[0]
             })
         

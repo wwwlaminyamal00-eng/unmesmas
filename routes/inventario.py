@@ -1,9 +1,9 @@
-﻿# routes/inventario.py - Módulo de Inventario multiempresa y multisede
+# routes/inventario.py - Módulo de Inventario multiempresa y multisede
 #
 # Idea central (pensada para personal nuevo):
 #   - El stock se guarda por EMPRESA (dueña legal: KCF, AGD, ...) y por SEDE física
 #     (San Martín de Porres, Breña, ...). Empresas y sedes son datos configurables:
-#     empresas = tabla erp_empresas (id UUID), sedes = tabla almacenes (id entero).
+#     empresas = tabla erp_empresas, sedes = tabla almacenes (Maestros).
 #   - Nada se edita ni se borra: todo cambio de stock es un MOVIMIENTO del kardex con
 #     motivo, documento, usuario y fecha. Un error se corrige con un movimiento de reversa.
 #   - Separación de funciones: quien envía un traslado no lo recibe, quien cuenta no aprueba
@@ -12,7 +12,6 @@
 #
 # Tablas nuevas (se crean solas, no tocan datos existentes): ver migrations/003_inventario.sql
 import os
-import uuid as _uuid_mod
 import random
 import threading
 from datetime import date, datetime, timedelta
@@ -22,7 +21,7 @@ from flask import Blueprint, render_template, request, jsonify, session, Respons
 from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_tx
-from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, bloquear_numeracion
+from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, bloquear_numeracion, id_empresa
 
 inventario_bp = Blueprint('inventario', __name__, url_prefix='/inventario')
 
@@ -76,13 +75,12 @@ class ErrorInventario(Exception):
 
 # ============================================================
 # TABLAS (se crean solas; script equivalente en migrations/003_inventario.sql)
-# empresa_id es UUID porque erp_empresas.id es UUID en Supabase.
 # ============================================================
 SQL_DDL_INVENTARIO = """
     CREATE TABLE IF NOT EXISTS inv_sede_empresa (
         id SERIAL PRIMARY KEY,
         almacen_id INTEGER NOT NULL,
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         registrado_sunat BOOLEAN NOT NULL DEFAULT false,
         codigo_establecimiento VARCHAR(10),
         es_domicilio_fiscal BOOLEAN NOT NULL DEFAULT false,
@@ -91,7 +89,7 @@ SQL_DDL_INVENTARIO = """
         UNIQUE (almacen_id, empresa_id)
     );
     CREATE TABLE IF NOT EXISTS inv_stock (
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         cantidad NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (cantidad >= 0),
@@ -106,7 +104,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('ENTRADA', 'SALIDA')),
@@ -145,7 +143,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         origen_id INTEGER NOT NULL,
         destino_id INTEGER NOT NULL,
         estado VARCHAR(30) NOT NULL DEFAULT 'En camino',
@@ -171,7 +169,7 @@ SQL_DDL_INVENTARIO = """
     CREATE TABLE IF NOT EXISTS inv_separaciones (
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         almacen_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
         cantidad NUMERIC(14,4) NOT NULL CHECK (cantidad >= 0),
@@ -192,7 +190,7 @@ SQL_DDL_INVENTARIO = """
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-        empresa_id UUID NOT NULL,
+        empresa_id INTEGER NOT NULL,
         almacen_id INTEGER NOT NULL,
         tipo VARCHAR(20) NOT NULL DEFAULT 'General',
         estado VARCHAR(20) NOT NULL DEFAULT 'En conteo',
@@ -220,6 +218,15 @@ _tablas_listas = False
 _lock_tablas = threading.Lock()
 
 
+def ddl_con_tipo_empresa(cur, sql):
+    """empresa_id usa el mismo tipo que erp_empresas.id (UUID en Supabase, INTEGER en bases antiguas)."""
+    cur.execute("""SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a
+                   WHERE a.attrelid = to_regclass('erp_empresas') AND a.attname = 'id'""")
+    fila = cur.fetchone()
+    tipo = 'UUID' if fila and fila[0] == 'uuid' else 'INTEGER'
+    return sql.replace('empresa_id INTEGER', f'empresa_id {tipo}')
+
+
 def asegurar_tablas_inventario():
     global _tablas_listas
     if _tablas_listas:
@@ -230,7 +237,7 @@ def asegurar_tablas_inventario():
         with db_tx() as conn:
             cur = conn.cursor()
             cur.execute("SELECT pg_advisory_xact_lock(hashtext('inventario_ddl'))")
-            cur.execute(SQL_DDL_INVENTARIO)
+            cur.execute(ddl_con_tipo_empresa(cur, SQL_DDL_INVENTARIO))
         _tablas_listas = True
 
 
@@ -289,7 +296,6 @@ def _num(valor, nombre='La cantidad'):
 
 
 def _entero(valor, nombre):
-    """Convierte a entero positivo (para almacén, producto, etc.)."""
     try:
         n = int(valor)
         if n > 0:
@@ -299,14 +305,12 @@ def _entero(valor, nombre):
     raise ErrorInventario(f'Selecciona {nombre}.')
 
 
-def _uuid(valor, nombre):
-    """Convierte a UUID validado (para empresa_id, que en Supabase es UUID)."""
-    if valor in (None, ''):
+def _empresa(valor, nombre='la empresa'):
+    """Id de empresa válido: UUID (Supabase) o entero (bases antiguas)."""
+    eid = id_empresa(valor)
+    if eid is None:
         raise ErrorInventario(f'Selecciona {nombre}.')
-    try:
-        return str(_uuid_mod.UUID(str(valor)))
-    except (ValueError, AttributeError, TypeError):
-        raise ErrorInventario(f'Selecciona {nombre} válido.')
+    return eid
 
 
 def _siguiente_numero(cur, prefijo, tabla, columna='numero'):
@@ -499,8 +503,6 @@ def _respuesta_error(e):
     if isinstance(e, ErrorInventario):
         return jsonify({'success': False, 'error': str(e)}), 400
     print(f'❌ Inventario: {e}')
-    import traceback
-    traceback.print_exc()
     return jsonify({'success': False, 'error': 'No se pudo completar la operación. Intenta de nuevo.'}), 500
 
 
@@ -635,7 +637,7 @@ def _consolidado(empresa_id=None, almacen_id=None, q='', solo_con_stock=True):
 @inventario_bp.route('/api/consolidado')
 def api_consolidado():
     try:
-        empresa_id = request.args.get('empresa_id') or None
+        empresa_id = id_empresa(request.args.get('empresa_id'))
         almacen_id = request.args.get('almacen_id', type=int)
         data = _consolidado(empresa_id, almacen_id, (request.args.get('q') or '').strip(),
                             request.args.get('todos') != 'true')
@@ -674,7 +676,7 @@ def api_ubicar():
     try:
         producto_id = _entero(request.args.get('producto_id'), 'un producto')
         cantidad = a_decimal(request.args.get('cantidad') or '0')
-        empresa_venta = request.args.get('empresa_id') or None
+        empresa_venta = id_empresa(request.args.get('empresa_id'))
         sede_despacho = request.args.get('almacen_id', type=int)
         filas = db_query("""
             SELECT s.empresa_id, s.almacen_id, s.cantidad,
@@ -733,7 +735,7 @@ def api_movimiento_nuevo():
                 return _no_autorizado('No tienes permiso para reportar problemas de inventario.')
         elif not puede_operar():
             return _no_autorizado('Solo el personal de almacén puede registrar entradas y salidas.')
-        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
+        empresa_id = _empresa(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -764,10 +766,20 @@ def api_movimiento_nuevo():
                 raise ErrorInventario(
                     f'Este producto tiene {antiguo.normalize():f} unidades registradas antes del nuevo inventario y '
                     'todavía no se sabe de qué empresa ni de qué sede son. Primero regístralas con "Stock inicial".')
+            rec = None
             if recepcion_id:
                 cur.execute("SELECT 1 FROM inv_movimientos WHERE recepcion_id = %s AND estado <> 'Rechazado'", (recepcion_id,))
                 if cur.fetchone():
                     raise ErrorInventario('Esa recepción ya fue ingresada al inventario.')
+                rec = _recepcion_compras(cur, recepcion_id)
+                if rec and rec.get('producto_id'):
+                    # Recepción hecha en Compras: empresa, sede y producto ya se saben. No se pueden cambiar aquí.
+                    if (rec['producto_id'], rec['empresa_id'], rec['almacen_id']) != (producto_id, empresa_id, almacen_id):
+                        raise ErrorInventario('Esta mercadería se recibió en Compras para otra empresa, sede o producto. '
+                                              'Ingrésala tal como se recibió.')
+                    if cantidad > a_decimal(rec['cantidad']):
+                        raise ErrorInventario(f"En Compras se recibieron {a_decimal(rec['cantidad']).normalize():f}. "
+                                              'No puedes ingresar más de lo recibido.')
             if requiere_aprobacion and not puede_aprobar():
                 mov = _registrar_pendiente(cur, **datos)
                 if recepcion_id:
@@ -797,9 +809,33 @@ def api_movimiento_nuevo():
                            cerrado_en = CASE WHEN cantidad - %s <= 0 THEN NOW() ELSE cerrado_en END
                     WHERE id = %s
                 """, (usar, usar, usar, unom, usar, separacion_id))
-        return jsonify({'success': True, 'numero': mov['numero'], 'message': f"Movimiento {mov['numero']} registrado."})
+            sep_num = None
+            if rec and rec.get('cliente') and mov and motivo == 'COMPRA':
+                # Compra bajo pedido: lo que llega se separa para el cliente del pedido (evita que se revenda)
+                uid, unom = _usuario()
+                sep_num = _siguiente_numero(cur, 'SEP', 'inv_separaciones')
+                cur.execute("""
+                    INSERT INTO inv_separaciones (numero, empresa_id, almacen_id, producto_id, cantidad, cantidad_inicial,
+                        cliente, documento, vence_el, observaciones, usuario_id, usuario_nombre)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (sep_num, empresa_id, almacen_id, producto_id, cantidad, cantidad, rec['cliente'],
+                      rec.get('pedido_numero'), date.today() + timedelta(days=DIAS_SEPARACION),
+                      f"Separado automáticamente al ingresar la compra {rec.get('orden_compra_numero') or ''}", uid, unom))
+        mensaje = f"Movimiento {mov['numero']} registrado."
+        if sep_num:
+            mensaje += f" Quedó separado para {rec['cliente']} ({sep_num}): nadie más puede venderlo."
+        return jsonify({'success': True, 'numero': mov['numero'], 'separacion': sep_num, 'message': mensaje})
     except Exception as e:
         return _respuesta_error(e)
+
+
+def _recepcion_compras(cur, recepcion_id):
+    """Datos de una recepción hecha en el nuevo módulo de Compras (None si es del sistema anterior)."""
+    from routes.compras_flujo import asegurar_tablas_compras
+    asegurar_tablas_compras()
+    cur.execute("""SELECT producto_id, empresa_id, almacen_id, cantidad, cliente, pedido_numero, orden_compra_numero
+                   FROM recepciones_mercaderia WHERE id = %s""", (recepcion_id,))
+    return cur.fetchone()
 
 
 @inventario_bp.route('/api/kardex')
@@ -807,7 +843,7 @@ def api_kardex():
     """Kardex valorizado. Con producto, empresa y sede: saldo exacto de esa ubicación."""
     try:
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = request.args.get('empresa_id') or None
+        empresa_id = id_empresa(request.args.get('empresa_id'))
         almacen_id = request.args.get('almacen_id', type=int)
         desde = request.args.get('desde') or None
         hasta = request.args.get('hasta') or None
@@ -844,7 +880,7 @@ def api_kardex():
 @inventario_bp.route('/api/kardex/exportar')
 def api_kardex_exportar():
     """Registro de inventario permanente valorizado (estructura del formato 13.1 de SUNAT) en CSV."""
-    empresa_id = request.args.get('empresa_id') or None
+    empresa_id = id_empresa(request.args.get('empresa_id'))
     producto_id = request.args.get('producto_id', type=int)
     desde = request.args.get('desde') or None
     hasta = request.args.get('hasta') or None
@@ -927,6 +963,8 @@ def api_movimiento_revertir(mov_id):
             if m['traslado_id'] or m['conteo_id'] or m['grupo']:
                 raise ErrorInventario('Este movimiento es parte de un traslado, conteo o venta intercompany. '
                                       'Corrígelo desde su pestaña.')
+            if m.get('despacho_id'):
+                raise ErrorInventario('Este movimiento salió con un despacho. Para devolver el stock, anula el despacho en Ventas.')
             contrario = 'REVERSA_SALIDA' if m['tipo'] == 'ENTRADA' else 'REVERSA_ENTRADA'
             _, unom = _usuario()
             nuevo = aplicar_movimiento(
@@ -947,11 +985,16 @@ def api_movimiento_revertir(mov_id):
 @inventario_bp.route('/api/recepciones_pendientes')
 def api_recepciones_pendientes():
     try:
+        from routes.compras_flujo import asegurar_tablas_compras
+        asegurar_tablas_compras()
         filas = db_query("""
             SELECT r.id, r.numero_recepcion, r.fecha, r.producto, r.cantidad, r.unidad, r.proveedor_nombre,
-                   COALESCE(r.orden_compra_numero, r.orden_compra) AS orden_compra, r.estado,
-                   (SELECT p.id FROM productos p WHERE p.codigo = r.producto OR p.descripcion ILIKE r.producto
-                    ORDER BY (p.codigo = r.producto) DESC LIMIT 1) AS producto_id_sugerido
+                   r.orden_compra_numero AS orden_compra, r.estado,
+                   COALESCE(r.producto_id, (SELECT p.id FROM productos p WHERE p.codigo = r.producto OR p.descripcion ILIKE r.producto
+                    ORDER BY (p.codigo = r.producto) DESC LIMIT 1)) AS producto_id_sugerido,
+                   r.producto_id IS NOT NULL AS desde_compras, r.empresa_id, r.almacen_id, r.costo_unitario,
+                   r.guia_proveedor, r.cliente, r.pedido_numero, r.lote_serie, r.fecha_vencimiento,
+                   (SELECT codigo FROM productos WHERE id = r.producto_id) AS codigo
             FROM recepciones_mercaderia r
             WHERE r.estado IN ('Aprobada', 'Almacenada')
               AND NOT EXISTS (SELECT 1 FROM inv_movimientos m WHERE m.recepcion_id = r.id AND m.estado <> 'Rechazado')
@@ -1033,7 +1076,7 @@ def api_traslado_nuevo():
         return _no_autorizado('Solo el personal de almacén puede enviar traslados.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _uuid(d.get('empresa_id'), 'la empresa dueña de la mercadería')
+        empresa_id = _empresa(d.get('empresa_id'), 'la empresa dueña de la mercadería')
         origen_id = _entero(d.get('origen_id'), 'la sede de origen')
         destino_id = _entero(d.get('destino_id'), 'la sede de destino')
         if not (d.get('encargado') or '').strip():
@@ -1149,7 +1192,7 @@ def api_juntar():
             for paso in d.get('plan') or []:
                 if int(paso['almacen_id']) == destino_id:
                     continue
-                t = crear_traslado(cur, str(paso['empresa_id']), int(paso['almacen_id']), destino_id,
+                t = crear_traslado(cur, _empresa(paso['empresa_id']), int(paso['almacen_id']), destino_id,
                                    [{'producto_id': producto_id, 'cantidad': paso['tomar']}], None, encargado,
                                    (d.get('observaciones') or 'Juntar mercadería para despacho').strip())
                 numeros.append(t['numero'])
@@ -1192,8 +1235,8 @@ def api_intercompany():
         return _no_autorizado('Solo el personal de almacén puede registrar ventas entre empresas.')
     d = request.get_json(silent=True) or {}
     try:
-        vende = _uuid(d.get('empresa_vende_id'), 'la empresa que vende')
-        compra = _uuid(d.get('empresa_compra_id'), 'la empresa que compra')
+        vende = _empresa(d.get('empresa_vende_id'), 'la empresa que vende')
+        compra = _empresa(d.get('empresa_compra_id'), 'la empresa que compra')
         almacen_id = _entero(d.get('almacen_id'), 'la sede donde está la mercadería')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -1249,7 +1292,7 @@ def api_separaciones():
     try:
         estado = request.args.get('estado') or 'Activa'
         producto_id = request.args.get('producto_id', type=int)
-        empresa_id = request.args.get('empresa_id') or None
+        empresa_id = id_empresa(request.args.get('empresa_id'))
         almacen_id = request.args.get('almacen_id', type=int)
         filas = db_query("""
             SELECT s.*, p.codigo, p.descripcion, p.unidad, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
@@ -1269,7 +1312,7 @@ def api_separaciones():
 def api_separacion_nueva():
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
+        empresa_id = _empresa(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         producto_id = _entero(d.get('producto_id'), 'un producto')
         cantidad = _num(d.get('cantidad'))
@@ -1347,7 +1390,7 @@ def api_conteo_nuevo():
         return _no_autorizado('Los conteos los hace personal de control, no logística. Pide acceso a tu supervisor.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _uuid(d.get('empresa_id'), 'la empresa')
+        empresa_id = _empresa(d.get('empresa_id'), 'la empresa')
         almacen_id = _entero(d.get('almacen_id'), 'la sede')
         tipo = 'Sorpresa' if d.get('tipo') == 'Sorpresa' else 'General'
         _, unom = _usuario()
@@ -1644,7 +1687,7 @@ def api_sedes_empresas():
                         codigo_establecimiento = EXCLUDED.codigo_establecimiento,
                         es_domicilio_fiscal = EXCLUDED.es_domicilio_fiscal, observaciones = EXCLUDED.observaciones,
                         updated_at = NOW()
-                """, (int(f['almacen_id']), _uuid(f['empresa_id'], 'la empresa'), bool(f.get('registrado_sunat')),
+                """, (int(f['almacen_id']), _empresa(f['empresa_id']), bool(f.get('registrado_sunat')),
                       (f.get('codigo_establecimiento') or '').strip() or None, bool(f.get('es_domicilio_fiscal')),
                       (f.get('observaciones') or '').strip() or None))
         return jsonify({'success': True, 'message': 'Configuración guardada.'})

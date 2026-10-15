@@ -1214,6 +1214,7 @@ async function cargarProductos() {
             window.bdProductosFiltrados = window.bdProductos;
             console.log(`✅ ${window.bdProductos.length} productos cargados`);
             bdRenderProductos(window.bdProductosFiltrados);
+            bdCargarAbastecimiento();
             return window.bdProductos;
         } else {
             console.error('❌ Error en la respuesta:', result.error);
@@ -1228,6 +1229,41 @@ async function cargarProductos() {
             mostrarNotificacion('error', 'Error', 'Error al cargar productos desde el servidor');
         }
         return [];
+    }
+}
+
+// ============================================================
+// "Pendiente por compra" / "Pendiente por recojo" (Excel de pendientes, 14/10/2026)
+// Lo calcula el servidor con Inventario (stock libre) y Compras (OC aprobadas): routes/abastecimiento.py
+// ============================================================
+window.bdAbast = {};
+var BD_ABAST_ESTILO = {
+    'Pendiente por compra': 'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;',
+    'Pendiente por recojo': 'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;',
+    'Por llegar': 'background:#E0E7FF;color:#3730A3;border:1px solid #A5B4FC;',
+    'Con stock': 'background:#DCFCE7;color:#166534;border:1px solid #86EFAC;',
+    'Sin stock': 'background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;'
+};
+var BD_ABAST_ICONO = { 'Pendiente por compra': '🛒', 'Pendiente por recojo': '🚚', 'Por llegar': '📦', 'Con stock': '✅', 'Sin stock': '○' };
+function bdBadgeAbast(id) {
+    var a = window.bdAbast[id];
+    if (!a) return '';
+    var titulo = 'Stock libre: ' + a.libre + ' | Pedido por clientes: ' + a.pedido +
+                 ' | Por recoger: ' + a.por_recoger + ' | Por llegar: ' + a.por_llegar;
+    return '<br><span title="' + titulo + '" style="display:inline-block;margin-top:3px;padding:2px 7px;border-radius:999px;' +
+           'font-size:10px;font-weight:800;white-space:nowrap;cursor:help;' + (BD_ABAST_ESTILO[a.estado] || '') + '">' +
+           (BD_ABAST_ICONO[a.estado] || '') + ' ' + a.estado + '</span>';
+}
+async function bdCargarAbastecimiento() {
+    try {
+        var r = await fetch('/api/abastecimiento/productos');
+        var j = await r.json();
+        if (j.success) {
+            window.bdAbast = j.data || {};
+            bdRenderProductos(window.bdProductosFiltrados || window.bdProductos || []);
+        }
+    } catch (e) {
+        console.warn('No se pudo cargar el estado de abastecimiento', e);
     }
 }
 
@@ -1676,7 +1712,7 @@ window.bdRenderProductos = function(data) {
         html += '<td class="bd-col-model">' + (p.modelo || '-') + '</td>';
         html += '<td class="bd-col-brand">' + (p.marca || '-') + '</td>';
         html += '<td class="bd-col-cat">' + categoria + '</td>';
-        html += '<td class="bd-col-status"><span class="bd-status ' + estadoClass + '"><span class="bd-dot"></span>' + estadoMostrado + '</span></td>';
+        html += '<td class="bd-col-status"><span class="bd-status ' + estadoClass + '"><span class="bd-dot"></span>' + estadoMostrado + '</span>' + bdBadgeAbast(p.id) + '</td>';
         html += '<td class="bd-col-actions"><div class="row-actions">';
         html += '<button class="btn-action btn-view" onclick="verProducto(' + p.id + ')" title="Ver"><i class="bi bi-eye"></i></button>';
         html += '<button class="btn-action btn-edit" onclick="editarProducto(' + p.id + ')" title="Editar"><i class="bi bi-pencil"></i></button>';

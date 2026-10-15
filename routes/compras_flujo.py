@@ -17,14 +17,11 @@
 # Tablas: usa las que ya existían (ordenes_compra, ordenes_compra_items, recepciones_mercaderia,
 # comprobantes_proveedor, finanzas_pagos) agregando columnas, y crea com_recepciones,
 # com_recepcion_items, com_incidencias y com_historial. Script: migrations/004_compras.sql
-#
-# IMPORTANTE: erp_empresas.id es UUID, por eso empresa_id usa UUID en todas las tablas.
 import csv
 import io
 import json
 import os
 import threading
-import uuid as _uuid_mod
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -33,8 +30,8 @@ from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_tx
 from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, tasa_igv, calcular_totales, \
-    bloquear_numeracion
-from routes.inventario import asegurar_tablas_inventario, _siguiente_numero, _fila, _empresas, _sedes, \
+    bloquear_numeracion, id_empresa
+from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, _siguiente_numero, _fila, _empresas, _sedes, \
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
 from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
 
@@ -68,11 +65,10 @@ class ErrorCompras(Exception):
 
 # ============================================================
 # TABLAS (se crean solas; script equivalente en migrations/004_compras.sql)
-# empresa_id es UUID porque erp_empresas.id es UUID en Supabase.
 # ============================================================
 SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
-    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id UUID;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS modalidad_entrega VARCHAR(30);
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS direccion_recojo TEXT;
@@ -94,7 +90,7 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cliente VARCHAR(255);
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cantidad_recibida NUMERIC(14,4) DEFAULT 0;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS producto_id INTEGER;
-    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id UUID;
+    ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS almacen_id INTEGER;
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(16,6);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS com_recepcion_id INTEGER;
@@ -105,7 +101,7 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS guia_proveedor VARCHAR(60);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS lote_serie VARCHAR(120);
     ALTER TABLE recepciones_mercaderia ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
-    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id UUID;
+    ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS monto_esperado NUMERIC(14,2);
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS cuadra BOOLEAN;
@@ -114,7 +110,7 @@ SQL_DDL_COMPRAS = """
         numero VARCHAR(30) UNIQUE,
         fecha TIMESTAMP NOT NULL DEFAULT NOW(),
         orden_compra_id INTEGER NOT NULL,
-        empresa_id UUID,
+        empresa_id INTEGER,
         almacen_id INTEGER NOT NULL,
         guia_proveedor VARCHAR(60) NOT NULL,
         traido_por_tipo VARCHAR(20) NOT NULL,
@@ -187,7 +183,7 @@ def asegurar_tablas_compras():
         with db_tx() as conn:
             cur = conn.cursor()
             cur.execute("SELECT pg_advisory_xact_lock(hashtext('compras_ddl'))")
-            cur.execute(SQL_DDL_COMPRAS)
+            cur.execute(ddl_con_tipo_empresa(cur, SQL_DDL_COMPRAS))
         _tablas_listas = True
 
 
@@ -233,13 +229,10 @@ def _respuesta_error(e):
     if isinstance(e, PermissionError):
         return jsonify({'success': False, 'error': str(e)}), 403
     print(f'❌ Compras: {e}')
-    import traceback
-    traceback.print_exc()
     return jsonify({'success': False, 'error': 'No se pudo completar la operación. Intenta de nuevo.'}), 500
 
 
 def _entero(valor, nombre):
-    """Convierte a entero positivo (para sede, producto, usuario, etc.)."""
     try:
         n = int(valor)
         if n > 0:
@@ -249,14 +242,12 @@ def _entero(valor, nombre):
     raise ErrorCompras(f'Elige {nombre}.')
 
 
-def _uuid(valor, nombre):
-    """Convierte a UUID validado (para empresa_id, que en Supabase es UUID)."""
-    if valor in (None, ''):
+def _empresa(valor, nombre='la empresa que compra'):
+    """Id de empresa válido: UUID (Supabase) o entero (bases antiguas)."""
+    eid = id_empresa(valor)
+    if eid is None:
         raise ErrorCompras(f'Elige {nombre}.')
-    try:
-        return str(_uuid_mod.UUID(str(valor)))
-    except (ValueError, AttributeError, TypeError):
-        raise ErrorCompras(f'Elige {nombre} válido.')
+    return eid
 
 
 def _historial(cur, oc_id, accion, detalle=None):
@@ -738,9 +729,9 @@ def api_precios():
 def api_ordenes():
     try:
         cond, params = [], []
-        if request.args.get('empresa_id'):
+        if id_empresa(request.args.get('empresa_id')) is not None:
             cond.append('oc.empresa_id = %s')
-            params.append(request.args['empresa_id'])
+            params.append(id_empresa(request.args['empresa_id']))
         estado = request.args.get('estado') or ''
         if estado == 'abiertas':
             cond.append("COALESCE(oc.estado, '') NOT IN ('Cerrada', 'Anulada')")
@@ -874,7 +865,7 @@ def api_orden_guardar():
         return _no_autorizado('Tu usuario no puede preparar órdenes de compra.')
     d = request.get_json(silent=True) or {}
     try:
-        empresa_id = _uuid(d.get('empresa_id'), 'la empresa que compra')
+        empresa_id = _empresa(d.get('empresa_id'))
         proveedor_id = _entero(d.get('proveedor_id'), 'el proveedor de la lista')
         almacen_id = _entero(d.get('almacen_entrega_id'), 'la sede donde debe terminar la mercadería')
         condicion = d.get('condicion_pago') or ''
@@ -1244,7 +1235,9 @@ def api_orden_recibir(oc_id):
             """, (numero, oc_id, oc['empresa_id'], almacen_id, guia, traido_tipo, traido_id, traido_nombre, uid, unom,
                   (d.get('observaciones') or '').strip() or None))
             rec_id = cur.fetchone()['id']
-            resultado, diferencias = [], 0
+            from routes.stock_automatico import ingresar_recepcion
+            resultado, diferencias, linea = [], 0, 0
+            ingresados, separados, sin_ingresar = [], [], []
             for iid, (buena, danada, it) in contados.items():
                 oi = oc_items[iid]
                 pendiente = a_decimal(oi['cantidad']) - a_decimal(oi['cantidad_recibida'])
@@ -1259,6 +1252,8 @@ def api_orden_recibir(oc_id):
                 cur.execute("UPDATE ordenes_compra_items SET cantidad_recibida = COALESCE(cantidad_recibida, 0) + %s WHERE id = %s",
                             (buena, iid))
                 if buena > 0:
+                    # En Supabase numero_recepcion es único: una fila por producto (RC-...-1, RC-...-2)
+                    linea += 1
                     cur.execute("""
                         INSERT INTO recepciones_mercaderia (numero_recepcion, fecha, estado, orden_compra_id, orden_compra_numero,
                             proveedor_nombre, producto, cantidad, unidad, estado_mercaderia, observaciones, creado_por,
@@ -1266,10 +1261,23 @@ def api_orden_recibir(oc_id):
                             pedido_numero, cliente, guia_proveedor, lote_serie, fecha_vencimiento)
                         VALUES (%s, NOW(), 'Aprobada', %s, %s, %s, %s, %s, %s, 'Buen estado', %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                 %s, %s, %s, %s, %s)
-                    """, (numero, oc_id, oc['numero_orden'], oc['razon_social'], oi['producto'], buena, oi['unidad'] or 'UND',
-                          f'Guía {guia}', str(uid or ''), oi['producto_id'], oc['empresa_id'], almacen_id, oi['precio_unitario'],
+                        RETURNING id
+                    """, (f'{numero}-{linea}', oc_id, oc['numero_orden'], oc['razon_social'], oi['producto'], buena, oi['unidad'] or 'UND',
+                          f'Guía {guia}', uid, oi['producto_id'], oc['empresa_id'], almacen_id, oi['precio_unitario'],
                           rec_id, iid, oi['pedido_id'], oi['pedido_numero'], oi['cliente'], guia,
                           (it.get('lote_serie') or '').strip() or None, it.get('fecha_vencimiento') or None))
+                    rm_id = cur.fetchone()['id']
+                    # Lo bueno entra solo al inventario (empresa de la OC, sede donde se recibió, costo de la OC)
+                    mov, sep = ingresar_recepcion(cur, recepcion_id=rm_id, oc=oc, oi=oi, almacen_id=almacen_id,
+                                                  cantidad=buena, guia=guia,
+                                                  lote_serie=(it.get('lote_serie') or '').strip() or None,
+                                                  fecha_vencimiento=it.get('fecha_vencimiento') or None)
+                    if mov:
+                        ingresados.append(mov['numero'])
+                        if sep:
+                            separados.append(f"{oi['producto']} para {oi['cliente']}")
+                    else:
+                        sin_ingresar.append(oi['producto'])
                 fila = {'producto': oi['producto'], 'esperado': float(pendiente), 'llego': float(llegado),
                         'buena': float(buena), 'danada': float(danada), 'estado': 'Completo'}
                 if danada > 0:
@@ -1306,8 +1314,14 @@ def api_orden_recibir(oc_id):
         faltantes = [r for r in resultado if r['estado'] == 'Faltante']
         msg = f'Recepción {numero} registrada. '
         msg += 'Llegó todo lo que faltaba. ' if completa else f'Aún falta mercadería ({len(faltantes)} producto(s)): la orden sigue abierta. '
-        msg += 'Ahora ingrésala en Inventario ▸ Entradas y salidas.'
-        return jsonify({'success': True, 'message': msg, 'numero': numero, 'resultado': resultado, 'estado': nuevo_estado})
+        if ingresados:
+            msg += f'Ya se sumó al inventario ({len(ingresados)} producto(s)). '
+        if separados:
+            msg += 'Quedó separado: ' + '; '.join(separados[:5]) + '. '
+        if sin_ingresar:
+            msg += 'Falta ingresar en Inventario ▸ Entradas y salidas: ' + ', '.join(sin_ingresar[:5]) + '.'
+        return jsonify({'success': True, 'message': msg.strip(), 'numero': numero, 'resultado': resultado,
+                        'estado': nuevo_estado, 'movimientos': ingresados, 'pendientes_inventario': sin_ingresar})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1435,7 +1449,7 @@ def api_orden_factura(oc_id):
                     orden_compra_numero, estado, observaciones, creado_por, empresa_id, fecha_vencimiento, monto_esperado, cuadra)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'Pendiente',%s,%s,%s,%s,%s,%s) RETURNING id
             """, (tipo, numero, fecha, monto, ruc, oc['razon_social'], oc_id, oc['numero_orden'],
-                  (d.get('observaciones') or '').strip() or None, unom, oc['empresa_id'], vence, esperado, cuadra))
+                  (d.get('observaciones') or '').strip() or None, uid, oc['empresa_id'], vence, esperado, cuadra))
             cp_id = cur.fetchone()['id']
             # Los pagos adelantados de la OC pasan a esta factura (así Cuentas por pagar muestra el saldo real)
             cur.execute("""SELECT id, monto FROM finanzas_pagos WHERE documento_tabla = 'ordenes_compra' AND documento_id = %s

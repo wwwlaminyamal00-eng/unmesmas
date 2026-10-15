@@ -73,7 +73,11 @@ class TestSeguridad:
         assert vendedor.get('/api/config/empresas').status_code == 200  # lectura permitida
 
     def test_crear_usuario_guarda_hash(self, admin, app):
-        r = admin.post('/api/config/usuarios', json={'auth_user_id': 'aaaa-1', 'usuario_sistema': 'nuevo',
+        # En Supabase el usuario debe existir antes en Auth (auth.users)
+        sql("""DO $$ BEGIN IF to_regclass('auth.users') IS NOT NULL THEN
+                 INSERT INTO auth.users (id, email) VALUES ('0a6f1c2e-1b2c-4d3e-8f90-123456789abc', 'nuevo@test.pe')
+                 ON CONFLICT DO NOTHING; END IF; END $$""")
+        r = admin.post('/api/config/usuarios', json={'auth_user_id': '0a6f1c2e-1b2c-4d3e-8f90-123456789abc', 'usuario_sistema': 'nuevo',
                                                      'nombres_apellidos': 'Nuevo', 'password': 'Nuevo#2026!',
                                                      'rol': 'vendedor'})
         assert r.status_code == 200, r.json
@@ -149,7 +153,13 @@ class TestCotizaciones:
         cid = nueva_cotizacion(vendedor, estado='Por validar').json['data']['id']
         assert aprobador.post(f'/ventas/api/cotizaciones/{cid}/rechazar', json={}).status_code == 400
         r = aprobador.post(f'/ventas/api/cotizaciones/{cid}/rechazar', json={'motivo_rechazo': 'Precio bajo'})
-        assert r.status_code == 200 and r.json['data']['estado'] == 'Borrador'
+        # Requerimiento del Excel: el rechazo de Hellen deja la cotización RECHAZADA (no observada ni borrador)
+        assert r.status_code == 200 and r.json['data']['estado'] == 'Rechazada'
+        assert sql("SELECT motivo_rechazo FROM cotizaciones WHERE id = %s", (cid,))[0][0] == 'Precio bajo'
+        # el vendedor la corrige directamente y la vuelve a enviar a validación
+        r = nueva_cotizacion(vendedor, id=cid, estado='Por validar')
+        assert r.status_code == 200, r.json
+        assert sql("SELECT estado FROM cotizaciones WHERE id = %s", (cid,))[0][0] == 'Por validar'
 
     def test_numeracion_sin_duplicados_en_paralelo(self, app):
         clientes = [_login(app, 'vendedor', 'Vende#2026!') for _ in range(8)]

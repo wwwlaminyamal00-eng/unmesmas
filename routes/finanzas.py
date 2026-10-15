@@ -112,7 +112,7 @@ SQL_CXC = """
         GROUP BY comprobante_asociado
     )
     SELECT c.id, c.tipo_comprobante, c.serie, c.numero,
-           COALESCE(c.serie, '') || '-' || COALESCE(c.numero, '') AS documento,
+           COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0') AS documento,
            c.cliente_nombre AS tercero, c.cliente_numero_doc AS ruc,
            c.fecha_emision, c.condicion_pago, c.es_credito, c.dias_credito,
            COALESCE(c.fecha_vencimiento::date,
@@ -125,7 +125,9 @@ SQL_CXC = """
            COALESCE(c.estado_sunat, 'Borrador') AS estado_documento
     FROM comprobantes c
     LEFT JOIN cobros cb ON cb.documento_id = c.id
-    LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero, COALESCE(c.serie, '') || '-' || COALESCE(c.numero, ''))
+    LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero::text, LPAD(c.numero::text, 8, '0'),
+                                                COALESCE(c.serie, '') || '-' || COALESCE(c.numero::text, ''),
+                                                COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0'))
     WHERE COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
 """
 

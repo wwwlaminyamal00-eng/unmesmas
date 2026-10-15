@@ -32,7 +32,7 @@
         return d.toISOString().slice(0, 10);
     };
     const $ = id => document.getElementById(id);
-    const nombreEmpresa = id => (cat.empresas.find(e => e.id === Number(id)) || {}).nombre || '?';
+    const nombreEmpresa = id => (cat.empresas.find(e => String(e.id) === String(id)) || {}).nombre || '?';
     const nombreSede = id => (cat.sedes.find(s => s.id === Number(id)) || {}).nombre || '?';
 
     // Aviso grande y claro (verde = listo, rojo = no se pudo, amarillo = queda pendiente)
@@ -140,7 +140,7 @@
                 cat.sedes.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
         });
         if (cat.sedes.length > 1 && $('traDestino')) $('traDestino').value = cat.sedes[1].id;
-        if (cat.empresas.length > 1 && $('icCompra')) $('icCompra').value = cat.empresas.find(e => e.id !== Number($('icVende').value))?.id || '';
+        if (cat.empresas.length > 1 && $('icCompra')) $('icCompra').value = cat.empresas.find(e => String(e.id) !== String($('icVende').value))?.id || '';
     }
 
     async function cargarCatalogos() {
@@ -268,7 +268,7 @@
                     return `<td class="num" title="Disponible ${cant(c.disponible)} · separado ${cant(c.separado)}">${cant(c.cantidad)}${c.separado ? `<small class="sep">(${cant(c.separado)} sep.)</small>` : ''}</td>`;
                 }).join('') + `<td class="num emp-tot">${cant(p.por_empresa[e.id] || 0)}</td>`).join('');
                 const dondeTxt = Object.entries(p.celdas).filter(([, c]) => c.cantidad > 0)
-                    .map(([k, c]) => { const [e, s] = k.split('-'); return `${cant(c.cantidad)} ${nombreEmpresa(e)} en ${nombreSede(s)}`; }).join(' · ');
+                    .map(([k, c]) => { const i = k.lastIndexOf('-'), e = k.slice(0, i), s = k.slice(i + 1); return `${cant(c.cantidad)} ${nombreEmpresa(e)} en ${nombreSede(s)}`; }).join(' · ');
                 const bajo = p.stock_minimo > 0 && p.total < p.stock_minimo;
                 return `<tr>
                     <td class="left"><b>${esc(p.codigo || '')}</b> ${esc(p.descripcion)}<div class="inv-donde-linea">📍 ${esc(dondeTxt || 'Sin stock')}</div></td>

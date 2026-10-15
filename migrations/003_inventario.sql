@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS inv_sede_empresa (
     id SERIAL PRIMARY KEY,
     almacen_id INTEGER NOT NULL,
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     registrado_sunat BOOLEAN NOT NULL DEFAULT false,
     codigo_establecimiento VARCHAR(10),
     es_domicilio_fiscal BOOLEAN NOT NULL DEFAULT false,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS inv_sede_empresa (
     UNIQUE (almacen_id, empresa_id)
 );
 CREATE TABLE IF NOT EXISTS inv_stock (
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     almacen_id INTEGER NOT NULL,
     producto_id INTEGER NOT NULL,
     cantidad NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (cantidad >= 0),
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS inv_movimientos (
     id SERIAL PRIMARY KEY,
     numero VARCHAR(30) UNIQUE,
     fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     almacen_id INTEGER NOT NULL,
     producto_id INTEGER NOT NULL,
     tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('ENTRADA', 'SALIDA')),
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS inv_traslados (
     id SERIAL PRIMARY KEY,
     numero VARCHAR(30) UNIQUE,
     fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     origen_id INTEGER NOT NULL,
     destino_id INTEGER NOT NULL,
     estado VARCHAR(30) NOT NULL DEFAULT 'En camino',
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS inv_traslado_items (
 CREATE TABLE IF NOT EXISTS inv_separaciones (
     id SERIAL PRIMARY KEY,
     numero VARCHAR(30) UNIQUE,
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     almacen_id INTEGER NOT NULL,
     producto_id INTEGER NOT NULL,
     cantidad NUMERIC(14,4) NOT NULL CHECK (cantidad >= 0),
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS inv_conteos (
     id SERIAL PRIMARY KEY,
     numero VARCHAR(30) UNIQUE,
     fecha TIMESTAMP NOT NULL DEFAULT NOW(),
-    empresa_id INTEGER NOT NULL,
+    empresa_id UUID NOT NULL,
     almacen_id INTEGER NOT NULL,
     tipo VARCHAR(20) NOT NULL DEFAULT 'General',
     estado VARCHAR(20) NOT NULL DEFAULT 'En conteo',
