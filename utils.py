@@ -1,6 +1,7 @@
 # utils.py
 # Utilidades compartidas: autenticación, roles y cálculos comerciales (IGV, totales).
 import os
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from flask import session, flash, redirect, url_for, request, jsonify
@@ -134,3 +135,34 @@ def totales_consistentes(subtotal, igv, total, tolerancia='0.05'):
 def bloquear_numeracion(cur, clave):
     """Bloqueo transaccional para generar correlativos sin duplicados entre usuarios simultáneos."""
     cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (clave,))
+
+
+# ============================================================
+# ID DE EMPRESA (en Supabase es UUID; en bases antiguas, entero)
+# ============================================================
+_RE_UUID = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+
+
+def columnas_usuario_antiguas(data):
+    """Valores para las columnas antiguas de usuarios que en Supabase son obligatorias
+    (usuario, nombre_completo, password, rol). Sin contraseña se guarda una clave aleatoria:
+    el usuario no puede entrar hasta que un administrador le asigne una."""
+    import secrets
+    from werkzeug.security import generate_password_hash
+    usuario = (data.get('usuario_sistema') or '').strip()
+    nombre = (data.get('nombres_apellidos') or '').strip() or usuario
+    clave = data.get('password') or secrets.token_urlsafe(24)
+    rol = (data.get('rol') or '').strip() or 'usuario'
+    return usuario, nombre, generate_password_hash(clave), rol
+
+
+def id_empresa(valor):
+    """Devuelve el id de empresa normalizado (UUID en texto o entero positivo), o None si no es válido."""
+    if valor is None or isinstance(valor, bool):
+        return None
+    texto = str(valor).strip()
+    if _RE_UUID.match(texto):
+        return texto.lower()
+    if texto.isdigit() and int(texto) > 0:
+        return int(texto)
+    return None
