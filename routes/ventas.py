@@ -779,6 +779,7 @@ def obtener_pc_db():
                 condicion_pago, vendedor,
                 created_at, updated_at,
                 items_json,
+                to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos,
                 (SELECT d.estado FROM despachos d WHERE d.pc_id = pedido_compra_pc.id
                  ORDER BY d.id DESC LIMIT 1) AS despacho_estado
             FROM pedido_compra_pc
@@ -970,7 +971,8 @@ def guardar_pc_db(data):
         valida_entrega = data.get('valida_entrega', False)
         valida_montos = data.get('valida_montos', False)
         valida_transporte = data.get('valida_transporte', False)
-        valida_margen = data.get('valida_margen', False)
+        # La pantalla no tiene interruptor de margen: si no se manda, no debe dejar el PC siempre "observado"
+        valida_margen = data.get('valida_margen', True)
         valida_vigencia = data.get('valida_vigencia', False)
         
         # NO BLOQUEAR POR STOCK
@@ -3268,6 +3270,13 @@ def api_pedido_compra_guardar():
         # ============================================================
         result = guardar_pc_db(data)
         
+        if result and 'valida_productos' in data:
+            try:
+                db_query("UPDATE pedido_compra_pc SET valida_productos = %s WHERE id = %s RETURNING id",
+                         (bool(data.get('valida_productos')), result['id']))
+            except Exception as e:
+                print(f"⚠️ No se pudo guardar valida_productos: {e}")
+
         if result:
             # Si tiene cotizacion_id y es NUEVO, actualizar estado de la cotización
             if cotizacion_id and not pc_id:
@@ -3470,6 +3479,72 @@ def api_despachos_listar():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _vincular_despacho_con_pc(data):
+    """Completa pc_id / pc_numero / cotización / items del despacho a partir de su PC o su cotización."""
+    try:
+        pc = None
+        if data.get('pc_id'):
+            pc = db_query("SELECT * FROM pedido_compra_pc WHERE id = %s", (data['pc_id'],))
+        elif data.get('pc_numero'):
+            pc = db_query("SELECT * FROM pedido_compra_pc WHERE numero = %s ORDER BY id DESC LIMIT 1", (data['pc_numero'],))
+        elif data.get('cotizacion_id') or data.get('cotizacion_numero'):
+            pc = db_query("""SELECT * FROM pedido_compra_pc
+                             WHERE ((%s::int IS NOT NULL AND cotizacion_id = %s::int) OR (%s <> '' AND cotizacion_numero = %s))
+                               AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')
+                             ORDER BY id DESC LIMIT 1""",
+                          (data.get('cotizacion_id'), data.get('cotizacion_id'),
+                           data.get('cotizacion_numero') or '', data.get('cotizacion_numero') or ''))
+        if not pc:
+            if data.get('cotizacion_numero') and not data.get('cotizacion_id'):
+                cot = db_query("SELECT id FROM cotizaciones WHERE numero_cotizacion = %s LIMIT 1", (data['cotizacion_numero'],))
+                if cot:
+                    data['cotizacion_id'] = cot[0]['id']
+            return
+        pc = pc[0]
+        data['pc_id'] = data.get('pc_id') or pc['id']
+        data['pc_numero'] = data.get('pc_numero') or pc.get('numero')
+        data['cotizacion_id'] = data.get('cotizacion_id') or pc.get('cotizacion_id')
+        data['cotizacion_numero'] = data.get('cotizacion_numero') or pc.get('cotizacion_numero')
+        data['cliente'] = data.get('cliente') or pc.get('cliente')
+        data['ruc'] = data.get('ruc') or pc.get('ruc')
+        data['destino'] = data.get('destino') or pc.get('lugar_entrega') or pc.get('entrega')
+        if not data.get('items') and not data.get('id'):
+            items = pc.get('items_json') or pc.get('items') or []
+            if isinstance(items, str):
+                items = json.loads(items or '[]')
+            data['items'] = [{
+                'codigo': i.get('codigo') or '',
+                'producto': i.get('producto') or i.get('descripcion') or '',
+                'marca': i.get('marca') or '', 'modelo': i.get('modelo') or '',
+                'cantidad': float(i.get('cantidad_pc') or i.get('cantidad') or 0),
+                'um': i.get('um') or 'NIU',
+            } for i in items if isinstance(i, dict)]
+    except Exception as e:
+        print(f"⚠️ No se pudo vincular el despacho con su PC: {e}")
+
+
+def _actualizar_despacho(data, fecha_despacho):
+    """Editar un despacho existente (antes 'guardar' siempre creaba uno nuevo)."""
+    actual = db_query("SELECT id, estado FROM despachos WHERE id = %s", (data['id'],))
+    if not actual:
+        return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+    result = db_query("""
+        UPDATE despachos SET
+            fecha_despacho = %s, pc_id = COALESCE(%s, pc_id), pc_numero = COALESCE(NULLIF(%s, ''), pc_numero),
+            cotizacion_id = COALESCE(%s, cotizacion_id),
+            cotizacion_numero = COALESCE(NULLIF(%s, ''), cotizacion_numero),
+            cliente = COALESCE(NULLIF(%s, ''), cliente), ruc = COALESCE(NULLIF(%s, ''), ruc),
+            origen = COALESCE(NULLIF(%s, ''), origen), destino = COALESCE(NULLIF(%s, ''), destino),
+            transportista = COALESCE(%s, transportista), observaciones = COALESCE(%s, observaciones),
+            updated_at = NOW()
+        WHERE id = %s RETURNING id, numero
+    """, (fecha_despacho, data.get('pc_id'), data.get('pc_numero') or '', data.get('cotizacion_id'),
+          data.get('cotizacion_numero') or '', data.get('cliente') or '', data.get('ruc') or '',
+          data.get('origen') or '', data.get('destino') or '', data.get('transportista'),
+          data.get('observaciones'), data['id']))
+    return jsonify({'success': True, 'message': 'Despacho actualizado', 'data': result})
+
+
 @ventas_bp.route('/ventas/api/despachos/guardar', methods=['POST'])
 @login_required
 def api_despachos_guardar():
@@ -3492,9 +3567,17 @@ def api_despachos_guardar():
         ahora_peru = ahora_utc - timedelta(hours=5)
         fecha_actual = ahora_peru.strftime('%Y-%m-%d %H:%M:%S')
         
-        # Generar número si no tiene
-        if not data.get('numero'):
-            data['numero'] = f"DESP-{ahora_peru.strftime('%Y%m%d')}-{str(ahora_peru.timestamp()).split('.')[0][-4:]}"
+        # Número: correlativo del día DESP-AAAAMMDD-NNNN (antes eran 4 cifras de la hora y podían repetirse)
+        if not data.get('id') and data.get('numero') and db_query("SELECT 1 FROM despachos WHERE numero = %s", (data['numero'],)):
+            data['numero'] = None
+        if not data.get('id') and not data.get('numero'):
+            prefijo = f"DESP-{ahora_peru.strftime('%Y%m%d')}-"
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                bloquear_numeracion(cur, 'despachos:' + prefijo)
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
+                               FROM despachos WHERE numero LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
+                data['numero'] = prefijo + str(cur.fetchone()['sig']).zfill(4)
         
         if not data.get('fecha'):
             data['fecha'] = fecha_actual
@@ -3534,6 +3617,16 @@ def api_despachos_guardar():
         # ============================================================
         # GUARDAR ITEMS COMO JSON
         # ============================================================
+        # ============================================================
+        # VINCULAR CON SU PC (orden: Cotización → PC → Despacho → Guía → Factura)
+        # Si llega solo la cotización (despacho hecho desde Cotizaciones), se busca su PC
+        # para que el despacho lleve PC, productos y empresa, y la guía y la factura lo encuentren.
+        # ============================================================
+        _vincular_despacho_con_pc(data)
+
+        if data.get('id'):
+            return _actualizar_despacho(data, fecha_despacho)
+
         items_json = json.dumps(data.get('items', []))
         # El despacho queda en la empresa de su PC (o de la cotización, o la elegida arriba)
         empresa_desp = empresa_para_crear(empresa_de(None, 'pedido_compra_pc', 'id', data.get('pc_id'))
@@ -5868,7 +5961,8 @@ def api_pedido_compra_obtener(id):
                 responsable, lugar_entrega, condicion_atencion,
                 medio, entrega, req_compra, guia, factura,
                 condicion_pago, vendedor, items_json,
-                created_at, updated_at
+                created_at, updated_at,
+                to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos
             FROM pedido_compra_pc
             WHERE id = %s
         """

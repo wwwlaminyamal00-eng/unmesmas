@@ -65,6 +65,49 @@ let currentModule = 'cotizaciones';
 let editingId = null;
 let quoteProducts = [];
 let PRODUCTOS_MAESTROS = [];
+
+// ============================================================
+// STOCK EN VENTAS (16/10): siempre número sin ceros de relleno (25.00 -> 25)
+// y leído en vivo del catálogo (= suma de todas las empresas y sedes del inventario)
+// ============================================================
+function numStock(v) {
+    const n = Number(v);
+    return isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+function stockVivo(codigo, respaldo) {
+    const p = (PRODUCTOS_MAESTROS || []).find(x => x.codigo && codigo && String(x.codigo) === String(codigo));
+    return p ? numStock(p.stock) : numStock(respaldo);
+}
+// Fecha guardada -> valor para <input type="datetime-local"> (YYYY-MM-DDTHH:MM)
+function fechaParaInput(v) {
+    if (!v) return '';
+    const s = String(v);
+    let m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+    if (m) return `${m[1]}T${m[2]}`;
+    m = s.match(/^(\d{4}-\d{2}-\d{2})$/);
+    if (m) return `${m[1]}T00:00`;
+    const d = new Date(s);
+    if (isNaN(d)) return '';
+    // El servidor manda "... GMT" pero la hora guardada ya es la de Lima: se usan los componentes tal cual
+    const p2 = n => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}T${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+}
+// Elige la condición de pago aunque esté escrita distinto ("Credito 30 Dias" = "Crédito 30 días")
+function setCondicionPagoPC(valor) {
+    const sel = document.getElementById('pcCondicion');
+    if (!sel) return;
+    const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const v = valor || 'Contado';
+    const opt = Array.from(sel.options).find(o => norm(o.value) === norm(v));
+    const custom = document.getElementById('pcCondicionCustom');
+    if (opt) {
+        sel.value = opt.value;
+        if (custom) { custom.value = ''; custom.style.display = 'none'; }
+    } else {
+        sel.value = 'Personalizado';
+        if (custom) { custom.value = v; custom.style.display = 'block'; }
+    }
+}
 let CLIENTES_MAESTROS = [];
 
 
@@ -439,7 +482,7 @@ async function cargarProductosMaestros() {
                 modelo: p.modelo || '',
                 marca: p.marca || '',
                 um: p.unidad || 'NIU',
-                stock: p.stock || 0,
+                stock: numStock(p.stock),
                 valorVenta: p.precio_unitario || p.precio_venta || 0,
                 entrega: p.tiempo_entrega || 'Inmediata',
                 // Guardar también para referencia
@@ -452,8 +495,8 @@ async function cargarProductosMaestros() {
             console.warn('⚠️ No se encontraron productos en la base de datos');
             // Usar datos de ejemplo
             PRODUCTOS_MAESTROS = [
-                {id:1, codigo:'PRD-001245', producto:'Cable THHN 12 AWG', descripcion:'Cable eléctrico THHN 12 AWG 600V', modelo:'THHN-12', marca:'INDECO', um:'NIU', stock:1200, valorVenta:6.50, entrega:'Inmediata'},
-                {id:2, codigo:'PRD-002318', producto:'Interruptor termomagnético 2P 40A', descripcion:'Interruptor termomagnético 2 polos 40A', modelo:'IC60N-2P-40A', marca:'Schneider', um:'NIU', stock:120, valorVenta:85.00, entrega:'Inmediata'}
+                // Sin productos de ejemplo: si no se pudo leer el catálogo, la lista queda vacía
+                
             ];
         }
         
@@ -464,8 +507,8 @@ async function cargarProductosMaestros() {
         console.error('❌ Error cargando productos:', error);
         // Datos de ejemplo en caso de error
         PRODUCTOS_MAESTROS = [
-            {id:1, codigo:'PRD-001245', producto:'Cable THHN 12 AWG', descripcion:'Cable eléctrico THHN 12 AWG 600V', modelo:'THHN-12', marca:'INDECO', um:'NIU', stock:1200, valorVenta:6.50, entrega:'Inmediata'},
-            {id:2, codigo:'PRD-002318', producto:'Interruptor termomagnético 2P 40A', descripcion:'Interruptor termomagnético 2 polos 40A', modelo:'IC60N-2P-40A', marca:'Schneider', um:'NIU', stock:120, valorVenta:85.00, entrega:'Inmediata'}
+            // Sin productos de ejemplo: si no se pudo leer el catálogo, la lista queda vacía
+            
         ];
         cargarDatalistProductos();
     }
@@ -489,7 +532,7 @@ async function cargarProductosDesdeModulo() {
                 modelo: p.modelo || '',
                 marca: p.marca || '',
                 um: p.unidad || 'NIU',
-                stock: p.stock || 0,
+                stock: numStock(p.stock),
                 valorVenta: p.precio_unitario || p.precio_venta || 0,
                 entrega: p.tiempo_entrega || 'Inmediata'
             }));
@@ -500,8 +543,8 @@ async function cargarProductosDesdeModulo() {
         console.error('❌ Error cargando desde módulo productos:', error);
         // Si todo falla, usar datos de ejemplo
         PRODUCTOS_MAESTROS = [
-            {id:1, codigo:'PRD-001245', producto:'Cable THHN 12 AWG', descripcion:'Cable eléctrico THHN 12 AWG 600V', modelo:'THHN-12', marca:'INDECO', um:'NIU', stock:1200, valorVenta:6.50, entrega:'Inmediata'},
-            {id:2, codigo:'PRD-002318', producto:'Interruptor termomagnético 2P 40A', descripcion:'Interruptor termomagnético 2 polos 40A', modelo:'IC60N-2P-40A', marca:'Schneider', um:'NIU', stock:120, valorVenta:85.00, entrega:'Inmediata'}
+            // Sin productos de ejemplo: si no se pudo leer el catálogo, la lista queda vacía
+            
         ];
         console.warn('⚠️ Usando productos de ejemplo (fallback)');
         cargarDatalistProductos();
@@ -2775,6 +2818,8 @@ function addSelectedProductsPc() {
 function agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio, stock) {
     const tbody = document.getElementById('pcItemsBody');
     if (!tbody) return;
+    stock = stockVivo(codigo, stock);
+    cantidad = Number(cantidad) || 0;
     
     const rowCount = tbody.children.length + 1;
     const faltante = Math.max(cantidad - stock, 0);
@@ -2985,6 +3030,8 @@ async function _saveDespacho(estado) {
             estado: estado || 'Pendiente despacho',
             numero: document.getElementById('despachoNumero')?.value || '',
             pc_numero: document.getElementById('despachoPC')?.value || '',
+            cotizacion_numero: document.getElementById('despachoCotizacion')?.value || '',
+            items: editingId ? undefined : (window._despachoProductos || []),
             cliente: document.getElementById('despachoCliente')?.value || '',
             ruc: document.getElementById('despachoRuc')?.value || '',
             // 🔽 ENVIAR FECHA CON HORA COMPLETA
@@ -5079,12 +5126,29 @@ window.createDocFromCotizacion = async function(id, tipo) {
                         }, 300);
                         break;
                         
-                    case 'despacho':
-                        switchTab('despachar');
-                        setTimeout(() => {
-                            openDespachoModalWithData(null, cotizacion);
-                        }, 300);
+                    case 'despacho': {
+                        // Orden del negocio: Cotización → PC → Despacho → Guía → Factura.
+                        // El despacho se hace desde el PC de esta cotización (así lleva PC, productos y empresa,
+                        // y después la guía y la factura lo encuentran). Antes se creaba suelto, sin PC ni productos.
+                        if (typeof loadPedidos === 'function') {
+                            try { await loadPedidos(); } catch (e) { console.warn('No se pudo leer los PC', e); }
+                        }
+                        const pcsCot = (pedidosData || []).filter(p =>
+                            (Number(p.cotizacion_id) === Number(id) || (p.cotizacion_numero && p.cotizacion_numero === cotizacion.numero_cotizacion))
+                            && !/anulad/i.test(p.estado || ''));
+                        if (pcsCot.length === 0) {
+                            showToast('⚠️ Esta cotización todavía no tiene PC del cliente. Primero registra el PC y luego envíalo a despacho.', 'warning');
+                            switchTab('pedido_compra');
+                            setTimeout(() => {
+                                openPedidoCompraModalSAP('cot');
+                                setTimeout(() => seleccionarCotizacionSAP(id), 400);
+                            }, 300);
+                            break;
+                        }
+                        const pcCot = pcsCot.sort((a, b) => b.id - a.id)[0];
+                        enviarADespacho(pcCot.id);
                         break;
+                    }
                         
                     default:
                         showToast(`Tipo "${tipo}" no soportado`, 'error');
@@ -9180,7 +9244,7 @@ function renderQuoteProducts() {
             <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);renderQuoteProducts();calcQuote();"></td>
             <td class="col-price"><input style="width:90px;text-align:right" value="${p.valorVenta || 0}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Number(this.value);renderQuoteProducts();calcQuote();"></td>
             <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
-            <td class="col-stock">${p.stock || 0}</td>
+            <td class="col-stock">${stockVivo(p.codigo, p.stock)}</td>
             <td class="col-delivery">${p.entrega === 'Inmediata' ? '<span class="badge b-ok">Inmediata</span>' : '<span class="badge b-draft">' + (p.entrega || 'Por confirmar') + '</span>'}</td>
             <td class="col-actions">
                 <button class="btn btn-sm btn-danger" onclick="quoteProducts.splice(${i},1);renderQuoteProducts();calcQuote();">✕</button>
@@ -11805,6 +11869,10 @@ function clearDateFilter() {
 function openPedidoCompraModalSAP(mode, id) {
     console.log('📋 openPedidoCompraModalSAP:', mode, id);
     forzarLimpiezaModalPC();
+    // Al editar, guardar sobre ESTE PC (antes quedaba en modo "cotización" y pedía elegir una o creaba otro PC)
+    const _esEdicionPC = (mode === 'edit' || mode === 'editar' || (mode === 'directo' && id));
+    modalMode = _esEdicionPC ? 'editar' : (mode === 'directo' ? 'directo' : 'cot');
+    editingId = _esEdicionPC ? id : null;
     // 🔽 FUNCIÓN SEGURA PARA LIMPIAR ELEMENTOS
     function clearElement(id, defaultValue = '') {
         const el = document.getElementById(id);
@@ -12040,8 +12108,8 @@ function cargarPCParaEdicion(pcId) {
                 
                 setValue('pcNumero', pc.numero || '');
                 setValue('pcContacto', pc.responsable || pc.cliente_contacto || '');
-                setValue('pcFecha', fechaRecepcion);
-                setValue('pcCondicion', pc.condicion_pago || pc.condicion_atencion || 'Contado');
+                setValue('pcFecha', fechaParaInput(pc.fecha || pc.fecha_recepcion));
+                setCondicionPagoPC(pc.condicion_pago || pc.condicion_atencion || 'Contado');
                 setValue('pcMoneda', pc.moneda || 'S/)');
                 setValue('pcMontoPC', montoSinIgv.toFixed(2));
                 setValue('pcEntrega', pc.lugar_entrega || pc.entrega || '');
@@ -12059,7 +12127,7 @@ function cargarPCParaEdicion(pcId) {
                         items.forEach((item, index) => {
                             const cantidad = parseFloat(item.cantidad_pc || item.cantidad || 1);
                             const precio = parseFloat(item.precio_pc || item.precio || 0);
-                            const stock = parseFloat(item.stock || 0);
+                            const stock = null; // se lee en vivo del inventario (antes se guardaba aquí el valor total)
                             
                             agregarItemPCTable(
                                 item.codigo || '',
@@ -12081,7 +12149,7 @@ function cargarPCParaEdicion(pcId) {
                 // ============================================================
                 const checkboxes = {
                     'vPrecio': pc.valida_precios,
-                    'vProducto': pc.valida_productos,
+                    'vProducto': (pc.valida_productos ?? pc.valida_cantidades),
                     'vCantidad': pc.valida_cantidades,
                     'vEntrega': pc.valida_entrega,
                     'vTransporte': pc.valida_transporte,
@@ -14412,7 +14480,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
             productos.forEach((p, i) => {
                 const cantidadCotizada = p.cantidad || 1;
                 const precioCotizado = p.valorVenta || 0;
-                const stock = p.stock || 0;
+                const stock = stockVivo(p.codigo, p.stock);
                 const faltante = Math.max(cantidadCotizada - stock, 0);
                 const valorTotal = cantidadCotizada * precioCotizado;
                 
@@ -15194,9 +15262,10 @@ async function savePedidoCompraSAP(force) {
         const filas = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
         
         // Verifica que al menos una fila tenga un código de producto real
+        // Una fila cuenta si tiene código O descripción (hay productos sin código)
         const hayProductosReales = filas.some(row => {
-            const primerInput = row.querySelector('input');
-            return primerInput && primerInput.value.trim() !== '';
+            const ins = row.querySelectorAll('input');
+            return ins.length >= 8 && ((ins[0].value || '').trim() !== '' || (ins[1].value || '').trim() !== '');
         });
         
         if (filas.length === 0 || !hayProductosReales) {
@@ -15298,7 +15367,8 @@ async function savePedidoCompraSAP(force) {
             const inputs = row.querySelectorAll('input');
             if (inputs.length >= 8) {
                 const tds = row.querySelectorAll('td');
-                const stockCell = tds[9];
+                const stockCell = tds[10]; // columna "Stock" (la 9 es el valor total)
+                if (!(inputs[0]?.value || '').trim() && !(inputs[1]?.value || '').trim()) return; // fila vacía
                 items.push({
                     codigo: inputs[0]?.value || '',
                     producto: inputs[1]?.value || '',
@@ -15338,7 +15408,7 @@ async function savePedidoCompraSAP(force) {
         
         if (modalMode === 'editar' && editingId) {
             const pedidoExistente = pedidosData.find(p => p.id === editingId);
-            if (pedidoExistente && pedidoExistente.numero) {
+            if (!numeroPC.trim() && pedidoExistente && pedidoExistente.numero) {
                 numeroPC = pedidoExistente.numero;
             }
         } else if (!numeroPC) {
@@ -15368,12 +15438,15 @@ async function savePedidoCompraSAP(force) {
         const pcData = {
             id: editingId || null,
             numero: numeroPC,
-            fecha: fechaDB,  // ← FORMATO CON ESPACIO (YYYY-MM-DD HH:MM:SS)
+            // La fecha es la que se escribe en "Fecha recepción" (antes se guardaba siempre la hora actual)
+            fecha: pcFecha ? (pcFecha.replace('T', ' ') + (pcFecha.length === 16 ? ':00' : '')) : fechaDB,
+            fecha_recepcion: (pcFecha || fechaDB).slice(0, 10),
             medio: document.getElementById('pcMedio')?.value || 'Correo',
             estado: estado,
             cliente: document.getElementById('pcCliente')?.value || '',
             ruc: document.getElementById('pcRuc')?.value || '',
-            cotizacion_id: cotizacionSeleccionada?.id || null,
+            cotizacion_id: cotizacionSeleccionada?.id
+                || (modalMode === 'editar' ? ((pedidosData || []).find(p => p.id === editingId)?.cotizacion_id || null) : null),
             cotizacion_numero: document.getElementById('pcCotNumero')?.value || 'SIN COTIZACIÓN',
             monto: Number(document.getElementById('pcMontoPC')?.value || 0),
             entrega: document.getElementById('pcEntrega')?.value || '',
@@ -15386,6 +15459,8 @@ async function savePedidoCompraSAP(force) {
             valida_precios: val[0] === 'Sí',
             valida_cantidades: val[1] === 'Sí',
             valida_stock: false,
+            valida_productos: val[2] === 'Sí',
+            valida_margen: true, // no hay interruptor de margen en la pantalla
             valida_entrega: val[3] === 'Sí',
             valida_montos: val[4] === 'Sí',
             valida_transporte: val[5] === 'Sí',

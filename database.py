@@ -31,11 +31,22 @@ if DATABASE_URL.startswith("postgresql+psycopg2://"):
 # =========================
 # CONEXIÓN
 # =========================
+# Hora de Perú para NOW()/CURRENT_TIMESTAMP (16/10): sin esto la base (en UTC) guardaba 5 horas más
+# y el Kardex mostraba una hora distinta a la real. Se puede cambiar con la variable ERP_ZONA_HORARIA.
+ZONA_HORARIA = os.environ.get('ERP_ZONA_HORARIA', 'America/Lima')
+
+
 def get_connection():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         DATABASE_URL,
         client_encoding="UTF8"
     )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET TIME ZONE %s", (ZONA_HORARIA,))
+    except Exception:
+        conn.rollback()
+    return conn
 
 
 # =========================

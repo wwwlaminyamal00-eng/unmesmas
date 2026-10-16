@@ -79,6 +79,11 @@ def asegurar_columnas_empresa():
                         cur.execute(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS {col} {t}')
                         if col == 'empresa_id':
                             cur.execute(f'CREATE INDEX IF NOT EXISTS idx_{tabla}_empresa_id ON {tabla} (empresa_id)')
+            # 16/10: el interruptor "Producto" del PC ahora se guarda (antes al reabrir salía apagado)
+            cur.execute("""SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                           AND table_name = 'pedido_compra_pc' AND column_name = 'valida_productos'""")
+            if not cur.fetchone() and _existe_tabla(cur, 'pedido_compra_pc'):
+                cur.execute('ALTER TABLE pedido_compra_pc ADD COLUMN IF NOT EXISTS valida_productos BOOLEAN')
         _listo = True
         _cache['t'] = 0   # releer empresas (pueden haber aparecido columnas nuevas)
 
@@ -213,8 +218,20 @@ def marcar_empresa(cur, tabla, fila_id, empresa_id):
             return marcar_empresa(conn.cursor(), tabla, fila_id, empresa_id)
     cur.execute(f"UPDATE {tabla} SET empresa_id = %s WHERE id = %s", (empresa_id, fila_id))
     e = empresa_por_id(empresa_id)
-    if tabla in TABLAS_CON_CODIGO and e:
+    if tabla in TABLAS_CON_CODIGO and e and _tiene_columna_empresa(cur, tabla):
         cur.execute(f"UPDATE {tabla} SET empresa = %s WHERE id = %s", (e['codigo'], fila_id))
+
+
+_col_empresa = {}
+
+
+def _tiene_columna_empresa(cur, tabla):
+    """Bases antiguas no tienen la columna de texto "empresa" (solo empresa_id)."""
+    if tabla not in _col_empresa:
+        cur.execute("""SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                       AND table_name = %s AND column_name = 'empresa'""", (tabla,))
+        _col_empresa[tabla] = cur.fetchone() is not None
+    return _col_empresa[tabla]
 
 
 # ============================================================

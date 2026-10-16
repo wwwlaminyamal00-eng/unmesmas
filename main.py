@@ -1,6 +1,13 @@
 import os
 import sys
+import time
 import hmac
+
+# Hora de Perú para todo el ERP (16/10): en Render el servidor está en UTC y datetime.now()
+# daba 5 horas más (Kardex, numeraciones por día, fechas de documentos).
+os.environ.setdefault('TZ', 'America/Lima')
+if hasattr(time, 'tzset'):
+    time.tzset()
 import logging
 from datetime import timedelta
 import requests
@@ -384,33 +391,16 @@ def api_ultimo_codigo_proveedor():
 # ==========================================
 @app.route("/api/sunat/consulta", methods=["GET"])
 def api_consulta_sunat():
-    ruc = request.args.get('ruc', '')
-    if not ruc or len(ruc) != 11 or not ruc.isdigit():
-        return jsonify({'success': False, 'error': 'RUC inválido, debe tener 11 dígitos'})
-    
+    # Primero el ERP (clientes y proveedores ya registrados), luego SUNAT con clave; ver routes/consulta_ruc.py
+    from routes.consulta_ruc import consultar_ruc, ErrorConsultaRuc
     try:
-        url = f'https://api.apis.net.pe/v1/ruc?numero={ruc}'
-        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-        response = requests.get(url, timeout=15, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data and data.get('nombre'):
-                return jsonify({
-                    'success': True,
-                    'razon_social': data.get('nombre', ''),
-                    'nombre_comercial': data.get('nombre', ''),
-                    'direccion': data.get('direccion', ''),
-                    'estado': data.get('estado', ''),
-                    'condicion': data.get('condicion', '')
-                })
-            return jsonify({'success': False, 'error': 'No se encontraron datos para este RUC'})
-        return jsonify({'success': False, 'error': f'Error en la consulta: Código {response.status_code}'})
-    except requests.Timeout:
-        return jsonify({'success': False, 'error': 'Tiempo de espera agotado'})
+        datos = consultar_ruc(request.args.get('ruc', ''))
+        return jsonify({'success': True, **datos})
+    except ErrorConsultaRuc as e:
+        return jsonify({'success': False, 'error': str(e), 'manual': True})
     except Exception as e:
         app.logger.error(f"Error en consulta SUNAT: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'No se pudo consultar el RUC. Escribe los datos a mano.', 'manual': True})
 
 # ==========================================
 # ENDPOINTS PRODUCTOS API

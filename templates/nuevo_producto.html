@@ -795,16 +795,17 @@
             </div>
             <div class="operation">
                 <div style="font-weight:700;font-size:9px;color:var(--text);margin-bottom:4px;letter-spacing:.05em;text-transform:uppercase;">Tipo de operación</div>
+                {% set ops = tipos_operacion if tipos_operacion is defined else ['venta'] %}
                 <label class="op-item">
-                    <input type="checkbox" name="operation" value="venta" {% if not editando or (producto and producto.venta) %}checked{% endif %} />
+                    <input type="checkbox" name="operation" value="venta" {% if 'venta' in ops %}checked{% endif %} />
                     <div><div class="op-title">Venta</div><div class="op-desc">El producto estará disponible para ventas.</div></div>
                 </label>
                 <label class="op-item">
-                    <input type="checkbox" name="operation" value="compra" {% if editando and producto and producto.compra %}checked{% endif %} />
+                    <input type="checkbox" name="operation" value="compra" {% if 'compra' in ops %}checked{% endif %} />
                     <div><div class="op-title">Compra</div><div class="op-desc">El producto se podrá adquirir a proveedores.</div></div>
                 </label>
                 <label class="op-item">
-                    <input type="checkbox" name="operation" value="inventariable" {% if editando and producto and producto.inventariable %}checked{% endif %} />
+                    <input type="checkbox" name="operation" value="inventariable" {% if 'inventariable' in ops %}checked{% endif %} />
                     <div><div class="op-title">Inventariable</div><div class="op-desc">El inventario será controlado en almacén.</div></div>
                 </label>
             </div>
@@ -839,38 +840,10 @@
                     <div style="display:flex;gap:4px;">
                         <select id="marcaProducto" name="marca" style="flex:1;">
                             <option value="">Seleccione</option>
-                            <option value="Nike" {% if producto and producto.marca == 'Nike' %}selected{% endif %}>Nike</option>
-                            <option value="Adidas" {% if producto and producto.marca == 'Adidas' %}selected{% endif %}>Adidas</option>
-                            <option value="Puma" {% if producto and producto.marca == 'Puma' %}selected{% endif %}>Puma</option>
-                            <option value="Reebok" {% if producto and producto.marca == 'Reebok' %}selected{% endif %}>Reebok</option>
-                            <option value="New Balance" {% if producto and producto.marca == 'New Balance' %}selected{% endif %}>New Balance</option>
-                            <option value="Under Armour" {% if producto and producto.marca == 'Under Armour' %}selected{% endif %}>Under Armour</option>
-                            <option value="Columbia" {% if producto and producto.marca == 'Columbia' %}selected{% endif %}>Columbia</option>
-                            <option value="The North Face" {% if producto and producto.marca == 'The North Face' %}selected{% endif %}>The North Face</option>
-                            <option value="Patagonia" {% if producto and producto.marca == 'Patagonia' %}selected{% endif %}>Patagonia</option>
-                            <option value="Dickies" {% if producto and producto.marca == 'Dickies' %}selected{% endif %}>Dickies</option>
-                            <option value="Carhartt" {% if producto and producto.marca == 'Carhartt' %}selected{% endif %}>Carhartt</option>
-                            <option value="3M" {% if producto and producto.marca == '3M' %}selected{% endif %}>3M</option>
-                            <option value="Honeywell" {% if producto and producto.marca == 'Honeywell' %}selected{% endif %}>Honeywell</option>
-                            <option value="DuPont" {% if producto and producto.marca == 'DuPont' %}selected{% endif %}>DuPont</option>
-                            <option value="Samsung" {% if producto and producto.marca == 'Samsung' %}selected{% endif %}>Samsung</option>
-                            <option value="LG" {% if producto and producto.marca == 'LG' %}selected{% endif %}>LG</option>
-                            <option value="Sony" {% if producto and producto.marca == 'Sony' %}selected{% endif %}>Sony</option>
-                            <option value="Panasonic" {% if producto and producto.marca == 'Panasonic' %}selected{% endif %}>Panasonic</option>
-                            <option value="HP" {% if producto and producto.marca == 'HP' %}selected{% endif %}>HP</option>
-                            <option value="Dell" {% if producto and producto.marca == 'Dell' %}selected{% endif %}>Dell</option>
-                            <option value="Lenovo" {% if producto and producto.marca == 'Lenovo' %}selected{% endif %}>Lenovo</option>
-                            <option value="Apple" {% if producto and producto.marca == 'Apple' %}selected{% endif %}>Apple</option>
-                            <option value="Xiaomi" {% if producto and producto.marca == 'Xiaomi' %}selected{% endif %}>Xiaomi</option>
-                            <option value="Huawei" {% if producto and producto.marca == 'Huawei' %}selected{% endif %}>Huawei</option>
-                            <option value="Caterpillar" {% if producto and producto.marca == 'Caterpillar' %}selected{% endif %}>Caterpillar</option>
-                            <option value="Bosch" {% if producto and producto.marca == 'Bosch' %}selected{% endif %}>Bosch</option>
-                            <option value="Makita" {% if producto and producto.marca == 'Makita' %}selected{% endif %}>Makita</option>
-                            <option value="DeWalt" {% if producto and producto.marca == 'DeWalt' %}selected{% endif %}>DeWalt</option>
-                            <option value="Stanley" {% if producto and producto.marca == 'Stanley' %}selected{% endif %}>Stanley</option>
-                            <option value="Ferretería Industrial" {% if producto and producto.marca == 'Ferretería Industrial' %}selected{% endif %}>Ferretería Industrial</option>
-                            <option value="Casa de Herramientas" {% if producto and producto.marca == 'Casa de Herramientas' %}selected{% endif %}>Casa de Herramientas</option>
-                            <option value="Otros" {% if producto and producto.marca == 'Otros' %}selected{% endif %}>Otros</option>
+                            {#- Lista base + marcas del maestro + las ya usadas + la del producto (una personalizada no se pierde al reabrir) #}
+                            {% for m in (marcas_opciones or []) %}
+                            <option value="{{ m }}" {% if producto and producto.marca == m %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
                         </select>
                         <button type="button" class="btn btn-sm primary" onclick="personalizar('marcaProducto','Marca personalizada')" style="padding:2px 8px;font-size:12px;height:28px;"><i class="bi bi-pencil"></i></button>
                     </div>
@@ -914,24 +887,9 @@
                     <div style="display:flex;gap:4px;">
                         <select id="categoriaProducto" name="familia" style="flex:1;" required>
                             <option value="">Seleccione</option>
-                            <option value="Seguridad Industrial" {% if producto and producto.familia == 'Seguridad Industrial' %}selected{% endif %}>Seguridad Industrial</option>
-                            <option value="Mobiliario de Oficina" {% if producto and producto.familia == 'Mobiliario de Oficina' %}selected{% endif %}>Mobiliario de Oficina</option>
-                            <option value="Tecnología" {% if producto and producto.familia == 'Tecnología' %}selected{% endif %}>Tecnología</option>
-                            <option value="Ferretería" {% if producto and producto.familia == 'Ferretería' %}selected{% endif %}>Ferretería</option>
-                            <option value="Limpieza" {% if producto and producto.familia == 'Limpieza' %}selected{% endif %}>Limpieza</option>
-                            <option value="Cuidado Personal" {% if producto and producto.familia == 'Cuidado Personal' %}selected{% endif %}>Cuidado Personal</option>
-                            <option value="Iluminación" {% if producto and producto.familia == 'Iluminación' %}selected{% endif %}>Iluminación</option>
-                            <option value="Herramientas Eléctricas" {% if producto and producto.familia == 'Herramientas Eléctricas' %}selected{% endif %}>Herramientas Eléctricas</option>
-                            <option value="Herramientas Manuales" {% if producto and producto.familia == 'Herramientas Manuales' %}selected{% endif %}>Herramientas Manuales</option>
-                            <option value="Equipos de Protección" {% if producto and producto.familia == 'Equipos de Protección' %}selected{% endif %}>Equipos de Protección</option>
-                            <option value="Señalización" {% if producto and producto.familia == 'Señalización' %}selected{% endif %}>Señalización</option>
-                            <option value="Materiales de Construcción" {% if producto and producto.familia == 'Materiales de Construcción' %}selected{% endif %}>Materiales de Construcción</option>
-                            <option value="Pinturas y Acabados" {% if producto and producto.familia == 'Pinturas y Acabados' %}selected{% endif %}>Pinturas y Acabados</option>
-                            <option value="Fijaciones y Anclajes" {% if producto and producto.familia == 'Fijaciones y Anclajes' %}selected{% endif %}>Fijaciones y Anclajes</option>
-                            <option value="Jardinería" {% if producto and producto.familia == 'Jardinería' %}selected{% endif %}>Jardinería</option>
-                            <option value="Automotriz" {% if producto and producto.familia == 'Automotriz' %}selected{% endif %}>Automotriz</option>
-                            <option value="Electrónica" {% if producto and producto.familia == 'Electrónica' %}selected{% endif %}>Electrónica</option>
-                            <option value="Papelería" {% if producto and producto.familia == 'Papelería' %}selected{% endif %}>Papelería</option>
+                            {% for c in (categorias_opciones or []) %}
+                            <option value="{{ c }}" {% if producto and producto.familia == c %}selected{% endif %}>{{ c }}</option>
+                            {% endfor %}
                         </select>
                         <button type="button" class="btn btn-sm primary" onclick="personalizar('categoriaProducto','Categoría personalizada')" style="padding:2px 8px;font-size:12px;height:28px;"><i class="bi bi-pencil"></i></button>
                     </div>
@@ -1082,11 +1040,21 @@
                     <div class="state-chip blocked"><span class="dot"></span>Bloqueado</div>
                 </div>
             </div>
-            {% if not producto %}
-            <!-- Stock inicial (opcional): queda en Inventario con empresa y sede -->
+            <!-- Stock inicial (opcional): queda en Inventario con empresa y sede. Al editar: "Agregar stock inicial" -->
             <div class="card state-card" id="cardStockInicial">
-                <h3 class="card-title"><i class="bi bi-box-seam"></i> Stock inicial <span class="optional">(opcional)</span></h3>
+                <h3 class="card-title"><i class="bi bi-box-seam"></i> {% if editando %}Agregar stock inicial{% else %}Stock inicial{% endif %} <span class="optional">(opcional)</span></h3>
+                {% if editando %}
+                <p style="margin:0 0 8px;font-size:12px;color:#6B7280;">Déjalo vacío si no vas a ingresar unidades. Úsalo solo si este producto <strong>aún no tiene stock</strong> en esa empresa y sede. Se registra en Inventario al costo de arriba.</p>
+                {% if stock_sedes %}
+                <div style="margin:0 0 8px;padding:6px 8px;font-size:12px;background:#FEF3C7;border-radius:6px;color:#92400E;">
+                    Ya tiene stock en:
+                    {% for s in stock_sedes %}<br>• {{ s.empresa }} · {{ s.sede }}: <strong>{{ '%g' % s.cantidad }}</strong>{% endfor %}
+                    <br>Para cambiar ese stock usa Inventario.
+                </div>
+                {% endif %}
+                {% else %}
                 <p style="margin:0 0 8px;font-size:12px;color:#6B7280;">Solo si ya tienes unidades guardadas. Se registra en Inventario con su empresa y sede, al costo de arriba.</p>
+                {% endif %}
                 <div class="field"><label>Cantidad</label>
                     <input name="stock_inicial_cantidad" id="stockInicialCantidad" type="number" min="0" step="1" placeholder="0" />
                 </div>
@@ -1096,6 +1064,7 @@
                 <div class="field"><label>Sede</label>
                     <select name="stock_inicial_almacen" id="stockInicialAlmacen"><option value="">Cargando...</option></select>
                 </div>
+                <div id="stockInicialAviso" style="display:none;margin-top:6px;font-size:12px;color:#B91C1C;"></div>
             </div>
             <script>
             (function () {
@@ -1104,10 +1073,21 @@
                     var e = document.getElementById('stockInicialEmpresa'), s = document.getElementById('stockInicialAlmacen');
                     e.innerHTML = c.empresas.map(function (x) { return '<option value="' + x.id + '"' + (x.id === c.empresa_defecto ? ' selected' : '') + '>' + x.nombre + '</option>'; }).join('');
                     s.innerHTML = c.sedes.map(function (x) { return '<option value="' + x.id + '">' + x.nombre + '</option>'; }).join('');
+                    avisar();
                 }).catch(function () {});
+                // Al editar: avisa si en la empresa + sede elegidas ya hay stock (el servidor tampoco lo duplica)
+                var stockSedes = {{ (stock_sedes or []) | tojson }};
+                function avisar() {
+                    var e = document.getElementById('stockInicialEmpresa').value, s = document.getElementById('stockInicialAlmacen').value;
+                    var ya = stockSedes.filter(function (x) { return x.empresa_id === String(e) && x.almacen_id === String(s); })[0];
+                    var aviso = document.getElementById('stockInicialAviso');
+                    aviso.style.display = ya ? 'block' : 'none';
+                    aviso.textContent = ya ? 'Aquí ya hay ' + ya.cantidad + ' unidades. No agregues stock inicial: usa Inventario.' : '';
+                }
+                document.getElementById('stockInicialEmpresa').addEventListener('change', avisar);
+                document.getElementById('stockInicialAlmacen').addEventListener('change', avisar);
             })();
             </script>
-            {% endif %}
         </div>
     </div>
 </form>
@@ -1284,8 +1264,11 @@
                 console.log('⏭️ Saltando campo en edición:', key);
                 continue;
             }
+            if (key === 'operation' || key === 'foto') continue;
             data[key] = value;
         }
+        // Tipo de operación: varias casillas con el mismo nombre -> "venta,compra,inventariable" ('' si ninguna)
+        data.tipo_operacion = formData.getAll('operation').join(',');
         
         // Si es edición, aseguramos que el ID esté en la URL (ya está)
         // pero también lo podemos enviar en el body para seguridad
@@ -1327,6 +1310,10 @@
         if (result.success) {
             var codigo = result.data?.codigo || result.codigo || 'N/A';
             console.log('📦 Código del producto:', codigo);
+            // Si se registró stock inicial (o quedó pendiente de aprobación), se le dice al usuario
+            if (result.message && result.message.indexOf('Stock inicial') !== -1) {
+                alert(result.message);
+            }
             
             // 🔧 CAMBIO: usa el modal de base.html en vez de la notificación local
             if (typeof mostrarModalExito === 'function') {
@@ -1690,6 +1677,19 @@
             }
             select.value = valor.trim();
         }
+    }
+
+    function limpiarFormulario() {
+        // Cancelar: al editar vuelve a la lista; en un producto nuevo limpia el formulario
+        if (document.querySelector('input[name="producto_id"]')) {
+            window.location.href = '/productos/base-datos';
+            return;
+        }
+        var form = document.getElementById('formNuevoProducto');
+        if (form) form.reset();
+        limpiarErrores();
+        calcularMargen();
+        actualizarEstadoChips();
     }
 
     function cargarProveedoresProducto() {

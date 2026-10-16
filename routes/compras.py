@@ -1414,19 +1414,14 @@ def _fallback_sunat_compras(ruc):
         if not ruc.isdigit() or len(ruc) != 11:
             return jsonify({'success': True, 'data': [], 'source': 'invalid_ruc'})
 
-        import urllib.request, json as _json, ssl
+        # Mismo servicio que Ventas (routes/consulta_ruc.py): el antiguo sin clave ahora responde 402
+        from routes.consulta_ruc import consultar_ruc_externo, ErrorConsultaRuc
+        try:
+            data_sunat = consultar_ruc_externo(ruc)
+        except ErrorConsultaRuc as e:
+            return jsonify({'success': True, 'data': [], 'source': 'sunat_error', 'warning': str(e)})
 
-        url = f"https://api.apis.net.pe/v1/ruc?numero={ruc}"
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
-            raw = resp.read().decode('utf-8')
-            data_sunat = _json.loads(raw)
-
-        razon = data_sunat.get('razonSocial') or data_sunat.get('nombre') or ''
+        razon = data_sunat.get('razon_social') or ''
         direccion = data_sunat.get('direccion') or ''
 
         if razon:

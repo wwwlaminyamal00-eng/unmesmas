@@ -1011,6 +1011,7 @@
                     <th class="bd-col-model">Modelo</th>
                     <th class="bd-col-brand">Marca</th>
                     <th class="bd-col-cat">Categoría</th>
+                    <th class="bd-col-stock" title="Suma de todas las empresas y sedes (igual que en Inventario y Ventas)">Stock</th>
                     <th class="bd-col-status">Estado</th>
                     <th class="bd-col-actions">Acciones</th>
 
@@ -1633,7 +1634,7 @@ window.bdRenderProductos = function(data) {
     }
     
     if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="25" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay productos registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="26" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay productos registrados</td></tr>`;
         document.getElementById('bdTotalRegistros').textContent = '0 registros';
         document.getElementById('bdPaginaInfo').textContent = '0/0';
         return;
@@ -1712,6 +1713,10 @@ window.bdRenderProductos = function(data) {
         html += '<td class="bd-col-model">' + (p.modelo || '-') + '</td>';
         html += '<td class="bd-col-brand">' + (p.marca || '-') + '</td>';
         html += '<td class="bd-col-cat">' + categoria + '</td>';
+        // Stock del grupo = suma de inv_stock (todas las empresas y sedes); debajo, cuánto hay en cada empresa
+        var stockGrupo = Number(p.stock) || 0;
+        html += '<td class="bd-col-stock" style="text-align:center;font-weight:800;">' + (Math.round(stockGrupo * 100) / 100)
+             + (p.stock_detalle ? '<br><small style="color:#6B7280;font-weight:600;white-space:nowrap;">' + p.stock_detalle + '</small>' : '') + '</td>';
         html += '<td class="bd-col-status"><span class="bd-status ' + estadoClass + '"><span class="bd-dot"></span>' + estadoMostrado + '</span>' + bdBadgeAbast(p.id) + '</td>';
         html += '<td class="bd-col-actions"><div class="row-actions">';
         html += '<button class="btn-action btn-view" onclick="verProducto(' + p.id + ')" title="Ver"><i class="bi bi-eye"></i></button>';

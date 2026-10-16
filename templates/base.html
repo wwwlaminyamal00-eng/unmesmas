@@ -1789,35 +1789,7 @@ async function loadUsuarios(forceRefresh = false){
 }
 
 
-// ============================================================
-// CHECKBOX INTERACTIVO
-// ============================================================
-function checkEye(tienePermiso, user, module, userId, empresaId) {
-    const checked = tienePermiso ? 'checked' : '';
-    const empresaIdVal = empresaId && empresaId !== 'null' && empresaId !== 'undefined' ? empresaId : '';
-    const userIdVal = userId && userId !== 'null' && userId !== 'undefined' ? userId : '';
-    
-    return `
-        <div style="display:flex;align-items:center;gap:4px;justify-content:center;">
-            <input class="check perm-checkbox" type="checkbox" 
-                ${checked} 
-                data-user="${user}" 
-                data-module="${module}" 
-                data-user-id="${userIdVal}" 
-                data-empresa-id="${empresaIdVal}"
-                style="cursor:pointer;width:16px;height:16px;">
-            <span class="eye" 
-                data-user="${user}" 
-                data-module="${module}" 
-                data-user-id="${userIdVal}" 
-                data-empresa-id="${empresaIdVal}"
-                style="cursor:pointer;font-size:14px;opacity:0.6;transition:opacity 0.2s;"
-                onmouseover="this.style.opacity='1'" 
-                onmouseout="this.style.opacity='0.6'">👁</span>
-        </div>
-    `;
-}
-
+// (checkEye está más abajo, en el bloque de permisos por usuario)
 
       
 
@@ -1903,166 +1875,235 @@ function checkEye(tienePermiso, user, module, userId, empresaId) {
         };
 
 // ============================================================
-// MAPA DE CÓDIGOS A UUIDs - VERSIÓN CORREGIDA
+// PERMISOS POR USUARIO - UNA SOLA VERSIÓN (bug 13)
 // ============================================================
-let UUID_MAP_BY_CODE = {};
+// - La base de datos es la ÚNICA fuente: aquí no se guarda nada en el navegador.
+// - Cada check de la tabla es una columna (grupo de submódulos). Al marcarlo o desmarcarlo
+//   se envían SOLO los submódulos de esa columna; el resto de permisos no se toca.
+// - El ojo 👁 abre el detalle: una fila por submódulo con Ver, Crear, Editar, Aprobar, Anular, Eliminar.
+// - Regla que aplica el servidor: GERENCIA_TOTAL ve todo > permiso individual > permiso del rol > nada.
+const PERM_COLUMNAS = [
+    { col: 'Configuración', codigos: ['EMPRESAS', 'USUARIOS_PERMISOS', 'CORRELATIVOS', 'PARAMETROS', 'INTEGRACION'] },
+    { col: 'Maestros', codigos: ['CLIENTES', 'PROVEEDORES', 'ALMACENES', 'CATEGORIAS', 'MARCAS', 'UNIDADES_MEDIDA'] },
+    { col: 'Productos', codigos: ['PRODUCTOS_LISTADO', 'PRODUCTOS_FICHA'] },
+    { col: 'Cotizaciones', codigos: ['COTIZACIONES'] },
+    { col: 'Ventas', codigos: ['COMPROBANTES_CLIENTE', 'GUIAS_CLIENTE', 'NOTAS_CREDITO'] },
+    { col: 'Compras', codigos: ['SOLICITUD_COMPRA', 'COMPARATIVO_PROVEEDORES', 'ORDEN_COMPRA', 'COMPROBANTES_PROVEEDOR'] },
+    { col: 'Logística', codigos: ['RECEPCION_MERCADERIA'] },
+    { col: 'Inventario', codigos: ['ESTADO_STOCK', 'KARDEX', 'ENTRADAS_SALIDAS', 'TRANSFERENCIAS'] },
+    { col: 'CxC', codigos: ['CUENTAS_COBRAR'] },
+    { col: 'CxP', codigos: ['CUENTAS_PAGAR'] },
+    { col: 'Caja', codigos: ['CAJA_BANCOS', 'FLUJO_CAJA'] },
+    { col: 'Reportes', codigos: ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS'] },
+    { col: 'SUNAT', codigos: ['SUNAT'] }
+];
+const PERM_SEIS = [
+    ['puede_ver', 'Ver'], ['puede_crear', 'Crear'], ['puede_editar', 'Editar'],
+    ['puede_aprobar', 'Aprobar'], ['puede_anular', 'Anular'], ['puede_eliminar', 'Eliminar']
+];
+const ROLES_ADMIN_SISTEMA = ['admin', 'administrador', 'superadmin', 'gerencia_total', 'gerencia'];
 
-async function cargarUUIDsPorCodigo() {
-    try {
-        // Primero usar los datos locales de submodulosData
-        if (submodulosData && submodulosData.length > 0) {
-            UUID_MAP_BY_CODE = {};
-            submodulosData.forEach(s => {
-                UUID_MAP_BY_CODE[s.codigo] = s.id;
-            });
-            console.log('✅ UUID_MAP_BY_CODE cargado desde submodulosData:', UUID_MAP_BY_CODE);
-            return UUID_MAP_BY_CODE;
-        }
-        
-        // Si no hay datos locales, hacer fetch
-        const response = await fetch('/api/config/submodulos');
-        const data = await response.json();
-        if (data.success) {
-            UUID_MAP_BY_CODE = {};
-            data.data.forEach(s => {
-                UUID_MAP_BY_CODE[s.codigo] = s.id;
-            });
-            console.log('✅ UUID_MAP_BY_CODE cargado desde API:', UUID_MAP_BY_CODE);
-            return UUID_MAP_BY_CODE;
-        }
-    } catch(e) {
-        console.error('❌ Error cargando UUIDs:', e);
-    }
-    return {};
+let UUID_MAP_BY_CODE = {};          // código de submódulo -> id real en la base (UUID)
+let PERM_SUBMODULOS_DB = [];        // submódulos reales (de /api/config/submodulos)
+let _promesaSubmodulosDB = null;
+let PERM_EMPRESA_CODIGO = null;     // empresa elegida en la pantalla de permisos (KCF / AGD)
+let PERM_ESTADO = {};               // userId -> { empresaId, efectivos, gerencia, error }
+
+function _esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-
-// ============================================================
-// CARGAR PERMISOS DE USUARIO - VERSIÓN CORREGIDA
-// ============================================================
-async function cargarPermisosUsuario(userId, empresaId) {
-    console.log('📋 Cargando permisos para usuario:', userId, 'empresa:', empresaId);
-    
-    if (!userId || !empresaId) {
-        console.warn('⚠️ userId o empresaId faltantes');
-        return { permisos: [] };
-    }
-    
-    const empresaIdStr = String(empresaId);
-    
-    try {
-        const response = await fetch(`/api/config/usuarios/${userId}/permisos?empresa_id=${empresaIdStr}`);
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                console.log('✅ Permisos cargados desde backend');
-                // Guardar en localStorage como caché
-                try {
-                    const key = `permisos_${userId}_${empresaIdStr}`;
-                    localStorage.setItem(key, JSON.stringify(data.data || { permisos: [] }));
-                } catch(e) {}
-                return data.data || { permisos: [] };
-            }
-        }
-    } catch(e) {
-        console.log('⚠️ Backend no disponible, usando localStorage');
-    }
-    
-    // Fallback a localStorage
-    const key = `permisos_${userId}_${empresaIdStr}`;
-    try {
-        const stored = localStorage.getItem(key);
-        if (stored) {
-            console.log('✅ Permisos cargados desde localStorage');
-            return JSON.parse(stored);
-        }
-    } catch(e) {}
-    
-    return { permisos: [] };
+function _esAdminSistema() {
+    const rol = (document.getElementById('usuarioRol')?.value || FLASK_SESSION.rol || '').trim().toLowerCase();
+    return ROLES_ADMIN_SISTEMA.includes(rol);
 }
 
-
-// ============================================================
-// GUARDAR PERMISOS DE USUARIO - VERSIÓN CORREGIDA
-// ============================================================
-async function guardarPermisosUsuario(userId, empresaId, permisosList) {
-    console.log('💾 Guardando permisos para usuario:', userId, 'empresa:', empresaId);
-    console.log('📋 Datos a enviar:', { empresa_id: empresaId, permisos: permisosList });
-    
-    // Asegurarnos de que empresaId sea string
-    const empresaIdStr = String(empresaId);
-    
-    // ✅ Preparar los datos exactamente como los espera el backend
-    const dataToSend = {
-        empresa_id: empresaIdStr,
-        permisos: permisosList.map(p => ({
-            submodulo_id: p.submodulo_id, // Puede ser número o UUID
-            puede_ver: p.puede_ver || false,
-            puede_crear: p.puede_crear || false,
-            puede_editar: p.puede_editar || false,
-            puede_aprobar: p.puede_aprobar || false,
-            puede_anular: p.puede_anular || false,
-            puede_eliminar: p.puede_eliminar || false,
-            puede_exportar: p.puede_exportar || false,
-            puede_subir_evidencia: p.puede_subir_evidencia || false,
-            observacion: p.observacion || ''
-        }))
-    };
-    
-    console.log('📤 Enviando al backend:', JSON.stringify(dataToSend, null, 2));
-    
+// Llama a la API y devuelve { ok, status, data, error } (nunca inventa un "ok")
+async function _permApi(url, opciones = {}) {
     try {
-        const response = await fetch(`/api/config/usuarios/${userId}/permisos`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(dataToSend)
+        const resp = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...opciones
         });
-        
-        // Leer la respuesta como texto primero para depuración
-        const responseText = await response.text();
-        console.log('📨 Respuesta del servidor (texto):', responseText);
-        
-        let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch(e) {
-            console.error('❌ Error parseando JSON:', e);
-            throw new Error('El servidor no devolvió un JSON válido');
-        }
-        
-        if (response.ok && data.success) {
-            console.log('✅ Permisos guardados en backend');
-            // Guardar en localStorage como respaldo
-            try {
-                const key = `permisos_${userId}_${empresaIdStr}`;
-                localStorage.setItem(key, JSON.stringify({ permisos: permisosList }));
-            } catch(e) {}
-            return true;
-        } else {
-            console.error('❌ Error en backend:', data.error || 'Error desconocido');
-            throw new Error(data.error || 'Error al guardar permisos');
-        }
-    } catch(error) {
-        console.error('❌ Error en la solicitud:', error);
-        // Fallback a localStorage
-        try {
-            const key = `permisos_${userId}_${empresaIdStr}`;
-            localStorage.setItem(key, JSON.stringify({ permisos: permisosList }));
-            console.log('✅ Permisos guardados en localStorage (fallback)');
-            return true;
-        } catch(e) {
-            console.error('❌ Error guardando en localStorage:', e);
-            return false;
-        }
+        let data = null;
+        try { data = await resp.json(); } catch (e) { data = null; }
+        if (resp.ok && data && data.success) return { ok: true, status: resp.status, data: data.data, raw: data };
+        const error = (data && (data.error || data.message)) ||
+            (resp.status === 403 ? 'No tienes permiso para esta acción.' : `El servidor respondió ${resp.status}.`);
+        return { ok: false, status: resp.status, error, raw: data };
+    } catch (e) {
+        return { ok: false, status: 0, error: 'No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.' };
     }
 }
 
-
+// Versiones anteriores guardaban permisos en el navegador (permisos_<usuario>_<empresa>): se borran
+// para que nadie vea datos viejos.
+(function _limpiarPermisosViejosDelNavegador() {
+    try {
+        Object.keys(localStorage).filter(k => k.startsWith('permisos_')).forEach(k => localStorage.removeItem(k));
+    } catch (e) { /* navegador sin almacenamiento */ }
+})();
 
 // ============================================================
-// TOGGLE PERMISO - VERSIÓN CORREGIDA
+// SUBMÓDULOS REALES DE LA BASE (se espera SIEMPRE antes de pintar checks)
+// ============================================================
+async function cargarUUIDsPorCodigo(forzar = false) {
+    if (_promesaSubmodulosDB && !forzar) return _promesaSubmodulosDB;
+    _promesaSubmodulosDB = (async () => {
+        const r = await _permApi('/api/config/submodulos');
+        if (!r.ok) {
+            _promesaSubmodulosDB = null;   // reintentar la próxima vez
+            throw new Error('No se pudieron cargar los submódulos: ' + r.error);
+        }
+        PERM_SUBMODULOS_DB = r.data || [];
+        UUID_MAP_BY_CODE = {};
+        PERM_SUBMODULOS_DB.forEach(s => { UUID_MAP_BY_CODE[s.codigo] = s.id; });
+        return UUID_MAP_BY_CODE;
+    })();
+    return _promesaSubmodulosDB;
+}
+
+async function initUUIDMap() {
+    return cargarUUIDsPorCodigo();
+}
+
+function _codigosColumna(col) {
+    const def = PERM_COLUMNAS.find(c => c.col === col);
+    return def ? def.codigos.filter(c => UUID_MAP_BY_CODE[c]) : [];
+}
+
+function _nombreSubmodulo(codigo) {
+    return PERM_SUBMODULOS_DB.find(s => s.codigo === codigo)?.nombre || codigo;
+}
+
+// ============================================================
+// LEER / GUARDAR PERMISOS (solo base de datos)
+// ============================================================
+// empresa: id de empresa, o código ('KCF', 'AGD', 'TODAS')
+async function cargarPermisosUsuario(userId, empresa) {
+    if (!userId || !empresa) throw new Error('Falta el usuario o la empresa.');
+    const esCodigo = /^[A-Za-z]+$/.test(String(empresa));
+    const q = esCodigo ? `empresa_codigo=${encodeURIComponent(empresa)}` : `empresa_id=${encodeURIComponent(empresa)}`;
+    const r = await _permApi(`/api/config/usuarios/${encodeURIComponent(userId)}/permisos?${q}`);
+    if (!r.ok) throw new Error(r.error);
+    return r.data || { permisos: [], efectivos: {} };
+}
+
+// permisosList: [{ submodulo_codigo, puede_ver, ... }] (solo las banderas que se quieren cambiar)
+// Devuelve { ok, error, data }. Solo es ok si el servidor confirmó que guardó.
+async function guardarPermisosUsuario(userId, empresaId, permisosList) {
+    if (!userId || !empresaId) return { ok: false, error: 'Falta el usuario o la empresa.' };
+    if (!permisosList || !permisosList.length) return { ok: false, error: 'No hay permisos para guardar.' };
+    return _permApi(`/api/config/usuarios/${encodeURIComponent(userId)}/permisos`, {
+        method: 'POST',
+        body: JSON.stringify({ empresa_id: String(empresaId), permisos: permisosList })
+    });
+}
+
+// ============================================================
+// EMPRESA DE LA PANTALLA DE PERMISOS (KCF / AGD)
+// ============================================================
+function _empresasDisponibles() {
+    const lista = [];
+    const agregar = (codigo) => { if (codigo && codigo !== 'TODAS' && !lista.includes(codigo)) lista.push(codigo); };
+    (window.EMPRESA_ACTIVA?.opciones || []).forEach(o => agregar(o.codigo));
+    usuariosData.forEach(u => (u.empresas_acceso || []).forEach(e => agregar(e.empresa_codigo)));
+    if (!lista.length) { agregar('KCF'); agregar('AGD'); }
+    return lista;
+}
+
+function _empresaPermisosElegida() {
+    const lista = _empresasDisponibles();
+    if (PERM_EMPRESA_CODIGO && lista.includes(PERM_EMPRESA_CODIGO)) return PERM_EMPRESA_CODIGO;
+    const cabecera = document.getElementById('empresaActiva')?.value;
+    const filtro = document.getElementById('filterEmpresaUsuarios')?.value;
+    PERM_EMPRESA_CODIGO = [cabecera, filtro].find(c => c && c !== 'TODAS' && lista.includes(c)) || lista[0];
+    return PERM_EMPRESA_CODIGO;
+}
+
+function _asegurarSelectorEmpresaPermisos() {
+    const filtros = document.getElementById('filterEmpresaUsuarios')?.parentElement;
+    if (!filtros) return;
+    let sel = document.getElementById('permEmpresaUsuarios');
+    if (!sel) {
+        const caja = document.createElement('label');
+        caja.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;';
+        caja.title = 'Los checks muestran y guardan los permisos de esta empresa';
+        caja.innerHTML = 'Permisos de: <select id="permEmpresaUsuarios" class="table-select"></select>';
+        filtros.insertBefore(caja, filtros.firstChild);
+        sel = caja.querySelector('select');
+        sel.addEventListener('change', async () => {
+            PERM_EMPRESA_CODIGO = sel.value;
+            await renderUsuarios();
+        });
+    }
+    const elegida = _empresaPermisosElegida();
+    sel.innerHTML = _empresasDisponibles().map(c => `<option value="${_esc(c)}" ${c === elegida ? 'selected' : ''}>${_esc(c)}</option>`).join('');
+    let nota = document.getElementById('permNotaReglas');
+    const notaBase = document.querySelector('#usuarios .note');
+    if (!nota && notaBase) {
+        nota = document.createElement('div');
+        nota.id = 'permNotaReglas';
+        nota.className = 'note';
+        nota.style.marginTop = '6px';
+        nota.innerHTML = '<b>Cómo funcionan los checks:</b> elige arriba la empresa (KCF o AGD). ' +
+            'Marcar un módulo le da <b>Ver + Crear + Editar</b>; desmarcarlo le quita todo en ese módulo. ' +
+            'Para <b>Aprobar, Anular o Eliminar</b> usa el ojo 👁. Se guarda al instante en la base de datos. ' +
+            'Un check a medias (▣) significa que tiene solo parte del módulo. ' +
+            'Los usuarios con rol <b>GERENCIA_TOTAL</b> ven todo y no se pueden recortar aquí (cambia su rol). ' +
+            'Si no hay permiso propio, se usa el del rol (se ve en gris).';
+        notaBase.insertAdjacentElement('afterend', nota);
+    }
+}
+
+// ============================================================
+// CHECK DE UNA COLUMNA
+// ============================================================
+function checkEye(estadoCol, user, module, userId, empresaId) {
+    // estadoCol: { marcado, parcial, delRol, bloqueado, sinDato, motivo }
+    if (estadoCol.sinDato) {
+        return `<span style="color:#94A3B8;font-size:12px;" title="${_esc(estadoCol.motivo || '')}">—</span>`;
+    }
+    const titulo = estadoCol.bloqueado ? 'GERENCIA_TOTAL: ve todo' :
+        (estadoCol.parcial ? 'Tiene solo parte de este módulo (abre 👁 para ver el detalle)' :
+            (estadoCol.delRol ? 'Viene del rol (no tiene permiso propio)' : ''));
+    return `
+        <div style="display:flex;align-items:center;gap:4px;justify-content:center;" title="${_esc(titulo)}">
+            <input class="check perm-checkbox" type="checkbox"
+                ${estadoCol.marcado ? 'checked' : ''}
+                data-parcial="${estadoCol.parcial ? '1' : ''}"
+                data-user="${_esc(user)}"
+                data-module="${_esc(module)}"
+                data-user-id="${_esc(userId)}"
+                data-empresa-id="${_esc(empresaId)}"
+                style="cursor:pointer;width:16px;height:16px;${estadoCol.delRol || estadoCol.bloqueado ? 'opacity:.55;' : ''}">
+            <span class="eye"
+                data-user="${_esc(user)}"
+                data-module="${_esc(module)}"
+                data-user-id="${_esc(userId)}"
+                data-empresa-id="${_esc(empresaId)}"
+                title="Ver detalle"
+                style="cursor:pointer;font-size:14px;opacity:0.6;transition:opacity 0.2s;"
+                onmouseover="this.style.opacity='1'"
+                onmouseout="this.style.opacity='0.6'">👁</span>
+        </div>
+    `;
+}
+
+function _estadoColumna(estado, col) {
+    if (!estado) return { sinDato: true, motivo: 'Cargando…' };
+    if (estado.error) return { sinDato: true, motivo: estado.error };
+    if (!estado.empresaId) return { sinDato: true, motivo: estado.motivo || 'Sin acceso a esta empresa' };
+    const codigos = _codigosColumna(col);
+    if (!codigos.length) return { sinDato: true, motivo: 'Este módulo aún no está creado en la base de datos' };
+    if (estado.gerencia) return { marcado: true, bloqueado: true };
+    const ver = codigos.filter(c => estado.efectivos?.[c]?.puede_ver);
+    const delRol = ver.length > 0 && ver.every(c => estado.efectivos[c].origen === 'rol');
+    return { marcado: ver.length === codigos.length, parcial: ver.length > 0 && ver.length < codigos.length, delRol };
+}
+
+// ============================================================
+// TOGGLE DE UN CHECK (una sola definición)
 // ============================================================
 async function togglePermiso(event) {
     const checkbox = event.target;
@@ -2070,139 +2111,56 @@ async function togglePermiso(event) {
     const module = checkbox.dataset.module;
     const empresaId = checkbox.dataset.empresaId;
     const user = checkbox.dataset.user;
-    const tienePermiso = checkbox.checked;
-    
-    console.log('🔄 Toggle permiso:', { userId, module, empresaId, user, tienePermiso });
-    
-    if (!userId || !empresaId || userId === 'null' || empresaId === 'null') {
-        toast('❌ Faltan datos');
-        checkbox.checked = !tienePermiso;
+    const marcar = checkbox.checked;
+    const estado = PERM_ESTADO[userId];
+
+    if (!userId || !empresaId || !estado) {
+        checkbox.checked = !marcar;
+        toast('❌ Elige primero la empresa de los permisos (KCF o AGD).');
         return;
     }
-    
-    const userIdNum = parseInt(userId);
-    if (isNaN(userIdNum)) {
-        toast('❌ ID de usuario inválido');
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    const empresaIdStr = String(empresaId);
-    
-    // Buscar el usuario
-    const u = usuariosData.find(item => item.id === userIdNum);
-    if (!u) {
-        toast('❌ Usuario no encontrado');
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    const empresa = u.empresas_acceso?.find(e => e.empresa_id === empresaIdStr);
-    const esAdmin = empresa?.rol_codigo === 'GERENCIA_TOTAL';
-    
-    if (esAdmin) {
-        toast('👑 Usuario GERENCIA_TOTAL tiene acceso total');
+    if (estado.gerencia) {
         checkbox.checked = true;
+        mostrarNotificacion('warning', 'Gerencia total',
+            `${user} tiene rol GERENCIA_TOTAL en ${PERM_EMPRESA_CODIGO}: ve todos los módulos. Para recortarle módulos, primero cámbiale el rol.`);
         return;
     }
-    
-    // Mapeo de módulos a IDs numéricos (como en el frontend)
-    const moduleToId = {
-        'Configuración': 1,
-        'Usuarios y permisos': 2,
-        'Correlativos': 3,
-        'Parámetros': 4,
-        'Integración ERP': 5,
-        'Maestros': 6,
-        'Productos': 12,
-        'Cotizaciones': 14,
-        'Ventas': 15,
-        'Compras': 18,
-        'Logística': 22,
-        'Inventario': 23,
-        'CxC': 27,
-        'CxP': 28,
-        'Caja': 29,
-        'Reportes': 31,
-        'SUNAT': 35
-    };
-    
-    const submoduloId = moduleToId[module];
-    if (!submoduloId) {
-        toast(`❌ Módulo "${module}" no encontrado`);
-        checkbox.checked = !tienePermiso;
+    const codigos = _codigosColumna(module);
+    if (!codigos.length) {
+        checkbox.checked = !marcar;
+        toast(`❌ El módulo "${module}" aún no existe en la base de datos.`);
         return;
     }
-    
-    // Cargar permisos existentes
-    const permisosExistentes = await cargarPermisosUsuario(userIdNum, empresaIdStr);
-    let permisosList = permisosExistentes?.permisos || [];
-    
-    // Buscar si ya existe el permiso
-    let encontrado = false;
-    for (const p of permisosList) {
-        if (p.submodulo_id === submoduloId || p.submodulo_id === String(submoduloId)) {
-            p.puede_ver = tienePermiso;
-            p.puede_crear = tienePermiso;
-            p.puede_editar = tienePermiso;
-            p.puede_aprobar = false;
-            p.puede_anular = false;
-            p.puede_eliminar = false;
-            p.puede_exportar = false;
-            p.puede_subir_evidencia = false;
-            p.observacion = `Permiso ${tienePermiso ? 'habilitado' : 'deshabilitado'}`;
-            encontrado = true;
-            break;
-        }
+    const permisos = codigos.map(c => marcar
+        ? { submodulo_codigo: c, puede_ver: true, puede_crear: true, puede_editar: true }
+        : { submodulo_codigo: c, puede_ver: false, puede_crear: false, puede_editar: false,
+            puede_aprobar: false, puede_anular: false, puede_eliminar: false });
+
+    checkbox.disabled = true;
+    const r = await guardarPermisosUsuario(userId, empresaId, permisos);
+    checkbox.disabled = false;
+    if (!r.ok) {
+        checkbox.checked = !marcar;
+        mostrarNotificacion('error', 'No se guardó', r.error);
+        return;
     }
-    
-    if (!encontrado) {
-        permisosList.push({
-            submodulo_id: submoduloId,
-            puede_ver: tienePermiso,
-            puede_crear: tienePermiso,
-            puede_editar: tienePermiso,
-            puede_aprobar: false,
-            puede_anular: false,
-            puede_eliminar: false,
-            puede_exportar: false,
-            puede_subir_evidencia: false,
-            observacion: `Permiso ${tienePermiso ? 'habilitado' : 'deshabilitado'}`
-        });
-    }
-    
-    // Guardar los permisos
-    try {
-        const result = await guardarPermisosUsuario(userIdNum, empresaIdStr, permisosList);
-        
-        if (result) {
-            toast(`✅ ${tienePermiso ? 'Habilitado' : 'Deshabilitado'} ${module} para ${user}`);
-            checkbox.checked = tienePermiso;
-            // Recargar la tabla para actualizar otros checkboxes
-            await renderUsuarios('', true);
-        } else {
-            checkbox.checked = !tienePermiso;
-            toast('❌ Error al guardar permiso');
-        }
-    } catch(e) {
-        console.error('❌ Error:', e);
-        checkbox.checked = !tienePermiso;
-        toast('❌ Error al guardar permiso: ' + e.message);
-    }
+    estado.efectivos = r.data?.efectivos || estado.efectivos;
+    estado.gerencia = !!r.data?.es_gerencia_total;
+    _dibujarTablaUsuarios();
+    toast(`✅ ${marcar ? 'Habilitado' : 'Quitado'} ${module} para ${user} (${PERM_EMPRESA_CODIGO})`);
 }
 
-
 // ============================================================
-// RENDER USUARIOS - VERSIÓN CORREGIDA (CON CACHE)
+// RENDER USUARIOS
 // ============================================================
 let usuariosRendered = false;
 let usuariosCacheHTML = '';
+let _listaUsuariosVisible = [];
 
-async function renderUsuarios(filter="", forceRefresh = false) {
+function _usuariosFiltrados(filter) {
     const empresaFiltro = document.getElementById("filterEmpresaUsuarios")?.value || "TODAS";
     const nivelFiltro = document.getElementById("filterNivelUsuarios")?.value || "TODOS";
     const q = String(filter || document.getElementById("searchUsuarios")?.value || "").toLowerCase();
-
     const lista = usuariosData.filter(u => {
         const empresas = u.empresas_acceso || [];
         const tieneEmpresa = empresaFiltro === "TODAS" || empresas.some(e => e.empresa_codigo === empresaFiltro);
@@ -2210,7 +2168,6 @@ async function renderUsuarios(filter="", forceRefresh = false) {
         const texto = JSON.stringify(u).toLowerCase().includes(q);
         return tieneEmpresa && tieneNivel && texto;
     });
-
     const ordenPersonalizado = ['ANTONY GAMONAL', 'ERIKA DE LA CRUZ', 'HELLEN BLAS PRINCIPE', 'ESTRELLA SANTOS', 'LUIS', 'DESPACHO'];
     lista.sort((a, b) => {
         const nombreA = (a.nombres_apellidos || a.usuario_sistema || '').toUpperCase().trim();
@@ -2222,575 +2179,414 @@ async function renderUsuarios(filter="", forceRefresh = false) {
         if (idxB !== -1) return 1;
         return nombreA.localeCompare(nombreB);
     });
+    return { lista, empresaFiltro };
+}
 
+async function renderUsuarios(filter = "", forceRefresh = false) {
     const tbody = document.getElementById("tbodyUsuarios");
-    if(!tbody) return;
+    if (!tbody) return;
+    const { lista, empresaFiltro } = _usuariosFiltrados(filter);
+    _listaUsuariosVisible = lista;
 
-    const empresaActiva = document.getElementById('empresaActiva')?.value || 'KCF';
-    let htmlRows = [];
-    
-    // Mapeo de nombres a códigos
-    const moduleToCode = {
-        'Configuración': 'EMPRESAS',
-        'Usuarios y permisos': 'USUARIOS_PERMISOS',
-        'Correlativos': 'CORRELATIVOS',
-        'Parámetros': 'PARAMETROS',
-        'Integración ERP': 'INTEGRACION',
-        'Maestros': 'CLIENTES',
-        'Productos': 'PRODUCTOS_LISTADO',
-        'Cotizaciones': 'COTIZACIONES',
-        'Ventas': 'COMPROBANTES_CLIENTE',
-        'Compras': 'SOLICITUD_COMPRA',
-        'Logística': 'RECEPCION_MERCADERIA',
-        'Inventario': 'ESTADO_STOCK',
-        'CxC': 'CUENTAS_COBRAR',
-        'CxP': 'CUENTAS_PAGAR',
-        'Caja': 'CAJA_BANCOS',
-        'Reportes': 'REPORTE_VENTAS',
-        'SUNAT': 'SUNAT'
-    };
-    
-    // Cargar permisos para cada usuario
-    const usuariosConPermisos = [];
-    for (const u of lista) {
-        const empresas = u.empresas_acceso || [];
-        const empresaUsuario = empresas.find(e => e.empresa_codigo === empresaActiva);
-        const empresaId = empresaUsuario?.empresa_id || null;
-        const esAdmin = empresas.some(e => e.rol_codigo === 'GERENCIA_TOTAL');
-        
-        let permisos = {};
-        if (empresaId) {
-            try {
-                const data = await cargarPermisosUsuario(u.id, empresaId);
-                if (data?.permisos) {
-                    data.permisos.forEach(p => {
-                        permisos[p.submodulo_id] = p;
-                    });
-                }
-            } catch(e) {
-                console.warn('Error cargando permisos para', u.usuario_sistema);
-            }
+    try {
+        await cargarUUIDsPorCodigo();   // sin esto todos los checks saldrían vacíos
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center;color:#DC2626;padding:20px;">❌ ${_esc(e.message)}</td></tr>`;
+        return;
+    }
+    _asegurarSelectorEmpresaPermisos();
+    const empresaCodigo = _empresaPermisosElegida();
+
+    await Promise.all(lista.map(async u => {
+        const previo = PERM_ESTADO[u.id];
+        if (!forceRefresh && previo && previo.codigo === empresaCodigo && !previo.error) return;   // ya leído
+        const acceso = (u.empresas_acceso || []).find(e => e.empresa_codigo === empresaCodigo);
+        if (!u.auth_user_id) {
+            PERM_ESTADO[u.id] = { codigo: empresaCodigo, empresaId: null, motivo: 'Este usuario no tiene cuenta de acceso enlazada' };
+            return;
         }
-        
-        usuariosConPermisos.push({
-            usuario: u,
-            empresaId: empresaId,
-            esAdmin: esAdmin,
-            permisos: permisos
-        });
-    }
-    
-    // Generar HTML
-    for (const item of usuariosConPermisos) {
-        const u = item.usuario;
-        const empresaId = item.empresaId;
-        const esAdmin = item.esAdmin;
-        const permisos = item.permisos;
-        
-        const empresas = u.empresas_acceso || [];
-        const roles = empresas.map(e => e.rol_codigo || '');
-        
-        // ✅ FUNCIÓN CORREGIDA - Usa UUIDs en lugar de IDs numéricos
-        const tienePermisoModulo = (submoduloNombre) => {
-            if (esAdmin) return true;
-            
-            const codigo = moduleToCode[submoduloNombre];
-            if (!codigo) return false;
-            
-            // Obtener el UUID real del submódulo
-            const uuid = UUID_MAP_BY_CODE[codigo];
-            if (!uuid) {
-                console.warn(`⚠️ No se encontró UUID para: ${submoduloNombre}`);
-                return false;
-            }
-            
-            const permiso = permisos[uuid];
-            if (permiso) {
-                return permiso.puede_ver || false;
-            }
-            
-            return false;
-        };
-        
-        const empresasHtml = empresas.map(e => badge(e.empresa_codigo || '')).join('');
-        const rolesHtml = roles.map(r => `<span class="badge ${r === 'GERENCIA_TOTAL' ? 'badge-info' : 'badge-gray'}">${r}</span>`).join(' ');
-        
-        const userId = u.id;
-        const userName = u.usuario_sistema;
-        const empresaIdStr = empresaId || '';
-        
-        const row = `
-        <tr>
-            <td class="left"><b>${u.usuario_sistema}</b></td>
-            <td class="left">${u.area || '-'}</td>
-            <td>${empresasHtml}</td>
-            <td>${rolesHtml}</td>
-            <td>${checkEye(tienePermisoModulo('Configuración'), userName, 'Configuración', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Maestros'), userName, 'Maestros', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Productos'), userName, 'Productos', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Cotizaciones'), userName, 'Cotizaciones', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Ventas'), userName, 'Ventas', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Compras'), userName, 'Compras', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Logística'), userName, 'Logística', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Inventario'), userName, 'Inventario', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('CxC'), userName, 'CxC', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('CxP'), userName, 'CxP', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Caja'), userName, 'Caja', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('Reportes'), userName, 'Reportes', userId, empresaIdStr)}</td>
-            <td>${checkEye(tienePermisoModulo('SUNAT'), userName, 'SUNAT', userId, empresaIdStr)}</td>
-        </tr>`;
-        
-        htmlRows.push(row);
-    }
+        if (!acceso) {
+            PERM_ESTADO[u.id] = { codigo: empresaCodigo, empresaId: null, motivo: `Sin acceso a ${empresaCodigo}` };
+            return;
+        }
+        try {
+            const data = await cargarPermisosUsuario(u.id, acceso.empresa_id);
+            PERM_ESTADO[u.id] = { codigo: empresaCodigo, empresaId: acceso.empresa_id, efectivos: data.efectivos || {}, gerencia: !!data.es_gerencia_total };
+        } catch (e) {
+            PERM_ESTADO[u.id] = { codigo: empresaCodigo, empresaId: null, error: 'No se pudieron leer los permisos: ' + e.message };
+        }
+    }));
+    _dibujarTablaUsuarios();
+    usuariosRendered = true;
 
-    if (htmlRows.length > 0) {
-        tbody.innerHTML = htmlRows.join('');
-    } else {
-        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center;color:#94A3B8;padding:20px;">📭 No hay usuarios</td></tr>`;
-    }
-
-    // Actualizar contadores
     const usuariosVisibles = document.getElementById("usuariosVisibles");
     const empresaFiltroLabel = document.getElementById("empresaFiltroLabel");
     const usuariosTotal = document.getElementById("usuariosTotal");
     const usuariosOperativos = document.getElementById("usuariosOperativos");
-    
     if (usuariosVisibles) usuariosVisibles.textContent = lista.length;
     if (empresaFiltroLabel) empresaFiltroLabel.textContent = empresaFiltro === "TODAS" ? "Todas" : empresaFiltro;
-    if (usuariosTotal) {
-        usuariosTotal.textContent = lista.filter(u => {
-            const emps = u.empresas_acceso || [];
-            return emps.some(e => e.rol_codigo === 'GERENCIA_TOTAL');
-        }).length;
-    }
-    if (usuariosOperativos) {
-        usuariosOperativos.textContent = lista.filter(u => {
-            const emps = u.empresas_acceso || [];
-            return emps.some(e => e.rol_codigo === 'OPERATIVO_COMERCIAL_LOGISTICA');
-        }).length;
-    }
+    if (usuariosTotal) usuariosTotal.textContent = lista.filter(u => (u.empresas_acceso || []).some(e => e.rol_codigo === 'GERENCIA_TOTAL')).length;
+    if (usuariosOperativos) usuariosOperativos.textContent = lista.filter(u => (u.empresas_acceso || []).some(e => e.rol_codigo === 'OPERATIVO_COMERCIAL_LOGISTICA')).length;
 
-    // Configurar eventos
-    setTimeout(() => {
-        document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
-            const newCheckbox = checkbox.cloneNode(true);
-            checkbox.parentNode.replaceChild(newCheckbox, checkbox);
-            newCheckbox.addEventListener('change', togglePermiso);
+    if (_esAdminSistema()) cargarCuentasAuthSinUsuario();
+}
+
+function _dibujarTablaUsuarios() {
+    const tbody = document.getElementById("tbodyUsuarios");
+    if (!tbody) return;
+    const htmlRows = _listaUsuariosVisible.map(u => {
+        const estado = PERM_ESTADO[u.id];
+        const empresas = u.empresas_acceso || [];
+        const empresasHtml = empresas.map(e => badge(e.empresa_codigo || '')).join('');
+        const rolesHtml = empresas.map(e => `<span class="badge ${e.rol_codigo === 'GERENCIA_TOTAL' ? 'badge-info' : 'badge-gray'}" title="${_esc(e.empresa_codigo)}">${_esc(e.rol_codigo || '')}</span>`).join(' ');
+        const empresaId = estado?.empresaId || '';
+        const celdas = PERM_COLUMNAS.map(c => `<td>${checkEye(_estadoColumna(estado, c.col), u.usuario_sistema, c.col, u.id, empresaId)}</td>`).join('');
+        const aviso = estado?.gerencia ? ' <span class="badge badge-info" title="Ve todos los módulos">👑 Todo</span>' : '';
+        return `
+        <tr>
+            <td class="left"><b>${_esc(u.usuario_sistema)}</b>${aviso}</td>
+            <td class="left">${_esc(u.area || '-')}</td>
+            <td>${empresasHtml}</td>
+            <td>${rolesHtml}</td>
+            ${celdas}
+        </tr>`;
+    });
+    tbody.innerHTML = htmlRows.length ? htmlRows.join('') :
+        `<tr><td colspan="17" style="text-align:center;color:#94A3B8;padding:20px;">📭 No hay usuarios</td></tr>`;
+    usuariosCacheHTML = tbody.innerHTML;
+
+    tbody.querySelectorAll('.perm-checkbox').forEach(cb => {
+        cb.indeterminate = cb.dataset.parcial === '1';
+        cb.addEventListener('change', togglePermiso);
+    });
+    tbody.querySelectorAll('.eye').forEach(el => {
+        el.addEventListener('click', function () {
+            openPermissions(this.dataset.user, this.dataset.module, this.dataset.userId, this.dataset.empresaId);
         });
-
-        document.querySelectorAll(".eye").forEach(el => {
-            const newEye = el.cloneNode(true);
-            el.parentNode.replaceChild(newEye, el);
-            newEye.addEventListener("click", function() {
-                const userId = this.dataset.userId;
-                const empresaId = this.dataset.empresaId;
-                const user = this.dataset.user;
-                const module = this.dataset.module;
-                
-                if (!userId || userId === 'null' || !empresaId || empresaId === 'null') {
-                    toast('❌ Faltan datos');
-                    return;
-                }
-                openPermissions(user, module, userId, empresaId);
-            });
-        });
-    }, 100);
+    });
 }
 
-
-// Sobrescribir la función para que no recargue toda la tabla
-async function togglePermiso(event) {
-    const checkbox = event.target;
-    const userId = checkbox.dataset.userId;
-    const module = checkbox.dataset.module;
-    const empresaId = checkbox.dataset.empresaId;
-    const user = checkbox.dataset.user;
-    const tienePermiso = checkbox.checked;
-    
-    console.log('🔄 Toggle permiso:', { userId, module, empresaId, user, tienePermiso });
-    
-    if (!userId || !empresaId || userId === 'null' || empresaId === 'null') {
-        toast('❌ Faltan datos');
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    const userIdNum = parseInt(userId);
-    if (isNaN(userIdNum)) {
-        toast('❌ ID de usuario inválido');
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    const empresaIdStr = String(empresaId);
-    
-    const u = usuariosData.find(item => item.id === userIdNum);
-    if (!u) {
-        toast('❌ Usuario no encontrado');
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    const empresa = u.empresas_acceso?.find(e => e.empresa_id === empresaIdStr);
-    const esAdmin = empresa?.rol_codigo === 'GERENCIA_TOTAL';
-    
-    if (esAdmin) {
-        toast('👑 Usuario GERENCIA_TOTAL tiene acceso total');
-        checkbox.checked = true;
-        return;
-    }
-    
-    const moduleToCode = {
-        'Configuración': 'EMPRESAS',
-        'Usuarios y permisos': 'USUARIOS_PERMISOS',
-        'Correlativos': 'CORRELATIVOS',
-        'Parámetros': 'PARAMETROS',
-        'Integración ERP': 'INTEGRACION',
-        'Maestros': 'CLIENTES',
-        'Productos': 'PRODUCTOS_LISTADO',
-        'Cotizaciones': 'COTIZACIONES',
-        'Ventas': 'COMPROBANTES_CLIENTE',
-        'Compras': 'SOLICITUD_COMPRA',
-        'Logística': 'RECEPCION_MERCADERIA',
-        'Inventario': 'ESTADO_STOCK',
-        'CxC': 'CUENTAS_COBRAR',
-        'CxP': 'CUENTAS_PAGAR',
-        'Caja': 'CAJA_BANCOS',
-        'Reportes': 'REPORTE_VENTAS',
-        'SUNAT': 'SUNAT'
-    };
-    
-    const codigo = moduleToCode[module];
-    if (!codigo) {
-        toast(`❌ Módulo "${module}" no encontrado`);
-        checkbox.checked = !tienePermiso;
-        return;
-    }
-    
-    let uuid = UUID_MAP_BY_CODE[codigo];
-    if (!uuid) {
-        await cargarUUIDsPorCodigo();
-        uuid = UUID_MAP_BY_CODE[codigo];
-        if (!uuid) {
-            toast(`❌ No se encontró UUID para "${module}"`);
-            checkbox.checked = !tienePermiso;
-            return;
-        }
-    }
-    
-    // Obtener permisos existentes
-    const permisosExistentes = await cargarPermisosUsuario(userIdNum, empresaIdStr);
-    let permisosList = [];
-    
-    if (permisosExistentes?.permisos && permisosExistentes.permisos.length > 0) {
-        let encontrado = false;
-        for (const p of permisosExistentes.permisos) {
-            if (p.submodulo_id === uuid) {
-                p.puede_ver = tienePermiso;
-                p.puede_crear = tienePermiso;
-                p.puede_editar = tienePermiso;
-                p.puede_aprobar = false;
-                p.puede_anular = false;
-                p.puede_eliminar = false;
-                p.puede_exportar = false;
-                p.puede_subir_evidencia = false;
-                p.observacion = `Permiso ${tienePermiso ? 'habilitado' : 'deshabilitado'}`;
-                encontrado = true;
-                break;
-            }
-        }
-        
-        if (!encontrado && uuid) {
-            permisosExistentes.permisos.push({
-                submodulo_id: uuid,
-                puede_ver: tienePermiso,
-                puede_crear: tienePermiso,
-                puede_editar: tienePermiso,
-                puede_aprobar: false,
-                puede_anular: false,
-                puede_eliminar: false,
-                puede_exportar: false,
-                puede_subir_evidencia: false,
-                observacion: `Permiso ${tienePermiso ? 'habilitado' : 'deshabilitado'}`
-            });
-        }
-        permisosList = permisosExistentes.permisos;
-    } else {
-        if (uuid) {
-            permisosList = [{
-                submodulo_id: uuid,
-                puede_ver: tienePermiso,
-                puede_crear: tienePermiso,
-                puede_editar: tienePermiso,
-                puede_aprobar: false,
-                puede_anular: false,
-                puede_eliminar: false,
-                puede_exportar: false,
-                puede_subir_evidencia: false,
-                observacion: `Permiso ${tienePermiso ? 'habilitado' : 'deshabilitado'}`
-            }];
-        } else {
-            toast('❌ Error: No se encontró UUID para el módulo');
-            checkbox.checked = !tienePermiso;
-            return;
-        }
-    }
-    
-    try {
-        const result = await guardarPermisosUsuario(userIdNum, empresaIdStr, permisosList);
-        
-        if (result) {
-            toast(`✅ ${tienePermiso ? 'Habilitado' : 'Deshabilitado'} ${module} para ${user}`);
-            checkbox.checked = tienePermiso;
-            // NO recargar toda la tabla - solo actualizar el checkbox localmente
-            // usuariosCacheHTML se actualizará en la próxima recarga completa
-        } else {
-            checkbox.checked = !tienePermiso;
-            toast('❌ Error al guardar permiso');
-        }
-    } catch(e) {
-        console.error('❌ Error:', e);
-        checkbox.checked = !tienePermiso;
-        toast('❌ Error al guardar permiso');
-    }
-}
-
-
 // ============================================================
-// INICIALIZAR UUID_MAP_BY_CODE AL CARGAR
-// ============================================================
-async function initUUIDMap() {
-    await cargarUUIDsPorCodigo();
-    console.log('✅ UUID_MAP_BY_CODE inicializado:', UUID_MAP_BY_CODE);
-}
-
-// Llamar a esto en initDashboard después de cargarSubmodulos
-
-
-
-// ============================================================
-// OPEN PERMISSIONS - Abre el modal de permisos detallados
+// MODAL DE DETALLE: una fila por submódulo, 6 checks
 // ============================================================
 async function openPermissions(user, module, userId, empresaId) {
-    console.log('👁️ Abriendo permisos:', { user, module, userId, empresaId });
-    
-    if (!userId || userId === 'null') {
-        toast('❌ Usuario no identificado');
+    const estado = PERM_ESTADO[userId];
+    if (!userId || !empresaId || !estado || !estado.empresaId) {
+        toast('❌ Este usuario no tiene acceso a la empresa elegida.');
         return;
     }
-    
-    const userIdNum = parseInt(userId);
-    if (isNaN(userIdNum)) {
-        toast('❌ ID de usuario inválido');
+    try { await cargarUUIDsPorCodigo(); } catch (e) { toast('❌ ' + e.message); return; }
+    const codigos = _codigosColumna(module);
+    if (!codigos.length) {
+        toast(`❌ El módulo "${module}" aún no existe en la base de datos.`);
         return;
     }
-    
-    let empresaIdStr = null;
-    if (empresaId && empresaId !== 'null' && empresaId !== 'undefined') {
-        empresaIdStr = String(empresaId);
-    }
-    
-    const modalTitle = document.getElementById("modalTitle");
-    if (modalTitle) modalTitle.textContent = `Detalle de permisos | ${user} | ${module}`;
-    
-    let u = usuariosData.find(item => item.id === userIdNum);
-    if (!u) {
-        u = usuariosData.find(item => item.usuario_sistema === user);
-    }
-    if (!u) {
-        toast('❌ Usuario no encontrado');
+    let datos;
+    try {
+        datos = await cargarPermisosUsuario(userId, empresaId);   // siempre lo último de la base
+    } catch (e) {
+        mostrarNotificacion('error', 'No se pudo abrir', e.message);
         return;
     }
-    
-    if (!empresaIdStr) {
-        const empresaCodigo = document.getElementById('empresaActiva')?.value || 'KCF';
-        const empresa = u.empresas_acceso?.find(e => e.empresa_codigo === empresaCodigo);
-        if (empresa) {
-            empresaIdStr = empresa.empresa_id;
-        } else {
-            const primeraEmpresa = u.empresas_acceso?.[0];
-            if (primeraEmpresa) {
-                empresaIdStr = primeraEmpresa.empresa_id;
-            } else {
-                toast('❌ Usuario sin empresas');
-                return;
-            }
-        }
-    }
-    
-    currentPermissionsUserId = userIdNum;
-    currentPermissionsEmpresa = empresaIdStr;
+    const gerencia = !!datos.es_gerencia_total;
+    currentPermissionsUserId = userId;
+    currentPermissionsEmpresa = String(empresaId);
     currentPermissionsUser = user;
-    
-    const permisosData = await cargarPermisosUsuario(userIdNum, empresaIdStr);
-    const empresa = u.empresas_acceso?.find(e => e.empresa_id === empresaIdStr);
-    const esAdmin = empresa?.rol_codigo === 'GERENCIA_TOTAL';
-    
-    // Buscar submódulo
-    let submodulo = submodulosData.find(s => s.nombre === module);
-    if (!submodulo) {
-        submodulo = submodulosData.find(s => 
-            s.nombre.toLowerCase().includes(module.toLowerCase()) ||
-            module.toLowerCase().includes(s.nombre.toLowerCase())
-        );
-    }
-    if (!submodulo && submodulosData.length > 0) {
-        submodulo = submodulosData[0];
-    }
-    
-    currentSubmoduloId = submodulo?.id || null;
-    console.log('📌 Submódulo:', currentSubmoduloId, submodulo?.nombre);
-    
-    const permiso = permisosData?.permisos?.find(p => p.submodulo_id === currentSubmoduloId) || {};
-    
-    document.getElementById("saveModal").style.display = 'inline-block';
-    
-    const baseRows = [
-        {nombre:"Ver", perm: 'puede_ver', value: esAdmin ? true : (permiso.puede_ver !== false)},
-        {nombre:"Crear", perm: 'puede_crear', value: esAdmin ? true : (permiso.puede_crear || false)},
-        {nombre:"Editar", perm: 'puede_editar', value: esAdmin ? true : (permiso.puede_editar || false)},
-        {nombre:"Aprobar", perm: 'puede_aprobar', value: esAdmin ? true : (permiso.puede_aprobar || false)},
-        {nombre:"Anular", perm: 'puede_anular', value: esAdmin ? true : (permiso.puede_anular || false)},
-        {nombre:"Eliminar", perm: 'puede_eliminar', value: esAdmin ? true : (permiso.puede_eliminar || false)}
-    ];
+    currentSubmoduloId = module;   // ahora guarda la columna (grupo de submódulos)
 
+    const titulo = document.getElementById("modalTitle");
+    if (titulo) titulo.textContent = `Permisos de ${user} | ${module} | ${PERM_EMPRESA_CODIGO || ''}`;
     const tbodyPermisos = document.getElementById("tbodyPermisos");
     if (tbodyPermisos) {
-        tbodyPermisos.innerHTML = baseRows.map(r => `
-            <tr>
-                <td class="left"><b>${r.nombre}</b></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_ver" ${(r.perm === 'puede_ver' && r.value) ? 'checked' : ''}></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_crear" ${(r.perm === 'puede_crear' && r.value) ? 'checked' : ''}></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_editar" ${(r.perm === 'puede_editar' && r.value) ? 'checked' : ''}></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_aprobar" ${(r.perm === 'puede_aprobar' && r.value) ? 'checked' : ''}></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_anular" ${(r.perm === 'puede_anular' && r.value) ? 'checked' : ''}></td>
-                <td><input class="check perm-check" type="checkbox" data-perm="puede_eliminar" ${(r.perm === 'puede_eliminar' && r.value) ? 'checked' : ''}></td>
-            </tr>
-        `).join("");
+        const filas = codigos.map(codigo => {
+            const ef = (datos.efectivos || {})[codigo] || {};
+            const origen = ef.origen === 'rol' ? ' <span class="badge badge-gray" title="No tiene permiso propio: se usa el de su rol">del rol</span>' : '';
+            return `<tr>
+                <td class="left"><b>${_esc(_nombreSubmodulo(codigo))}</b>${origen}</td>
+                ${PERM_SEIS.map(([campo, nombre]) => `<td><input class="check perm-check" type="checkbox" aria-label="${nombre}"
+                    data-codigo="${_esc(codigo)}" data-perm="${campo}" ${ef[campo] ? 'checked' : ''} ${gerencia ? 'disabled' : ''}></td>`).join('')}
+            </tr>`;
+        });
+        if (gerencia) {
+            filas.unshift(`<tr><td colspan="7" class="left" style="background:#EFF6FF;color:#1D4ED8;">👑 ${_esc(user)} tiene rol GERENCIA_TOTAL: ve y hace todo. Para recortarle permisos cambia su rol.</td></tr>`);
+        }
+        tbodyPermisos.innerHTML = filas.join('');
     }
-
+    const btn = document.getElementById("saveModal");
+    if (btn) btn.style.display = gerencia ? 'none' : 'inline-block';
     document.getElementById("modalPermisos").classList.add("show");
 }
 
+async function guardarPermisosModal() {
+    if (!currentPermissionsUserId || !currentPermissionsEmpresa) {
+        toast('❌ No hay usuario seleccionado');
+        return;
+    }
+    const porCodigo = {};
+    document.querySelectorAll('#tbodyPermisos .perm-check').forEach(ch => {
+        const codigo = ch.dataset.codigo;
+        if (!codigo || !ch.dataset.perm) return;
+        porCodigo[codigo] = porCodigo[codigo] || { submodulo_codigo: codigo };
+        porCodigo[codigo][ch.dataset.perm] = ch.checked;
+    });
+    const lista = Object.values(porCodigo);
+    const btn = document.getElementById("saveModal");
+    if (btn) btn.disabled = true;
+    const r = await guardarPermisosUsuario(currentPermissionsUserId, currentPermissionsEmpresa, lista);
+    if (btn) btn.disabled = false;
+    if (!r.ok) {
+        mostrarNotificacion('error', 'No se guardó', r.error);
+        return;
+    }
+    const estado = PERM_ESTADO[currentPermissionsUserId];
+    if (estado) {
+        estado.efectivos = r.data?.efectivos || estado.efectivos;
+        estado.gerencia = !!r.data?.es_gerencia_total;
+    }
+    document.getElementById("modalPermisos").classList.remove("show");
+    _dibujarTablaUsuarios();
+    toast('✅ Permisos guardados');
+}
 
-
-
-// ============================================================
-// GUARDAR PERMISOS DESDE EL MODAL - Evento del botón Guardar
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const saveModalBtn = document.getElementById("saveModal");
     if (saveModalBtn) {
-        // Reemplazar el botón para evitar duplicados
-        const newBtn = saveModalBtn.cloneNode(true);
-        saveModalBtn.parentNode.replaceChild(newBtn, saveModalBtn);
-        
-        newBtn.addEventListener("click", async function() {
-            console.log('💾 Guardando permisos desde modal...');
-            
-            if (!currentPermissionsUserId || !currentPermissionsEmpresa) {
-                toast('❌ No hay usuario seleccionado');
-                return;
-            }
-            
-            // Recoger los checkboxes del modal
-            const checks = document.querySelectorAll('#tbodyPermisos .perm-check');
-            const permisosData = {};
-            checks.forEach(check => {
-                const perm = check.dataset.perm;
-                if (perm) {
-                    permisosData[perm] = check.checked;
-                }
-            });
-            
-            console.log('📋 Datos de permisos:', permisosData);
-            
-            try {
-                const u = usuariosData.find(item => item.id === currentPermissionsUserId);
-                if (!u) {
-                    toast('❌ Usuario no encontrado');
-                    return;
-                }
-                
-                const submodulo = submodulosData.find(s => s.id === currentSubmoduloId);
-                if (!submodulo) {
-                    toast('❌ No se encontró el submódulo');
-                    return;
-                }
-                
-                const empresa = u.empresas_acceso?.find(e => e.empresa_id === currentPermissionsEmpresa);
-                const esAdmin = empresa?.rol_codigo === 'GERENCIA_TOTAL';
-                
-                let permisosList = [];
-                
-                if (esAdmin) {
-                    for (const sub of submodulosData) {
-                        if (sub.id === currentSubmoduloId) {
-                            permisosList.push({
-                                submodulo_id: sub.id,
-                                puede_ver: permisosData['puede_ver'] !== undefined ? permisosData['puede_ver'] : true,
-                                puede_crear: permisosData['puede_crear'] || false,
-                                puede_editar: permisosData['puede_editar'] || false,
-                                puede_aprobar: permisosData['puede_aprobar'] || false,
-                                puede_anular: permisosData['puede_anular'] || false,
-                                puede_eliminar: permisosData['puede_eliminar'] || false,
-                                puede_exportar: false,
-                                puede_subir_evidencia: false,
-                                observacion: ''
-                            });
-                        } else {
-                            const existingPerm = await cargarPermisosUsuario(currentPermissionsUserId, currentPermissionsEmpresa);
-                            const existing = existingPerm?.permisos?.find(p => p.submodulo_id === sub.id) || {};
-                            permisosList.push({
-                                submodulo_id: sub.id,
-                                puede_ver: existing.puede_ver !== undefined ? existing.puede_ver : true,
-                                puede_crear: existing.puede_crear || false,
-                                puede_editar: existing.puede_editar || false,
-                                puede_aprobar: existing.puede_aprobar || false,
-                                puede_anular: existing.puede_anular || false,
-                                puede_eliminar: existing.puede_eliminar || false,
-                                puede_exportar: false,
-                                puede_subir_evidencia: false,
-                                observacion: ''
-                            });
-                        }
-                    }
-                } else {
-                    permisosList = [{
-                        submodulo_id: currentSubmoduloId,
-                        puede_ver: permisosData['puede_ver'] !== undefined ? permisosData['puede_ver'] : true,
-                        puede_crear: permisosData['puede_crear'] || false,
-                        puede_editar: permisosData['puede_editar'] || false,
-                        puede_aprobar: permisosData['puede_aprobar'] || false,
-                        puede_anular: permisosData['puede_anular'] || false,
-                        puede_eliminar: permisosData['puede_eliminar'] || false,
-                        puede_exportar: false,
-                        puede_subir_evidencia: false,
-                        observacion: ''
-                    }];
-                }
-                
-                const result = await guardarPermisosUsuario(
-                    currentPermissionsUserId,
-                    currentPermissionsEmpresa,
-                    permisosList
-                );
-                
-                if (result) {
-                    document.getElementById("modalPermisos").classList.remove("show");
-                    toast('✅ Permisos guardados correctamente');
-                   // await loadUsuarios();
-                } else {
-                    toast('❌ Error al guardar permisos');
-                }
-                
-            } catch (error) {
-                console.error('Error guardando permisos:', error);
-                toast('❌ Error al guardar permisos: ' + error.message);
-            }
-        });
+        const nuevo = saveModalBtn.cloneNode(true);   // quita listeners anteriores
+        saveModalBtn.parentNode.replaceChild(nuevo, saveModalBtn);
+        nuevo.addEventListener('click', guardarPermisosModal);
     }
 });
+
+// ============================================================
+// CUENTAS DE ACCESO (Supabase Auth) SIN USUARIO DEL ERP + USUARIOS INACTIVOS
+// ============================================================
+function _fechaCorta(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    return isNaN(d) ? _esc(v) : d.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function _panelCuentasAuth() {
+    let panel = document.getElementById('panelCuentasAuth');
+    if (panel) return panel;
+    const seccion = document.getElementById('tbodyUsuarios')?.closest('section');
+    if (!seccion) return null;
+    panel = document.createElement('div');
+    panel.id = 'panelCuentasAuth';
+    panel.className = 'panel';
+    panel.style.marginTop = '16px';
+    panel.innerHTML = `
+        <div class="panel-head">
+            <div>
+                <div class="panel-title">Cuentas de acceso sin usuario del ERP</div>
+                <div class="panel-help">Personas que ya tienen cuenta (Supabase Auth) pero aún no tienen usuario en el ERP.
+                    Pulsa <b>Crear usuario</b>: quedará <b>inactivo</b> hasta que lo actives.</div>
+            </div>
+            <div class="filters"><button type="button" class="btn btn-secondary" id="btnRecargarCuentasAuth">↻ Actualizar</button></div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th class="left">Correo</th><th>Creada</th><th>Último ingreso</th><th class="left">ID de la cuenta</th><th></th></tr></thead>
+                <tbody id="tbodyCuentasAuth"><tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:14px;">Cargando…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="panel-head" style="margin-top:12px;">
+            <div>
+                <div class="panel-title">Usuarios inactivos</div>
+                <div class="panel-help">No pueden entrar al sistema. Pulsa <b>Activar</b> cuando estén listos.</div>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th class="left">Usuario</th><th class="left">Nombre</th><th class="left">Correo</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+                <tbody id="tbodyUsuariosInactivos"><tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:14px;">Cargando…</td></tr></tbody>
+            </table>
+        </div>`;
+    seccion.appendChild(panel);
+    panel.querySelector('#btnRecargarCuentasAuth').addEventListener('click', () => cargarCuentasAuthSinUsuario());
+    return panel;
+}
+
+let CUENTAS_AUTH = [];
+
+async function cargarCuentasAuthSinUsuario() {
+    const panel = _panelCuentasAuth();
+    if (!panel) return;
+    const tb = document.getElementById('tbodyCuentasAuth');
+    const [cuentas, inactivos] = await Promise.all([
+        _permApi('/api/config/auth-sin-vincular'),
+        _permApi('/api/config/usuarios-inactivos')
+    ]);
+    if (!cuentas.ok) {
+        tb.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#DC2626;padding:14px;">❌ ${_esc(cuentas.error)}</td></tr>`;
+    } else {
+        CUENTAS_AUTH = cuentas.data || [];
+        const aviso = cuentas.raw?.aviso;
+        tb.innerHTML = CUENTAS_AUTH.length ? CUENTAS_AUTH.map(c => `
+            <tr>
+                <td class="left"><b>${_esc(c.email || '(sin correo)')}</b></td>
+                <td>${_fechaCorta(c.created_at)}</td>
+                <td>${c.last_sign_in_at ? _fechaCorta(c.last_sign_in_at) : '<span style="color:#94A3B8;">Nunca</span>'}</td>
+                <td class="left" style="font-family:monospace;font-size:11px;color:#64748B;">${_esc(c.id)}</td>
+                <td><button type="button" class="btn btn-primary btn-crear-desde-auth" data-auth-id="${_esc(c.id)}">Crear usuario</button></td>
+            </tr>`).join('') :
+            `<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:14px;">${aviso ? '⚠️ ' + _esc(aviso) : '✅ Todas las cuentas ya tienen usuario del ERP.'}</td></tr>`;
+        tb.querySelectorAll('.btn-crear-desde-auth').forEach(b => b.addEventListener('click', () => abrirCrearUsuarioDesdeAuth(b.dataset.authId)));
+    }
+    _pintarInactivos(inactivos);
+}
+
+function _pintarInactivos(r) {
+    const tb = document.getElementById('tbodyUsuariosInactivos');
+    if (!tb) return;
+    if (!r.ok) {
+        tb.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#DC2626;padding:14px;">❌ ${_esc(r.error)}</td></tr>`;
+        return;
+    }
+    const lista = r.data || [];
+    tb.innerHTML = lista.length ? lista.map(u => `
+        <tr>
+            <td class="left"><b>${_esc(u.usuario_sistema)}</b></td>
+            <td class="left">${_esc(u.nombres_apellidos || '')}</td>
+            <td class="left">${_esc(u.correo || '')}</td>
+            <td><span class="badge badge-gray">${_esc(u.rol || '')}</span></td>
+            <td><span class="badge badge-danger">Inactivo</span></td>
+            <td><button type="button" class="btn btn-primary btn-activar-usuario" data-id="${_esc(u.id)}" data-user="${_esc(u.usuario_sistema)}">Activar</button></td>
+        </tr>`).join('') :
+        `<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:14px;">No hay usuarios inactivos.</td></tr>`;
+    tb.querySelectorAll('.btn-activar-usuario').forEach(b => b.addEventListener('click', () => activarUsuarioERP(b.dataset.id, b.dataset.user)));
+}
+
+async function activarUsuarioERP(id, usuario) {
+    if (!confirm(`¿Activar a "${usuario}"? Desde ese momento podrá entrar al sistema.`)) return;
+    const r = await _permApi(`/api/config/usuarios/${encodeURIComponent(id)}/activar`, { method: 'POST' });
+    if (!r.ok) {
+        mostrarNotificacion('error', 'No se activó', r.error);
+        return;
+    }
+    toast(`✅ ${usuario} activado. Ya puede entrar.`);
+    const modal = document.getElementById('modalCrearDesdeAuth');
+    if (modal) modal.remove();
+    await cargarCuentasAuthSinUsuario();
+    if (typeof loadUsuarios === 'function') await loadUsuarios(true);
+}
+
+function generarPasswordTemporal(largo = 14) {
+    const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const numeros = '23456789';
+    const simbolos = '#$%&*+-=?@';
+    const todos = letras + numeros;
+    const azar = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
+    const pick = (s) => s[azar(s.length)];
+    while (true) {
+        const chars = [pick(simbolos)];
+        while (chars.length < Math.max(12, largo)) chars.push(pick(todos));
+        for (let i = chars.length - 1; i > 0; i--) { const j = azar(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+        const clave = chars.join('');
+        if (/[a-z]/.test(clave) && /[A-Z]/.test(clave) && /[0-9]/.test(clave)) return clave;
+    }
+}
+
+async function abrirCrearUsuarioDesdeAuth(authId) {
+    const cuenta = CUENTAS_AUTH.find(c => c.id === authId);
+    if (!cuenta) return;
+    const previo = document.getElementById('modalCrearDesdeAuth');
+    if (previo) previo.remove();
+    const rolesErp = await _permApi('/api/config/roles');
+    const roles = (rolesErp.ok ? rolesErp.data : []).filter(r => r.id);
+    const empresas = _empresasDisponibles();
+    const sugerido = String(cuenta.email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    const modal = document.createElement('div');
+    modal.id = 'modalCrearDesdeAuth';
+    modal.className = 'modal-bg show';
+    modal.innerHTML = `
+        <div class="modal" style="width:min(560px,95vw);">
+            <div class="modal-head">
+                <div class="modal-title">Crear usuario del ERP</div>
+                <button type="button" class="btn btn-secondary" data-cerrar>Cerrar</button>
+            </div>
+            <div class="modal-body" style="padding:16px;display:grid;gap:10px;" id="crearAuthCuerpo">
+                <div class="form-field"><label>Correo (de la cuenta de acceso)</label>
+                    <input type="text" value="${_esc(cuenta.email || '')}" disabled></div>
+                <div class="form-field"><label>Usuario del sistema * <small>(con este nombre o con el correo entra al ERP)</small></label>
+                    <input type="text" id="caUsuario" value="${_esc(sugerido)}" autocomplete="off"></div>
+                <div class="form-field"><label>Nombres y apellidos</label>
+                    <input type="text" id="caNombre" autocomplete="off"></div>
+                <div class="form-field"><label>Área</label>
+                    <input type="text" id="caArea" autocomplete="off" placeholder="Ej.: Ventas"></div>
+                <div class="form-field"><label>Rol del sistema</label>
+                    <select id="caRol" class="table-select">
+                        ${['vendedor', 'compras', 'almacen', 'finanzas', 'supervisor', 'administrador'].map(r => `<option value="${r}" ${r === 'vendedor' ? 'selected' : ''}>${r}</option>`).join('')}
+                    </select></div>
+                <div class="form-field"><label>Empresas a las que tendrá acceso</label>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                        ${empresas.map(c => `<label style="display:inline-flex;gap:4px;align-items:center;"><input type="checkbox" class="caEmpresa" value="${_esc(c)}"> ${_esc(c)}</label>`).join('')}
+                    </div></div>
+                <div class="form-field"><label>Rol en las empresas marcadas</label>
+                    <select id="caRolErp" class="table-select">
+                        ${roles.length ? roles.map(r => `<option value="${_esc(r.codigo)}" ${r.codigo === 'OPERATIVO_COMERCIAL_LOGISTICA' ? 'selected' : ''}>${_esc(r.nombre || r.codigo)}</option>`).join('') : '<option value="">(no hay roles en la base)</option>'}
+                    </select></div>
+                <div class="form-field"><label>Contraseña * <small>(mínimo 8, con letras y números)</small></label>
+                    <div style="display:flex;gap:6px;">
+                        <input type="password" id="caPassword" autocomplete="new-password" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="caVer">👁</button>
+                        <button type="button" class="btn btn-secondary" id="caGenerar">Generar</button>
+                    </div></div>
+                <div id="caError" style="color:#DC2626;font-weight:700;"></div>
+            </div>
+            <div class="modal-foot" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;" id="crearAuthPie">
+                <button type="button" class="btn btn-primary" id="caCrear">Crear usuario (inactivo)</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const $ = (id) => modal.querySelector('#' + id);
+    const cerrar = () => modal.remove();
+    modal.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrar));
+    const actual = document.getElementById('empresaActiva')?.value;
+    modal.querySelectorAll('.caEmpresa').forEach(ch => { ch.checked = ch.value === actual; });
+    $('caVer').addEventListener('click', () => { $('caPassword').type = $('caPassword').type === 'password' ? 'text' : 'password'; });
+    $('caGenerar').addEventListener('click', () => { $('caPassword').value = generarPasswordTemporal(); $('caPassword').type = 'text'; });
+    $('caCrear').addEventListener('click', async () => {
+        $('caError').textContent = '';
+        const password = $('caPassword').value;
+        const cuerpo = {
+            usuario_sistema: $('caUsuario').value.trim(),
+            nombres_apellidos: $('caNombre').value.trim(),
+            area: $('caArea').value.trim(),
+            rol: $('caRol').value,
+            password,
+            empresas: [...modal.querySelectorAll('.caEmpresa:checked')].map(c => c.value),
+            rol_erp: $('caRolErp').value
+        };
+        if (!cuerpo.usuario_sistema) { $('caError').textContent = 'Escribe el usuario del sistema.'; return; }
+        if (!password) { $('caError').textContent = 'Escribe una contraseña o pulsa "Generar".'; return; }
+        $('caCrear').disabled = true;
+        const r = await _permApi(`/api/config/auth-sin-vincular/${encodeURIComponent(authId)}/crear`, { method: 'POST', body: JSON.stringify(cuerpo) });
+        $('caCrear').disabled = false;
+        if (!r.ok) { $('caError').textContent = '❌ ' + r.error; return; }
+        const clave = r.data?.password_generada || password;
+        $('caPassword').value = '';
+        $('crearAuthCuerpo').innerHTML = `
+            <div style="font-size:15px;">✅ Usuario <b>${_esc(r.data.usuario_sistema)}</b> creado. Está <b>INACTIVO</b>: todavía no puede entrar.</div>
+            <div style="border:2px solid #F59E0B;background:#FFFBEB;border-radius:10px;padding:14px;">
+                <div style="font-weight:800;color:#92400E;margin-bottom:6px;">⚠️ Anota esta contraseña, no se volverá a mostrar</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <code id="caClaveMostrada" style="font-size:20px;letter-spacing:1px;background:#fff;padding:6px 10px;border-radius:6px;border:1px solid #FCD34D;user-select:all;">${_esc(clave)}</code>
+                    <button type="button" class="btn btn-secondary" id="caCopiar">Copiar</button>
+                </div>
+                <div style="margin-top:8px;font-size:12px;color:#92400E;">Entrégala a la persona en privado. Usuario: <b>${_esc(r.data.usuario_sistema)}</b> o su correo.</div>
+            </div>`;
+        $('crearAuthPie').innerHTML = `
+            <button type="button" class="btn btn-secondary" data-cerrar>Ya la anoté, cerrar</button>
+            <button type="button" class="btn btn-primary" id="caActivar">Activar ahora</button>`;
+        modal.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrar));
+        $('caCopiar').addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(clave); toast('📋 Contraseña copiada'); } catch (e) { toast('Selecciona la contraseña y cópiala a mano'); }
+        });
+        $('caActivar').addEventListener('click', () => activarUsuarioERP(r.data.id, r.data.usuario_sistema));
+        cargarCuentasAuthSinUsuario();
+    });
+}
 
 // ============================================================
 // CIERRE DEL MODAL DE PERMISOS
@@ -3536,233 +3332,95 @@ document.addEventListener('DOMContentLoaded', function() {
         // APLICAR PERMISOS A LA INTERFAZ
         // ============================================================
 
-        function aplicarPermisosInterfaz(esAdmin, permisosMap) {
-            console.log('🔐 Aplicando permisos - esAdmin:', esAdmin);
-            
-            // ✅ SIEMPRE MOSTRAR EL DASHBOARD
-            document.querySelectorAll('.menu-group').forEach(group => {
-                const header = group.querySelector('.menu-header');
-                if (header?.textContent?.includes('Dashboard') || header?.textContent?.includes('0 ─ Dashboard')) {
-                    group.style.display = '';
-                    group.querySelectorAll('.child-btn').forEach(child => {
-                        child.style.display = '';
-                    });
-                }
-            });
-            
+        // Submódulos de cada grupo del menú lateral (atributo data-modulo)
+        const MENU_CODIGOS = {
+            configuracion: ['EMPRESAS', 'USUARIOS_PERMISOS', 'CORRELATIVOS', 'PARAMETROS', 'INTEGRACION'],
+            maestros: ['CLIENTES', 'PROVEEDORES', 'ALMACENES', 'CATEGORIAS', 'MARCAS', 'UNIDADES_MEDIDA'],
+            productos: ['PRODUCTOS_LISTADO', 'PRODUCTOS_FICHA'],
+            ventas: ['COTIZACIONES', 'COMPROBANTES_CLIENTE', 'GUIAS_CLIENTE', 'NOTAS_CREDITO'],
+            compras: ['SOLICITUD_COMPRA', 'COMPARATIVO_PROVEEDORES', 'ORDEN_COMPRA', 'COMPROBANTES_PROVEEDOR', 'RECEPCION_MERCADERIA'],
+            inventario: ['ESTADO_STOCK', 'KARDEX', 'ENTRADAS_SALIDAS', 'TRANSFERENCIAS'],
+            finanzas: ['CUENTAS_COBRAR', 'CUENTAS_PAGAR', 'CAJA_BANCOS', 'FLUJO_CAJA'],
+            reportes: ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS', 'SUNAT']
+        };
+        // Grupos que se ven aunque el usuario no tenga permisos configurados (como antes)
+        const MENU_POR_DEFECTO = ['productos', 'ventas', 'compras', 'inventario'];
+
+        // efectivos: { CODIGO: { puede_ver, ..., origen } } calculado por el servidor
+        // (GERENCIA_TOTAL > permiso individual > permiso del rol). Solo oculta opciones del menú:
+        // lo que de verdad protege cada pantalla es el rol del usuario en el servidor.
+        function aplicarPermisosInterfaz(esAdmin, efectivos) {
+            efectivos = efectivos || {};
+            const grupos = document.querySelectorAll('.menu-group[data-modulo]');
             if (esAdmin) {
-                document.querySelectorAll('.menu-group, .menu-header, .child-btn, .tab-btn').forEach(el => {
-                    el.style.display = '';
-                });
-                console.log('👑 Usuario admin - mostrando todo');
+                document.querySelectorAll('.menu-group, .menu-header, .child-btn, .tab-btn').forEach(el => { el.style.display = ''; });
                 return;
             }
-            
-            const modulosOperativos = ['Productos', 'Cotizaciones', 'Ventas', 'Compras', 'Logística', 'Inventario'];
-            const modulosRestringidos = ['Configuración', 'Maestros', 'CxC', 'CxP', 'Caja', 'Reportes', 'SUNAT'];
-            
-            // ✅ MAPA DE MÓDULOS A SUS SUBMÓDULOS (para mostrar todo el grupo)
-            const modulosPrincipales = {
-                'Configuración': ['Empresas', 'Usuarios y permisos', 'Correlativos', 'Parámetros generales', 'Integración ERP'],
-                'Maestros': ['Clientes', 'Proveedores', 'Almacenes', 'Categorías', 'Marcas', 'Unidades de medida'],
-                'Productos': ['Listado de productos', 'Ficha de producto'],
-                'Ventas': ['Cotizaciones', 'Comprobantes cliente', 'Guías de remisión cliente', 'Notas de crédito'],
-                'Compras': ['Solicitud de compra', 'Comparativo de proveedores', 'Orden de compra', 'Comprobantes proveedor', 'Recepción de mercadería'],
-                'Inventario': ['Estado de stock', 'Kardex', 'Entradas y salidas', 'Transferencias'],
-                'Finanzas / Tesorería': ['Cuentas por cobrar', 'Cuentas por pagar', 'Caja y bancos', 'Flujo de caja'],
-                'Reportes': ['Reporte de ventas', 'Reporte de compras', 'Reporte de inventario', 'Reporte de finanzas', 'SUNAT'],
-                'Herramientas': ['Carga masiva'],
-                'Papelera / Auditoría': ['Documentos anulados', 'Registros eliminados', 'Historial de cambios']
-            };
-            
-            // ✅ PROCESAR CADA SUBMÓDULO
-            const modulosProcesados = new Set();
-            let mostrarConfiguracion = false;
-            
-            // Primero, determinar qué módulos principales deben mostrarse
-            submodulosData.forEach(sub => {
-                const nombre = sub.nombre;
-                const subId = sub.id;
-                const permiso = permisosMap ? permisosMap[subId] : null;
-                const tienePermiso = permiso?.puede_ver || false;
-                
-                // Verificar si es Configuración (tiene permiso explícito)
-                if (nombre === 'Configuración' && tienePermiso) {
-                    mostrarConfiguracion = true;
-                    console.log('✅ Configuración tiene permiso -> mostrando todo el grupo');
+            const visibles = new Set(['dashboard']);
+            grupos.forEach(group => {
+                const modulo = group.dataset.modulo;
+                if (modulo === 'dashboard') { group.style.display = ''; return; }
+                const codigos = MENU_CODIGOS[modulo] || [];
+                const conPermiso = codigos.some(c => efectivos[c]?.puede_ver);
+                const configurado = codigos.some(c => efectivos[c]);   // tiene algún permiso explícito (sí o no)
+                const mostrar = conPermiso || (MENU_POR_DEFECTO.includes(modulo) && !configurado);
+                group.style.display = mostrar ? '' : 'none';
+                if (mostrar) {
+                    visibles.add(modulo);
+                    group.querySelectorAll('.child-btn').forEach(child => { child.style.display = ''; });
                 }
             });
-            
-            // ✅ MOSTRAR GRUPOS COMPLETOS SEGÚN PERMISOS
-            document.querySelectorAll('.menu-group').forEach(group => {
-                const header = group.querySelector('.menu-header');
-                const headerText = header?.textContent?.trim() || '';
-                
-                // Saltar Dashboard (ya se mostró)
-                if (headerText.includes('Dashboard') || headerText.includes('0 ─ Dashboard')) {
-                    return;
-                }
-                
-                // Determinar si este grupo debe mostrarse
-                let debeMostrarGrupo = false;
-                
-                // Si es Configuración y tiene permiso, mostrar
-                if (headerText.includes('Configuración') && mostrarConfiguracion) {
-                    debeMostrarGrupo = true;
-                    console.log(`✅ Mostrando grupo: ${headerText}`);
-                }
-                
-                // Si es un módulo operativo, mostrar
-                const esOperativo = modulosOperativos.some(m => headerText.includes(m));
-                if (esOperativo) {
-                    debeMostrarGrupo = true;
-                    console.log(`✅ Mostrando grupo operativo: ${headerText}`);
-                }
-                
-                // Si tiene algún permiso explícito para sus hijos, mostrar
-                const hijos = group.querySelectorAll('.child-btn');
-                hijos.forEach(child => {
-                    const texto = child.textContent.trim();
-                    // Buscar si algún hijo tiene permiso
-                    const submodulo = submodulosData.find(s => 
-                        texto.includes(s.nombre) || s.nombre.includes(texto)
-                    );
-                    if (submodulo) {
-                        const permiso = permisosMap ? permisosMap[submodulo.id] : null;
-                        if (permiso?.puede_ver) {
-                            debeMostrarGrupo = true;
-                            console.log(`✅ Mostrando grupo porque "${texto}" tiene permiso`);
-                        }
-                    }
-                });
-                
-                // Aplicar visibilidad al grupo
-                group.style.display = debeMostrarGrupo ? '' : 'none';
-                if (!debeMostrarGrupo) {
-                    console.log(`🔹 Grupo "${headerText}" oculto`);
-                }
-                
-                // Mostrar todos los hijos si el grupo está visible
-                if (debeMostrarGrupo) {
-                    hijos.forEach(child => {
-                        child.style.display = '';
-                    });
-                }
-            });
-            
-            // ✅ OCULTAR/MOSTRAR TABS
-        // ✅ OCULTAR/MOSTRAR TABS
-        document.querySelectorAll('.tab-btn').forEach(tab => {
-            const texto = tab.textContent.trim();
-            let debeMostrarTab = false;
-            
-            // ✅ SIEMPRE MOSTRAR TABS DE PRODUCTOS
-            if (texto.includes('Nuevo producto') || texto.includes('Base de datos') || texto.includes('Comparativo costos')) {
-                debeMostrarTab = true;
-                tab.style.display = '';
-                return; // Salir de esta iteración
-            }
-            
-            // Si es Configuración y tiene permiso, mostrar todos los tabs de configuración
-            if (mostrarConfiguracion) {
-                const tabsConfig = ['Empresas', 'Usuarios y permisos', 'Correlativos', 'Parámetros', 'Integración ERP'];
+            const tabsConfig = ['Empresas', 'Usuarios y permisos', 'Correlativos', 'Parámetros', 'Integración ERP'];
+            document.querySelectorAll('.tab-btn').forEach(tab => {
+                const texto = tab.textContent.trim();
                 if (tabsConfig.some(t => texto.includes(t))) {
-                    debeMostrarTab = true;
+                    tab.style.display = visibles.has('configuracion') ? '' : 'none';
+                } else {
+                    tab.style.display = '';   // pestañas de productos y otras: siempre
                 }
-            }
-            
-            // Si es operativo, mostrar
-            if (modulosOperativos.some(m => texto.includes(m))) {
-                debeMostrarTab = true;
-            }
-            
-            tab.style.display = debeMostrarTab ? '' : 'none';
-            if (!debeMostrarTab) {
-                console.log(`🔹 Tab "${texto}" oculto`);
-            }
-        });
-            
-            console.log('✅ Permisos aplicados a la interfaz');
+            });
         }
-        // CARGAR PERMISOS DEL USUARIO LOGUEADO - CORREGIDA DEFINITIVA
+
         // ============================================================
+        // CARGAR PERMISOS DEL USUARIO LOGUEADO (menú lateral)
+        // ============================================================
+        // Usa /api/config/session (funciona en todas las páginas) y la empresa de la cabecera.
+        // Con "TODAS" se suman los permisos de todas sus empresas.
         async function cargarPermisosUsuarioLogueado() {
-            // ✅ USAR FLASK_SESSION.user (que es el usuario_sistema, ej: 'eri01kcf')
-            const usuarioSistema = FLASK_SESSION.user || '';
             const empresa = document.getElementById('empresaActiva')?.value || 'KCF';
-            
-            console.log('🔍 Cargando permisos para usuario_sistema:', usuarioSistema, 'empresa:', empresa);
-            
-            // Verificar datos de usuarios
-            if (!usuariosData || usuariosData.length === 0) {
-                console.warn('⚠️ No hay datos de usuarios cargados');
+            const yo = await _permApi('/api/config/session');
+            if (!yo.ok || !yo.data) {
+                console.warn('⚠️ No se pudo leer la sesión para el menú:', yo.error);
+                return;
+            }
+            const user = yo.data;
+            const empresas = user.empresas_acceso || [];
+            const adminSistema = _esAdminSistema();
+            if (!empresas.length && !adminSistema) {
+                // Usuario sin empresas configuradas en el ERP: no se oculta nada (igual que antes)
+                console.warn('⚠️ Usuario sin empresas en erp_usuario_empresas; menú sin recortar.');
+                return;
+            }
+            let datos = { efectivos: {}, es_gerencia_total: false, empresa_ids: [] };
+            if (empresas.length) {
                 try {
-                    const data = await fetchAPI('/api/config/usuarios');
-                    if (data.success) {
-                        usuariosData = data.data || [];
-                        console.log('✅ Usuarios cargados:', usuariosData.length);
-                    }
-                } catch(e) {
-                    console.error('❌ Error cargando usuarios:', e);
+                    datos = await cargarPermisosUsuario(user.id, empresa);
+                } catch (e) {
+                    console.warn('⚠️ No se pudieron leer los permisos del menú:', e.message);
                     return;
                 }
             }
-            
-            // ✅ BUSCAR POR usuario_sistema PRIMERO
-            let user = usuariosData.find(u => u.usuario_sistema === usuarioSistema);
-            
-            // Si no se encuentra, intentar por nombres_apellidos (fallback)
-            if (!user) {
-                user = usuariosData.find(u => u.nombres_apellidos === usuarioSistema);
-            }
-            
-            if (!user) {
-                console.warn('⚠️ Usuario no encontrado en datos:', usuarioSistema);
-                console.log('📋 Usuarios disponibles:', usuariosData.map(u => u.usuario_sistema));
-                return;
-            }
-            
-            console.log('✅ Usuario encontrado:', user.usuario_sistema, 'ID:', user.id, 'Nombre:', user.nombres_apellidos);
-            
-            // Buscar la empresa del usuario
-            const empresaUsuario = user.empresas_acceso?.find(e => e.empresa_codigo === empresa);
-            if (!empresaUsuario) {
-                console.warn('⚠️ Usuario no tiene acceso a la empresa:', empresa);
-                return;
-            }
-            
-            console.log('✅ Empresa encontrada:', empresaUsuario.empresa_codigo, 'ID:', empresaUsuario.empresa_id);
-            
-            // Cargar permisos
-            const permisosData = await cargarPermisosUsuario(user.id, empresaUsuario.empresa_id);
-            console.log('✅ Permisos cargados:', permisosData);
-            
-            // Crear mapa de permisos
-            const permisosMap = {};
-            if (permisosData?.permisos) {
-                permisosData.permisos.forEach(p => {
-                    permisosMap[p.submodulo_id] = p;
-                });
-            }
-            
-            // Determinar si es admin
-            const esAdmin = empresaUsuario.rol_codigo === 'GERENCIA_TOTAL';
-            console.log('👑 esAdmin:', esAdmin, 'Rol:', empresaUsuario.rol_codigo);
-            
-            // Guardar en variable global
+            const esAdmin = adminSistema || !!datos.es_gerencia_total;
             window.usuarioPermisos = {
                 userId: user.id,
-                empresaId: empresaUsuario.empresa_id,
+                empresaId: (datos.empresa_ids || [])[0] || null,
+                empresaIds: datos.empresa_ids || [],
                 esAdmin: esAdmin,
-                permisos: permisosMap,
+                permisos: datos.efectivos || {},
                 usuario_sistema: user.usuario_sistema,
                 nombres_apellidos: user.nombres_apellidos
             };
-            
-            console.log('✅ Permisos del usuario guardados:', window.usuarioPermisos);
-            
-            // Aplicar permisos a la interfaz
-            aplicarPermisosInterfaz(esAdmin, permisosMap);
+            aplicarPermisosInterfaz(esAdmin, datos.efectivos);
         }
 
         // ============================================================

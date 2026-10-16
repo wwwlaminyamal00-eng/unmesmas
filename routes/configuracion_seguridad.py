@@ -383,24 +383,7 @@ def create_usuario():
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            cur.execute("""
-                INSERT INTO usuarios (
-                    auth_user_id, usuario_sistema, nombres_apellidos,
-                    area, correo, celular, estado,
-                    usuario, nombre_completo, password, rol
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                data.get('auth_user_id'),
-                data.get('usuario_sistema'),
-                data.get('nombres_apellidos'),
-                data.get('area'),
-                data.get('correo'),
-                data.get('celular'),
-                data.get('estado', 'activo')
-            ) + columnas_usuario_antiguas(data))
-            
-            usuario_id = cur.fetchone()['id']
+            usuario_id = _insertar_usuario(cur, data)
             
             empresas_acceso = data.get('empresas_acceso', [])
             for acceso in empresas_acceso:
@@ -1106,292 +1089,565 @@ def get_submodulos():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================
-# PERMISOS DE USUARIO - VERSIÓN CORREGIDA (ACEPTA NÚMEROS)
+# PERMISOS DE USUARIO (una sola versión)
 # ============================================================
+# Reglas (se explican también en la pantalla "Usuarios y permisos"):
+#   1. Rol GERENCIA_TOTAL (o un rol ERP marcado es_admin) en la empresa  -> ve todo.
+#   2. Permiso individual (erp_usuario_permisos) del submódulo           -> manda ese (aunque sea "no").
+#   3. Si no tiene permiso individual, se usa el del rol (erp_rol_permisos).
+#   4. Sin ninguno de los anteriores: el submódulo queda sin permiso explícito
+#      (el menú usa sus valores por defecto: los módulos operativos se ven).
+# La base de datos es la única fuente: la pantalla ya no guarda permisos en el navegador.
 
-@config_seguridad_bp.route('/usuarios/<usuario_id>/permisos', methods=['GET'])
-def get_usuario_permisos(usuario_id):
-    """Obtener los permisos de un usuario en una empresa específica"""
+FLAGS_PERMISO = ('puede_ver', 'puede_crear', 'puede_editar', 'puede_aprobar',
+                 'puede_anular', 'puede_eliminar', 'puede_exportar', 'puede_subir_evidencia')
+
+# IDs numéricos que usaba la pantalla antigua (submodulosData en base.html) -> código del submódulo
+CODIGOS_POR_ID_ANTIGUO = {
+    '1': 'EMPRESAS', '2': 'USUARIOS_PERMISOS', '3': 'CORRELATIVOS',
+    '4': 'PARAMETROS', '5': 'INTEGRACION', '6': 'CLIENTES',
+    '7': 'PROVEEDORES', '8': 'ALMACENES', '9': 'CATEGORIAS',
+    '10': 'MARCAS', '11': 'UNIDADES_MEDIDA', '12': 'PRODUCTOS_LISTADO',
+    '13': 'PRODUCTOS_FICHA', '14': 'COTIZACIONES', '15': 'COMPROBANTES_CLIENTE',
+    '16': 'GUIAS_CLIENTE', '17': 'NOTAS_CREDITO', '18': 'SOLICITUD_COMPRA',
+    '19': 'COMPARATIVO_PROVEEDORES', '20': 'ORDEN_COMPRA', '21': 'COMPROBANTES_PROVEEDOR',
+    '22': 'RECEPCION_MERCADERIA', '23': 'ESTADO_STOCK', '24': 'KARDEX',
+    '25': 'ENTRADAS_SALIDAS', '26': 'TRANSFERENCIAS', '27': 'CUENTAS_COBRAR',
+    '28': 'CUENTAS_PAGAR', '29': 'CAJA_BANCOS', '30': 'FLUJO_CAJA',
+    '31': 'REPORTE_VENTAS', '32': 'REPORTE_COMPRAS', '33': 'REPORTE_INVENTARIO',
+    '34': 'REPORTE_FINANZAS', '35': 'SUNAT'
+}
+
+_cache_upsert = {}
+
+
+def _existe_tabla(nombre):
     try:
-        empresa_id = request.args.get('empresa_id')
-        
-        if not empresa_id:
-            return jsonify({'success': False, 'error': 'empresa_id es requerido'}), 400
-        
-        usuario = db_query("""
-            SELECT auth_user_id FROM usuarios WHERE id = %s
-        """, (usuario_id,))
-        
-        if not usuario:
-            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
-        
-        auth_user_id = usuario[0]['auth_user_id']
-        
-        permisos = db_query("""
-            SELECT 
-                up.id,
-                up.auth_user_id,
-                up.empresa_id,
-                up.submodulo_id,
-                s.codigo as submodulo_codigo,
-                s.nombre as submodulo_nombre,
-                m.codigo as modulo_codigo,
-                m.nombre as modulo_nombre,
-                up.puede_ver,
-                up.puede_crear,
-                up.puede_editar,
-                up.puede_aprobar,
-                up.puede_anular,
-                up.puede_eliminar,
-                up.puede_exportar,
-                up.puede_subir_evidencia,
-                up.observacion,
-                up.created_at,
-                up.updated_at
-            FROM erp_usuario_permisos up
-            JOIN erp_submodulos s ON s.id = up.submodulo_id
-            JOIN erp_modulos m ON m.id = s.modulo_id
-            WHERE up.auth_user_id = %s
-            AND up.empresa_id = %s
-            ORDER BY m.orden, s.orden
-        """, (auth_user_id, empresa_id))
-        
-        # ✅ Devolver el submodulo_id como número (para que coincida con el frontend)
-        for p in permisos:
-            if p.get('submodulo_id'):
-                # Intentar obtener el ID numérico
-                try:
-                    # Buscar el submódulo por UUID
-                    sub = db_query("SELECT id FROM erp_submodulos WHERE id = %s", (p['submodulo_id'],))
-                    if sub:
-                        # Ya es el ID, lo dejamos igual
-                        pass
-                except:
-                    pass
-        
-        submodulos = db_query("""
-            SELECT 
-                s.id,
-                s.codigo,
-                s.nombre,
-                m.codigo as modulo_codigo,
-                m.nombre as modulo_nombre
-            FROM erp_submodulos s
-            JOIN erp_modulos m ON m.id = s.modulo_id
-            WHERE s.estado = 'activo'
-            ORDER BY m.orden, s.orden
-        """)
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'permisos': permisos,
-                'submodulos': submodulos
-            }
-        })
-        
-    except Exception as e:
-        print(f"❌ Error en get_usuario_permisos: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        r = db_query("SELECT to_regclass(%s) IS NOT NULL AS existe", (nombre,))
+        return bool(r and r[0]['existe'])
+    except Exception:
+        return False
 
 
-# ============================================================
-# PERMISOS DE USUARIO - VERSIÓN ÚNICA Y CORREGIDA
-# ============================================================
+def _tiene_unique_permisos():
+    """True si erp_usuario_permisos tiene UNIQUE(auth_user_id, empresa_id, submodulo_id) (Supabase sí la tiene)."""
+    if 'unique' not in _cache_upsert:
+        try:
+            r = db_query("""
+                SELECT 1 FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indrelid
+                WHERE c.relname = 'erp_usuario_permisos' AND i.indisunique
+                  AND (SELECT array_agg(a.attname::text ORDER BY a.attname::text) FROM pg_attribute a
+                       WHERE a.attrelid = c.oid AND a.attnum = ANY(i.indkey))
+                      = ARRAY['auth_user_id', 'empresa_id', 'submodulo_id']
+                LIMIT 1
+            """)
+            _cache_upsert['unique'] = bool(r)
+        except Exception:
+            _cache_upsert['unique'] = False
+    return _cache_upsert['unique']
+
+
+def _usuario_por_id(usuario_id):
+    try:
+        uid = int(str(usuario_id))
+    except (TypeError, ValueError):
+        return None
+    filas = db_query("SELECT id, auth_user_id, usuario_sistema, estado FROM usuarios WHERE id = %s", (uid,))
+    return filas[0] if filas else None
+
+
+def _empresas_del_usuario(auth_user_id):
+    """Empresas a las que el usuario tiene acceso (erp_usuario_empresas activo) con su rol ERP."""
+    if not auth_user_id:
+        return []
+    return db_query("""
+        SELECT ue.empresa_id::text AS empresa_id, e.codigo AS empresa_codigo,
+               ue.rol_id::text AS rol_id, r.codigo AS rol_codigo, COALESCE(r.es_admin, false) AS rol_es_admin
+        FROM erp_usuario_empresas ue
+        LEFT JOIN erp_empresas e ON e.id = ue.empresa_id
+        LEFT JOIN erp_roles r ON r.id = ue.rol_id
+        WHERE ue.auth_user_id::text = %s AND COALESCE(ue.estado, 'activo') = 'activo'
+        ORDER BY ue.es_empresa_principal DESC NULLS LAST, e.codigo
+    """, (str(auth_user_id),))
+
+
+def _resolver_empresas(auth_user_id, empresa_id=None, empresa_codigo=None):
+    """Devuelve la lista de ids de empresa (texto) a consultar.
+    empresa_codigo = 'TODAS' (o vacío y sin empresa_id) -> todas las empresas del usuario."""
+    if empresa_id and str(empresa_id).upper() != 'TODAS':
+        return [str(empresa_id)]
+    codigo = (empresa_codigo or '').strip().upper()
+    if codigo and codigo != 'TODAS':
+        e = db_query("SELECT id::text AS id FROM erp_empresas WHERE UPPER(codigo) = %s", (codigo,))
+        return [e[0]['id']] if e else []
+    return [e['empresa_id'] for e in _empresas_del_usuario(auth_user_id) if e['empresa_id']]
+
+
+def _submodulos_activos():
+    return db_query("""
+        SELECT s.id::text AS id, s.codigo, s.nombre, m.codigo AS modulo_codigo, m.nombre AS modulo_nombre
+        FROM erp_submodulos s
+        JOIN erp_modulos m ON m.id = s.modulo_id
+        WHERE COALESCE(s.estado, 'activo') = 'activo'
+        ORDER BY m.orden, s.orden
+    """)
+
+
+def _permisos_efectivos(auth_user_id, empresa_ids):
+    """Calcula los permisos que realmente aplican por código de submódulo (ver reglas arriba).
+    Con varias empresas (modo TODAS) se suman: basta con tenerlo en una."""
+    submodulos = _submodulos_activos()
+    codigo_por_id = {s['id']: s['codigo'] for s in submodulos}
+    accesos = [e for e in _empresas_del_usuario(auth_user_id) if e['empresa_id'] in set(empresa_ids)]
+    individuales = []
+    if auth_user_id and empresa_ids:
+        individuales = db_query("""
+            SELECT empresa_id::text AS empresa_id, submodulo_id::text AS submodulo_id,
+                   puede_ver, puede_crear, puede_editar, puede_aprobar, puede_anular,
+                   puede_eliminar, puede_exportar, puede_subir_evidencia
+            FROM erp_usuario_permisos
+            WHERE auth_user_id::text = %s AND empresa_id::text = ANY(%s)
+        """, (str(auth_user_id), list(empresa_ids)))
+    por_rol = {}
+    rol_ids = sorted({a['rol_id'] for a in accesos if a['rol_id']})
+    if rol_ids and _existe_tabla('erp_rol_permisos'):
+        for f in db_query("""
+            SELECT rol_id::text AS rol_id, submodulo_id::text AS submodulo_id,
+                   puede_ver, puede_crear, puede_editar, puede_aprobar, puede_anular,
+                   puede_eliminar, puede_exportar, puede_subir_evidencia
+            FROM erp_rol_permisos WHERE rol_id::text = ANY(%s)
+        """, (rol_ids,)):
+            por_rol.setdefault(f['rol_id'], {})[f['submodulo_id']] = f
+
+    efectivos = {}
+
+    def sumar(codigo, fila, origen):
+        if not codigo:
+            return
+        actual = efectivos.setdefault(codigo, dict({k: False for k in FLAGS_PERMISO}, origen=origen))
+        for k in FLAGS_PERMISO:
+            if fila.get(k):
+                actual[k] = True
+        if fila.get('puede_ver') and actual['origen'] != 'gerencia':
+            actual['origen'] = origen
+
+    gerencia = False
+    for emp in empresa_ids:
+        acceso = next((a for a in accesos if a['empresa_id'] == emp), None)
+        if acceso and (acceso['rol_codigo'] == 'GERENCIA_TOTAL' or acceso['rol_es_admin']):
+            gerencia = True
+            for s in submodulos:
+                sumar(s['codigo'], {k: True for k in FLAGS_PERMISO}, 'gerencia')
+            continue
+        propios = {f['submodulo_id']: f for f in individuales if f['empresa_id'] == emp}
+        del_rol = por_rol.get(acceso['rol_id'], {}) if acceso else {}
+        for sid in set(propios) | set(del_rol):
+            if sid in propios:
+                sumar(codigo_por_id.get(sid), propios[sid], 'usuario')
+            else:
+                sumar(codigo_por_id.get(sid), del_rol[sid], 'rol')
+    return efectivos, gerencia, accesos, submodulos
+
 
 @config_seguridad_bp.route('/usuarios/<usuario_id>/permisos', methods=['GET'])
 def obtener_permisos_usuario(usuario_id):
-    """Obtener los permisos de un usuario en una empresa específica"""
+    """Permisos de un usuario en una empresa (empresa_id o empresa_codigo; 'TODAS' = suma de sus empresas).
+    Devuelve:
+      permisos   -> filas individuales (erp_usuario_permisos), con submodulo_codigo
+      efectivos  -> {codigo: {puede_ver, ..., origen: usuario|rol|gerencia}} = lo que realmente aplica
+      es_gerencia_total, empresas (accesos del usuario), submodulos"""
     try:
         empresa_id = request.args.get('empresa_id')
-        
-        if not empresa_id:
-            return jsonify({'success': False, 'error': 'empresa_id es requerido'}), 400
-        
-        usuario = db_query("""
-            SELECT auth_user_id FROM usuarios WHERE id = %s
-        """, (usuario_id,))
-        
+        empresa_codigo = request.args.get('empresa_codigo')
+        if not empresa_id and not empresa_codigo:
+            return jsonify({'success': False, 'error': 'Falta la empresa (empresa_id o empresa_codigo).'}), 400
+
+        usuario = _usuario_por_id(usuario_id)
         if not usuario:
             return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
-        
-        auth_user_id = usuario[0]['auth_user_id']
-        
-        permisos = db_query("""
-            SELECT 
-                up.id,
-                up.auth_user_id,
-                up.empresa_id,
-                up.submodulo_id,
-                s.codigo as submodulo_codigo,
-                s.nombre as submodulo_nombre,
-                m.codigo as modulo_codigo,
-                m.nombre as modulo_nombre,
-                up.puede_ver,
-                up.puede_crear,
-                up.puede_editar,
-                up.puede_aprobar,
-                up.puede_anular,
-                up.puede_eliminar,
-                up.puede_exportar,
-                up.puede_subir_evidencia,
-                up.observacion,
-                up.created_at,
-                up.updated_at
-            FROM erp_usuario_permisos up
-            JOIN erp_submodulos s ON s.id = up.submodulo_id
-            JOIN erp_modulos m ON m.id = s.modulo_id
-            WHERE up.auth_user_id = %s
-            AND up.empresa_id = %s
-            ORDER BY m.orden, s.orden
-        """, (auth_user_id, empresa_id))
-        
-        submodulos = db_query("""
-            SELECT 
-                s.id,
-                s.codigo,
-                s.nombre,
-                m.codigo as modulo_codigo,
-                m.nombre as modulo_nombre
-            FROM erp_submodulos s
-            JOIN erp_modulos m ON m.id = s.modulo_id
-            WHERE s.estado = 'activo'
-            ORDER BY m.orden, s.orden
-        """)
-        
+        auth_user_id = usuario['auth_user_id']
+        empresa_ids = _resolver_empresas(auth_user_id, empresa_id, empresa_codigo)
+
+        permisos = []
+        if auth_user_id and empresa_ids:
+            permisos = db_query("""
+                SELECT up.id, up.auth_user_id, up.empresa_id, up.submodulo_id,
+                       s.codigo AS submodulo_codigo, s.nombre AS submodulo_nombre,
+                       m.codigo AS modulo_codigo, m.nombre AS modulo_nombre,
+                       up.puede_ver, up.puede_crear, up.puede_editar, up.puede_aprobar,
+                       up.puede_anular, up.puede_eliminar, up.puede_exportar,
+                       up.puede_subir_evidencia, up.observacion, up.created_at
+                FROM erp_usuario_permisos up
+                JOIN erp_submodulos s ON s.id = up.submodulo_id
+                JOIN erp_modulos m ON m.id = s.modulo_id
+                WHERE up.auth_user_id::text = %s AND up.empresa_id::text = ANY(%s)
+                ORDER BY m.orden, s.orden
+            """, (str(auth_user_id), empresa_ids))
+
+        efectivos, gerencia, accesos, submodulos = _permisos_efectivos(auth_user_id, empresa_ids)
         return jsonify({
             'success': True,
             'data': {
                 'permisos': permisos,
-                'submodulos': submodulos
+                'efectivos': efectivos,
+                'es_gerencia_total': gerencia,
+                'empresa_ids': empresa_ids,
+                'empresas': accesos,
+                'submodulos': submodulos,
+                'sin_cuenta_auth': not auth_user_id,
             }
         })
-        
     except Exception as e:
         print(f"❌ Error en obtener_permisos_usuario: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+def _resolver_submodulo(permiso, submodulos):
+    """Acepta submodulo_codigo (preferido), el id real (UUID) o el id numérico antiguo de la pantalla."""
+    por_codigo = {s['codigo'].upper(): s['id'] for s in submodulos if s.get('codigo')}
+    por_id = {s['id']: s['id'] for s in submodulos}
+    codigo = (permiso.get('submodulo_codigo') or '').strip().upper()
+    if codigo:
+        return por_codigo.get(codigo)
+    sid = permiso.get('submodulo_id')
+    if sid is None or sid == '':
+        return None
+    sid = str(sid).strip()
+    if sid.isdigit() and CODIGOS_POR_ID_ANTIGUO.get(sid) in por_codigo:
+        return por_codigo[CODIGOS_POR_ID_ANTIGUO[sid]]
+    return por_id.get(sid)
 
 
 @config_seguridad_bp.route('/usuarios/<usuario_id>/permisos', methods=['POST'])
 def actualizar_permisos_usuario(usuario_id):
-    """Actualizar los permisos de un usuario en una empresa"""
+    """Guarda permisos de un usuario en UNA empresa.
+    Por defecto solo toca los submódulos enviados (los demás se quedan como estaban).
+    Cada permiso puede traer solo algunas banderas (p. ej. solo puede_ver): las que no vienen no cambian.
+    Para reemplazar todo (borrar lo que no se envía) mandar "reemplazar_todo": true."""
     try:
-        data = request.get_json()
-        print(f"📝 Datos recibidos en POST: {data}")
-        
-        empresa_id = data.get('empresa_id')
-        permisos = data.get('permisos', [])
-        
-        if not empresa_id:
-            return jsonify({'success': False, 'error': 'empresa_id es requerido'}), 400
-        
-        usuario = db_query("""
-            SELECT auth_user_id FROM usuarios WHERE id = %s AND estado = 'activo'
-        """, (usuario_id,))
-        
+        data = request.get_json(silent=True) or {}
+        permisos = data.get('permisos') or []
+        if not isinstance(permisos, list):
+            return jsonify({'success': False, 'error': 'permisos debe ser una lista'}), 400
+
+        usuario = _usuario_por_id(usuario_id)
         if not usuario:
             return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
-        
-        auth_user_id = usuario[0]['auth_user_id']
-        
-        # Mapeo de IDs numéricos a códigos (según el frontend)
-        codigos_por_id = {
-            '1': 'EMPRESAS', '2': 'USUARIOS_PERMISOS', '3': 'CORRELATIVOS',
-            '4': 'PARAMETROS', '5': 'INTEGRACION', '6': 'CLIENTES',
-            '7': 'PROVEEDORES', '8': 'ALMACENES', '9': 'CATEGORIAS',
-            '10': 'MARCAS', '11': 'UNIDADES_MEDIDA', '12': 'PRODUCTOS_LISTADO',
-            '13': 'PRODUCTOS_FICHA', '14': 'COTIZACIONES', '15': 'COMPROBANTES_CLIENTE',
-            '16': 'GUIAS_CLIENTE', '17': 'NOTAS_CREDITO', '18': 'SOLICITUD_COMPRA',
-            '19': 'COMPARATIVO_PROVEEDORES', '20': 'ORDEN_COMPRA', '21': 'COMPROBANTES_PROVEEDOR',
-            '22': 'RECEPCION_MERCADERIA', '23': 'ESTADO_STOCK', '24': 'KARDEX',
-            '25': 'ENTRADAS_SALIDAS', '26': 'TRANSFERENCIAS', '27': 'CUENTAS_COBRAR',
-            '28': 'CUENTAS_PAGAR', '29': 'CAJA_BANCOS', '30': 'FLUJO_CAJA',
-            '31': 'REPORTE_VENTAS', '32': 'REPORTE_COMPRAS', '33': 'REPORTE_INVENTARIO',
-            '34': 'REPORTE_FINANZAS', '35': 'SUNAT'
-        }
-        
+        auth_user_id = usuario['auth_user_id']
+        if not auth_user_id:
+            return jsonify({'success': False, 'error': 'Este usuario no tiene cuenta de acceso (auth_user_id) '
+                                                       'y no se le pueden asignar permisos.'}), 400
+
+        empresa_codigo = (data.get('empresa_codigo') or '').strip().upper()
+        if (str(data.get('empresa_id') or '').upper() == 'TODAS') or (empresa_codigo == 'TODAS' and not data.get('empresa_id')):
+            return jsonify({'success': False, 'error': 'Elige una empresa (KCF o AGD) para guardar permisos.'}), 400
+        empresa_ids = _resolver_empresas(auth_user_id, data.get('empresa_id'), empresa_codigo)
+        if len(empresa_ids) != 1:
+            return jsonify({'success': False, 'error': 'Falta la empresa o no existe.'}), 400
+        empresa_id = empresa_ids[0]
+
+        submodulos = _submodulos_activos()
+        filas, no_encontrados = [], []
+        for p in permisos:
+            if not isinstance(p, dict):
+                continue
+            sid = _resolver_submodulo(p, submodulos)
+            if not sid:
+                no_encontrados.append(str(p.get('submodulo_codigo') or p.get('submodulo_id')))
+                continue
+            banderas = {k: bool(p[k]) for k in FLAGS_PERMISO if k in p and p[k] is not None}
+            filas.append((sid, banderas, p.get('observacion')))
+        if no_encontrados:
+            return jsonify({'success': False,
+                            'error': 'No existe el submódulo: ' + ', '.join(no_encontrados) + '. No se guardó nada.'}), 400
+        reemplazar = bool(data.get('reemplazar_todo'))
+        if not filas and not reemplazar:
+            return jsonify({'success': False, 'error': 'No se envió ningún permiso para guardar.'}), 400
+
+        usar_on_conflict = _tiene_unique_permisos()
         with db_tx() as conn:
             cur = conn.cursor()
-            
-            # Eliminar permisos existentes
-            cur.execute("""
-                DELETE FROM erp_usuario_permisos 
-                WHERE auth_user_id = %s AND empresa_id = %s
-            """, (auth_user_id, empresa_id))
-            
-            # Insertar nuevos permisos
-            for idx, permiso in enumerate(permisos):
-                submodulo_id = permiso.get('submodulo_id')
-                if not submodulo_id:
-                    continue
-                
-                # Si es un número, buscar por código
-                if isinstance(submodulo_id, int) or (isinstance(submodulo_id, str) and submodulo_id.isdigit()):
-                    codigo = codigos_por_id.get(str(submodulo_id))
-                    if codigo:
-                        # Buscar el UUID por el código
-                        uuid_result = db_query(
-                            "SELECT id FROM erp_submodulos WHERE codigo = %s", 
-                            (codigo,)
-                        )
-                        if uuid_result:
-                            submodulo_id = uuid_result[0]['id']
-                            print(f"   ✅ Convertido a UUID: {submodulo_id}")
-                        else:
-                            print(f"   ❌ No se encontró submódulo con código: {codigo}")
-                            continue
-                    else:
-                        print(f"   ❌ No se encontró código para ID: {submodulo_id}")
-                        continue
-                
-                # Si es un string que parece UUID, verificar que existe
-                elif isinstance(submodulo_id, str) and '-' in submodulo_id:
-                    uuid_result = db_query(
-                        "SELECT id FROM erp_submodulos WHERE id = %s::uuid", 
-                        (submodulo_id,)
-                    )
-                    if not uuid_result:
-                        print(f"   ❌ No se encontró submódulo con UUID: {submodulo_id}")
-                        continue
-                
-                # Insertar el permiso
+            if reemplazar:
                 cur.execute("""
-                    INSERT INTO erp_usuario_permisos (
-                        auth_user_id, empresa_id, submodulo_id,
-                        puede_ver, puede_crear, puede_editar,
-                        puede_aprobar, puede_anular, puede_eliminar,
-                        puede_exportar, puede_subir_evidencia,
-                        observacion
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    auth_user_id,
-                    empresa_id,
-                    submodulo_id,
-                    permiso.get('puede_ver', False),
-                    permiso.get('puede_crear', False),
-                    permiso.get('puede_editar', False),
-                    permiso.get('puede_aprobar', False),
-                    permiso.get('puede_anular', False),
-                    permiso.get('puede_eliminar', False),
-                    permiso.get('puede_exportar', False),
-                    permiso.get('puede_subir_evidencia', False),
-                    permiso.get('observacion', '')
-                ))
-        
+                    DELETE FROM erp_usuario_permisos
+                    WHERE auth_user_id::text = %s AND empresa_id::text = %s
+                """, (str(auth_user_id), empresa_id))
+            for sid, banderas, observacion in filas:
+                valores_insert = [banderas.get(k, False) for k in FLAGS_PERMISO]
+                actualizar = list(banderas.keys())
+                if observacion is not None:
+                    actualizar_obs = True
+                else:
+                    actualizar_obs = False
+                if usar_on_conflict:
+                    sets = [f"{k} = EXCLUDED.{k}" for k in actualizar]
+                    if actualizar_obs:
+                        sets.append("observacion = EXCLUDED.observacion")
+                    sets.append("updated_at = NOW()")
+                    cur.execute(f"""
+                        INSERT INTO erp_usuario_permisos (auth_user_id, empresa_id, submodulo_id,
+                            {', '.join(FLAGS_PERMISO)}, observacion)
+                        VALUES (%s, %s, %s, {', '.join(['%s'] * len(FLAGS_PERMISO))}, %s)
+                        ON CONFLICT (auth_user_id, empresa_id, submodulo_id)
+                        DO UPDATE SET {', '.join(sets)}
+                    """, [auth_user_id, empresa_id, sid] + valores_insert + [observacion or ''])
+                else:
+                    # Esquema sin la restricción UNIQUE: actualizar y, si no existía, insertar.
+                    sets = [f"{k} = %s" for k in actualizar] + (["observacion = %s"] if actualizar_obs else [])
+                    filas_afectadas = 0
+                    if sets:
+                        cur.execute(f"""
+                            UPDATE erp_usuario_permisos SET {', '.join(sets)}
+                            WHERE auth_user_id::text = %s AND empresa_id::text = %s AND submodulo_id::text = %s
+                        """, [banderas[k] for k in actualizar] + ([observacion] if actualizar_obs else [])
+                            + [str(auth_user_id), empresa_id, sid])
+                        filas_afectadas = cur.rowcount
+                    else:
+                        cur.execute("""
+                            SELECT 1 FROM erp_usuario_permisos
+                            WHERE auth_user_id::text = %s AND empresa_id::text = %s AND submodulo_id::text = %s
+                        """, (str(auth_user_id), empresa_id, sid))
+                        filas_afectadas = cur.rowcount
+                    if not filas_afectadas:
+                        cur.execute(f"""
+                            INSERT INTO erp_usuario_permisos (auth_user_id, empresa_id, submodulo_id,
+                                {', '.join(FLAGS_PERMISO)}, observacion)
+                            VALUES (%s, %s, %s, {', '.join(['%s'] * len(FLAGS_PERMISO))}, %s)
+                        """, [auth_user_id, empresa_id, sid] + valores_insert + [observacion or ''])
+
+        efectivos, gerencia, _, _ = _permisos_efectivos(auth_user_id, [empresa_id])
         return jsonify({
             'success': True,
-            'message': 'Permisos actualizados exitosamente'
+            'message': f'Permisos guardados ({len(filas)} submódulo(s)).',
+            'data': {'efectivos': efectivos, 'es_gerencia_total': gerencia, 'empresa_id': empresa_id}
         })
-        
     except Exception as e:
         print(f"❌ Error en actualizar_permisos_usuario: {e}")
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# CUENTAS DE ACCESO (Supabase Auth) SIN USUARIO DEL ERP
+# ============================================================
+# Cada usuario del ERP (tabla usuarios) se enlaza con su cuenta de Supabase Auth por usuarios.auth_user_id.
+# Aquí se listan las cuentas de auth.users que todavía no tienen usuario del ERP, y se crea el usuario
+# enlazado (inactivo hasta que un administrador lo active).
+
+def _solo_admin():
+    from utils import es_admin
+    if 'usuario_id' not in session or not es_admin():
+        return jsonify({'success': False, 'error': 'Solo un administrador puede hacer esto.'}), 403
+    return None
+
+
+def _es_uuid(valor):
+    import re
+    return bool(re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', str(valor or '')))
+
+
+def _password_temporal(largo=14):
+    """Contraseña temporal aleatoria: letras mayúsculas y minúsculas, números y un símbolo."""
+    import secrets
+    import string
+    largo = max(12, largo)
+    simbolos = '#$%&*+-=?@'
+    alfabeto = string.ascii_letters + string.digits
+    while True:
+        base = [secrets.choice(alfabeto) for _ in range(largo - 1)] + [secrets.choice(simbolos)]
+        secrets.SystemRandom().shuffle(base)
+        clave = ''.join(base)
+        if (any(c.islower() for c in clave) and any(c.isupper() for c in clave)
+                and any(c.isdigit() for c in clave)):
+            return clave
+
+
+def _password_aceptable(clave):
+    return isinstance(clave, str) and len(clave) >= 8 and any(c.isalpha() for c in clave) and any(c.isdigit() for c in clave)
+
+
+_SQL_AUTH_SIN_VINCULAR = """
+    SELECT u.id::text AS id, u.email,
+           to_jsonb(u)->>'created_at' AS created_at,
+           to_jsonb(u)->>'last_sign_in_at' AS last_sign_in_at
+    FROM auth.users u
+    WHERE NOT EXISTS (SELECT 1 FROM usuarios x WHERE x.auth_user_id::text = u.id::text)
+      AND (to_jsonb(u)->>'deleted_at') IS NULL
+"""
+
+
+@config_seguridad_bp.route('/auth-sin-vincular', methods=['GET'])
+def listar_auth_sin_vincular():
+    """Cuentas de Supabase Auth (auth.users) que ningún usuario del ERP tiene enlazadas."""
+    error = _solo_admin()
+    if error:
+        return error
+    if not _existe_tabla('auth.users'):
+        return jsonify({'success': True, 'data': [], 'total': 0,
+                        'aviso': 'Esta base de datos no tiene la tabla auth.users (Supabase Auth).'})
+    try:
+        filas = db_query(_SQL_AUTH_SIN_VINCULAR + " ORDER BY created_at DESC NULLS LAST, u.email")
+        return jsonify({'success': True, 'data': filas, 'total': len(filas)})
+    except Exception as e:
+        print(f"❌ Error en listar_auth_sin_vincular: {e}")
+        if 'permission denied' in str(e).lower():
+            return jsonify({'success': False, 'error': 'La base de datos no deja leer auth.users con este usuario '
+                                                       'de conexión. Pide a TI que dé permiso de lectura.'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _insertar_usuario(cur, data):
+    """INSERT en usuarios (columnas nuevas + antiguas obligatorias). Devuelve el id.
+    La contraseña se guarda con hash (columnas_usuario_antiguas usa generate_password_hash)."""
+    cur.execute("""
+        INSERT INTO usuarios (
+            auth_user_id, usuario_sistema, nombres_apellidos,
+            area, correo, celular, estado,
+            usuario, nombre_completo, password, rol
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (
+        data.get('auth_user_id'),
+        data.get('usuario_sistema'),
+        data.get('nombres_apellidos'),
+        data.get('area'),
+        data.get('correo'),
+        data.get('celular'),
+        data.get('estado', 'activo')
+    ) + columnas_usuario_antiguas(data))
+    fila = cur.fetchone()
+    return fila['id'] if isinstance(fila, dict) else fila[0]
+
+
+@config_seguridad_bp.route('/auth-sin-vincular/<auth_id>/crear', methods=['POST'])
+def crear_usuario_desde_auth(auth_id):
+    """Crea un usuario del ERP enlazado a una cuenta de auth.users.
+    Body: usuario_sistema (obligatorio), nombres_apellidos, area, rol (por defecto 'vendedor'),
+          password (mín. 8, letras y números) o generar_password: true,
+          empresas: ['KCF', 'AGD'] y rol_erp (código de erp_roles) para darle acceso a empresas.
+    El usuario queda INACTIVO hasta que un administrador lo active."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        if not _es_uuid(auth_id):
+            return jsonify({'success': False, 'error': 'El ID de la cuenta no es válido.'}), 400
+        if not _existe_tabla('auth.users'):
+            return jsonify({'success': False, 'error': 'Esta base de datos no tiene auth.users.'}), 400
+        data = request.get_json(silent=True) or {}
+        cuenta = db_query(_SQL_AUTH_SIN_VINCULAR + " AND u.id::text = %s", (auth_id.lower(),))
+        if not cuenta:
+            ya = db_query("SELECT usuario_sistema FROM usuarios WHERE auth_user_id::text = %s", (auth_id.lower(),))
+            if ya:
+                return jsonify({'success': False, 'error': f"Esa cuenta ya está enlazada al usuario '{ya[0]['usuario_sistema']}'."}), 400
+            return jsonify({'success': False, 'error': 'No existe esa cuenta de acceso.'}), 404
+        cuenta = cuenta[0]
+
+        usuario_sistema = (data.get('usuario_sistema') or '').strip()
+        if not usuario_sistema:
+            return jsonify({'success': False, 'error': 'Escribe el nombre de usuario (usuario del sistema).'}), 400
+        if len(usuario_sistema) < 3 or ' ' in usuario_sistema:
+            return jsonify({'success': False, 'error': 'El nombre de usuario debe tener al menos 3 letras y sin espacios.'}), 400
+        if db_query("SELECT 1 FROM usuarios WHERE LOWER(usuario_sistema) = LOWER(%s) OR LOWER(usuario) = LOWER(%s)",
+                    (usuario_sistema, usuario_sistema)):
+            return jsonify({'success': False, 'error': f"Ya existe el usuario '{usuario_sistema}'. Elige otro nombre."}), 400
+
+        generada = None
+        password = data.get('password') or ''
+        if not password and data.get('generar_password'):
+            password = generada = _password_temporal()
+        if not password:
+            return jsonify({'success': False, 'error': 'Escribe una contraseña o pulsa "Generar".'}), 400
+        if not _password_aceptable(password):
+            return jsonify({'success': False, 'error': 'La contraseña debe tener al menos 8 caracteres, con letras y números.'}), 400
+
+        nombres = (data.get('nombres_apellidos') or '').strip() or usuario_sistema
+        rol = (data.get('rol') or 'vendedor').strip().lower() or 'vendedor'
+        nuevo = {
+            'auth_user_id': cuenta['id'],
+            'usuario_sistema': usuario_sistema,
+            'nombres_apellidos': nombres,
+            'area': (data.get('area') or '').strip() or None,
+            'correo': cuenta.get('email'),
+            'celular': None,
+            'estado': 'inactivo',
+            'password': password,
+            'rol': rol,
+        }
+        empresas_pedidas = [str(c).strip().upper() for c in (data.get('empresas') or []) if str(c).strip()]
+        rol_erp = (data.get('rol_erp') or '').strip()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            usuario_id = _insertar_usuario(cur, nuevo)
+            if empresas_pedidas:
+                if not rol_erp:
+                    raise ValueError('Elige el rol ERP para las empresas marcadas.')
+                cur.execute("SELECT id FROM erp_roles WHERE codigo = %s LIMIT 1", (rol_erp,))
+                rol_row = cur.fetchone()
+                if not rol_row:
+                    raise ValueError(f"No existe el rol ERP '{rol_erp}'.")
+                for codigo in empresas_pedidas:
+                    cur.execute("SELECT id FROM erp_empresas WHERE UPPER(codigo) = %s", (codigo,))
+                    emp = cur.fetchone()
+                    if not emp:
+                        raise ValueError(f"No existe la empresa '{codigo}'.")
+                    cur.execute("""
+                        INSERT INTO erp_usuario_empresas (auth_user_id, empresa_id, rol_id, es_empresa_principal, estado)
+                        VALUES (%s, %s, %s, %s, 'activo')
+                    """, (cuenta['id'], emp['id'], rol_row['id'], codigo == empresas_pedidas[0]))
+
+        respuesta = {'id': usuario_id, 'usuario_sistema': usuario_sistema, 'correo': cuenta.get('email'),
+                     'estado': 'inactivo'}
+        if generada:
+            # Solo se devuelve una vez; en la base queda guardada con hash.
+            respuesta['password_generada'] = generada
+        return jsonify({'success': True, 'data': respuesta,
+                        'message': 'Usuario creado e INACTIVO. Actívalo cuando esté listo para entrar.'})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        print(f"❌ Error en crear_usuario_desde_auth: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@config_seguridad_bp.route('/usuarios-inactivos', methods=['GET'])
+def listar_usuarios_inactivos():
+    """Usuarios del ERP con estado distinto de 'activo' (la lista principal solo muestra activos)."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        filas = db_query("""
+            SELECT u.id, u.auth_user_id::text AS auth_user_id, u.usuario_sistema, u.nombres_apellidos,
+                   u.correo, u.area, u.rol, u.estado, u.created_at
+            FROM usuarios u
+            WHERE COALESCE(u.estado, '') <> 'activo'
+            ORDER BY u.created_at DESC NULLS LAST, u.usuario_sistema
+        """)
+        return jsonify({'success': True, 'data': filas, 'total': len(filas)})
+    except Exception as e:
+        print(f"❌ Error en listar_usuarios_inactivos: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@config_seguridad_bp.route('/usuarios/<int:usuario_id>/activar', methods=['POST'])
+def activar_usuario(usuario_id):
+    """Activa un usuario (desde ese momento puede iniciar sesión)."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        filas = db_query("SELECT id, usuario_sistema, password FROM usuarios WHERE id = %s", (usuario_id,))
+        if not filas:
+            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
+        if not filas[0].get('password'):
+            return jsonify({'success': False, 'error': 'El usuario no tiene contraseña. Asígnale una antes de activarlo.'}), 400
+        db_execute("UPDATE usuarios SET estado = 'activo', updated_at = NOW() WHERE id = %s", (usuario_id,))
+        return jsonify({'success': True, 'message': f"Usuario '{filas[0]['usuario_sistema']}' activado. Ya puede entrar."})
+    except Exception as e:
+        print(f"❌ Error en activar_usuario: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

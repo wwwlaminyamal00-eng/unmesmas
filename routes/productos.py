@@ -53,6 +53,182 @@ def generar_codigo_con_lock(cur):
     return f"PRD-{str(nuevo_num).zfill(4)}"
 
 
+# ============================================================
+# COLUMNAS NUEVAS (se crean solas; script equivalente en migrations/008_correccion_13_errores.sql)
+# ============================================================
+import threading
+SQL_DDL_PRODUCTOS = """
+    ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_operacion VARCHAR(60);
+"""
+_columnas_listas = False
+_lock_columnas = threading.Lock()
+
+
+def asegurar_columnas_productos():
+    """Crea las columnas que el formulario de productos necesita y que la base antigua no tenía."""
+    global _columnas_listas
+    if _columnas_listas:
+        return
+    with _lock_columnas:
+        if _columnas_listas:
+            return
+        with db_tx() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('productos_ddl'))")
+            cur.execute(SQL_DDL_PRODUCTOS)
+        _columnas_listas = True
+
+
+# Tipo de operación: casillas Venta / Compra / Inventariable. Se guarda como texto "venta,compra".
+TIPOS_OPERACION = ('venta', 'compra', 'inventariable')
+
+
+def normalizar_tipo_operacion(data, defecto=None):
+    """Lee 'tipo_operacion' (texto "venta,compra" o lista) o 'operation' (nombre de las casillas del formulario).
+    Devuelve el texto ordenado, '' si no marcó ninguna, o `defecto` si el dato no vino."""
+    if 'tipo_operacion' in data:
+        valor = data.get('tipo_operacion')
+    elif 'operation' in data:
+        valor = data.get('operation')
+    else:
+        return defecto
+    if valor is None:
+        return defecto
+    if isinstance(valor, str):
+        valor = valor.split(',')
+    elegidos = {str(v).strip().lower() for v in valor}
+    return ','.join(t for t in TIPOS_OPERACION if t in elegidos)
+
+
+# Listas que el formulario ofrece siempre (antes estaban escritas a mano en la plantilla)
+MARCAS_BASE = [
+    'Nike', 'Adidas', 'Puma', 'Reebok', 'New Balance', 'Under Armour', 'Columbia', 'The North Face', 'Patagonia',
+    'Dickies', 'Carhartt', '3M', 'Honeywell', 'DuPont', 'Samsung', 'LG', 'Sony', 'Panasonic', 'HP', 'Dell', 'Lenovo',
+    'Apple', 'Xiaomi', 'Huawei', 'Caterpillar', 'Bosch', 'Makita', 'DeWalt', 'Stanley', 'Ferretería Industrial',
+    'Casa de Herramientas', 'Otros',
+]
+CATEGORIAS_BASE = [
+    'Seguridad Industrial', 'Mobiliario de Oficina', 'Tecnología', 'Ferretería', 'Limpieza', 'Cuidado Personal',
+    'Iluminación', 'Herramientas Eléctricas', 'Herramientas Manuales', 'Equipos de Protección', 'Señalización',
+    'Materiales de Construcción', 'Pinturas y Acabados', 'Fijaciones y Anclajes', 'Jardinería', 'Automotriz',
+    'Electrónica', 'Papelería',
+]
+
+# tabla maestra -> (columna en productos, prefijo del código)
+_MAESTROS = {'marcas': ('marca', 'MAR'), 'categorias': ('familia', 'CAT')}
+
+
+def registrar_en_maestro(cur, tabla, nombre):
+    """Si el usuario escribió una marca/categoría nueva, la agrega a su tabla maestra para que salga en la lista.
+    Nunca hace fallar el guardado del producto (usa un SAVEPOINT)."""
+    nombre = (nombre or '').strip()
+    if tabla not in _MAESTROS or not nombre:
+        return
+    prefijo = _MAESTROS[tabla][1]
+    cur.execute("SAVEPOINT sp_maestro")
+    try:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f'maestro_{tabla}',))
+        cur.execute(f"SELECT 1 FROM {tabla} WHERE LOWER(TRIM(nombre)) = LOWER(%s) LIMIT 1", (nombre,))
+        if not cur.fetchone():
+            cur.execute(f"""SELECT COALESCE(MAX(CAST(SUBSTRING(codigo FROM %s) AS INTEGER)), 0) AS n
+                            FROM {tabla} WHERE codigo ~ %s""", (f'^{prefijo}-([0-9]+)$', f'^{prefijo}-[0-9]+$'))
+            fila = cur.fetchone()
+            n = (fila['n'] if isinstance(fila, dict) else fila[0]) or 0
+            cur.execute(f"INSERT INTO {tabla} (codigo, nombre, tipo, activo) VALUES (%s, %s, %s, TRUE)",
+                        (f'{prefijo}-{n + 1:04d}', nombre, 'General'))
+        cur.execute("RELEASE SAVEPOINT sp_maestro")
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_maestro")
+        print(f"⚠️ No se pudo registrar '{nombre}' en {tabla}: {e}")
+
+
+def opciones_maestro(tabla, base, actual=None):
+    """Opciones del desplegable: la lista base + lo que hay en la tabla maestra + lo ya usado en productos
+    + el valor actual del producto (así una marca/categoría personalizada nunca desaparece al reabrir)."""
+    columna = _MAESTROS[tabla][0]
+    opciones = list(base)
+    vistos = {o.lower() for o in opciones}
+    extra = []
+    for consulta in (f"SELECT nombre AS v FROM {tabla} WHERE COALESCE(activo, true) = true",
+                     f"SELECT DISTINCT {columna} AS v FROM productos WHERE COALESCE(activo, true) = true"):
+        try:
+            extra += [(f.get('v') or '').strip() for f in (db_query(consulta) or [])]
+        except Exception as e:
+            print(f"⚠️ No se pudieron leer opciones de {tabla}: {e}")
+    if actual:
+        extra.append(str(actual).strip())
+    for v in sorted(extra, key=str.lower):
+        if v and v.lower() not in vistos:
+            vistos.add(v.lower())
+            opciones.append(v)
+    return opciones
+
+
+def stock_por_sede(producto_id):
+    """Stock que el producto ya tiene en Inventario, por empresa y sede (para la tarjeta 'Agregar stock inicial')."""
+    try:
+        from routes.inventario import asegurar_tablas_inventario
+        asegurar_tablas_inventario()
+        filas = db_query("""
+            SELECT s.empresa_id, s.almacen_id, s.cantidad,
+                   COALESCE(NULLIF(e.nombre_corto, ''), e.codigo, '') AS empresa, COALESCE(a.nombre, '') AS sede
+            FROM inv_stock s
+            LEFT JOIN erp_empresas e ON e.id = s.empresa_id
+            LEFT JOIN almacenes a ON a.id = s.almacen_id
+            WHERE s.producto_id = %s AND s.cantidad > 0
+            ORDER BY empresa, sede
+        """, (producto_id,)) or []
+        return [{'empresa_id': str(f['empresa_id']), 'almacen_id': str(f['almacen_id']),
+                 'cantidad': float(f['cantidad']), 'empresa': f['empresa'], 'sede': f['sede']} for f in filas]
+    except Exception as e:
+        print(f"⚠️ No se pudo leer el stock por sede: {e}")
+        return []
+
+
+def _contexto_formulario(producto=None):
+    producto = producto or {}
+    return dict(
+        marcas_opciones=opciones_maestro('marcas', MARCAS_BASE, producto.get('marca')),
+        categorias_opciones=opciones_maestro('categorias', CATEGORIAS_BASE, producto.get('familia')),
+    )
+
+
+# Stock en Productos: SIEMPRE el total del grupo (todas las empresas y sedes = SUM(inv_stock.cantidad)).
+# Si el producto aún no tiene filas en inv_stock se usa productos.stock (dato antiguo).
+# stock_empresa = solo la empresa elegida arriba (NULL con "Todas"); stock_detalle = "KCF 25 · AGD 0".
+SQL_STOCK_PRODUCTO = """
+    COALESCE((SELECT SUM(s.cantidad) FROM inv_stock s WHERE s.producto_id = p.id), p.stock) AS stock,
+    COALESCE((SELECT SUM(s.cantidad) FROM inv_stock s WHERE s.producto_id = p.id), p.stock) AS stock_grupo,
+    CASE WHEN %s IS NULL THEN NULL
+         ELSE COALESCE((SELECT SUM(s.cantidad) FROM inv_stock s WHERE s.producto_id = p.id AND s.empresa_id = %s), 0)
+    END AS stock_empresa,
+    (SELECT string_agg(x.cod || ' ' || CASE WHEN x.c = TRUNC(x.c) THEN TRUNC(x.c)::bigint::text
+                                            ELSE RTRIM(RTRIM(x.c::text, '0'), '.') END, ' · ' ORDER BY x.cod)
+       FROM (SELECT COALESCE(e.codigo, '?') AS cod, SUM(s.cantidad) AS c
+               FROM inv_stock s LEFT JOIN erp_empresas e ON e.id = s.empresa_id
+              WHERE s.producto_id = p.id GROUP BY 1) x) AS stock_detalle,
+"""
+
+
+def numero_limpio(v):
+    """25.0000 -> 25 ; 2.5000 -> 2.5 (el stock se muestra sin ceros de más en todas las pantallas)."""
+    if v is None or isinstance(v, (bool, int)):
+        return v
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return v
+    return int(f) if f.is_integer() else f
+
+
+def _limpiar_stock(filas):
+    for f in filas or []:
+        for k in ('stock', 'stock_grupo', 'stock_empresa', 'stock_minimo'):
+            if k in f:
+                f[k] = numero_limpio(f[k])
+    return filas
+
+
 def safe_float(value, default=0):
     """Convierte a float de forma segura"""
     if value is None or value == '':
@@ -127,7 +303,10 @@ def productos():
                            active_tab='nuevo',
                            codigo_auto=codigo_auto,
                            editando=False,
-                           producto=None)
+                           producto=None,
+                           tipos_operacion=['venta'],
+                           stock_sedes=[],
+                           **_contexto_formulario())
 
 
 @productos_bp.route('/nuevo')
@@ -139,7 +318,10 @@ def productos_nuevo():
                            active_tab='nuevo',
                            codigo_auto=codigo_auto,
                            editando=False,
-                           producto=None)
+                           producto=None,
+                           tipos_operacion=['venta'],
+                           stock_sedes=[],
+                           **_contexto_formulario())
 
 
 @productos_bp.route('/base-datos')
@@ -166,6 +348,7 @@ def productos_comparativo():
 @login_required
 def productos_editar(producto_id):
     try:
+        asegurar_columnas_productos()
         producto = db_query("""
             SELECT 
                 id, codigo, descripcion, descripcion_larga,
@@ -174,7 +357,7 @@ def productos_editar(producto_id):
                 costo_unitario, precio_unitario, stock, stock_minimo,
                 estado, presentacion_proveedor, presentacion_venta,
                 venta_minima, codigo_barras, origen, tiempo_entrega,
-                abastecimiento, activo, proveedor_id
+                abastecimiento, activo, proveedor_id, tipo_operacion
             FROM productos
             WHERE id = %s AND activo = TRUE
         """, (producto_id,))
@@ -188,11 +371,18 @@ def productos_editar(producto_id):
 
         codigo_auto = obtener_ultimo_codigo_producto()
 
+        # Productos antiguos (sin tipo de operación guardado) se muestran como "Venta", igual que uno nuevo
+        tipo_op = producto_dict.get('tipo_operacion')
+        tipos_operacion = ['venta'] if tipo_op is None else [t for t in tipo_op.split(',') if t]
+
         return render_template('nuevo_producto.html',
                                active_tab='nuevo',
                                codigo_auto=codigo_auto,
                                producto=producto_dict,
-                               editando=True)
+                               editando=True,
+                               tipos_operacion=tipos_operacion,
+                               stock_sedes=stock_por_sede(producto_id),
+                               **_contexto_formulario(producto_dict))
 
     except Exception as e:
         print(f"❌ Error en productos_editar: {e}")
@@ -215,6 +405,8 @@ def get_productos():
         categoria = request.args.get('categoria', '').strip()
         marca = request.args.get('marca', '').strip()
         modelo = request.args.get('modelo', '').strip()
+        from routes.inventario import asegurar_tablas_inventario
+        asegurar_tablas_inventario()
 
         query = """
             SELECT 
@@ -223,10 +415,8 @@ def get_productos():
                 p.categoria_derivada as subcategoria,
                 p.unidad, p.peso, p.volumen, p.observaciones, p.transporte,
                 p.costo_unitario, p.precio_unitario,
-                -- stock de la empresa elegida arriba (con "Todas" = todo el grupo)
-                CASE WHEN %s IS NULL THEN p.stock
-                     ELSE COALESCE((SELECT SUM(s.cantidad) FROM inv_stock s WHERE s.producto_id = p.id AND s.empresa_id = %s), 0)
-                END AS stock, p.stock AS stock_grupo, p.stock_minimo,
+                """ + SQL_STOCK_PRODUCTO + """
+                p.stock_minimo,
                 p.estado, p.presentacion_proveedor, p.presentacion_venta,
                 p.venta_minima, p.codigo_barras, p.origen, p.tiempo_entrega,
                 p.abastecimiento, p.activo, p.fecha_creacion, p.updated_at,
@@ -259,7 +449,7 @@ def get_productos():
 
         query += " ORDER BY fecha_creacion DESC"
 
-        productos = db_query(query, params)
+        productos = _limpiar_stock(db_query(query, params))
 
         return jsonify({
             'success': True,
@@ -277,13 +467,19 @@ def get_productos():
 def get_producto(producto_id):
     """Obtener un producto específico"""
     try:
+        asegurar_columnas_productos()
+        from routes.inventario import asegurar_tablas_inventario
+        asegurar_tablas_inventario()
+        ef = empresa_filtro()
         producto = db_query("""
             SELECT 
                 p.id, p.codigo, p.descripcion, p.descripcion_larga,
-                p.modelo, p.marca, p.familia as categoria,
+                p.modelo, p.marca, p.familia as categoria, p.familia, p.tipo_operacion,
                 p.categoria_derivada as subcategoria,
                 p.unidad, p.peso, p.volumen, p.observaciones, p.transporte,
-                p.costo_unitario, p.precio_unitario, p.stock, p.stock_minimo,
+                p.costo_unitario, p.precio_unitario,
+                """ + SQL_STOCK_PRODUCTO + """
+                p.stock_minimo,
                 p.estado, p.presentacion_proveedor, p.presentacion_venta,
                 p.venta_minima, p.codigo_barras, p.origen, p.tiempo_entrega,
                 p.abastecimiento, p.activo, p.fecha_creacion, p.updated_at,
@@ -291,10 +487,11 @@ def get_producto(producto_id):
             FROM productos p
             LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
             WHERE p.id = %s AND p.activo = TRUE
-        """, (producto_id,))
+        """, (ef, ef, producto_id))
 
         if not producto:
             return jsonify({'success': False, 'error': 'Producto no encontrado'}), 404
+        _limpiar_stock(producto)
 
         return jsonify({
             'success': True,
@@ -331,6 +528,9 @@ def create_producto():
                     'error': f'El campo "{field}" es requerido'
                 }), 400
 
+        asegurar_columnas_productos()
+        tipo_operacion = normalizar_tipo_operacion(data, defecto='venta')
+
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -356,7 +556,7 @@ def create_producto():
                     presentacion_proveedor, presentacion_venta,
                     venta_minima, codigo_barras,
                     origen, tiempo_entrega, abastecimiento,
-                    proveedor_id,
+                    proveedor_id, tipo_operacion,
                     activo
                 ) VALUES (
                     %s, %s, %s,
@@ -368,7 +568,7 @@ def create_producto():
                     %s, %s,
                     %s, %s,
                     %s, %s, %s,
-                    %s,
+                    %s, %s,
                     TRUE
                 )
                 RETURNING id, codigo
@@ -397,10 +597,15 @@ def create_producto():
                 data.get('origen', ''),
                 data.get('tiempo_entrega', ''),
                 data.get('abastecimiento', ''),
-                proveedor_id
+                proveedor_id,
+                tipo_operacion
             ))
 
             resultado = cur.fetchone()
+
+            # Marca / categoría escritas a mano: quedan en sus tablas maestras para la próxima vez
+            registrar_en_maestro(cur, 'marcas', data.get('marca'))
+            registrar_en_maestro(cur, 'categorias', data.get('familia'))
             print(f"✅ Producto insertado: ID={resultado['id']}, Código={resultado['codigo']}")
 
             # Stock inicial (opcional): queda en el inventario con empresa y sede, como cualquier movimiento
@@ -457,57 +662,105 @@ def update_producto(producto_id):
         # (así nadie puede "corregir" el stock a mano sin dejar rastro).
         from routes.inventario import asegurar_tablas_inventario
         asegurar_tablas_inventario()
-        db_execute("""
-            UPDATE productos SET
-                descripcion = %s, descripcion_larga = %s,
-                modelo = %s, marca = %s, familia = COALESCE(NULLIF(%s, ''), familia), categoria_derivada = %s,
-                unidad = COALESCE(NULLIF(%s, ''), unidad), peso = %s, volumen = %s,
-                observaciones = %s, transporte = %s,
-                costo_unitario = %s, precio_unitario = %s,
-                stock = CASE WHEN EXISTS (SELECT 1 FROM inv_stock WHERE producto_id = productos.id)
-                             THEN stock ELSE %s END,
-                stock_minimo = %s,
-                estado = %s,
-                presentacion_proveedor = %s, presentacion_venta = %s,
-                venta_minima = %s, codigo_barras = %s,
-                origen = %s, tiempo_entrega = %s, abastecimiento = %s,
-                proveedor_id = %s,
-                updated_at = NOW()
-            WHERE id = %s
-        """, (
-            data.get('descripcion'),
-            data.get('descripcion_larga', ''),
-            data.get('modelo'),
-            data.get('marca'),
-            data.get('familia') or data.get('categoria'),
-            data.get('categoria_derivada', '') or data.get('subcategoria', ''),
-            data.get('unidad'),
-            safe_float(data.get('peso')),
-            safe_float(data.get('volumen')),
-            data.get('observaciones', ''),
-            data.get('transporte'),
-            safe_float(data.get('costo_unitario')),
-            safe_float(data.get('precio_unitario')),
-            safe_int(data.get('stock')),
-            safe_int(data.get('stock_minimo')),
-            data.get('estado', 'activo'),
-            data.get('presentacion_proveedor', ''),
-            data.get('presentacion_venta', ''),
-            safe_int(data.get('venta_minima'), 1),
-            data.get('codigo_barras', ''),
-            data.get('origen', ''),
-            data.get('tiempo_entrega', ''),
-            data.get('abastecimiento', ''),
-            proveedor_id,
-            producto_id
-        ))
+        asegurar_columnas_productos()
+        # None = el dato no vino (p. ej. otra pantalla que edita el producto): se conserva lo guardado
+        tipo_operacion = normalizar_tipo_operacion(data)
+
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""
+              UPDATE productos SET
+                  descripcion = %s, descripcion_larga = %s,
+                  modelo = %s, marca = %s, familia = COALESCE(NULLIF(%s, ''), familia), categoria_derivada = %s,
+                  unidad = COALESCE(NULLIF(%s, ''), unidad), peso = %s, volumen = %s,
+                  observaciones = %s, transporte = %s,
+                  costo_unitario = %s, precio_unitario = %s,
+                  stock = CASE WHEN EXISTS (SELECT 1 FROM inv_stock WHERE producto_id = productos.id)
+                               THEN stock ELSE %s END,
+                  stock_minimo = %s,
+                  estado = %s,
+                  presentacion_proveedor = %s, presentacion_venta = %s,
+                  venta_minima = %s, codigo_barras = %s,
+                  origen = %s, tiempo_entrega = %s, abastecimiento = %s,
+                  proveedor_id = %s,
+                  tipo_operacion = COALESCE(%s, tipo_operacion),
+                  updated_at = NOW()
+              WHERE id = %s
+          """, (
+              data.get('descripcion'),
+              data.get('descripcion_larga', ''),
+              data.get('modelo'),
+              data.get('marca'),
+              data.get('familia') or data.get('categoria'),
+              data.get('categoria_derivada', '') or data.get('subcategoria', ''),
+              data.get('unidad'),
+              safe_float(data.get('peso')),
+              safe_float(data.get('volumen')),
+              data.get('observaciones', ''),
+              data.get('transporte'),
+              safe_float(data.get('costo_unitario')),
+              safe_float(data.get('precio_unitario')),
+              safe_int(data.get('stock')),
+              safe_int(data.get('stock_minimo')),
+              data.get('estado', 'activo'),
+              data.get('presentacion_proveedor', ''),
+              data.get('presentacion_venta', ''),
+              safe_int(data.get('venta_minima'), 1),
+              data.get('codigo_barras', ''),
+              data.get('origen', ''),
+              data.get('tiempo_entrega', ''),
+              data.get('abastecimiento', ''),
+              proveedor_id,
+              tipo_operacion,
+              producto_id
+            ))
+
+            registrar_en_maestro(cur, 'marcas', data.get('marca'))
+            registrar_en_maestro(cur, 'categorias', data.get('familia') or data.get('categoria'))
+
+            # Agregar stock inicial al editar: solo si escribió una cantidad mayor a 0
+            mensaje_stock = ''
+            if safe_float(data.get('stock_inicial_cantidad')) > 0:
+                from routes.inventario import registrar_stock_inicial, ErrorInventario
+                empresa_id, almacen_id = data.get('stock_inicial_empresa'), data.get('stock_inicial_almacen')
+                if empresa_id and almacen_id:
+                    # Evita duplicar: si ya hay stock (o un stock inicial esperando aprobación) en esa empresa y sede,
+                    # cualquier corrección se hace en Inventario, con su motivo.
+                    try:
+                        cur.execute("""
+                            SELECT
+                              (SELECT cantidad FROM inv_stock WHERE producto_id = %s
+                                 AND empresa_id::text = %s AND almacen_id::text = %s AND cantidad > 0) AS cantidad,
+                              EXISTS (SELECT 1 FROM inv_movimientos WHERE producto_id = %s AND motivo = 'STOCK_INICIAL'
+                                 AND estado = 'Pendiente' AND empresa_id::text = %s AND almacen_id::text = %s) AS pendiente
+                        """, (producto_id, str(empresa_id), str(almacen_id), producto_id, str(empresa_id), str(almacen_id)))
+                        ya = cur.fetchone()
+                    except Exception:
+                        raise ValueError('Stock inicial: revisa la empresa y la sede elegidas.')
+                    if ya and ya['cantidad']:
+                        raise ValueError(f"Este producto ya tiene {float(ya['cantidad']):g} unidades en esa empresa y sede. "
+                                         "Para cambiar ese stock usa Inventario (ingreso o ajuste).")
+                    if ya and ya['pendiente']:
+                        raise ValueError('Ya hay un stock inicial de este producto en esa empresa y sede esperando '
+                                         'aprobación. Pide a un supervisor que lo revise en Inventario.')
+                try:
+                    mov, pendiente = registrar_stock_inicial(
+                        cur, producto_id=producto_id, empresa_id=empresa_id, almacen_id=almacen_id,
+                        cantidad=data.get('stock_inicial_cantidad'), costo_unitario=safe_float(data.get('costo_unitario')),
+                        observaciones='Stock inicial agregado al editar el producto')
+                except ErrorInventario as e:
+                    raise ValueError(f'Stock inicial: {e}')
+                mensaje_stock = (f" Stock inicial {mov['numero']}: queda pendiente hasta que un supervisor lo apruebe."
+                                 if pendiente else f" Stock inicial registrado ({mov['numero']}).")
 
         return jsonify({
             'success': True,
-            'message': 'Producto actualizado exitosamente',
+            'message': 'Producto actualizado exitosamente.' + mensaje_stock,
             'data': {'codigo': codigo_existente}
         })
 
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         print(f"❌ Error en update_producto: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -546,14 +799,19 @@ def buscar_productos():
         if not q or len(q) < 2:
             return jsonify({'success': True, 'data': []})
 
-        productos = db_query("""
-            SELECT id, codigo, descripcion, modelo, marca, precio_unitario, stock, unidad
-            FROM productos
-            WHERE activo = TRUE
-            AND (codigo ILIKE %s OR descripcion ILIKE %s OR modelo ILIKE %s OR marca ILIKE %s)
-            ORDER BY codigo
+        from routes.inventario import asegurar_tablas_inventario
+        asegurar_tablas_inventario()
+        ef = empresa_filtro()
+        productos = _limpiar_stock(db_query("""
+            SELECT p.id, p.codigo, p.descripcion, p.modelo, p.marca, p.precio_unitario,
+                """ + SQL_STOCK_PRODUCTO + """
+                p.unidad
+            FROM productos p
+            WHERE p.activo = TRUE
+            AND (p.codigo ILIKE %s OR p.descripcion ILIKE %s OR p.modelo ILIKE %s OR p.marca ILIKE %s)
+            ORDER BY p.codigo
             LIMIT 20
-        """, (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'))
+        """, (ef, ef, f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%')))
 
         return jsonify({
             'success': True,

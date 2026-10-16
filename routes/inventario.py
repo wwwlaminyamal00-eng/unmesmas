@@ -82,6 +82,42 @@ class ErrorInventario(Exception):
 # ============================================================
 # TABLAS (se crean solas; script equivalente en migrations/003_inventario.sql)
 # ============================================================
+# productos.stock = suma de inv_stock (todas las empresas y sedes), mantenido por la base misma (16/10).
+# Así Productos, Inventario y Ventas no pueden quedar distintos aunque alguien cambie inv_stock por fuera del ERP.
+SQL_SYNC_STOCK_PRODUCTOS = """
+    CREATE OR REPLACE FUNCTION fn_recalcular_stock_producto(p_id INTEGER) RETURNS void
+    LANGUAGE sql SET search_path = public AS $f$
+        UPDATE productos SET stock = (SELECT COALESCE(SUM(cantidad), 0) FROM inv_stock WHERE producto_id = p_id)
+        WHERE id = p_id;
+    $f$;
+    CREATE OR REPLACE FUNCTION fn_inv_stock_sync_productos() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = public AS $f$
+    BEGIN
+        IF TG_OP IN ('UPDATE', 'DELETE') THEN
+            PERFORM fn_recalcular_stock_producto(OLD.producto_id);
+        END IF;
+        IF TG_OP IN ('INSERT', 'UPDATE') THEN
+            PERFORM fn_recalcular_stock_producto(NEW.producto_id);
+        END IF;
+        RETURN NULL;
+    END $f$;
+    CREATE OR REPLACE TRIGGER trg_inv_stock_sync_productos
+        AFTER INSERT OR UPDATE OF cantidad, producto_id OR DELETE ON inv_stock
+        FOR EACH ROW EXECUTE FUNCTION fn_inv_stock_sync_productos();
+    CREATE OR REPLACE FUNCTION fn_productos_stock_desde_inventario() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = public AS $f$
+    BEGIN
+        -- Si el producto ya está en Inventario, su stock no se escribe a mano: es la suma de inv_stock
+        IF EXISTS (SELECT 1 FROM inv_stock WHERE producto_id = NEW.id) THEN
+            NEW.stock := (SELECT COALESCE(SUM(cantidad), 0) FROM inv_stock WHERE producto_id = NEW.id);
+        END IF;
+        RETURN NEW;
+    END $f$;
+    CREATE OR REPLACE TRIGGER trg_productos_stock_desde_inventario
+        BEFORE INSERT OR UPDATE OF stock ON productos
+        FOR EACH ROW EXECUTE FUNCTION fn_productos_stock_desde_inventario();
+"""
+
 SQL_DDL_INVENTARIO = """
     CREATE TABLE IF NOT EXISTS inv_sede_empresa (
         id SERIAL PRIMARY KEY,
@@ -218,7 +254,7 @@ SQL_DDL_INVENTARIO = """
         costo_promedio NUMERIC(16,6),
         comentario TEXT
     );
-"""
+""" + SQL_SYNC_STOCK_PRODUCTOS
 
 _tablas_listas = False
 _lock_tablas = threading.Lock()
