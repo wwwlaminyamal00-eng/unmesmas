@@ -402,7 +402,12 @@ def obtener_guias_db():
                          (SELECT c.serie || '-' || c.numero FROM comprobantes c
                           WHERE c.guia_vinculada = guias_remision.serie || '-' || guias_remision.numero
                             AND COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
-                          ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada
+                          ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada,
+                -- Nr° PC (19/10/2026): la PC de la misma cotización
+                (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
+                  WHERE p.cotizacion_numero = guias_remision.documento_asociado
+                    AND NULLIF(p.numero, '') IS NOT NULL
+                    AND COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')) AS pc_numero
             FROM guias_remision
             ORDER BY id DESC
         """
@@ -589,7 +594,23 @@ def obtener_comprobantes_db():
                 fecha_vencimiento, dias_credito, monto_retenido,
                 obs_retencion,
                 sunat_response, cdr_response, creado_por,
-                created_at, updated_at
+                created_at, updated_at,
+                -- Nr° PC y Nr° guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
+                COALESCE(NULLIF(pc_vinculado, ''),
+                         (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
+                           WHERE p.cotizacion_numero = comprobantes.documento_asociado
+                             AND NULLIF(p.numero, '') IS NOT NULL
+                             AND COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA'))) AS pc_numero,
+                COALESCE(NULLIF(guia_vinculada, ''),
+                         (SELECT g.serie || '-' || g.numero FROM guias_remision g
+                           WHERE NULLIF(g.factura, '') IS NOT NULL
+                             AND g.factura IN (comprobantes.serie || '-' || comprobantes.numero,
+                                               comprobantes.serie || '-' || LPAD(comprobantes.numero::text, 8, '0'))
+                           ORDER BY g.id DESC LIMIT 1),
+                         (SELECT MIN(g.serie || '-' || g.numero) FROM guias_remision g
+                           WHERE g.documento_asociado = comprobantes.documento_asociado
+                             AND COALESCE(UPPER(g.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
+                           HAVING COUNT(*) = 1)) AS guia_numero
             FROM comprobantes
             ORDER BY id DESC
         """
@@ -2204,6 +2225,7 @@ def api_guias_listar():
                 'cotizacion': row.get('documento_asociado'),
                 # Antes mostraba la cotización como si fuera el comprobante: ahora es la factura de verdad
                 'comprobante': row.get('factura_vinculada') or '',
+                'pc_numero': row.get('pc_numero') or '',
                 'origen': row.get('remitente_direccion'),
                 'destino': row.get('destinatario_direccion'),
                 'motivo': row.get('motivo_traslado'),
@@ -2489,6 +2511,8 @@ def api_comprobantes_listar():
                 'ruc': row.get('cliente_numero_doc'),
                 'cliente': row.get('cliente_nombre'),
                 'cotizacion': row.get('documento_asociado'),
+                'pc_numero': row.get('pc_numero') or '',
+                'guia_numero': row.get('guia_numero') or '',
                 'monto': float(row.get('total', 0)),
                 'subtotal': float(row.get('subtotal', 0)),
                 'igv': float(row.get('igv', 0)),

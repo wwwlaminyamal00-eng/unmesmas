@@ -335,6 +335,91 @@
         $('ocMotivoReq').textContent = $('ocMotivoCompra').value === 'Otro' ? '(obligatorio: escribe el motivo)' : '(opcional)';
         $('ocMotivoReq').classList.toggle('neg', $('ocMotivoCompra').value === 'Otro');
         avisoSunat();
+        pedirAbastecimiento();
+    }
+
+    // ========================================================
+    // RESUMEN DE ABASTECIMIENTO (pedido de Erika, 19/10/2026)
+    // Por producto: stock actual de la empresa que compra · pedido del cliente que falta cubrir · a comprar
+    // ========================================================
+    let abastDatos = {}, abastClave = '', abastTimer = null;
+
+    function pedirAbastecimiento() {
+        clearTimeout(abastTimer);
+        abastTimer = setTimeout(async () => {
+            const ids = [...new Set(lineas.filter(l => l.producto_id).map(l => l.producto_id))].sort((a, b) => a - b);
+            const clave = $('ocEmp').value + '|' + ids.join(',') + '|' + ($('ocId').value || '');
+            if (clave !== abastClave) {
+                abastClave = clave;
+                if (!ids.length) { abastDatos = {}; }
+                else {
+                    try {
+                        const params = new URLSearchParams({ empresa_id: $('ocEmp').value, productos: ids.join(',') });
+                        if ($('ocId').value) params.set('oc_id', $('ocId').value);
+                        const { data } = await api('/compras/api/flujo/abastecimiento?' + params);
+                        if (clave !== abastClave) return;   // llegó tarde: ya se pidió otra cosa
+                        abastDatos = Object.fromEntries(data.map(d => [d.producto_id, d]));
+                    } catch (e) { abastDatos = {}; }
+                }
+            }
+            pintarAbastecimiento();
+        }, 150);
+    }
+
+    function pintarAbastecimiento() {
+        const caja = $('ocAbast');
+        if (!caja) return;
+        const ids = [...new Set(lineas.filter(l => l.producto_id).map(l => l.producto_id))];
+        const emp = (cat.empresas.find(e => String(e.id) === String($('ocEmp').value)) || {});
+        if (!ids.length) {
+            caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento</div><div class="com-abast-vacio">Elige un producto y aquí verás el stock, lo que pide el cliente y cuánto comprar.</div>`;
+            return;
+        }
+        const filas = ids.map(pid => {
+            const d = abastDatos[pid];
+            const comprar = lineas.filter(l => l.producto_id === pid).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
+            if (!d) return `<tr><td class="left">${esc((lineas.find(l => l.producto_id === pid) || {}).texto || '')}</td><td colspan="5">Calculando...</td></tr>`;
+            const saldo = d.stock + comprar - d.pedido_cliente;
+            const usar = d.sugerido > 0 && Math.abs(comprar - d.sugerido) > 1e-9
+                ? `<button type="button" class="btn-mini sec" data-sugerido="${pid}" title="Poner esta cantidad en la línea del producto">Usar</button>` : '';
+            const estado = saldo < 0
+                ? `<span class="com-abast-sem rojo">✖ Faltan ${cant(-saldo)}</span>`
+                : (d.pedido_cliente > 0
+                    ? `<span class="com-abast-sem verde">✔ Cubre el pedido${saldo > 0 ? ` · quedan ${cant(saldo)} en stock` : ''}</span>`
+                    : `<span class="com-abast-sem ambar">Para stock · quedarán ${cant(saldo)}</span>`);
+            const pcs = d.pedidos.map(p => `${p.numero} (${cant(p.falta)})`).join(', ');
+            return `<tr>
+                <td class="left"><b>${esc(d.codigo || '')}</b> ${esc(d.descripcion || '')}</td>
+                <td class="num"><span class="com-abast-num ${d.stock > 0 ? 'hay' : 'cero'}">${cant(d.stock)}</span>
+                    ${d.stock_grupo > d.stock ? `<small title="Stock libre en todo el grupo (otras empresas o sedes)">Grupo: ${cant(d.stock_grupo)}</small>` : ''}</td>
+                <td class="num"><span class="com-abast-num ped">${cant(d.pedido_cliente)}</span>
+                    ${pcs ? `<small title="${esc(pcs)}">${d.pedidos.length} pedido(s)${d.ya_en_ordenes > 0 ? ` · ya hay ${cant(d.ya_en_ordenes)} en otras OC` : ''}</small>` : '<small>Sin pedidos pendientes</small>'}</td>
+                <td class="num"><span class="com-abast-num sug">${cant(d.sugerido)}</span>${usar}</td>
+                <td class="num"><span class="com-abast-num comp">${cant(comprar)}</span></td>
+                <td>${estado}</td></tr>`;
+        }).join('');
+        caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento <small>${esc(emp.nombre || 'Empresa')} · se recalcula solo</small></div>
+            <div class="table-wrap"><table class="inv-table com-abast-tabla">
+                <thead><tr><th class="left">Producto</th><th>Stock actual<small>disponible en ${esc(emp.codigo || emp.nombre || 'la empresa')}</small></th>
+                    <th>Pedido del cliente<small>lo que falta cubrir</small></th><th>Sugerido<small>pedido − stock</small></th>
+                    <th>A comprar<small>en esta orden</small></th><th class="left">Resultado</th></tr></thead>
+                <tbody>${filas}</tbody></table></div>`;
+    }
+
+    function usarSugerido(pid) {
+        const d = abastDatos[pid];
+        if (!d) return;
+        const idx = lineas.map((l, i) => [l, i]).filter(([l]) => l.producto_id === pid);
+        if (!idx.length) return;
+        // La cantidad sugerida va a la línea del pedido (o a la primera); las demás líneas del mismo producto se respetan
+        const [, i] = idx.find(([l]) => l.pedido_id) || idx[0];
+        const otras = idx.filter(([, j]) => j !== i).reduce((s, [l]) => s + (Number(l.cantidad) || 0), 0);
+        lineas[i].cantidad = Math.max(d.sugerido - otras, 0);
+        const inp = document.querySelector(`tr[data-linea="${i}"] [data-campo="cantidad"]`);
+        if (inp) inp.value = lineas[i].cantidad;
+        $('tot-' + i).textContent = soles((Number(lineas[i].cantidad) || 0) * (Number(lineas[i].precio_unitario) || 0));
+        totales();
+        pintarAbastecimiento();
     }
 
     function pintarProveedor() {
@@ -405,6 +490,7 @@
         });
         if (lineas.some(l => l.producto_id && l.pedido_id === null && l.texto)) ajustarForm();
         totales();
+        pedirAbastecimiento();
     }
 
     function pickerLinea(el, i) {
@@ -861,6 +947,11 @@
         $('tot-' + i).textContent = soles((Number(lineas[i].cantidad) || 0) * (Number(lineas[i].precio_unitario) || 0));
         if (e.target.dataset.campo === 'precio_unitario') revisarPrecio(i);
         totales();
+        if (e.target.dataset.campo === 'cantidad') pintarAbastecimiento();
+    });
+    document.addEventListener('click', e => {
+        const b = e.target.closest('[data-sugerido]');
+        if (b) usarSugerido(Number(b.dataset.sugerido));
     });
 
     function iniciarEventos() {

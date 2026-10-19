@@ -1699,7 +1699,7 @@ function renderGuias() {
     const fechaFin = document.getElementById('guiaFechaFin')?.value || '';
     
     const list = guiasData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''}`.toLowerCase();
+        const searchStr = `${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.cotizacion || ''} ${r.pc_numero || ''} ${r.comprobante || ''}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         
@@ -1747,7 +1747,7 @@ function renderGuias() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay guías registradas</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay guías registradas</td></tr>`;
         return;
     }
     
@@ -1760,6 +1760,7 @@ function renderGuias() {
             <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${sd(r.cotizacion)}</td>
+            <td>${sd(r.pc_numero)}</td>
             <td>${sd(r.comprobante)}</td>
             <td>${sd(r.origen)}</td>
             <td>${sd(r.destino)}</td>
@@ -1779,7 +1780,7 @@ function renderComprobantes() {
     const fechaFin = document.getElementById('comprobanteFechaFin')?.value || '';
     
     const list = comprobantesData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.condicion || ''}`.toLowerCase();
+        const searchStr = `${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.condicion || ''} ${r.cotizacion || ''} ${r.pc_numero || ''} ${r.guia_numero || ''}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         
@@ -1825,7 +1826,7 @@ function renderComprobantes() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
         return;
     }
     
@@ -1876,6 +1877,8 @@ function renderComprobantes() {
             <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${sd(r.cotizacion)}</td>
+            <td>${sd(r.pc_numero)}</td>
+            <td>${sd(r.guia_numero)}</td>
             <td><b>${montoStr}</b></td>
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">

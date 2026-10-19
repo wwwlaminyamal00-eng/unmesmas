@@ -467,7 +467,7 @@ def _comprado_por_pedido(cur=None, excluir_oc=None):
     return {(f['pedido_id'], f['producto_id']): a_decimal(f['c']) for f in filas}
 
 
-def _pedidos_por_comprar(todos=False, pedido_id=None):
+def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtro=False):
     col_emp = 'empresa_id' if _tiene_columna('pedido_compra_pc', 'empresa_id') else 'NULL AS empresa_id'
     filas = db_query("""
         SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero, """ + col_emp + """
@@ -475,9 +475,9 @@ def _pedidos_por_comprar(todos=False, pedido_id=None):
         WHERE COALESCE(UPPER(estado), '') <> ALL(%s) AND (%s::int IS NULL OR id = %s::int)
         ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 300
     """, (list(ESTADOS_PC_FUERA), pedido_id, pedido_id))
-    if pedido_id is None:
+    if pedido_id is None and not sin_filtro:
         filas = filtrar_filas('pedido_compra_pc', filas)   # solo los pedidos de la empresa elegida arriba
-    comprado = _comprado_por_pedido()
+    comprado = _comprado_por_pedido(excluir_oc=excluir_oc)
     pedidos, ids = [], set()
     for pc in filas:
         items = _resolver_productos(_items_pedido(pc))
@@ -825,6 +825,47 @@ def api_info_producto(producto_id):
         """, (producto_id,))
         return jsonify({'success': True, 'compras': [_fila(c) for c in compras],
                         'stock_libre': _detalle_stock_libre(producto_id)})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@compras_flujo_bp.route('/compras/api/flujo/abastecimiento')
+def api_abastecimiento():
+    """Panel "Resumen de abastecimiento" del formulario de OC (pedido de Erika, 19/10/2026).
+    Por producto y para la empresa que compra: stock actual (libre), lo que piden los clientes y aún falta cubrir,
+    y lo sugerido a comprar = falta − stock. ?empresa_id=..&productos=1,2,3[&oc_id=..] (oc_id: al corregir una OC
+    no se cuenta lo que ya trae esa misma OC)."""
+    try:
+        ids = sorted({int(x) for x in (request.args.get('productos') or '').split(',') if x.strip().isdigit()})[:200]
+        oc_id = request.args.get('oc_id', type=int)
+        empresa_id = id_empresa(request.args.get('empresa_id')) if request.args.get('empresa_id') else None
+        if not ids:
+            return jsonify({'success': True, 'data': []})
+        stock_emp = _stock_libre_empresa(ids, empresa_id) if empresa_id is not None else _stock_libre_grupo(ids)
+        stock_grupo = _stock_libre_grupo(ids)
+        pend = {pid: {'falta': Decimal('0'), 'pedido': Decimal('0'), 'comprado': Decimal('0'), 'pcs': []} for pid in ids}
+        for p in _pedidos_por_comprar(excluir_oc=oc_id, sin_filtro=True):
+            if empresa_id is not None and p['empresa_id'] is not None and str(p['empresa_id']) != str(empresa_id):
+                continue
+            for it in p['items']:
+                d = pend.get(it['producto_id'])
+                if d is None or it['falta'] <= 0:
+                    continue
+                d['falta'] += a_decimal(it['falta'])
+                d['pedido'] += a_decimal(it['cantidad'])
+                d['comprado'] += a_decimal(it['comprado'])
+                d['pcs'].append({'numero': p['numero'], 'cliente': p['cliente'], 'falta': it['falta']})
+        prods = {f['id']: f for f in db_query("SELECT id, codigo, descripcion, unidad FROM productos WHERE id = ANY(%s)", (ids,))}
+        data = []
+        for pid in ids:
+            d, st = pend[pid], stock_emp.get(pid, Decimal('0'))
+            pr = prods.get(pid) or {}
+            data.append({'producto_id': pid, 'codigo': pr.get('codigo'), 'descripcion': pr.get('descripcion'),
+                         'unidad': pr.get('unidad'), 'stock': float(st), 'stock_grupo': float(stock_grupo.get(pid, 0)),
+                         'pedido_cliente': float(d['falta']), 'pedido_total': float(d['pedido']),
+                         'ya_en_ordenes': float(d['comprado']), 'pedidos': d['pcs'][:10],
+                         'sugerido': float(max(d['falta'] - st, Decimal('0')))})
+        return jsonify({'success': True, 'data': data})
     except Exception as e:
         return _respuesta_error(e)
 

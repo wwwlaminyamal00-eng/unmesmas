@@ -30,15 +30,17 @@
 .com-fila{cursor:pointer}
 .com-paso{display:inline-block;border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:900;white-space:nowrap}
 .com-paso + small{display:block;color:#64748B;font-weight:700;font-size:11px}
-.com-paso-warn{background:#FEF3C7;color:#92400E}
+.com-paso-warn{background:#FFD600;color:#1F1600}
 .com-paso-info{background:#DBEAFE;color:#1E3A8A}
 .com-paso-danger{background:#FEE2E2;color:#B91C1C}
 .com-paso-ok{background:#DCFCE7;color:#166534}
 .com-paso-gris{background:#F1F5F9;color:#475569}
 .com-barra{width:70px;height:8px;background:#E2E8F0;border-radius:99px;overflow:hidden;margin:0 auto}
 .com-barra i{display:block;height:100%;background:#16A34A}
-.est-por-aprobar,.est-borrador{background:#FEF3C7;color:#92400E}
-.est-aprobada,.est-recibida-parcial{background:#DBEAFE;color:#1E3A8A}
+.est-borrador{background:#FEF3C7;color:#92400E}
+.est-por-aprobar{background:#FFD600;color:#1F1600;border:2px solid #E6A800;font-weight:950}   /* 19/10: amarillo fuerte */
+.est-aprobada{background:#00C853;color:#fff;border:2px solid #00962F;font-weight:950;text-shadow:0 1px 0 rgba(0,0,0,.25)}   /* 19/10: Aprobada en verde fuerte (lista para recibir) */
+.est-recibida-parcial{background:#DBEAFE;color:#1E3A8A}
 .est-recibida,.est-cerrada{background:#DCFCE7;color:#166534}
 .est-anulada{background:#F1F5F9;color:#64748B;text-decoration:line-through}
 
@@ -74,7 +76,9 @@
 .com-step.hecho{color:#166534}
 .com-step.hecho span{background:#16A34A;border-color:#16A34A;color:#fff}
 .com-step.actual{color:#B45309}
-.com-step.actual span{border-color:#F59E0B;background:#FEF3C7;color:#92400E;box-shadow:0 0 0 4px rgba(245,158,11,.15)}
+.com-step.actual{color:#7A5200}
+.com-step.actual span{border-color:#E6A800;background:#FFD600;color:#1F1600;box-shadow:0 0 0 5px rgba(255,214,0,.45)}   /* 19/10: paso actual en amarillo fuerte */
+.com-step.actual b{background:#FFD600;color:#1F1600;border-radius:6px;padding:1px 6px}
 .com-step.error span{background:#FEE2E2;border-color:#DC2626;color:#B91C1C}
 .com-step.luego{color:#CBD5E1}
 .com-step.anulada{color:#CBD5E1}
@@ -130,3 +134,22 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-resumen td [data-res-total]{font-size:14px}
 .com-saldo{display:inline-block;background:#DBEAFE;color:#1E3A8A;border-radius:6px;padding:1px 8px;font-weight:900}
 @media(max-width:800px){.com-prov-campos{grid-template-columns:1fr 1fr}}
+
+/* ===== Resumen de abastecimiento en el formulario de OC (19/10/2026) ===== */
+.com-abast{margin:10px 12px 4px;border:2px solid #1E3A8A;border-radius:12px;background:#F8FAFF;overflow:hidden}
+.com-abast-tit{padding:8px 12px;background:#1E3A8A;color:#fff;font-weight:950;font-size:14px}
+.com-abast-tit small{font-weight:700;opacity:.85;margin-left:6px}
+.com-abast-vacio{padding:12px;color:#475569;font-weight:700}
+.com-abast-tabla th small{display:block;font-weight:700;color:#64748B;text-transform:none;letter-spacing:0;font-size:10.5px}
+.com-abast-tabla td small{display:block;color:#64748B;font-weight:700;font-size:11px}
+.com-abast-num{display:inline-block;min-width:44px;padding:3px 8px;border-radius:8px;font-weight:950;font-size:15px}
+.com-abast-num.hay{background:#DCFCE7;color:#14532D}
+.com-abast-num.cero{background:#FFE4E6;color:#BE123C}
+.com-abast-num.ped{background:#DBEAFE;color:#1E3A8A}
+.com-abast-num.sug{background:#FFF7CC;color:#5C4300}
+.com-abast-num.comp{background:#1E3A8A;color:#fff}
+.com-abast-tabla .btn-mini{margin-left:6px}
+.com-abast-sem{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:950;font-size:12.5px;white-space:nowrap}
+.com-abast-sem.verde{background:#00C853;color:#fff;border:2px solid #00962F}
+.com-abast-sem.rojo{background:#FF0033;color:#fff;border:2px solid #B80025}
+.com-abast-sem.ambar{background:#FFD600;color:#1F1600;border:2px solid #E6A800}
