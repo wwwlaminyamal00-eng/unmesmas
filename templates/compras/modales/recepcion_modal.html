@@ -161,7 +161,7 @@ function addRecepcionItemRow(item = {}) {
             </select>
         </td>
         <td style="text-align:center;">
-            <button type="button" onclick="this.closest('tr').remove(); recReordenar();" style="background:#FEE2E2; border:0; color:#DC2626; cursor:pointer; font-size:12px; font-weight:900; padding:3px 7px; border-radius:6px;">✕</button>
+            <button type="button" onclick="this.closest('tr').remove(); recReordenar();" class="btn-tachito" title="Quitar" aria-label="Quitar">🗑️</button>
         </td>
     `;
     tbody.appendChild(tr);

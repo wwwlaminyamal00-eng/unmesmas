@@ -509,7 +509,7 @@
         <td>${ccSoles(p.transporte)}</td>
         <td>${p.comentario}</td>
         <td><span class="cc-chip ${chipClass}">${p.estatus === 'Ganador' ? '🏆 ' : ''}${p.estatus}</span></td>
-        <td><button class="cc-btn-delete" onclick="event.stopPropagation(); ccEliminarProducto(${idx})" title="Quitar de la tabla">✕</button></td>
+        <td><button class="cc-btn-delete" onclick="event.stopPropagation(); ccEliminarProducto(${idx})" title="Quitar de la tabla">🗑️</button></td>
       </tr>`;
     }).join('');
   };

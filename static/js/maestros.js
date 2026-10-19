@@ -2926,7 +2926,7 @@ function renderClientesCompleta(list) {
                     value = `S/ ${parseFloat(value).toFixed(2)}`;
                 }
             } else if (f.key === 'created_at' || f.key === 'updated_at') {
-                value = value ? new Date(value).toLocaleDateString('es-PE') : '-';
+                value = value ? window.fechaHoraLima(value) : '-';
             } else if (f.key === 'dias_credito') {
                 value = value ? `${value} días` : '-';
             } else if (f.key === 'tipo_documento') {
@@ -3052,7 +3052,7 @@ function renderProveedoresCompleta(list) {
                     value = '-';
                 }
             } else if (f.key === 'fecha_creacion') {
-                value = value ? new Date(value).toLocaleDateString('es-PE') : '-';
+                value = value ? window.fechaHoraLima(value) : '-';
             }
             
             cells += `<td style="text-align:center;">${value}</td>`;

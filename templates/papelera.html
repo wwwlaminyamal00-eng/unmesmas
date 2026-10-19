@@ -1,12 +1,123 @@
 {% extends "base.html" %}
 
-{% block title %}Papelera - ERP Multiempresa{% endblock %}
+{% block title %}Papelera / Auditoría - ERP Multiempresa{% endblock %}
 
-{% block page_title %}Papelera{% endblock %}
+{% block page_title %}Papelera / Auditoría{% endblock %}
+
+{% block subtitle %}Todo lo anulado o eliminado de cada módulo, y el historial de quién hizo qué y cuándo.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/herramientas.css') }}">
+{% endblock %}
 
 {% block content %}
-<div class="fin-panel" style="padding:24px;background:#fff;border-radius:12px;border:1px solid #E2E8F0">
-    <h3 style="margin:0 0 8px">Módulo en construcción</h3>
-    <p style="margin:0;color:#64748B">Esta sección todavía no tiene funcionalidades. Usa el menú lateral para ir a Ventas, Compras o Finanzas.</p>
+<div id="papApp" data-admin="{{ 'true' if es_admin else 'false' }}" data-empresa="{{ emp_ctx.codigo if emp_ctx else '' }}">
+    <div class="tabs hr-tabs" id="papTabs">
+        <button class="tab-btn active" data-tab="papelera">🗑️ Papelera (anulados y eliminados)</button>
+        {% if es_admin %}<button class="tab-btn" data-tab="auditoria">📜 Auditoría (historial de cambios)</button>{% endif %}
+    </div>
+
+    <!-- PAPELERA -->
+    <section class="section active" id="ptab-papelera">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">Papelera</div>
+                    <div class="hr-help">Aquí está todo lo que se anuló o eliminó: nada se pierde.
+                        {% if es_admin %}Puedes <b>restaurar</b> lo que se puede reactivar sin romper la numeración.
+                        Guías, facturas y notas de crédito anuladas <b>solo se ven</b> (son documentos SUNAT).{% else %}Solo un administrador puede restaurar o borrar.{% endif %}</div>
+                </div>
+                <div class="hr-filters">
+                    <label>Módulo<select id="papModulo"><option value="">Todos</option>{% for m in modulos %}<option>{{ m }}</option>{% endfor %}</select></label>
+                    <label>Desde<input type="date" id="papDesde"></label>
+                    <label>Hasta<input type="date" id="papHasta"></label>
+                    <label>Usuario<input type="search" id="papUsuario" placeholder="Quién anuló"></label>
+                    <label>Empresa<select id="papEmpresa">
+                        <option value="">La de arriba</option>
+                        <option value="TODAS">Todas</option>
+                        {% for o in (emp_ctx.opciones if emp_ctx else []) %}<option value="{{ o.codigo }}">{{ o.codigo }}</option>{% endfor %}
+                    </select></label>
+                    <label>Buscar<input type="search" id="papBuscar" placeholder="N°, cliente, motivo..."></label>
+                    <button class="hr-btn azul" id="papActualizar" style="align-self:flex-end">↻ Actualizar</button>
+                </div>
+            </div>
+            <div class="hr-chips" id="papChips"></div>
+            <div class="hr-tabla-wrap">
+                <table class="hr-table">
+                    <thead><tr>
+                        <th>Fecha</th><th>Módulo</th><th>Documento</th><th>Cliente / proveedor</th><th>Monto</th>
+                        <th>Estado</th><th>Motivo</th><th>Quién</th><th>Empresa</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody id="papFilas"><tr><td colspan="10" class="hr-vacio">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="hr-foot"><span id="papTotal"></span><span class="hr-nota">♻️ Restaurar · 🗑️ Borrar definitivamente (pide confirmar dos veces y guarda todo en Auditoría)</span></div>
+        </div>
+    </section>
+
+    {% if es_admin %}
+    <!-- AUDITORÍA -->
+    <section class="section" id="ptab-auditoria">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">Auditoría</div>
+                    <div class="hr-help">Cada fila es un cambio: quién lo hizo, cuándo, en qué módulo y qué cambió (antes → después). Las contraseñas nunca se guardan.</div>
+                </div>
+                <div class="hr-filters">
+                    <label>Usuario<input type="search" id="audUsuario" list="audUsuarios" placeholder="Todos"></label>
+                    <datalist id="audUsuarios"></datalist>
+                    <label>Módulo<select id="audModulo"><option value="">Todos</option></select></label>
+                    <label>Acción<select id="audAccion"><option value="">Todas</option></select></label>
+                    <label>Desde<input type="date" id="audDesde"></label>
+                    <label>Hasta<input type="date" id="audHasta"></label>
+                    <label>Buscar<input type="search" id="audBuscar" placeholder="N°, texto o id"></label>
+                    <button class="hr-btn azul" id="audActualizar" style="align-self:flex-end">↻ Buscar</button>
+                    <button class="hr-btn sec" id="audExcel" style="align-self:flex-end">⬇ Excel</button>
+                    <button class="hr-btn sec" id="audCsv" style="align-self:flex-end">⬇ CSV</button>
+                </div>
+            </div>
+            <div class="hr-tabla-wrap">
+                <table class="hr-table">
+                    <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Módulo</th><th>Documento</th><th>Qué pasó</th><th>Empresa</th><th>Detalle</th></tr></thead>
+                    <tbody id="audFilas"><tr><td colspan="8" class="hr-vacio">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="hr-foot">
+                <span id="audTotal"></span>
+                <span class="hr-acc"><button class="hr-btn sec" id="audAnt">◀ Anterior</button><span id="audPagina" class="hr-nota"></span><button class="hr-btn sec" id="audSig">Siguiente ▶</button></span>
+            </div>
+        </div>
+    </section>
+    {% endif %}
 </div>
+
+<!-- Detalle (antes / después) -->
+<div class="modal-bg" id="papDetalle">
+    <div class="modal hr-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="papDetalleTitulo">Detalle</div>
+            <button class="btn btn-secondary" data-cerrar="papDetalle">✕</button>
+        </div>
+        <div class="modal-body" id="papDetalleCuerpo" style="padding:14px"></div>
+        <div class="modal-foot"><button class="btn btn-secondary" data-cerrar="papDetalle">Cerrar</button></div>
+    </div>
+</div>
+
+<!-- Confirmación (restaurar / borrar) -->
+<div class="modal-bg" id="papConfirm">
+    <div class="modal hr-confirm">
+        <div class="modal-head"><div class="modal-title" id="papConfirmTitulo">¿Seguro?</div></div>
+        <div class="modal-body" id="papConfirmTexto"></div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" id="papConfirmNo">Cancelar</button>
+            <button class="btn btn-primary" id="papConfirmSi">Sí</button>
+        </div>
+    </div>
+</div>
+<div class="hr-toast" id="papToast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/papelera.js') }}"></script>
 {% endblock %}

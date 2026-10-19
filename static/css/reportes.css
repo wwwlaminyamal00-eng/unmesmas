@@ -1,0 +1,69 @@
+/* Módulo Reportes - se apoya en inventario.css (inv-panel, inv-kpi, inv-table) y en tema_empresa.css */
+.rep-sin-permiso{display:flex;gap:16px;align-items:center;padding:24px}
+.rep-candado{font-size:42px}
+.rep-cargando{padding:18px;font-weight:800;color:#64748B}
+
+/* Semáforo (colores fuertes, como pidió Erika) */
+.rep-pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:950;white-space:nowrap}
+.rep-bien{background:#22FF6E;color:#04411C}
+.rep-medio{background:#FFC21A;color:#4A2C00}
+.rep-mal{background:#E60023;color:#FFFFFF}
+.rep-atraso{color:#E60023;font-weight:950}
+.rep-sube{color:#047A2F;font-weight:950;font-size:13px}
+.rep-baja{color:#E60023;font-weight:950;font-size:13px}
+.inv-kpi.rep-kpi-ok{border-left-color:#16E05A}
+.inv-kpi.inv-kpi-danger{border-left-color:#E60023}
+.inv-kpi.inv-kpi-danger b{color:#C8001E}
+.inv-kpi.inv-kpi-warn{border-left-color:#FFB000}
+.rep-table tr.rep-fila-vencida td{background:#FFF1F2}
+.rep-table tr.rep-fila-vencida:hover td{background:#FFE4E6}
+
+/* Tablero */
+.rep-kpis-grandes{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.rep-kpi-xl{grid-column:span 2}
+.rep-kpi-xl b{font-size:30px;color:var(--empresa-dark,#0F172A)}
+.rep-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px}
+.rep-grid2 .rep-table td{border-left:0;border-right:0}
+.rep-grid2 .inv-panel{margin-bottom:14px}
+.rep-grafico{padding:10px 14px}
+.rep-grafico[hidden],#tabContenido[hidden],.rep-cargando[hidden]{display:none !important}
+.rep-grafico svg{width:100%;height:auto;display:block}
+.rep-svg-bar path{fill:var(--empresa,#2563EB);opacity:.55}
+.rep-svg-bar.actual path{opacity:1}
+.rep-svg-bar:hover path{opacity:.9}
+.rep-svg-eje{font-size:11px;fill:#64748B;font-weight:700}
+.rep-svg-val{font-size:11px;fill:#0F172A;font-weight:900}
+.rep-svg-base{stroke:#CBD5E1;stroke-width:1}
+
+/* Selector de reportes */
+.rep-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:12px}
+.rep-chip{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:12px;border:2px solid #E2E8F0;background:#fff;cursor:pointer;text-align:left}
+.rep-chip b{font-size:14px;color:#0F172A}
+.rep-chip small{font-size:11.5px;color:#64748B;font-weight:700}
+.rep-chip:hover{border-color:var(--empresa,#2563EB)}
+.rep-chip.activo{border-color:var(--empresa,#2563EB);background:var(--empresa-soft,#EFF6FF)}
+
+/* Filtros */
+.rep-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:12px 14px;border-bottom:1px solid var(--line,#E2E8F0);background:#F8FAFC}
+.rep-filtros label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.rep-filtros label[hidden]{display:none}
+.rep-filtros input,.rep-filtros select{height:36px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:700;font-family:inherit;background:#fff;min-width:130px}
+.rep-filtros input[type=search]{min-width:200px}
+.rep-filtros input[type=number]{min-width:90px;width:110px}
+.rep-filtros select:disabled{background:var(--empresa-soft,#EFF6FF);color:var(--empresa-dark,#0F172A);font-weight:900}
+.rep-botones{display:flex;gap:8px}
+.rep-export{display:flex;gap:6px}
+.rep-resumen{padding:12px 14px 0;margin-bottom:0}
+.rep-tabla-wrap{overflow:auto;max-height:65vh;padding:12px 14px}
+.rep-table thead th{position:sticky;top:0;z-index:1}
+.rep-table tfoot td{background:#FEF3C7;font-weight:950;border-top:2px solid #F59E0B}
+
+/* Barras horizontales */
+.rep-grafico-h{display:flex;flex-direction:column;gap:5px;padding:12px 14px 0}
+.rep-barra{display:grid;grid-template-columns:minmax(120px,280px) 1fr 130px;gap:10px;align-items:center;font-size:12px;font-weight:700;color:#334155}
+.rep-barra-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rep-barra-fondo{height:14px;background:#F1F5F9;border-radius:4px;overflow:hidden}
+.rep-barra-val{display:block;height:100%;background:var(--empresa,#2563EB);border-radius:0 4px 4px 0}
+.rep-barra b{text-align:right;font-variant-numeric:tabular-nums;color:#0F172A}
+
+@media(max-width:900px){.rep-kpi-xl{grid-column:auto}.rep-grid2{grid-template-columns:1fr}.rep-barra{grid-template-columns:110px 1fr 100px}}

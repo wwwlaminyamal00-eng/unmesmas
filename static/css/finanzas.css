@@ -42,3 +42,15 @@
 .bar-out{background:#EF233C}
 .neg{color:#DC2626}
 @media(max-width:700px){.fin-form{grid-template-columns:1fr}.fin-filters input[type=search]{min-width:0;width:100%}}
+
+/* ---- Cuentas por pagar: totales arriba y semáforo fuerte (colores de tema_empresa.css) ---- */
+.cxp-totales{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0 6px}
+.cxp-tot{border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}
+.cxp-tot small{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.3px}
+.cxp-tot b{font-size:22px;font-weight:950}
+.cxp-tot span{font-size:12px;font-weight:800;opacity:.9}
+.cxp-tot-total{background:#0F172A;color:#fff;border:1px solid #0F172A}
+.cxp-orden{margin-bottom:6px}
+.sem-chip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;white-space:nowrap}
+.cxp-fila-vencida td{background:#FFF1F2}
+@media(max-width:800px){.cxp-totales{grid-template-columns:1fr 1fr}}

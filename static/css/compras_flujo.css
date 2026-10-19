@@ -113,3 +113,20 @@
 @media(max-width:1100px){.com-flujo{grid-template-columns:repeat(4,1fr)}.com-flujo-paso::after{display:none}}
 @media(max-width:800px){.com-flujo{grid-template-columns:1fr 1fr}.com-datos,.com-columnas{grid-template-columns:1fr}.com-stepper{grid-template-columns:repeat(3,1fr)}}
 #ocBody td:first-child,#recBodyCom td:first-child,#pagBody td:first-child,#facBody td:first-child{white-space:nowrap}
+
+/* ---- Compras: proveedor autollenado, compra sin pedido y tabla resumen (pedido / stock / saldo) ---- */
+.com-prov-campos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px}
+.com-prov-campos label{font-size:11px;font-weight:800;color:#475569}
+.com-prov-campos input[readonly]{background:#fff;border:1px solid #CBD5E1;color:#0F172A;font-weight:700;width:100%}
+.com-prov-campos .inv-span2{grid-column:span 2}
+.com-sin-pedido{background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:10px 12px;margin:6px 0}
+.com-sin-pedido-tit{font-size:13px;font-weight:900;color:#78350F;margin-bottom:6px}
+.com-sin-pedido .inv-span3{grid-column:span 3}
+.badge-sin-pedido{display:inline-block;background:#F59E0B;color:#111827;border:2px solid #B45309;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:950;white-space:nowrap}
+small.com-motivo{display:block;color:#92400E;font-weight:800}
+.com-interno{border-left:4px solid #64748B}
+.com-resumen th{white-space:normal;line-height:1.15}
+.com-resumen .ped-extra{width:90px;border:2px solid #2563EB;font-weight:800;text-align:right}
+.com-resumen td [data-res-total]{font-size:14px}
+.com-saldo{display:inline-block;background:#DBEAFE;color:#1E3A8A;border-radius:6px;padding:1px 8px;font-weight:900}
+@media(max-width:800px){.com-prov-campos{grid-template-columns:1fr 1fr}}

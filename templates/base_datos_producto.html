@@ -1129,6 +1129,7 @@ window.bdPorPagina = 20;
 // ============================================================
 function formatearFecha(fecha) {
     if (!fecha) return '-';
+    if (window.fechaHoraLima) return window.fechaHoraLima(fecha);   // DD/MM/AAAA HH:MM, hora de Lima
     
     try {
         var d = new Date(fecha);

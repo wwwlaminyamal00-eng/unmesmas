@@ -4,9 +4,141 @@
 
 {% block page_title %}Reportes{% endblock %}
 
+{% block subtitle %}Tablero de ventas, reportes de ventas, compras, inventario, cuentas por cobrar y por pagar.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reportes.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="fin-panel" style="padding:24px;background:#fff;border-radius:12px;border:1px solid #E2E8F0">
-    <h3 style="margin:0 0 8px">Módulo en construcción</h3>
-    <p style="margin:0;color:#64748B">Esta sección todavía no tiene funcionalidades. Usa el menú lateral para ir a Ventas, Compras o Finanzas.</p>
+{% if not permitido %}
+<div class="inv-panel rep-sin-permiso">
+    <div class="rep-candado">🔒</div>
+    <div>
+        <div class="inv-title">No tienes acceso a Reportes</div>
+        <div class="inv-help">Los reportes muestran montos de la empresa. Solo los ve la gerencia, administración y Finanzas.
+            Si lo necesitas para tu trabajo, pide acceso a la gerencia.</div>
+    </div>
 </div>
+{% else %}
+<div id="repApp" data-admin="{{ 'true' if es_admin else 'false' }}">
+    <div class="tabs inv-tabs" id="repTabs">
+        <button class="tab-btn active" data-tab="tablero">📊 Tablero</button>
+        <button class="tab-btn" data-tab="ventas">💰 Ventas</button>
+        <button class="tab-btn" data-tab="compras">🛒 Compras</button>
+        <button class="tab-btn" data-tab="inventario">📦 Inventario</button>
+        <button class="tab-btn" data-tab="cxc">🧾 Por cobrar</button>
+        <button class="tab-btn" data-tab="cxp">📑 Por pagar</button>
+        {% if es_admin %}<button class="tab-btn" data-tab="kpi">👥 Colaboradores</button>{% endif %}
+    </div>
+
+    <!-- TABLERO -->
+    <section class="section active" id="rep-sec-tablero">
+        <div class="rep-cargando" id="tabCargando">Cargando el tablero...</div>
+        <div id="tabContenido" hidden>
+            <div class="inv-kpis rep-kpis-grandes" id="tabKpis"></div>
+            <div class="rep-grid2">
+                <div class="inv-panel">
+                    <div class="inv-head"><div><div class="inv-title">Ventas por mes (con IGV)</div>
+                        <div class="inv-help">Últimos 12 meses. Pasa el mouse por una barra para ver el monto.</div></div></div>
+                    <div class="rep-grafico" id="tabGrafico"></div>
+                </div>
+                <div class="inv-panel">
+                    <div class="inv-head"><div><div class="inv-title">🚨 Cobranza vencida</div>
+                        <div class="inv-help">Lo que más urge cobrar (más días de atraso arriba).</div></div>
+                        <button class="btn-link" data-ir="cxc">Ver todo →</button></div>
+                    <div id="tabCxc"></div>
+                </div>
+            </div>
+            <div class="rep-grid2">
+                <div class="inv-panel">
+                    <div class="inv-head"><div><div class="inv-title">🏆 Mejores clientes</div>
+                        <div class="inv-help">Últimos 12 meses.</div></div>
+                        <button class="btn-link" data-ir="ventas" data-rep="top_clientes">Ver ranking →</button></div>
+                    <div id="tabTop"></div>
+                </div>
+                <div class="inv-panel">
+                    <div class="inv-head"><div><div class="inv-title">📉 Clientes que dejaron de comprar</div>
+                        <div class="inv-help">Compraban y no compran hace 60 días o más. Llámalos.</div></div>
+                        <button class="btn-link" data-ir="ventas" data-rep="clientes_perdidos">Ver todos →</button></div>
+                    <div id="tabPerdidos"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- VISOR DE REPORTES (lo comparten todas las pestañas) -->
+    <section class="section" id="rep-sec-visor">
+        <div class="rep-chips" id="repChips"></div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title" id="repTitulo">Reporte</div>
+                    <div class="inv-help" id="repAyuda"></div>
+                </div>
+                <div class="rep-export">
+                    <button class="btn-mini" data-exp="xlsx" title="Descargar en Excel">⬇ Excel</button>
+                    <button class="btn-mini sec" data-exp="csv" title="Descargar en CSV">⬇ CSV</button>
+                    <button class="btn-mini sec" data-exp="pdf" title="Descargar en PDF">⬇ PDF</button>
+                </div>
+            </div>
+            <form class="rep-filtros" id="repFiltros" autocomplete="off">
+                <label data-f="fechas">Desde<input type="date" name="desde"></label>
+                <label data-f="fechas">Hasta<input type="date" name="hasta"></label>
+                <label data-f="fechas" class="rep-rapidos">Rápido
+                    <select id="repRango">
+                        <option value="">—</option>
+                        <option value="mes">Este mes</option>
+                        <option value="mes_ant">Mes anterior</option>
+                        <option value="30">Últimos 30 días</option>
+                        <option value="90">Últimos 90 días</option>
+                        <option value="anio">Este año</option>
+                        <option value="12m">Últimos 12 meses</option>
+                    </select>
+                </label>
+                <label data-f="empresa">Empresa<select name="empresa_id" id="repEmpresa"></select></label>
+                <label data-f="sede">Sede<select name="almacen_id" id="repSede"><option value="">Todas</option></select></label>
+                <label data-f="usuario">Vendedor / usuario<select name="usuario_id" id="repUsuario"><option value="">Todos</option></select></label>
+                <label data-f="cliente">Cliente<input type="search" name="cliente" list="repListaClientes" placeholder="Nombre o RUC"></label>
+                <label data-f="proveedor">Proveedor<input type="search" name="proveedor" list="repListaProveedores" placeholder="Nombre o RUC"></label>
+                <label data-f="producto">Producto<input type="search" name="producto" list="repListaProductos" placeholder="Código o nombre"></label>
+                <label data-f="estado">Estado<select name="estado">
+                    <option value="">Todos los pendientes</option>
+                    <option value="Vencido">🔴 Vencido</option>
+                    <option value="Por vencer">🟡 Por vencer</option>
+                    <option value="Al día">🟢 Al día</option>
+                </select></label>
+                <label data-f="dias">Días sin movimiento<input type="number" name="dias" min="1" max="3650" value="90"></label>
+                <label data-f="limite">Mostrar<select name="limite">
+                    <option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option>
+                </select></label>
+                <label data-f="orden">Ordenar por<select name="orden">
+                    <option value="monto">Monto vendido</option><option value="cantidad">Cantidad</option>
+                </select></label>
+                <label data-f="agrupar">Ver<select name="agrupar" id="repAgrupar"></select></label>
+                <div class="rep-botones">
+                    <button type="submit" class="btn btn-primary">🔎 Ver reporte</button>
+                    <button type="button" class="btn btn-secondary" id="repLimpiar">Limpiar</button>
+                </div>
+            </form>
+            <div class="inv-kpis rep-resumen" id="repResumen"></div>
+            <div class="rep-grafico rep-grafico-h" id="repGrafico" hidden></div>
+            <div class="rep-tabla-wrap" id="repTabla"><div class="inv-vacio">Elige los filtros y presiona "Ver reporte".</div></div>
+            <div class="inv-foot" id="repPie"></div>
+        </div>
+    </section>
+
+    <datalist id="repListaClientes"></datalist>
+    <datalist id="repListaProveedores"></datalist>
+    <datalist id="repListaProductos"></datalist>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if permitido %}
+<script>window.REP_CATALOGO = {{ catalogo|tojson }};</script>
+<script src="{{ url_for('static', filename='js/reportes.js') }}"></script>
+{% endif %}
 {% endblock %}

@@ -86,6 +86,9 @@ from routes.stock_automatico import stock_auto_bp
 # APP CONFIGURACIÓN
 # ==========================================
 app = Flask(__name__)
+# Fechas del JSON en hora de Lima, sin la etiqueta "GMT" que hacía al navegador restar 5 horas
+from routes.json_lima import instalar as _instalar_json_lima
+_instalar_json_lima(app)
 # Se acepta SECRET_KEY (nombre usado en .env) o FLASK_SECRET_KEY (nombre usado antes en el código)
 app.secret_key = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
@@ -273,6 +276,9 @@ def login():
             # Mensaje genérico: no revelar si el usuario existe
             if not user or not _verificar_password(user.get('password') or '', password):
                 app.logger.info("Intento de inicio de sesión fallido para '%s'", usuario)
+                from routes.auditoria import registrar_auditoria
+                registrar_auditoria('login_fallido', 'Sesión', tabla='usuarios', usuario_nombre=usuario[:80],
+                                    detalle=f"Intento fallido con el usuario '{usuario[:80]}'")
                 flash("❌ Usuario o contraseña incorrectos.", "error")
                 return render_template("login.html")
 
@@ -284,6 +290,9 @@ def login():
             session["empresa"] = empresa
             session["auth_user_id"] = user["auth_user_id"]
             session.permanent = True
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('login', 'Sesión', tabla='usuarios', registro_id=user["id"],
+                                detalle=f'Inició sesión ({empresa})')
             flash(f'✅ Bienvenido/a {session["nombre_completo"]}!', "success")
             return redirect(url_for("index"))
 
@@ -296,6 +305,10 @@ def login():
 
 @app.route("/logout")
 def logout():
+    if 'usuario_id' in session:
+        from routes.auditoria import registrar_auditoria
+        registrar_auditoria('logout', 'Sesión', tabla='usuarios', registro_id=session.get('usuario_id'),
+                            detalle='Cerró sesión')
     session.clear()
     flash("Has cerrado sesión correctamente.", "info")
     return redirect(url_for("login"))

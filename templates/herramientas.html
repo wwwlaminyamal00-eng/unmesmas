@@ -4,9 +4,238 @@
 
 {% block page_title %}Herramientas{% endblock %}
 
+{% block subtitle %}Solo para administradores. Cargar y respaldar datos, revisar que todo cuadre y ver el estado del sistema. Todo lo que hagas aquí queda en Auditoría.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/herramientas.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="fin-panel" style="padding:24px;background:#fff;border-radius:12px;border:1px solid #E2E8F0">
-    <h3 style="margin:0 0 8px">Módulo en construcción</h3>
-    <p style="margin:0;color:#64748B">Esta sección todavía no tiene funcionalidades. Usa el menú lateral para ir a Ventas, Compras o Finanzas.</p>
+<div id="herrApp">
+    <div class="hr-cards" id="herrCards">
+        <button class="hr-card activa" data-sec="importar"><span>📥</span><b>Importar desde Excel</b><small>Productos, clientes y proveedores</small></button>
+        <button class="hr-card" data-sec="exportar"><span>📤</span><b>Exportar / respaldo</b><small>Descargar una tabla en Excel o CSV</small></button>
+        <button class="hr-card" data-sec="correlativos"><span>🔢</span><b>Revisar numeraciones</b><small>Huecos y números repetidos</small></button>
+        <button class="hr-card" data-sec="integridad"><span>🩺</span><b>Verificar integridad</b><small>Datos huérfanos, duplicados, stock</small></button>
+        <button class="hr-card" data-sec="stock"><span>📦</span><b>Recalcular stock</b><small>Que el stock cuadre con Inventario</small></button>
+        <button class="hr-card" data-sec="cache"><span>🧹</span><b>Limpiar caché</b><small>Si algo no se actualiza en pantalla</small></button>
+        <button class="hr-card" data-sec="logs"><span>📜</span><b>Registro de errores</b><small>Ver y rotar los últimos errores</small></button>
+        <button class="hr-card" data-sec="salud"><span>🔌</span><b>Conexión a la base</b><small>Velocidad, versión, tamaño</small></button>
+    </div>
+
+    <!-- 1. IMPORTAR -->
+    <section class="hr-section active" id="hsec-importar">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">📥 Importar datos desde Excel o CSV</div>
+                    <div class="hr-help">Solo AGREGA registros nuevos. Si el código o RUC ya existe, no lo duplica (lo actualiza solo si marcas la casilla). Nunca borra nada.</div>
+                </div>
+            </div>
+            <div class="hr-body">
+                <div class="hr-pasos">
+                    <div class="hr-paso">
+                        <h4>1. ¿Qué vas a cargar?</h4>
+                        <select id="impTipo">
+                            {% for k, cfg in tablas_import.items() %}<option value="{{ k }}">{{ cfg.titulo }}</option>{% endfor %}
+                        </select>
+                        <p id="impNota"></p>
+                    </div>
+                    <div class="hr-paso">
+                        <h4>2. Descarga la plantilla</h4>
+                        <p>Llénala sin cambiar los títulos. Las columnas en rojo (*) son obligatorias.</p>
+                        <div class="hr-acc" style="justify-content:flex-start">
+                            <button class="hr-btn azul" id="impPlantillaXlsx">⬇ Plantilla Excel</button>
+                            <button class="hr-btn sec" id="impPlantillaCsv">⬇ Plantilla CSV</button>
+                        </div>
+                    </div>
+                    <div class="hr-paso">
+                        <h4>3. Sube el archivo y revisa</h4>
+                        <input type="file" id="impArchivo" accept=".xlsx,.csv">
+                        <label class="hr-check"><input type="checkbox" id="impActualizar"> Actualizar los que ya existen (solo las columnas con dato)</label>
+                        <button class="hr-btn azul" id="impRevisar">🔎 Ver vista previa</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="hr-panel" id="impResultado" style="display:none">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">Vista previa: así quedará</div>
+                    <div class="hr-help" id="impColumnas"></div>
+                </div>
+                <button class="hr-btn" id="impConfirmar">✅ Importar ahora</button>
+            </div>
+            <div class="hr-body" style="padding-bottom:0">
+                <div class="hr-kpis" id="impResumen"></div>
+            </div>
+            <div class="hr-tabla-wrap">
+                <table class="hr-table">
+                    <thead><tr><th>Fila</th><th>Resultado</th><th>Código / RUC</th><th>Datos</th><th>Observaciones</th></tr></thead>
+                    <tbody id="impFilas"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2. EXPORTAR -->
+    <section class="hr-section" id="hsec-exportar">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">📤 Exportar datos (respaldo)</div>
+                    <div class="hr-help">Descarga una tabla completa. Las contraseñas y claves NUNCA se exportan.</div>
+                </div>
+                <div class="hr-filters">
+                    <input type="search" id="expBuscar" placeholder="Buscar tabla...">
+                </div>
+            </div>
+            <div class="hr-tabla-wrap">
+                <table class="hr-table">
+                    <thead><tr><th>Datos</th><th>Tabla</th><th>Descargar</th></tr></thead>
+                    <tbody id="expTablas">
+                        {% for k, titulo in tablas_export.items() %}
+                        <tr data-buscar="{{ (titulo ~ ' ' ~ k)|lower }}">
+                            <td class="left"><b>{{ titulo }}</b></td>
+                            <td class="hr-mono">{{ k }}</td>
+                            <td><span class="hr-acc">
+                                <button class="hr-btn azul" data-exportar="{{ k }}" data-formato="xlsx">Excel</button>
+                                <button class="hr-btn sec" data-exportar="{{ k }}" data-formato="csv">CSV</button>
+                            </span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. NUMERACIONES -->
+    <section class="hr-section" id="hsec-correlativos">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">🔢 Revisar numeraciones</div>
+                    <div class="hr-help">Busca números que faltan (huecos) o que se repiten. Solo AVISA: no cambia ningún número. Las guías y facturas ya emitidas NUNCA se renumeran (SUNAT).</div>
+                </div>
+                <button class="hr-btn azul" id="corRevisar">🔎 Revisar ahora</button>
+            </div>
+            <div class="hr-body"><div class="hr-revs" id="corResultado"><div class="hr-vacio">Pulsa "Revisar ahora".</div></div></div>
+        </div>
+    </section>
+
+    <!-- 4. INTEGRIDAD -->
+    <section class="hr-section" id="hsec-integridad">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">🩺 Verificar integridad</div>
+                    <div class="hr-help">Revisa datos "huérfanos" (por ejemplo un despacho cuyo PC ya no existe), registros repetidos y stock que no cuadra. Solo reporta: no cambia nada.</div>
+                </div>
+                <button class="hr-btn azul" id="intRevisar">🔎 Revisar ahora</button>
+            </div>
+            <div class="hr-body">
+                <div class="hr-kpis" id="intResumen"></div>
+                <div class="hr-revs" id="intResultado"><div class="hr-vacio">Pulsa "Revisar ahora".</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. STOCK -->
+    <section class="hr-section" id="hsec-stock">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">📦 Recalcular stock</div>
+                    <div class="hr-help">Vuelve a poner en cada producto el stock que dice Inventario (la suma de todas las empresas y sedes). Solo toca productos que ya están en Inventario.</div>
+                </div>
+            </div>
+            <div class="hr-body">
+                <div class="hr-filters">
+                    <button class="hr-btn" id="stkTodos">↻ Recalcular TODOS</button>
+                    <span class="hr-nota">o solo uno:</span>
+                    <input type="search" id="stkCodigo" placeholder="Código del producto (ej. PRD-0001)">
+                    <button class="hr-btn sec" id="stkUno">↻ Recalcular este</button>
+                </div>
+                <div id="stkResultado" style="margin-top:12px"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. CACHÉ -->
+    <section class="hr-section" id="hsec-cache">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">🧹 Limpiar caché del sistema</div>
+                    <div class="hr-help">El sistema guarda unos segundos en memoria la lista de empresas, colores y la revisión de tablas. Úsalo si cambiaste algo en Configuración o en la base y no se ve.</div>
+                </div>
+                <button class="hr-btn" id="cacheLimpiar">🧹 Limpiar ahora</button>
+            </div>
+            <div class="hr-body" id="cacheResultado"><div class="hr-vacio">No borra datos: solo hace que el sistema vuelva a leerlos.</div></div>
+        </div>
+    </section>
+
+    <!-- 7. LOGS -->
+    <section class="hr-section" id="hsec-logs">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">📜 Registro de errores</div>
+                    <div class="hr-help" id="logNota">Los últimos avisos y errores del sistema, el más reciente primero.</div>
+                </div>
+                <div class="hr-filters">
+                    <label>Mostrar<select id="logNivel">
+                        <option value="ERROR">Solo errores</option>
+                        <option value="WARNING" selected>Errores y avisos</option>
+                        <option value="TODOS">Todo</option>
+                    </select></label>
+                    <label>Cantidad<select id="logN"><option>50</option><option selected>200</option><option>1000</option></select></label>
+                    <button class="hr-btn azul" id="logVer">↻ Ver</button>
+                    <button class="hr-btn sec" id="logRotar">🗂 Rotar (archivar y empezar de cero)</button>
+                </div>
+            </div>
+            <div class="hr-tabla-wrap">
+                <table class="hr-table">
+                    <thead><tr><th>Fecha</th><th>Nivel</th><th>Origen</th><th>Mensaje</th></tr></thead>
+                    <tbody id="logFilas"><tr><td colspan="4" class="hr-vacio">Pulsa "Ver".</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- 8. SALUD -->
+    <section class="hr-section" id="hsec-salud">
+        <div class="hr-panel">
+            <div class="hr-head">
+                <div>
+                    <div class="hr-title">🔌 Conexión a la base de datos</div>
+                    <div class="hr-help">Por seguridad nunca se muestra la dirección ni la contraseña de la base.</div>
+                </div>
+                <button class="hr-btn azul" id="salRevisar">↻ Probar conexión</button>
+            </div>
+            <div class="hr-body">
+                <div class="hr-kpis" id="salKpis"></div>
+                <div class="hr-salud" id="salDatos"></div>
+            </div>
+        </div>
+    </section>
 </div>
+
+<div class="modal-bg" id="herrConfirm">
+    <div class="modal hr-confirm">
+        <div class="modal-head"><div class="modal-title" id="herrConfirmTitulo">¿Seguro?</div></div>
+        <div class="modal-body" id="herrConfirmTexto"></div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" id="herrConfirmNo">Cancelar</button>
+            <button class="btn btn-primary" id="herrConfirmSi">Sí, continuar</button>
+        </div>
+    </div>
+</div>
+<div class="hr-toast" id="herrToast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>window.HERR_NOTAS = {{ tablas_import|tojson }};</script>
+<script src="{{ url_for('static', filename='js/herramientas.js') }}"></script>
 {% endblock %}

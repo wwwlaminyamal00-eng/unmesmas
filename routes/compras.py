@@ -15,12 +15,83 @@ import json
 # Importar desde database.py
 from database import db_query, db_execute, db_tx, get_connection
 from psycopg2.extras import RealDictCursor
-from utils import calcular_totales, a_decimal, redondear, bloquear_numeracion
+from utils import calcular_totales, a_decimal, redondear, bloquear_numeracion, es_admin
+from datetime import date
 
 # ============================================================
 # CREAR EL BLUEPRINT
 # ============================================================
 compras_bp = Blueprint('compras', __name__)
+
+
+@compras_bp.before_request
+def _asegurar_columnas():
+    # Columnas nuevas (motivo de compra sin pedido, PC/cotización/cliente de la OC, registro de anulaciones)
+    if request.path.startswith('/compras') and 'usuario' in session:
+        try:
+            from routes.compras_flujo import asegurar_tablas_compras
+            asegurar_tablas_compras()
+        except Exception as e:
+            print(f'⚠️ Compras: no se pudieron asegurar las tablas: {e}')
+
+
+# ============================================================
+# AYUDAS: FECHAS, FILTROS DE LISTAS Y CANDADOS
+# ============================================================
+def _fecha_iso(v):
+    if isinstance(v, datetime):
+        return v.date().isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    return str(v or '')[:10]
+
+
+def _fecha_hora(v):
+    """DD/MM/YYYY HH:MM para las listas."""
+    if isinstance(v, datetime):
+        return v.strftime('%d/%m/%Y %H:%M')
+    if isinstance(v, date):
+        return v.strftime('%d/%m/%Y')
+    return ''
+
+
+def _filtrar_api(datos, campos):
+    """Filtros de las listas (los mismos de la pantalla): ?q= texto, ?estado=, ?desde=AAAA-MM-DD, ?hasta=AAAA-MM-DD.
+    La fecha se compara como texto AAAA-MM-DD (sin zona horaria) para que "hoy" incluya lo de hoy."""
+    q = (request.args.get('q') or '').strip().lower()
+    estado = (request.args.get('estado') or '').strip()
+    desde = (request.args.get('desde') or '').strip()[:10]
+    hasta = (request.args.get('hasta') or '').strip()[:10]
+    res = []
+    for d in datos:
+        if q and not any(q in str(d.get(c) or '').lower() for c in campos):
+            continue
+        if estado and (d.get('estado') or '') != estado:
+            continue
+        f = d.get('fecha') or ''
+        if desde and (not f or f < desde):
+            continue
+        if hasta and (not f or f > hasta):
+            continue
+        res.append(d)
+    return res
+
+
+def _exigir_admin_y_motivo():
+    """Candado de Erika: anular o eliminar en Compras solo lo hace un administrador y con motivo.
+    Devuelve (motivo, None) o (None, respuesta_de_error)."""
+    if not es_admin():
+        return None, (jsonify({'success': False, 'error': 'Solo un administrador puede anular o eliminar en Compras.'}), 403)
+    datos = request.get_json(silent=True) or {}
+    motivo = (datos.get('motivo') or request.args.get('motivo') or '').strip()
+    if len(motivo) < 5:
+        return None, (jsonify({'success': False, 'error': 'Escribe el motivo (obligatorio, mínimo 5 letras).'}), 400)
+    return motivo, None
+
+
+def _registrar_anulacion(cur, tabla, registro_id, numero, accion, motivo, respaldo=None):
+    from routes.compras_flujo import registrar_anulacion
+    registrar_anulacion(cur, tabla, registro_id, numero, accion, motivo, respaldo)
 
 # ============================================================
 # FUNCIÓN LOGIN REQUIRED
@@ -223,7 +294,8 @@ def obtener_ordenes_db():
                 nota_compra, notas,
                 descuento_porcentaje, descuento_monto, descuento_tipo,
                 contacto_proveedor, telefono_proveedor, email_proveedor,
-                created_at, updated_at
+                created_at, updated_at, flujo, motivo_compra, motivo_stock, pedido_id,
+                pc_numeros, cotizaciones_cliente, clientes_pedido, motivo_anulacion
             FROM ordenes_compra
             ORDER BY id DESC
         """
@@ -313,6 +385,7 @@ def guardar_orden_db(data):
     items = _normalizar_items_orden(data.get('items'))
     if not items:
         raise ValueError('La orden de compra debe tener al menos un producto')
+    pedido = _pedido_de_orden(data)
     totales = calcular_totales([{'cantidad': i['cantidad'], 'precio': i['precio']} for i in items],
                                data.get('descuento_porcentaje', 0), '%')
 
@@ -348,6 +421,7 @@ def guardar_orden_db(data):
                   data.get('telefono_proveedor'), data.get('email_proveedor'), orden_id))
             resultado = cur.fetchone()
             cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (orden_id,))
+            _guardar_pedido_orden(cur, orden_id, pedido)
         else:
             prefijo = f"OC-{datetime.now().strftime('%Y%m%d')}-"
             bloquear_numeracion(cur, 'ordenes_compra:' + prefijo)
@@ -379,6 +453,7 @@ def guardar_orden_db(data):
                   data.get('telefono_proveedor'), data.get('email_proveedor')))
             resultado = cur.fetchone()
             orden_id = resultado['id']
+            _guardar_pedido_orden(cur, orden_id, pedido)
 
         for it in items:
             cur.execute("""
@@ -390,6 +465,36 @@ def guardar_orden_db(data):
         resultado.update({'subtotal': float(totales['subtotal']), 'igv': float(totales['igv']),
                           'total': float(totales['total']), 'proveedor_id': proveedor_id})
         return resultado
+
+
+def _pedido_de_orden(data):
+    """La OC dice para qué pedido del cliente (PC) es. Sin PC es una "Compra sin pedido" y el motivo es obligatorio."""
+    from routes.compras_flujo import motivo_sin_pedido, ErrorCompras
+    pedido_id = data.get('pedido_id') or None
+    if pedido_id:
+        try:
+            pedido_id = int(pedido_id)
+        except (TypeError, ValueError):
+            raise ValueError('El pedido del cliente no es válido')
+        pc = db_query("""SELECT id, numero, cliente, cotizacion_numero, estado FROM pedido_compra_pc WHERE id = %s""", (pedido_id,))
+        if not pc:
+            raise ValueError('El pedido del cliente no existe')
+        pc = pc[0]
+        return {'pedido_id': pc['id'], 'pc_numeros': pc['numero'], 'cotizaciones_cliente': pc.get('cotizacion_numero'),
+                'clientes_pedido': pc.get('cliente'), 'motivo_compra': None, 'motivo_stock': None}
+    try:
+        motivo, detalle = motivo_sin_pedido(data)
+    except ErrorCompras as e:
+        raise ValueError(str(e))
+    return {'pedido_id': None, 'pc_numeros': None, 'cotizaciones_cliente': None, 'clientes_pedido': None,
+            'motivo_compra': motivo, 'motivo_stock': detalle}
+
+
+def _guardar_pedido_orden(cur, orden_id, p):
+    cur.execute("""UPDATE ordenes_compra SET pedido_id = %s, pc_numeros = %s, cotizaciones_cliente = %s, clientes_pedido = %s,
+                          motivo_compra = %s, motivo_stock = %s, tipo_compra = %s WHERE id = %s""",
+                (p['pedido_id'], p['pc_numeros'], p['cotizaciones_cliente'], p['clientes_pedido'], p['motivo_compra'],
+                 p['motivo_stock'], 'Bajo pedido' if p['pedido_id'] else 'Para stock', orden_id))
 
 
 def actualizar_orden_db(orden_id, data):
@@ -628,8 +733,9 @@ def guardar_recepcion_db(data):
 def compras():
     """Pantallas anteriores de Compras (se conservan). La nueva pantalla está en routes/compras_flujo.py (/compras)."""
     tab = request.args.get('tab', 'solicitud_compra')
+    from routes.compras_flujo import MOTIVOS_SIN_PEDIDO
     return render_template('compras/index.html',
-                         active_tab=tab,
+                         active_tab=tab, es_admin=es_admin(), motivos=MOTIVOS_SIN_PEDIDO,
                          usuario=session.get('usuario'),
                          nombre=session.get('nombre_completo'),
                          empresa=session.get('empresa'))
@@ -651,7 +757,8 @@ def api_solicitudes_listar():
             formatted_data.append({
                 'id': row.get('id'),
                 'numero': row.get('numero_solicitud'),
-                'fecha': row.get('fecha'),
+                'fecha': _fecha_iso(row.get('fecha') or row.get('created_at')),
+                'creado': _fecha_hora(row.get('created_at') or row.get('fecha')),
                 'estado': row.get('estado'),
                 'producto': row.get('producto'),
                 'cantidad': float(row.get('cantidad', 0)),
@@ -661,7 +768,7 @@ def api_solicitudes_listar():
                 'urgencia': row.get('urgencia', 'Media'),
                 'justificacion': row.get('justificacion', '')
             })
-        
+        formatted_data = _filtrar_api(formatted_data, ('numero', 'producto', 'solicitante', 'area'))
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
         print(f"❌ Error en api_solicitudes_listar: {e}")
@@ -771,15 +878,20 @@ def api_solicitudes_toggle(id):
 @compras_bp.route('/compras/api/solicitudes/<int:id>', methods=['DELETE'])
 @login_required
 def api_solicitudes_eliminar(id):
-    """Elimina una solicitud de compra"""
+    """Elimina una solicitud de compra (solo administrador, con motivo; queda un respaldo en com_anulaciones)"""
     try:
-        query = "DELETE FROM solicitudes_compra WHERE id = %s RETURNING id"
-        result = db_query(query, (id,))
-        
-        if result:
-            return jsonify({'success': True, 'message': 'Solicitud eliminada'})
-        
-        return jsonify({'success': False, 'error': 'Solicitud no encontrada'}), 404
+        motivo, error = _exigir_admin_y_motivo()
+        if error:
+            return error
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT * FROM solicitudes_compra WHERE id = %s FOR UPDATE", (id,))
+            fila = cur.fetchone()
+            if not fila:
+                return jsonify({'success': False, 'error': 'Solicitud no encontrada'}), 404
+            _registrar_anulacion(cur, 'solicitudes_compra', id, fila.get('numero_solicitud'), 'Eliminada', motivo, dict(fila))
+            cur.execute("DELETE FROM solicitudes_compra WHERE id = %s", (id,))
+        return jsonify({'success': True, 'message': 'Solicitud eliminada (queda registrada con tu motivo)'})
         
     except Exception as e:
         print(f"❌ Error en api_solicitudes_eliminar: {e}")
@@ -807,7 +919,8 @@ def api_comparativos_listar():
             formatted_data.append({
                 'id': row.get('id'),
                 'numero': row.get('numero_comparativo'),
-                'fecha': row.get('fecha'),
+                'fecha': _fecha_iso(row.get('fecha') or row.get('created_at')),
+                'creado': _fecha_hora(row.get('created_at') or row.get('fecha')),
                 'estado': row.get('estado'),
                 'producto': row.get('producto'),
                 'proveedores': proveedores,
@@ -815,7 +928,7 @@ def api_comparativos_listar():
                 'mejor_precio': float(mejor.get('precio', 0)) if mejor else 0,
                 'mejor_plazo': mejor.get('plazo') if mejor else None
             })
-        
+        formatted_data = _filtrar_api(formatted_data, ('numero', 'producto', 'mejor_proveedor'))
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
         print(f"❌ Error en api_comparativos_listar: {e}")
@@ -899,12 +1012,14 @@ def api_ordenes_listar():
         for row in data:
             proveedor_nombre = None
             proveedor_ruc = None
+            proveedor_dir = ''
             if row.get('proveedor_id'):
                 try:
-                    prov_result = db_query("SELECT razon_social, ruc FROM proveedores WHERE id = %s", (row['proveedor_id'],))
+                    prov_result = db_query("SELECT razon_social, ruc, direccion FROM proveedores WHERE id = %s", (row['proveedor_id'],))
                     if prov_result:
                         proveedor_nombre = prov_result[0].get('razon_social')
                         proveedor_ruc = prov_result[0].get('ruc')
+                        proveedor_dir = prov_result[0].get('direccion') or ''
                 except Exception as e:
                     print(f"⚠️ No se pudo obtener el proveedor {row.get('proveedor_id')}: {e}")
             for it in row.get('items', []):
@@ -914,20 +1029,40 @@ def api_ordenes_listar():
             formatted_data.append({
                 'id': row.get('id'),
                 'numero': row.get('numero_orden'),
-                'fecha': row.get('fecha_creacion'),
+                'fecha': _fecha_iso(row.get('fecha_creacion') or row.get('created_at')),
+                'creado': _fecha_hora(row.get('fecha_creacion') or row.get('created_at')),
+                'flujo': row.get('flujo'),
+                'sin_pedido': not row.get('pc_numeros'),
+                'pedido_id': row.get('pedido_id'),
+                'pc_numeros': row.get('pc_numeros') or '',
+                'cotizaciones_cliente': row.get('cotizaciones_cliente') or '',
+                'clientes_pedido': row.get('clientes_pedido') or '',
+                'motivo_compra': row.get('motivo_compra') or '',
+                'motivo_stock': row.get('motivo_stock') or '',
+                'motivo_anulacion': row.get('motivo_anulacion') or '',
+                'direccion': proveedor_dir,
+                'contacto_proveedor': row.get('contacto_proveedor') or '',
+                'telefono_proveedor': row.get('telefono_proveedor') or '',
+                'email_proveedor': row.get('email_proveedor') or '',
+                'tiempo_entrega': row.get('tiempo_entrega') or '',
+                'lugar_entrega': row.get('lugar_entrega') or '',
+                'fecha_requerida': row.get('fecha_requerida') or '',
+                'descuento_porcentaje': float(row.get('descuento_porcentaje') or 0),
                 'estado': row.get('estado'),
                 'proveedor': proveedor_nombre or row.get('contacto_proveedor') or f"Proveedor ID: {row.get('proveedor_id')}",
                 'ruc': proveedor_ruc or '',
                 'condicion_pago': row.get('condicion_pago'),
                 'moneda': 'Soles (S/)',
-                'subtotal': float(row.get('subtotal', 0)),
-                'igv': float(row.get('igv', 0)),
-                'total': float(row.get('total', 0)),
+                'subtotal': float(row.get('subtotal') or 0),
+                'igv': float(row.get('igv') or 0),
+                'total': float(row.get('total') or 0),
                 'items': row.get('items', []),
                 'nota_compra': row.get('nota_compra', ''),
                 'notas': row.get('notas', '')
             })
-        
+        formatted_data = _filtrar_api(formatted_data, ('numero', 'proveedor', 'ruc', 'pc_numeros', 'clientes_pedido', 'motivo_compra'))
+        if request.args.get('sin_pedido') == '1':
+            formatted_data = [o for o in formatted_data if o['sin_pedido']]
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
         print(f"❌ Error en api_ordenes_listar: {e}")
@@ -978,6 +1113,20 @@ def api_ordenes_toggle(id):
             return jsonify({'success': False, 'error': f'Estado inválido'}), 400
         if _es_oc_nueva(id):
             return jsonify({'success': False, 'error': 'Esta orden se maneja en la nueva pantalla de Compras (aprobación, pago y recepción).'}), 409
+        if nuevo_estado == 'Anulada':
+            motivo, error = _exigir_admin_y_motivo()
+            if error:
+                return error
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""UPDATE ordenes_compra SET estado = 'Anulada', motivo_anulacion = %s, anulado_por = %s,
+                               anulado_en = NOW(), updated_at = NOW() WHERE id = %s RETURNING id, estado, numero_orden""",
+                            (motivo, session.get('nombre_completo') or session.get('usuario'), id))
+                fila = cur.fetchone()
+                if not fila:
+                    return jsonify({'success': False, 'error': 'Orden no encontrada'}), 404
+                _registrar_anulacion(cur, 'ordenes_compra', id, fila['numero_orden'], 'Anulada', motivo)
+            return jsonify({'success': True, 'message': 'Orden anulada', 'data': {'id': id, 'estado': 'Anulada'}})
         
         query = """
             UPDATE ordenes_compra 
@@ -1020,9 +1169,17 @@ def api_ordenes_eliminar(id):
                 'success': False,
                 'error': f'Solo se pueden eliminar órdenes en estado "Borrador" o "Anulada". Estado actual: {estado}'
             }), 400
+        motivo, error = _exigir_admin_y_motivo()
+        if error:
+            return error
         
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT * FROM ordenes_compra WHERE id = %s", (id,))
+            respaldo = dict(cur.fetchone() or {})
+            cur.execute("SELECT producto, cantidad, precio_unitario, total FROM ordenes_compra_items WHERE orden_compra_id = %s", (id,))
+            respaldo['items'] = [dict(x) for x in cur.fetchall()]
+            _registrar_anulacion(cur, 'ordenes_compra', id, respaldo.get('numero_orden'), 'Eliminada', motivo, respaldo)
             cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (id,))
             cur.execute("DELETE FROM ordenes_compra WHERE id = %s RETURNING id", (id,))
             result = cur.fetchall()
@@ -1054,7 +1211,8 @@ def api_comprobantes_proveedor_listar():
                 'id': row.get('id'),
                 'tipo': row.get('tipo') or 'Factura',
                 'numero': row.get('numero') or '',
-                'fecha': row.get('fecha'),
+                'fecha': _fecha_iso(row.get('fecha') or row.get('created_at')),
+                'creado': _fecha_hora(row.get('created_at') or row.get('fecha')),
                 'monto': float(row.get('monto') or 0),
                 'ruc': row.get('ruc_proveedor') or '',
                 'ruc_proveedor': row.get('ruc_proveedor') or '',
@@ -1065,7 +1223,7 @@ def api_comprobantes_proveedor_listar():
                 'estado': row.get('estado') or 'Pendiente',
                 'observaciones': row.get('observaciones') or ''
             })
-
+        formatted_data = _filtrar_api(formatted_data, ('numero', 'proveedor', 'ruc', 'orden_compra'))
         return jsonify({'success': True, 'data': formatted_data})
 
     except Exception as e:
@@ -1128,6 +1286,8 @@ def api_comprobantes_proveedor_toggle(id):
         estados_validos = ['Pendiente', 'Registrado', 'Pagado', 'Anulado']
         if nuevo_estado not in estados_validos:
             return jsonify({'success': False, 'error': f'Estado inválido'}), 400
+        if nuevo_estado == 'Anulado':
+            return _anular_comprobante_proveedor(id)
         
         query = """
             UPDATE comprobantes_proveedor 
@@ -1151,6 +1311,42 @@ def api_comprobantes_proveedor_toggle(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _anular_comprobante_proveedor(id):
+    """Anula (no borra) un comprobante de proveedor: solo administrador, con motivo y sin pagos vigentes."""
+    motivo, error = _exigir_admin_y_motivo()
+    if error:
+        return error
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM comprobantes_proveedor WHERE id = %s FOR UPDATE", (id,))
+        fila = cur.fetchone()
+        if not fila:
+            return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
+        if (fila.get('estado') or '').upper() in ('ANULADO', 'ANULADA'):
+            return jsonify({'success': False, 'error': 'El comprobante ya está anulado'}), 400
+        cur.execute("""SELECT COALESCE(SUM(monto), 0) AS p FROM finanzas_pagos WHERE documento_tabla = 'comprobantes_proveedor'
+                       AND documento_id = %s AND tipo = 'PAGO' AND estado <> 'Anulado'""", (id,))
+        if a_decimal(cur.fetchone()['p']) > 0:
+            return jsonify({'success': False, 'error': 'Tiene pagos registrados: primero Finanzas debe anular el pago.'}), 400
+        cur.execute("""UPDATE comprobantes_proveedor SET estado = 'Anulado', updated_at = NOW(),
+                       observaciones = TRIM(COALESCE(observaciones, '') || ' [ANULADO: ' || %s || ']') WHERE id = %s""",
+                    (motivo, id))
+        _registrar_anulacion(cur, 'comprobantes_proveedor', id, fila.get('numero'), 'Anulado', motivo, dict(fila))
+    return jsonify({'success': True, 'message': 'Comprobante anulado (queda registrado con tu motivo)',
+                    'data': {'id': id, 'estado': 'Anulado'}})
+
+
+@compras_bp.route('/compras/api/comprobantes-proveedor/<int:id>', methods=['DELETE'])
+@login_required
+def api_comprobantes_proveedor_eliminar(id):
+    """La pantalla tenía "Eliminar" sin ruta: ahora anula el comprobante (no se borra, por control)."""
+    try:
+        return _anular_comprobante_proveedor(id)
+    except Exception as e:
+        print(f"❌ Error anulando comprobante proveedor: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================
 # API - RECEPCIÓN DE MERCADERÍA
 # ============================================================
@@ -1168,7 +1364,8 @@ def api_recepciones_listar():
                 'id': row.get('id'),
                 'numero': row.get('numero_recepcion') or '',
                 'numero_recepcion': row.get('numero_recepcion') or '',
-                'fecha': row.get('fecha'),
+                'fecha': _fecha_iso(row.get('fecha') or row.get('created_at')),
+                'creado': _fecha_hora(row.get('created_at') or row.get('fecha')),
                 'estado': row.get('estado') or 'Pendiente',
                 'orden_compra': row.get('orden_compra_numero') or '',
                 'orden': row.get('orden_compra_numero') or '',
@@ -1179,7 +1376,7 @@ def api_recepciones_listar():
                 'estado_mercaderia': row.get('estado_mercaderia') or '',
                 'observaciones': row.get('observaciones') or ''
             })
-
+        formatted_data = _filtrar_api(formatted_data, ('numero', 'orden', 'proveedor', 'producto'))
         return jsonify({'success': True, 'data': formatted_data})
 
     except Exception as e:
@@ -1342,10 +1539,18 @@ def api_proveedores_buscar():
             activo
         """
 
+        # Teléfono y contacto: si el proveedor no los tiene, se toman de su contacto principal (proveedores_contactos)
+        select_str = select_str.replace('telefono,', "COALESCE(NULLIF(proveedores.telefono, ''), pcx.telefono) AS telefono,") \
+                               .replace('contacto,', "COALESCE(NULLIF(proveedores.contacto, ''), pcx.nombre_contacto) AS contacto,") \
+                               .replace('email,', "COALESCE(NULLIF(proveedores.email, ''), pcx.email) AS email,")
+        desde_sql = """proveedores LEFT JOIN LATERAL (
+                SELECT c.nombre_contacto, c.telefono, c.email FROM proveedores_contactos c
+                WHERE c.proveedor_id = proveedores.id AND COALESCE(c.activo, true) = true
+                ORDER BY COALESCE(c.principal, false) DESC, c.id LIMIT 1) pcx ON true"""
         if es_ruc:
             query = f"""
                 SELECT {select_str}
-                FROM proveedores
+                FROM {desde_sql}
                 WHERE ruc = %s
                 LIMIT 5
             """
@@ -1354,11 +1559,11 @@ def api_proveedores_buscar():
             pattern = f"%{q}%"
             query = f"""
                 SELECT {select_str}
-                FROM proveedores
+                FROM {desde_sql}
                 WHERE ruc ILIKE %s
                    OR razon_social ILIKE %s
                    OR COALESCE(razon_comercial, '') ILIKE %s
-                   OR COALESCE(contacto, '') ILIKE %s
+                   OR COALESCE(proveedores.contacto, '') ILIKE %s
                 ORDER BY razon_social
                 LIMIT 20
             """
@@ -1500,7 +1705,17 @@ def api_ordenes_buscar():
 @compras_bp.route('/compras/orden/<int:id>/preview', methods=['GET'])
 @login_required
 def orden_preview(id):
-    """Vista previa de una orden de compra"""
+    """Vista previa / impresión de una orden de compra PARA EL PROVEEDOR (sin cliente, PC ni cotización del cliente).
+    Antes buscaba la plantilla compras/orden_preview.html, que no existe; ahora usa la misma hoja de la nueva pantalla."""
+    try:
+        from routes.compras_flujo import orden_imprimir
+        if not request.args.get('hoja'):
+            from werkzeug.datastructures import ImmutableMultiDict
+            request.args = ImmutableMultiDict({'hoja': 'borrador'})
+        return orden_imprimir(id)
+    except Exception as e:
+        print(f"❌ Error en orden_preview: {e}")
+        return f"Error: {e}", 500
     try:
         query = """
             SELECT 

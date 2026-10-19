@@ -84,3 +84,35 @@ html[data-empresa] textarea:focus { outline-color: var(--empresa); }
 
 /* Aviso cuando se ven todas las empresas */
 html[data-empresa="TODAS"] .top-actions #empresaActiva { background: #F1F5F9 !important; }
+
+/* ============================================================
+   17/10/2026 (pedido de Erika): letra distinta por empresa y colores fuertes tipo semáforo
+   para que el personal nuevo ubique todo rápido.
+   KCF = Montserrat (letra redonda y ancha) · AGD = Roboto Slab (letra con "patitas")
+   ============================================================ */
+html[data-empresa="KCF"] *:not(code):not(pre):not(.bi):not([class^="bi-"]):not([class*=" bi-"]) {
+  font-family: "Montserrat", "Segoe UI", Arial, sans-serif;
+}
+html[data-empresa="AGD"] *:not(code):not(pre):not(.bi):not([class^="bi-"]):not([class*=" bi-"]) {
+  font-family: "Roboto Slab", Georgia, "Times New Roman", serif;
+}
+
+/* Semáforo: VERDE fluorescente = listo / OK · ÁMBAR = atención / pendiente · ROJO intenso = vencido / rechazado */
+.b-ok, .badge-ok, .badge-success, .badge-valid, .badge-accepted, .badge-despachado, .pill-green, .status-accepted, .status-validated,
+.sem-ok, .estado-ok {
+  background: #39FF14 !important; color: #052E00 !important; border: 1px solid #1FB800 !important; font-weight: 800 !important;
+}
+.b-warn, .badge-warning, .badge-pending, .badge-review, .pill-yellow, .status-review, .sem-atencion, .estado-atencion {
+  background: #FFD600 !important; color: #3D2B00 !important; border: 1px solid #E0A800 !important; font-weight: 800 !important;
+}
+.badge-danger, .badge-rejected, .pill-red, .sem-peligro, .estado-peligro {
+  background: #FF0033 !important; color: #FFFFFF !important; border: 1px solid #C80028 !important; font-weight: 800 !important;
+}
+
+/* Botón eliminar: tachito pequeño (en lugar de la X) */
+.btn-tachito {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0 !important;
+  border: 1px solid #FCA5A5 !important; background: #FFFFFF !important; color: #DC2626 !important; border-radius: 6px;
+  font-size: 13px; line-height: 1; cursor: pointer;
+}
+.btn-tachito:hover { background: #FF0033 !important; border-color: #FF0033 !important; color: #FFFFFF !important; }

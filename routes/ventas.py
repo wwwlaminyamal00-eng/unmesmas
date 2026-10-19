@@ -1528,7 +1528,8 @@ def api_cotizaciones_guardar():
                 if precio < 0:
                     return jsonify({'success': False, 'error': f'Precio inválido en la línea {idx} ({codigo_producto})'}), 400
                 lineas.append({'producto_id': producto_bd['id'], 'cantidad': cantidad, 'precio': precio,
-                               'costo': a_decimal(producto_bd.get('costo_unitario') or 0)})
+                               'costo': a_decimal(producto_bd.get('costo_unitario') or 0),
+                               'entrega': estado_entrega_valido(producto.get('estado_entrega'))})
 
             if no_encontrados:
                 # Antes se omitían en silencio y la cotización quedaba incompleta
@@ -1613,13 +1614,13 @@ def api_cotizaciones_guardar():
                     INSERT INTO cotizacion_detalle (
                         cotizacion_id, producto_id, cantidad, costo_unitario, subtotal_costo, margen_porcentaje,
                         precio_venta_unitario, subtotal_venta, descuento_porcentaje, precio_venta_con_descuento,
-                        subtotal_venta_con_descuento, descuento_total, margen_final
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        subtotal_venta_con_descuento, descuento_total, margen_final, estado_entrega
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (cotizacion_id, l['producto_id'], l['cantidad'], l['costo'], redondear(subtotal_costo),
                       redondear(margen), l['precio'], redondear(subtotal_venta),
                       redondear((1 - factor) * 100), redondear(precio_desc, 4),
                       redondear(subtotal_venta * factor), redondear(subtotal_venta * (1 - factor)),
-                      redondear(margen_final)))
+                      redondear(margen_final), l['entrega']))
 
         accion = 'actualizada' if es_edicion else 'creada'
         return jsonify({
@@ -4171,6 +4172,7 @@ def api_cotizaciones_obtener_completa(id):
                 d.subtotal_venta_con_descuento,
                 d.costo_unitario,
                 d.margen_porcentaje,
+                d.estado_entrega,
                 p.codigo, 
                 p.descripcion as producto, 
                 p.descripcion_larga,
@@ -4217,9 +4219,12 @@ def api_cotizaciones_obtener_completa(id):
                 'stock': int(p.get('stock') or 0),
                 'costo_unitario': float(p.get('costo_unitario') or p.get('costo') or 0),
                 'subtotal_venta': float(p.get('subtotal_venta') or 0),
-                'descuento_porcentaje': float(p.get('descuento_porcentaje') or 0)
+                'descuento_porcentaje': float(p.get('descuento_porcentaje') or 0),
+                'precio_venta_con_descuento': float(p.get('precio_venta_con_descuento') or 0),
+                'estado_entrega': estado_entrega_valido(p.get('estado_entrega'))
             })
         
+        _aplicar_descuento_cotizacion(result)
         print(f"📦 Productos en respuesta: {len(result['productos'])}")
         
         return jsonify({'success': True, 'data': result})
@@ -4229,6 +4234,52 @@ def api_cotizaciones_obtener_completa(id):
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def estado_entrega_valido(valor):
+    """Estado de entrega de un producto de la cotización: solo 'Pendiente' o 'Entregado'."""
+    return 'Entregado' if str(valor or '').strip().lower().startswith('entregad') else 'Pendiente'
+
+
+def _aplicar_descuento_cotizacion(result):
+    """Reparte el descuento de la cotización en el precio de cada producto (para la PC).
+
+    El descuento se guarda en la cabecera (descuento_tipo '%' o 'S/', descuento_porcentaje,
+    descuento_monto) y, a veces, por línea (descuento_porcentaje / precio_venta_con_descuento).
+    La PC trabaja con precio por producto, así que se le entrega el precio YA descontado en
+    precio_neto (valorVenta sigue siendo el precio de lista, que usa la edición de la cotización).
+    La suma de cantidad x precio_neto da el subtotal descontado de la cotización (sin IGV).
+    """
+    productos = result.get('productos') or []
+    for p in productos:
+        p['precio_lista'] = float(p.get('valorVenta') or 0)
+    base = sum(float(p.get('cantidad') or 0) * p['precio_lista'] for p in productos)
+    tipo = str(result.get('descuento_tipo') or '').strip()
+    pct = float(result.get('descuento_porcentaje') or 0)
+    monto = float(result.get('descuento_monto') or 0)
+    if tipo == '%' and pct > 0:
+        factor = 1 - pct / 100.0
+    elif monto > 0 and base > 0:
+        factor = (base - monto) / base
+    else:
+        factor = 1.0
+    factor = min(max(factor, 0.0), 1.0)
+    # Desde el 15/10 el guardado ya deja el precio descontado de cada línea (precio_venta_con_descuento,
+    # el mismo descuento de la cabecera repartido); si está, se usa tal cual. Si no (cotizaciones
+    # antiguas), se reparte el descuento de la cabecera.
+    por_linea = factor < 1 and productos and all(
+        float(p.get('precio_venta_con_descuento') or 0) > 0 and float(p.get('descuento_porcentaje') or 0) > 0
+        for p in productos)
+    for p in productos:
+        if por_linea:
+            p['precio_neto'] = round(float(p['precio_venta_con_descuento']), 4)
+        else:
+            p['precio_neto'] = round(p['precio_lista'] * factor, 4)
+    neto = round(sum(float(p.get('cantidad') or 0) * p['precio_neto'] for p in productos), 2)
+    result['descuento_factor'] = factor
+    result['descuento_total'] = round(base - neto, 2) if productos else round(monto, 2)
+    result['subtotal_neto'] = neto if productos else float(result.get('subtotal') or 0) - monto
+    return result
 
 
 @ventas_bp.route('/ventas/api/cotizaciones/<int:id>/duplicar', methods=['POST'])

@@ -63,6 +63,15 @@
                     <button class="btn btn-secondary" data-export="{{ t[0] }}">⬇ Exportar CSV</button>
                 </div>
             </div>
+            {% if t[0] == 'cxp' %}
+            <div class="cxp-totales" id="cxpTotales">
+                <div class="cxp-tot sem-peligro"><small>🔴 Vencido</small><b id="cxpTotVencido">S/ 0.00</b><span id="cxpDocsVencido"></span></div>
+                <div class="cxp-tot sem-atencion"><small>🟡 Por vencer (7 días)</small><b id="cxpTotPorVencer">S/ 0.00</b><span id="cxpDocsPorVencer"></span></div>
+                <div class="cxp-tot sem-ok"><small>🟢 Al día</small><b id="cxpTotAlDia">S/ 0.00</b></div>
+                <div class="cxp-tot cxp-tot-total"><small>Total por pagar</small><b id="cxpTotTotal">S/ 0.00</b></div>
+            </div>
+            <div class="fin-help cxp-orden">Orden: primero lo <b>vencido</b> (más días de atraso arriba), luego lo <b>por vencer</b> (menos días que faltan arriba) y al final lo <b>al día</b>.</div>
+            {% endif %}
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>

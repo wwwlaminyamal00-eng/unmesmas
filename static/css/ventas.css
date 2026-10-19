@@ -3281,3 +3281,8 @@ tr.fila-despachada > td .left { color: #000000 !important; }
     cursor: pointer;
 }
 .btn-rotulo:hover { background: var(--empresa-soft, #F5F3FF); }
+
+/* 17/10: estado de entrega por producto de la cotización (solo Pendiente / Entregado), colores semáforo */
+.entrega-select { font-size: 10px; font-weight: 900; border-radius: 6px; padding: 2px 4px; border: 2px solid; cursor: pointer; }
+.entrega-select.entrega-pend { background: #FFF3B0; color: #7A4B00; border-color: #FFB300; }
+.entrega-select.entrega-ok { background: #B9FF66; color: #0B3D00; border-color: #39D400; }

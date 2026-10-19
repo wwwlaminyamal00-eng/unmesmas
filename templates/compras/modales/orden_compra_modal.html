@@ -39,6 +39,32 @@
                 </div>
             </div>
 
+            <!-- SECCIÓN 1B: PARA QUÉ ES LA COMPRA (vista interna: NO sale en la hoja del proveedor) -->
+            <div class="ficha-section">
+                <div class="ficha-section-title">🎯 ¿Para qué pedido es esta compra? <span style="font-weight:700;font-size:10px;color:#64748B;">Uso interno: el proveedor no ve el cliente ni el pedido</span></div>
+                <div class="ficha-grid">
+                    <div class="form-field col-6">
+                        <label>Pedido del cliente (PC)</label>
+                        <select id="ordPedido" onchange="ordCambioPedido()">
+                            <option value="">— Compra SIN pedido (para stock) —</option>
+                        </select>
+                    </div>
+                    <div class="form-field col-6" id="ordPedidoInfo" style="align-self:end;font-size:12px;font-weight:800;color:#1E3A8A;"></div>
+                    <div class="form-field col-6" id="ordMotivoWrap">
+                        <label>Motivo de la compra sin pedido <span class="text-danger">*</span></label>
+                        <select id="ordMotivo" onchange="ordCambioPedido()">
+                            <option value="">-- Elige el motivo --</option>
+                            {% for m in motivos %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-field col-6" id="ordMotivoDetWrap">
+                        <label>Detalle del motivo <span id="ordMotivoDetReq" class="text-danger" style="display:none">*</span></label>
+                        <input id="ordMotivoDetalle" maxlength="300" placeholder="Obligatorio si eliges &quot;Otro&quot;">
+                    </div>
+                    <div class="form-field col-12" id="ordSinPedidoAviso"><div class="com-sin-pedido-aviso">⚠️ <b>Compra sin pedido:</b> la mercadería queda como stock propio (poca liquidez). Es una decisión explícita y queda registrada con su motivo.</div></div>
+                </div>
+            </div>
+
             <!-- SECCIÓN 2: PROVEEDOR -->
 <div class="ficha-section">
     <div class="ficha-section-title">🏢 Datos del proveedor</div>
@@ -62,11 +88,13 @@
             </div>
         </div>
         
-        <div class="form-field col-8">
-            <label>Razón social <span class="text-danger">*</span></label>
+        <div class="form-field col-8" style="position:relative;">
+            <label>Razón social <span class="text-danger">*</span> <span style="font-weight:700;text-transform:none;color:#64748B;">(escribe y elige de la lista: se llenan solos RUC, dirección, contacto y teléfono)</span></label>
             <input id="ordProveedor" 
-                   placeholder="Nombre o razón social del proveedor" 
+                   placeholder="Escribe el nombre o RUC del proveedor y elígelo..." 
+                   autocomplete="off" oninput="ordBuscarProveedorNombre()"
                    style="width:100%;">
+            <div id="ordProvLista" class="ord-prov-lista" style="display:none;"></div>
         </div>
 
         <!-- Fila 2: Dirección (ancha) + Contacto + Teléfono -->
@@ -232,7 +260,7 @@ function addOrdenItemRow() {
         <td><input class="ord-item-precio" type="number" step="0.01" value="0" style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px; text-align:right;" oninput="ordRecalcular()"></td>
         <td><input class="ord-item-total" type="number" step="0.01" value="0" readonly style="width:100%; border:1px solid #E5E7EB; border-radius:6px; height:26px; padding:0 6px; font-size:11px; text-align:right; background:#F1F5F9; font-weight:900;"></td>
         <td style="text-align:center;">
-            <button type="button" onclick="this.closest('tr').remove(); ordReordenar(); ordRecalcular();" style="background:#FEE2E2; border:0; color:#DC2626; cursor:pointer; font-size:12px; font-weight:900; padding:3px 7px; border-radius:6px;">✕</button>
+            <button type="button" title="Quitar producto" onclick="this.closest('tr').remove(); ordReordenar(); ordRecalcular();" class="btn-tachito" aria-label="Quitar producto">🗑️</button>
         </td>
     `;
     tbody.appendChild(tr);
@@ -254,7 +282,7 @@ function ordBuscarProducto(input) {
         const row = input.closest('tr');
         row.querySelector('.ord-item-desc').value = p.producto || p.descripcion || '';
         row.querySelector('.ord-item-precio').value = parseFloat(p.valorVenta) || 0;
-        row.querySelector('.ord-item-unidad').value = p.um || 'UND';
+        fijarUnidadCompras(row.querySelector('.ord-item-unidad'), p.um);
         ordRecalcular();
     }
 }
@@ -278,8 +306,21 @@ async function ordBuscarProveedor(force = false) {
         return;
     }
 
+    // Si el proveedor ya está registrado se llenan sus datos al instante (sin ventana intermedia)
+    try {
+        const r = await fetch('/compras/api/proveedores/buscar?q=' + ruc);
+        const d = await r.json();
+        const enBase = (d.data || []).find(p => p.id && p.ruc === ruc);
+        if (enBase) {
+            ordAplicarProveedor(enBase);
+            showToast(`✅ Proveedor registrado: ${enBase.razon_social}`, 'success');
+            return;
+        }
+    } catch (e) { /* sigue con la consulta a SUNAT */ }
+
     await consultarRUCConspinner(ruc, (proveedor) => {
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+        window._ordProveedorId = proveedor.id || null;
 
         set('ordProveedor', proveedor.razon_social || proveedor.razon_comercial);
         set('ordDireccion', proveedor.direccion);
@@ -336,11 +377,110 @@ function addOrdenItemRowConDatos(item) {
     if (!lastRow) return;
     lastRow.querySelector('.ord-item-codigo').value = item.codigo || '';
     lastRow.querySelector('.ord-item-desc').value = item.producto || item.descripcion || '';
-    lastRow.querySelector('.ord-item-unidad').value = item.um || 'UND';
+    fijarUnidadCompras(lastRow.querySelector('.ord-item-unidad'), item.um || item.unidad);
     lastRow.querySelector('.ord-item-cant').value = item.cantidad || 1;
-    lastRow.querySelector('.ord-item-precio').value = item.precio_unitario || 0;
+    lastRow.querySelector('.ord-item-precio').value = item.precio_unitario || item.precioUnitario || 0;
     ordRecalcular();
 }
+
+// ---------- Proveedor: buscar por nombre o RUC en la base y llenar todo de una vez ----------
+let _ordProvTimer = null;
+let _ordProvResultados = [];
+function ordAplicarProveedor(p) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    set('ordProveedor', p.razon_social || p.razon_comercial);
+    set('ordRuc', p.ruc);
+    set('ordDireccion', p.direccion);
+    set('ordContacto', p.contacto);
+    set('ordTelefono', p.telefono);
+    set('ordEmail', p.email);
+    const condSel = document.getElementById('ordCondPago');
+    if (condSel && p.condicion_pago) {
+        for (let opt of condSel.options) {
+            if (opt.value.toLowerCase().includes(String(p.condicion_pago).toLowerCase())) { opt.selected = true; break; }
+        }
+    }
+    window._ordProveedorId = p.id || null;
+    const lista = document.getElementById('ordProvLista');
+    if (lista) lista.style.display = 'none';
+}
+function ordBuscarProveedorNombre() {
+    window._ordProveedorId = null;
+    const q = (document.getElementById('ordProveedor').value || '').trim();
+    const lista = document.getElementById('ordProvLista');
+    clearTimeout(_ordProvTimer);
+    if (q.length < 2) { lista.style.display = 'none'; return; }
+    _ordProvTimer = setTimeout(async () => {
+        try {
+            const r = await fetch('/compras/api/proveedores/buscar?q=' + encodeURIComponent(q));
+            const d = await r.json();
+            _ordProvResultados = (d.data || []).filter(p => p.id);
+            lista.innerHTML = _ordProvResultados.length
+                ? _ordProvResultados.map((p, i) => `<div class="ord-prov-op" data-i="${i}"><b>${p.ruc || ''}</b> ${p.razon_social || ''}<small>${p.direccion || ''}</small></div>`).join('')
+                : '<div class="ord-prov-nada">No está registrado. Créalo en Maestros ▸ Proveedores (o escribe el RUC y usa 🌞 SUNAT).</div>';
+            lista.style.display = 'block';
+        } catch (e) { lista.style.display = 'none'; }
+    }, 250);
+}
+document.addEventListener('click', e => {
+    const op = e.target.closest('.ord-prov-op');
+    if (op) { ordAplicarProveedor(_ordProvResultados[Number(op.dataset.i)]); return; }
+    const lista = document.getElementById('ordProvLista');
+    if (lista && !e.target.closest('#ordProvLista') && e.target.id !== 'ordProveedor') lista.style.display = 'none';
+});
+
+// ---------- Pedido del cliente / motivo ----------
+window._ordPedidos = [];
+async function ordCargarPedidos(seleccionado) {
+    const sel = document.getElementById('ordPedido');
+    if (!sel) return;
+    try {
+        const r = await fetch('/compras/api/flujo/pedidos?todos=1');
+        const d = await r.json();
+        window._ordPedidos = d.data || [];
+    } catch (e) { window._ordPedidos = []; }
+    sel.innerHTML = '<option value="">— Compra SIN pedido (para stock) —</option>' + window._ordPedidos.map(p =>
+        `<option value="${p.id}">${p.numero} · ${p.cliente || ''}</option>`).join('');
+    if (seleccionado && ![...sel.options].some(o => o.value === String(seleccionado))) {
+        sel.insertAdjacentHTML('beforeend', `<option value="${seleccionado}">PC #${seleccionado}</option>`);
+    }
+    sel.value = seleccionado ? String(seleccionado) : '';
+    ordCambioPedido();
+}
+function ordCambioPedido() {
+    const pid = document.getElementById('ordPedido').value;
+    const sinPedido = !pid;
+    document.getElementById('ordMotivoWrap').style.display = sinPedido ? '' : 'none';
+    document.getElementById('ordMotivoDetWrap').style.display = sinPedido ? '' : 'none';
+    document.getElementById('ordSinPedidoAviso').style.display = sinPedido ? '' : 'none';
+    document.getElementById('ordMotivoDetReq').style.display = document.getElementById('ordMotivo').value === 'Otro' ? '' : 'none';
+    const p = (window._ordPedidos || []).find(x => String(x.id) === pid);
+    document.getElementById('ordPedidoInfo').innerHTML = p
+        ? `👤 Cliente: <b>${p.cliente || '—'}</b>${p.cotizacion ? ` · Cotización: <b>${p.cotizacion}</b>` : ''}`
+        : '';
+}
+
+// Deja el formulario como nuevo (vacío), salvo los valores por defecto (fecha de hoy, contado, etc.)
+function ordResetForm() {
+    const hoy = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const vals = { ordNumero: '', ordFecha: hoy, ordFechaRequerida: '', ordRuc: '', ordProveedor: '', ordDireccion: '',
+        ordContacto: '', ordTelefono: '', ordEmail: '', ordTiempoEntrega: '5 días hábiles', ordDescuento: '0', ordNotas: '',
+        ordMotivoDetalle: '' };
+    Object.entries(vals).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+    const lugar = document.getElementById('ordLugarEntrega');
+    if (lugar) lugar.value = lugar.defaultValue;
+    ['ordMoneda', 'ordCondPago', 'ordDescuentoTipo', 'ordMotivo'].forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+    document.getElementById('ordNumero').placeholder = 'Se asigna al guardar';
+    document.getElementById('ordenItemsBody').innerHTML = '';
+    window._ordProveedorId = null;
+    window._ordenEditId = null;
+    const lista = document.getElementById('ordProvLista');
+    if (lista) lista.style.display = 'none';
+    const titulo = document.getElementById('ordenCompraModalTitle');
+    if (titulo) titulo.textContent = '📄 Nueva orden de compra';
+    addOrdenItemRow();
+}
+
 function ordRecalcular() {
     let subtotal = 0;
     document.querySelectorAll('#ordenItemsBody tr').forEach(row => {

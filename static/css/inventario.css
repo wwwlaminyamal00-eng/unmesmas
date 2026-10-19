@@ -147,3 +147,8 @@
 .inv-aviso-flot.warning{background:#B45309}
 .inv-aviso-flot b{font-size:18px}
 .inv-aviso-flot button{background:none;border:0;color:#fff;font-size:16px;cursor:pointer;margin-left:auto}
+
+/* 17/10: saldo final de cada producto en el kardex (pedido de Erika: sombreado verde, número azul eléctrico y grande) */
+#kdxBody tr.kdx-final td { background: #C6FFB3 !important; border-top: 2px solid #22C55E; border-bottom: 2px solid #22C55E; }
+#kdxBody tr.kdx-final td.grp-saldo b { color: #0047FF; font-size: 17px; font-weight: 900; }
+.kdx-final-etq { display: block; font-size: 9px; font-weight: 900; color: #0047FF; letter-spacing: .04em; }

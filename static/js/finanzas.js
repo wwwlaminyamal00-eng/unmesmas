@@ -56,12 +56,41 @@
         if (tipo === 'cxc') params.set('incluir_borradores', document.getElementById('cxcBorradores').checked);
         body.innerHTML = '<tr><td colspan="12">Cargando...</td></tr>';
         try {
-            const { data } = await api(`/finanzas/api/${tipo}?${params}`);
-            datos[tipo] = data;
+            const { data, totales } = await api(`/finanzas/api/${tipo}?${params}`);
+            datos[tipo] = data;   // CxP ya viene ordenado del servidor (vencido > por vencer > al día): no se reordena
+            if (tipo === 'cxp') pintarTotalesCxp(totales);
             renderCuentas(tipo);
         } catch (e) {
             body.innerHTML = `<tr><td colspan="12" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
+    }
+
+    // Totales arriba de Cuentas por pagar (sobre todo lo pendiente, sin importar el filtro)
+    function pintarTotalesCxp(t) {
+        if (!t) return;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('cxpTotVencido', soles(t.vencido));
+        set('cxpDocsVencido', `${t.docs_vencidos || 0} documento(s)`);
+        set('cxpTotPorVencer', soles(t.por_vencer));
+        set('cxpDocsPorVencer', `${t.docs_por_vencer || 0} documento(s)`);
+        set('cxpTotAlDia', soles(t.al_dia));
+        set('cxpTotTotal', soles(t.total));
+    }
+
+    // Chip de semáforo de CxP con días de atraso o días que faltan
+    function chipCxp(x) {
+        const n = x.dias_para_vencer;
+        if (x.semaforo === 'Vencido') {
+            const d = x.dias_vencido || 0;
+            return `<span class="sem-chip sem-peligro">VENCIDO · ${d} día${d === 1 ? '' : 's'} de atraso</span>`;
+        }
+        if (x.semaforo === 'Por vencer') {
+            return `<span class="sem-chip sem-atencion">POR VENCER · ${n === 0 ? 'vence hoy' : `faltan ${n} día${n === 1 ? '' : 's'}`}</span>`;
+        }
+        if (x.semaforo === 'Al día') {
+            return `<span class="sem-chip sem-ok">AL DÍA${n !== null && n !== undefined ? ` · faltan ${n} días` : ''}</span>`;
+        }
+        return `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}</span>`;
     }
 
     function renderCuentas(tipo) {
@@ -76,8 +105,11 @@
                     ? `<button class="btn-mini" ${PUEDE_OPERAR ? '' : 'disabled title="Sin permiso"'} data-pagar="${tipo}:${x.id}">${esCxc ? 'Registrar cobro' : 'Registrar pago'}</button>`
                     : '<span class="sem sem-pagado">Pagado</span>';
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
-                return `<tr>
-                    <td><span class="${semClase(x.semaforo)}">${esc(x.semaforo)}${x.dias_vencido ? ' · ' + x.dias_vencido + ' d' : ''}</span></td>
+                const chip = esCxc
+                    ? `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}${x.dias_vencido ? ' · ' + x.dias_vencido + ' d' : ''}</span>`
+                    : chipCxp(x);
+                return `<tr class="${!esCxc && x.semaforo === 'Vencido' ? 'cxp-fila-vencida' : ''}">
+                    <td>${chip}</td>
                     <td>${esc(x.tipo_comprobante || '')} ${esc(x.documento)}</td>
                     <td class="left">${esc(x.tercero)}</td>
                     <td>${esc(x.ruc)}</td>

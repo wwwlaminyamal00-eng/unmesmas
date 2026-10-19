@@ -571,6 +571,13 @@
 {% endblock %}
 
 {% block content %}
+<!-- ACCESO DIRECTO A ÓRDENES DE COMPRA (antes solo se llegaba con "Crear orden" desde una solicitud) -->
+<div class="oc-acceso">
+    <span class="oc-acceso-txt">📄 <b>Órdenes de compra</b> · entra directo, sin pasar por una solicitud</span>
+    <a class="btn btn-secondary" href="/compras?tab=ordenes">📋 Ver lista de órdenes</a>
+    <a class="btn btn-primary" href="/compras?tab=ordenes&nueva=1">+ Nueva orden de compra</a>
+    <button type="button" class="btn btn-soft" onclick="switchTab('orden_compra')">🗂 Órdenes en esta pantalla</button>
+</div>
 <!-- TABS -->
 <div class="tabs" id="tabsRow">
     <button class="tab-btn active" data-tab="solicitud_compra">📋 Solicitud de compra</button>
@@ -622,7 +629,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha</th>
+                        <th>Creado</th>
                         <th>Estado</th>
                         <th>N° Solicitud</th>
                         <th>Producto</th>
@@ -682,7 +689,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha</th>
+                        <th>Creado</th>
                         <th>Estado</th>
                         <th>N° Comparativo</th>
                         <th>Producto</th>
@@ -743,9 +750,10 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha</th>
+                        <th>Creado</th>
                         <th>Estado</th>
                         <th>N° Orden</th>
+                        <th>Para (pedido / motivo)</th>
                         <th>Proveedor</th>
                         <th>RUC</th>
                         <th>Producto</th>
@@ -803,7 +811,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha</th>
+                        <th>Creado</th>
                         <th>Estado</th>
                         <th>Tipo</th>
                         <th>N° Comprobante</th>
@@ -863,7 +871,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha</th>
+                        <th>Creado</th>
                         <th>Estado</th>
                         <th>N° Recepción</th>
                         <th>Orden Compra</th>
@@ -1071,7 +1079,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/compras.js') }}"></script>
+<script src="{{ url_for('static', filename='js/compras.js') }}" data-admin="{{ 'true' if es_admin else 'false' }}"></script>
 <script src="{{ url_for('static', filename='js/compras_product_selector.js') }}"></script>
 <script>
     (function() {

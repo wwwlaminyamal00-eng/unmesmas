@@ -245,3 +245,15 @@
         justify-content: center;
     }
 }
+/* ===== Compras 16/10: acceso directo a OC, compra sin pedido, buscador de proveedor ===== */
+.oc-acceso{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#EFF6FF;border:2px solid #93C5FD;border-radius:12px;padding:8px 12px;margin-bottom:8px}
+.oc-acceso-txt{flex:1;min-width:220px;font-size:13px;color:#1E3A8A;font-weight:800}
+.oc-acceso .btn{height:34px;text-decoration:none}
+.badge-sin-pedido{display:inline-block;background:#F59E0B;color:#111827;border:2px solid #B45309;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:950;white-space:nowrap}
+.master-table small.sub{display:block;font-size:10.5px;color:#475569;font-weight:700;margin-top:2px}
+.com-sin-pedido-aviso{background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:800;color:#78350F}
+.ord-prov-lista{position:absolute;left:0;right:0;top:100%;z-index:60;background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.18);max-height:260px;overflow:auto}
+.ord-prov-op{padding:8px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #F1F5F9}
+.ord-prov-op:hover{background:#EFF6FF}
+.ord-prov-op small{display:block;color:#64748B;font-weight:700}
+.ord-prov-nada{padding:10px;font-size:12px;color:#B91C1C;font-weight:800}

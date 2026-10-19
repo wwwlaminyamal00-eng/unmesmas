@@ -266,15 +266,31 @@ function solBuscarProducto(codigo) {
     if (prod) {
         document.getElementById('solProducto').value = prod.producto || prod.descripcion || '';
         document.getElementById('solPrecioUnitario').value = parseFloat(prod.valorVenta) || 0;
-        document.getElementById('solUnidad').value = prod.um || 'UND';
+        fijarUnidadCompras('solUnidad', prod.um);
         solCalcularTotal();
     }
 }
 
 // Buscar producto en BD (por si no está en memoria)
+// Pone la unidad en el desplegable sin borrarla: si la unidad del producto no está en la lista se agrega;
+// si el producto no trae unidad, se conserva la que ya estaba elegida.
+function fijarUnidadCompras(selectId, unidad) {
+    const sel = typeof selectId === 'string' ? document.getElementById(selectId) : selectId;
+    if (!sel) return;
+    const u = String(unidad || '').trim().toUpperCase();
+    if (!u) return;
+    if (![...sel.options].some(o => o.value.toUpperCase() === u)) {
+        const op = document.createElement('option');
+        op.value = u; op.textContent = u;
+        sel.appendChild(op);
+    }
+    sel.value = [...sel.options].find(o => o.value.toUpperCase() === u).value;
+}
+window.fijarUnidadCompras = fijarUnidadCompras;
+
 async function solBuscarProductoBD() {
-    const codigo = document.getElementById('solCodigo').value.trim();
-    if (!codigo) { showToast('⚠️ Ingresa un código de producto', 'warning'); return; }
+    const codigo = (document.getElementById('solCodigo').value.trim() || document.getElementById('solProducto').value.trim());
+    if (!codigo) { showToast('⚠️ Escribe el código o el nombre del producto y pulsa 🔍', 'warning'); return; }
     try {
         const resp = await fetch(`/productos/api/productos?q=${encodeURIComponent(codigo)}`);
         const data = await resp.json();
@@ -283,7 +299,8 @@ async function solBuscarProductoBD() {
             document.getElementById('solCodigo').value = p.codigo || codigo;
             document.getElementById('solProducto').value = p.descripcion || p.nombre || '';
             document.getElementById('solPrecioUnitario').value = parseFloat(p.precio_unitario || p.precio_venta || 0);
-            document.getElementById('solUnidad').value = p.unidad || 'UND';
+            // Antes: si la unidad del producto (ej. PAR, NIU) no estaba en la lista, el campo quedaba en blanco.
+            fijarUnidadCompras('solUnidad', p.unidad);
             solCalcularTotal();
             showToast(`✅ Producto encontrado: ${p.descripcion || p.nombre}`, 'success');
         } else {
@@ -308,7 +325,7 @@ function solCalcularTotal() {
 function solCargarProductoSeleccionado(prod) {
     document.getElementById('solCodigo').value = prod.codigo || '';
     document.getElementById('solProducto').value = prod.producto || prod.descripcion || '';
-    document.getElementById('solUnidad').value = prod.um || 'UND';
+    fijarUnidadCompras('solUnidad', prod.um);
     document.getElementById('solPrecioUnitario').value = prod.precio_unitario || 0;
     document.getElementById('solCantidad').value = prod.cantidad || 1;
     solCalcularTotal();

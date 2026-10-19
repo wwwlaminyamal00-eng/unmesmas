@@ -58,6 +58,11 @@ CONDICIONES = ('Contado', 'Contra entrega', 'Crédito')
 MODALIDADES = ('Proveedor entrega', 'Nosotros recogemos')
 ESTADOS_ABIERTOS = ('Aprobada', 'Recibida parcial')
 ESTADOS_PC_FUERA = ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA', 'CERRADO', 'CERRADA')
+# Motivos permitidos para comprar sin pedido de cliente (Erika: poca liquidez, comprar para stock es la excepción)
+MOTIVOS_SIN_PEDIDO = ('Stock estratégico', 'Crédito fiscal / IGV', 'Reposición de stock mínimo', 'Otro')
+# Datos internos que NUNCA van en la orden que se manda al proveedor (son confidenciales)
+CAMPOS_CONFIDENCIALES = ('pedidos', 'clientes', 'pc_numeros', 'cotizaciones_cliente', 'clientes_pedido', 'pedido_id',
+                         'motivo_compra', 'motivo_stock', 'tipo_compra', 'sin_pedido', 'cotizaciones')
 
 
 class ErrorCompras(Exception):
@@ -106,6 +111,25 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS monto_esperado NUMERIC(14,2);
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS cuadra BOOLEAN;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS motivo_compra VARCHAR(60);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS pedido_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS pc_numeros TEXT;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS cotizaciones_cliente TEXT;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS clientes_pedido TEXT;
+    ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS cotizacion_numero VARCHAR(60);
+    CREATE TABLE IF NOT EXISTS com_anulaciones (
+        id SERIAL PRIMARY KEY,
+        fecha TIMESTAMP NOT NULL DEFAULT NOW(),
+        tabla VARCHAR(40) NOT NULL,
+        registro_id INTEGER NOT NULL,
+        numero VARCHAR(60),
+        accion VARCHAR(20) NOT NULL,
+        motivo TEXT NOT NULL,
+        usuario_id INTEGER,
+        usuario VARCHAR(150),
+        respaldo JSONB
+    );
+    CREATE INDEX IF NOT EXISTS idx_com_anul_tabla ON com_anulaciones (tabla, registro_id);
     CREATE TABLE IF NOT EXISTS com_recepciones (
         id SERIAL PRIMARY KEY,
         numero VARCHAR(30) UNIQUE,
@@ -273,6 +297,64 @@ def _cant(n):
     return f'{a_decimal(n).normalize():f}'
 
 
+def motivo_sin_pedido(d):
+    """Motivo obligatorio para comprar sin pedido de cliente. Devuelve (motivo de la lista, detalle).
+    Acepta motivo_compra (lista) + motivo_stock (texto, obligatorio si es "Otro"). Por compatibilidad,
+    un texto libre de 10+ letras sin motivo de lista se guarda como "Otro"."""
+    motivo = (d.get('motivo_compra') or '').strip()
+    detalle = (d.get('motivo_stock') or d.get('motivo_detalle') or '').strip()
+    if motivo:
+        if motivo not in MOTIVOS_SIN_PEDIDO:
+            raise ErrorCompras('Elige el motivo de la compra sin pedido de la lista.')
+        if motivo == 'Otro' and len(detalle) < 5:
+            raise ErrorCompras('Elegiste "Otro": escribe el motivo de la compra sin pedido.')
+        return motivo, (detalle or motivo)
+    if len(detalle) >= 10:
+        return 'Otro', detalle
+    raise ErrorCompras('Es una compra SIN pedido de cliente (para stock): elige el motivo '
+                       '(Stock estratégico, Crédito fiscal / IGV, Reposición de stock mínimo u Otro).')
+
+
+def registrar_anulacion(cur, tabla, registro_id, numero, accion, motivo, respaldo=None):
+    """Deja constancia (no se borra) de quién anuló o eliminó un documento de Compras, cuándo y por qué."""
+    uid, unom = _usuario()
+    cur.execute("""INSERT INTO com_anulaciones (tabla, registro_id, numero, accion, motivo, usuario_id, usuario, respaldo)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (tabla, registro_id, numero, accion, motivo, uid, unom,
+                 json.dumps(respaldo, default=str) if respaldo is not None else None))
+
+
+def fecha_hora(v):
+    """DD/MM/YYYY HH:MM (hora de Lima, como está en la base)."""
+    if isinstance(v, datetime):
+        return v.strftime('%d/%m/%Y %H:%M')
+    if isinstance(v, date):
+        return v.strftime('%d/%m/%Y')
+    return v or ''
+
+
+SQL_PROVEEDORES_CON_CONTACTO = """
+    SELECT p.id, p.ruc, p.razon_social, p.razon_comercial, p.direccion, p.lugar_recojo, p.condicion_pago,
+           p.tiempo_credito, p.banco, p.numero_cuenta, p.cci,
+           COALESCE(NULLIF(p.contacto, ''), pc.nombre_contacto) AS contacto,
+           COALESCE(NULLIF(p.telefono, ''), pc.telefono) AS telefono,
+           COALESCE(NULLIF(p.email, ''), pc.email) AS email,
+           pc.cargo AS contacto_cargo
+    FROM proveedores p
+    LEFT JOIN LATERAL (
+        SELECT c.nombre_contacto, c.telefono, c.email, c.cargo FROM proveedores_contactos c
+        WHERE c.proveedor_id = p.id AND COALESCE(c.activo, true) = true
+        ORDER BY COALESCE(c.principal, false) DESC, c.id LIMIT 1
+    ) pc ON true
+"""
+
+
+def proveedores_con_contacto(where='COALESCE(p.activo, true) = true', params=(), limite=2000):
+    """Proveedores con su contacto principal (tabla proveedores_contactos) para autollenar la OC:
+    razón social, RUC, dirección fiscal, contacto, teléfono y correo."""
+    return db_query(SQL_PROVEEDORES_CON_CONTACTO + ' WHERE ' + where + f' ORDER BY p.razon_social LIMIT {int(limite)}', params)
+
+
 # ============================================================
 # CONSULTAS DE APOYO
 # ============================================================
@@ -311,6 +393,32 @@ def _stock_libre_grupo(producto_ids):
         SELECT st.producto_id, st.c - COALESCE(sp.c, 0) AS libre FROM st LEFT JOIN sp USING (producto_id)
     """, (list(producto_ids), list(producto_ids)))
     return {f['producto_id']: max(a_decimal(f['libre']), Decimal('0')) for f in filas}
+
+
+def _stock_libre_empresa(producto_ids, empresa_id):
+    """Stock disponible de UNA empresa (todas sus sedes), menos lo separado para clientes."""
+    if not producto_ids or empresa_id is None:
+        return {}
+    filas = db_query("""
+        WITH st AS (SELECT producto_id, SUM(cantidad) AS c FROM inv_stock
+                    WHERE producto_id = ANY(%s) AND empresa_id = %s GROUP BY producto_id),
+             sp AS (SELECT producto_id, SUM(cantidad) AS c FROM inv_separaciones
+                    WHERE estado = 'Activa' AND vence_el >= CURRENT_DATE AND producto_id = ANY(%s) AND empresa_id = %s
+                    GROUP BY producto_id)
+        SELECT st.producto_id, st.c - COALESCE(sp.c, 0) AS libre FROM st LEFT JOIN sp USING (producto_id)
+    """, (list(producto_ids), empresa_id, list(producto_ids), empresa_id))
+    return {f['producto_id']: max(a_decimal(f['libre']), Decimal('0')) for f in filas}
+
+
+_cols_cache = {}
+
+
+def _tiene_columna(tabla, columna):
+    clave = (tabla, columna)
+    if clave not in _cols_cache:
+        _cols_cache[clave] = bool(db_query("""SELECT 1 FROM information_schema.columns
+                                             WHERE table_name = %s AND column_name = %s""", (tabla, columna)))
+    return _cols_cache[clave]
 
 
 def _detalle_stock_libre(producto_id):
@@ -360,8 +468,9 @@ def _comprado_por_pedido(cur=None, excluir_oc=None):
 
 
 def _pedidos_por_comprar(todos=False, pedido_id=None):
+    col_emp = 'empresa_id' if _tiene_columna('pedido_compra_pc', 'empresa_id') else 'NULL AS empresa_id'
     filas = db_query("""
-        SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero
+        SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero, """ + col_emp + """
         FROM pedido_compra_pc
         WHERE COALESCE(UPPER(estado), '') <> ALL(%s) AND (%s::int IS NULL OR id = %s::int)
         ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 300
@@ -383,13 +492,25 @@ def _pedidos_por_comprar(todos=False, pedido_id=None):
             continue
         pedidos.append({'id': pc['id'], 'numero': pc['numero'], 'fecha': pc['fecha'], 'cliente': pc['cliente'],
                         'ruc': pc['ruc'], 'estado': pc['estado'], 'lugar_entrega': pc['lugar_entrega'],
-                        'cotizacion': pc['cotizacion_numero'], 'items': items})
+                        'cotizacion': pc['cotizacion_numero'], 'items': items,
+                        'empresa_id': pc.get('empresa_id') or empresa_filtro()})
     libre = _stock_libre_grupo(ids)
+    por_empresa = {}
+    for eid in {p['empresa_id'] for p in pedidos if p['empresa_id'] is not None}:
+        por_empresa[eid] = _stock_libre_empresa(ids, eid)
     for p in pedidos:
         for it in p['items']:
             it['stock_libre'] = float(libre.get(it['producto_id'], 0)) if it['producto_id'] else 0
+            # Tabla resumen de Erika: pedido del cliente − stock disponible de la empresa = comprar para el pedido
+            if p['empresa_id'] is not None:
+                st = por_empresa.get(p['empresa_id'], {}).get(it['producto_id'], Decimal('0')) if it['producto_id'] else Decimal('0')
+            else:
+                st = libre.get(it['producto_id'], Decimal('0')) if it['producto_id'] else Decimal('0')
+            it['stock_empresa'] = float(st)
+            it['comprar_pedido'] = float(max(it['falta'] - st, Decimal('0')))
             for k in ('cantidad', 'comprado', 'falta'):
                 it[k] = float(it[k])
+        p['empresa_id'] = str(p['empresa_id']) if p['empresa_id'] is not None else None
         p['fecha'] = p['fecha'].strftime('%Y-%m-%d') if isinstance(p['fecha'], (date, datetime)) else p['fecha']
         p['pendientes'] = sum(1 for i in p['items'] if i['falta'] > 0)
     return pedidos
@@ -453,6 +574,7 @@ SQL_OC_LISTA = """
         SELECT orden_compra_id, COUNT(*) AS lineas, SUM(cantidad) AS pedida, SUM(COALESCE(cantidad_recibida, 0)) AS recibida,
                SUM(LEAST(COALESCE(cantidad_recibida, 0), cantidad) * precio_unitario) AS valor_recibido,
                string_agg(DISTINCT pedido_numero, ', ') AS pedidos, string_agg(DISTINCT cliente, ', ') AS clientes,
+               string_agg(DISTINCT cotizacion_numero, ', ') AS cotizaciones,
                string_agg(producto, ' · ' ORDER BY id) AS productos
         FROM ordenes_compra_items GROUP BY orden_compra_id
     ),
@@ -477,7 +599,10 @@ SQL_OC_LISTA = """
            oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, oc.num_cotizacion, oc.notas,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
            oc.subtotal, oc.igv, oc.total, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
-           oc.aprobado_en, oc.motivo_anulacion,
+           oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at,
+           COALESCE(it.pedidos, oc.pc_numeros) AS pc_numeros, COALESCE(it.cotizaciones, oc.cotizaciones_cliente) AS cotizaciones_cliente,
+           COALESCE(it.clientes, oc.clientes_pedido) AS clientes_pedido,
+           (COALESCE(it.pedidos, oc.pc_numeros) IS NULL) AS sin_pedido,
            COALESCE(it.lineas, 0) AS lineas, COALESCE(it.pedida, 0) AS pedida, COALESCE(it.recibida, 0) AS recibida,
            COALESCE(it.valor_recibido, 0) AS valor_recibido, it.pedidos, it.clientes, it.productos,
            COALESCE(pg.pagado, 0) AS pagado, COALESCE(fa.facturas, 0) AS facturas, COALESCE(fa.facturado, 0) AS facturado,
@@ -557,7 +682,8 @@ def compras_inicio():
     return render_template('compras/flujo.html',
                            puede_comprar=puede_comprar(), puede_aprobar=puede_aprobar(), puede_pagar=puede_pagar(),
                            puede_recibir=puede_recibir(), puede_facturar=puede_facturar(), es_admin=es_admin(),
-                           metodos=METODOS_PAGO, tab=request.args.get('tab') or 'hoy')
+                           metodos=METODOS_PAGO, tab=request.args.get('tab') or 'hoy',
+                           nueva=request.args.get('nueva') == '1', motivos=MOTIVOS_SIN_PEDIDO)
 
 
 @compras_flujo_bp.route('/compras/api/flujo/catalogos')
@@ -567,11 +693,7 @@ def api_catalogos():
         empresa_sesion = (session.get('empresa') or '').upper()
         defecto = next((e['id'] for e in empresas if (e.get('codigo') or '').upper() == empresa_sesion),
                        empresas[0]['id'] if empresas else None)
-        proveedores = db_query("""
-            SELECT id, ruc, razon_social, razon_comercial, direccion, lugar_recojo, condicion_pago, tiempo_credito,
-                   banco, numero_cuenta, cci, contacto, telefono, email
-            FROM proveedores WHERE COALESCE(activo, true) = true ORDER BY razon_social LIMIT 2000
-        """)
+        proveedores = proveedores_con_contacto()
         usuarios = db_query("""
             SELECT id, COALESCE(NULLIF(nombres_apellidos, ''), usuario_sistema) AS nombre FROM usuarios
             WHERE COALESCE(LOWER(estado), 'activo') NOT IN ('inactivo', 'inactiva', 'bloqueado') ORDER BY 2
@@ -580,7 +702,8 @@ def api_catalogos():
         return jsonify({'success': True, 'empresas': empresas, 'sedes': _sedes(), 'empresa_defecto': defecto,
                         'proveedores': [_fila(p) for p in proveedores], 'usuarios': [_fila(u) for u in usuarios],
                         'registro_sunat': [_fila(r) for r in registro], 'usuario_id': session.get('usuario_id'),
-                        'metodos': list(METODOS_PAGO), 'alerta_precio_pct': float(ALERTA_PRECIO_PCT)})
+                        'metodos': list(METODOS_PAGO), 'alerta_precio_pct': float(ALERTA_PRECIO_PCT),
+                        'motivos_sin_pedido': list(MOTIVOS_SIN_PEDIDO)})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -748,8 +871,11 @@ def api_ordenes():
             cond.append("oc.flujo = 'v2'")
         q = (request.args.get('q') or '').strip()
         if q:
-            cond.append("(oc.numero_orden ILIKE %s OR p.razon_social ILIKE %s OR it.clientes ILIKE %s OR it.pedidos ILIKE %s OR it.productos ILIKE %s)")
-            params += [f'%{q}%'] * 5
+            cond.append("(oc.numero_orden ILIKE %s OR p.razon_social ILIKE %s OR it.clientes ILIKE %s OR it.pedidos ILIKE %s "
+                        "OR it.productos ILIKE %s OR oc.pc_numeros ILIKE %s OR oc.clientes_pedido ILIKE %s OR oc.motivo_compra ILIKE %s)")
+            params += [f'%{q}%'] * 8
+        if request.args.get('sin_pedido') == '1':
+            cond.append("COALESCE(it.pedidos, oc.pc_numeros) IS NULL")
         datos = _listar_ocs(' AND '.join(cond), tuple(params))
         paso = request.args.get('paso')
         if paso:
@@ -766,7 +892,7 @@ def api_orden_detalle(oc_id):
         items = db_query("""
             SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, oci.cantidad, oci.precio_unitario, oci.total,
                    oci.pedido_id, oci.pedido_numero, oci.cliente, COALESCE(oci.cantidad_recibida, 0) AS cantidad_recibida,
-                   pr.codigo
+                   oci.cotizacion_numero, pr.codigo
             FROM ordenes_compra_items oci LEFT JOIN productos pr ON pr.id = oci.producto_id
             WHERE oci.orden_compra_id = %s ORDER BY oci.id
         """, (oc_id,))
@@ -834,11 +960,11 @@ def _validar_items(cur, items_in, oc_id=None):
         if precio <= 0:
             raise ErrorCompras(f'Escribe el precio sin IGV de "{nombre}".')
         pedido_id = it.get('pedido_id') or None
-        pedido_num = cliente = None
+        pedido_num = cliente = cotizacion = None
         if pedido_id:
             pedido_id = int(pedido_id)
             if pedido_id not in pedidos_cache:
-                cur.execute("SELECT id, numero, cliente, estado, items_json FROM pedido_compra_pc WHERE id = %s", (pedido_id,))
+                cur.execute("SELECT id, numero, cliente, estado, items_json, cotizacion_numero FROM pedido_compra_pc WHERE id = %s", (pedido_id,))
                 pc = cur.fetchone()
                 if not pc:
                     raise ErrorCompras('El pedido del cliente no existe.')
@@ -846,7 +972,7 @@ def _validar_items(cur, items_in, oc_id=None):
                     raise ErrorCompras(f"El pedido {pc['numero']} está {pc['estado']}: no se puede comprar para él.")
                 pedidos_cache[pedido_id] = (pc, _resolver_productos(_items_pedido(pc)))
             pc, pc_items = pedidos_cache[pedido_id]
-            pedido_num, cliente = pc['numero'], pc['cliente']
+            pedido_num, cliente, cotizacion = pc['numero'], pc['cliente'], pc['cotizacion_numero']
             necesita = sum((i['cantidad'] for i in pc_items if i['producto_id'] == producto_id), Decimal('0'))
             if necesita <= 0:
                 raise ErrorCompras(f'"{nombre}" no está en el pedido {pedido_num}.')
@@ -860,7 +986,7 @@ def _validar_items(cur, items_in, oc_id=None):
         items.append({'producto_id': producto_id, 'producto': nombre, 'codigo': prod['codigo'],
                       'unidad': prod['unidad'] or 'UND', 'cantidad': cantidad, 'precio_unitario': precio,
                       'total': redondear(cantidad * precio), 'pedido_id': pedido_id, 'pedido_numero': pedido_num,
-                      'cliente': cliente})
+                      'cliente': cliente, 'cotizacion': cotizacion})
     return items
 
 
@@ -915,10 +1041,11 @@ def api_orden_guardar():
             items = _validar_items(cur, d.get('items'), oc_id)
             sin_pedido = [i for i in items if not i['pedido_id']]
             tipo = 'Para stock' if sin_pedido else 'Bajo pedido'
-            motivo_stock = (d.get('motivo_stock') or '').strip()
-            if sin_pedido and len(motivo_stock) < 10:
-                raise ErrorCompras('Hay productos sin pedido de cliente (compra para stock). Explica el motivo: '
-                                   'por ejemplo "se vende todas las semanas" o "precio de oferta".')
+            motivo_compra = None
+            motivo_stock = ''
+            if sin_pedido:
+                # Comprar sin pedido (para stock) es una decisión explícita: motivo obligatorio de la lista
+                motivo_compra, motivo_stock = motivo_sin_pedido(d)
             totales = calcular_totales([{'cantidad': i['cantidad'], 'precio': i['precio_unitario']} for i in items])
             _, unom = _usuario()
             uid = session.get('usuario_id')
@@ -960,10 +1087,16 @@ def api_orden_guardar():
             for i in items:
                 cur.execute("""
                     INSERT INTO ordenes_compra_items (orden_compra_id, producto_id, producto, unidad, cantidad, precio_unitario,
-                        total, pedido_id, pedido_numero, cliente, cantidad_recibida)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0)
+                        total, pedido_id, pedido_numero, cliente, cantidad_recibida, cotizacion_numero)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s)
                 """, (oc_id, i['producto_id'], i['producto'], i['unidad'], i['cantidad'], i['precio_unitario'], i['total'],
-                      i['pedido_id'], i['pedido_numero'], i['cliente']))
+                      i['pedido_id'], i['pedido_numero'], i['cliente'], i.get('cotizacion')))
+            # Vista interna: a qué PC, cotización y cliente corresponde la OC, y el motivo si es sin pedido
+            unir = lambda k: ', '.join(sorted({str(i[k]) for i in items if i.get(k)})) or None
+            cur.execute("""UPDATE ordenes_compra SET motivo_compra = %s, pedido_id = %s, pc_numeros = %s,
+                               cotizaciones_cliente = %s, clientes_pedido = %s WHERE id = %s""",
+                        (motivo_compra, next((i['pedido_id'] for i in items if i['pedido_id']), None), unir('pedido_numero'),
+                         unir('cotizacion'), unir('cliente'), oc_id))
             alertas = _alertas_precio(cur, oc_id, items)
             mensaje = f"Orden {oc['numero_orden']} guardada como borrador."
             if enviar:
@@ -1058,8 +1191,9 @@ def api_orden_anular(oc_id):
                 raise ErrorCompras('La orden no existe.')
             if oc['estado'] in ('Anulada', 'Cerrada'):
                 raise ErrorCompras(f'La orden ya está {oc["estado"]}.')
-            if not (puede_aprobar() or (oc['estado'] == 'Borrador' and oc['usuario_id'] == uid)):
-                raise PermissionError('Solo una supervisora puede anular una orden que ya se envió.')
+            # Candado (Erika: "no quiero que los chicos hagan y deshagan"): solo administración/supervisión anula
+            if not puede_aprobar():
+                raise PermissionError('Solo un administrador (o la supervisora) puede anular órdenes de compra.')
             cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s LIMIT 1", (oc_id,))
             if cur.fetchone():
                 raise ErrorCompras('Ya llegó mercadería de esta orden: no se puede anular. Registra la devolución al proveedor y resuelve las diferencias.')
@@ -1068,6 +1202,7 @@ def api_orden_anular(oc_id):
             cur.execute("""UPDATE ordenes_compra SET estado = 'Anulada', anulado_por = %s, anulado_en = NOW(),
                            motivo_anulacion = %s, updated_at = NOW() WHERE id = %s""", (unom, motivo, oc_id))
             _historial(cur, oc_id, 'Anulada', motivo)
+            registrar_anulacion(cur, 'ordenes_compra', oc_id, oc['numero_orden'], 'Anulada', motivo)
         return jsonify({'success': True, 'message': f"Orden {oc['numero_orden']} anulada. Los pedidos de sus clientes vuelven a 'por comprar'."})
     except Exception as e:
         return _respuesta_error(e)
@@ -1501,7 +1636,10 @@ def orden_imprimir(oc_id):
         empresa = db_query("SELECT * FROM erp_empresas WHERE id = %s", (o['empresa_id'],)) if o['empresa_id'] else []
         sede = db_query("SELECT * FROM almacenes WHERE id = %s", (o['almacen_entrega_id'],)) if o['almacen_entrega_id'] else []
         prov = db_query("SELECT * FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o['proveedor_id'] else []
-        items = db_query("SELECT * FROM ordenes_compra_items WHERE orden_compra_id = %s ORDER BY id", (oc_id,))
+        items = db_query("""SELECT id, producto, unidad, cantidad, precio_unitario, total FROM ordenes_compra_items
+                            WHERE orden_compra_id = %s ORDER BY id""", (oc_id,))
+        # Documento para el PROVEEDOR: nunca lleva cliente, PC, cotización del cliente ni motivo interno
+        o = {k: v for k, v in dict(o).items() if k not in CAMPOS_CONFIDENCIALES}
         return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},
                                sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
                                hoja=request.args.get('hoja') or 'oc', hoy=date.today(),

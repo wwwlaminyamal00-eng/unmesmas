@@ -84,6 +84,11 @@ def asegurar_columnas_empresa():
                            AND table_name = 'pedido_compra_pc' AND column_name = 'valida_productos'""")
             if not cur.fetchone() and _existe_tabla(cur, 'pedido_compra_pc'):
                 cur.execute('ALTER TABLE pedido_compra_pc ADD COLUMN IF NOT EXISTS valida_productos BOOLEAN')
+            # 17/10: estado de entrega por producto de la cotización (solo "Pendiente" o "Entregado")
+            cur.execute("""SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                           AND table_name = 'cotizacion_detalle' AND column_name = 'estado_entrega'""")
+            if not cur.fetchone() and _existe_tabla(cur, 'cotizacion_detalle'):
+                cur.execute("ALTER TABLE cotizacion_detalle ADD COLUMN IF NOT EXISTS estado_entrega VARCHAR(20) DEFAULT 'Pendiente'")
         _listo = True
         _cache['t'] = 0   # releer empresas (pueden haber aparecido columnas nuevas)
 

@@ -83,9 +83,14 @@ function showDeleteModal(options) {
     document.getElementById('deleteModalTitle').textContent = options.title || '🗑️ Confirmar eliminación';
     document.getElementById('deleteMessage').textContent = options.message || '¿Estás seguro de eliminar este registro?';
     document.getElementById('deleteDetails').textContent = options.details || '';
+    const motivo = document.getElementById('deleteMotivo');
+    if (motivo) motivo.value = '';
+    const btn = document.getElementById('deleteModalBtn');
+    if (btn) btn.textContent = options.confirmText || '🗑️ Sí, eliminar';
     
     deleteActionCallback = options.onConfirm;
     modal.classList.add('show');
+    if (motivo) setTimeout(() => motivo.focus(), 50);
 }
 
 function closeDeleteModal() {
@@ -95,10 +100,27 @@ function closeDeleteModal() {
 }
 
 function executeDeleteAction() {
+    // Candado: anular o eliminar exige motivo (el servidor además exige ser administrador)
+    const motivo = (document.getElementById('deleteMotivo')?.value || '').trim();
+    if (motivo.length < 5) {
+        showToast('⚠️ Escribe el motivo (mínimo 5 letras)', 'warning');
+        document.getElementById('deleteMotivo')?.focus();
+        return;
+    }
     if (deleteActionCallback) {
-        deleteActionCallback();
+        deleteActionCallback(motivo);
     }
     closeDeleteModal();
+}
+
+// Envía una anulación/eliminación con su motivo
+async function enviarConMotivo(url, metodo, motivo, extra) {
+    const response = await fetch(url, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ motivo }, extra || {}))
+    });
+    return response.json();
 }
 
 // ============================================================
@@ -231,7 +253,7 @@ function renderSolicitudes() {
     tbody.innerHTML = filtered.map((s, index) => `
         <tr>
             <td>${index + 1}</td>
-            <td class="date-cell">${formatearFecha(s.fecha)}</td>
+            <td class="date-cell">${s.creado || formatearFecha(s.fecha)}</td>
             <td><span class="badge ${getEstadoClass(s.estado)}">${s.estado || 'Borrador'}</span></td>
             <td><span class="code-pill">${s.numero || '-'}</span></td>
             <td class="left">${s.producto || '-'}</td>
@@ -244,8 +266,8 @@ function renderSolicitudes() {
                     <button onclick="editSolicitud(${s.id})">✏️ Editar</button>
                     <button class="menu-approve" onclick="approveSolicitud(${s.id})">✅ Aprobar</button>
                     <button onclick="createOrdenFromSolicitud(${s.id})">📄 Crear orden</button>
-                    <div class="menu-divider"></div>
-                    <button class="danger" onclick="deleteSolicitud(${s.id})">🗑 Eliminar</button>
+                    ${ES_ADMIN_COMPRAS ? `<div class="menu-divider"></div>
+                    <button class="danger" onclick="deleteSolicitud(${s.id})">🗑️ Eliminar</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -288,7 +310,7 @@ function renderComparativos() {
             return `
             <tr>
                 <td>${index + 1}</td>
-                <td class="date-cell">${formatearFecha(c.fecha)}</td>
+                <td class="date-cell">${c.creado || formatearFecha(c.fecha)}</td>
                 <td><span class="badge ${getEstadoClass(c.estado)}">${c.estado || 'Borrador'}</span></td>
                 <td><span class="code-pill">${c.numero || '-'}</span></td>
                 <td class="left">${c.producto || '-'}</td>
@@ -299,7 +321,7 @@ function renderComparativos() {
                         <button onclick="editComparativo(${c.id})">✏️ Editar</button>
                         <button onclick="selectProveedor(${c.id})">✅ Seleccionar proveedor</button>
                         <div class="menu-divider"></div>
-                        <button class="danger" onclick="deleteComparativo(${c.id})">🗑 Eliminar</button>
+                        <button class="danger" onclick="deleteComparativo(${c.id})">🗑️ Eliminar</button>
                     </div>
                 </td>
             </tr>`;
@@ -308,7 +330,7 @@ function renderComparativos() {
         return `
         <tr>
             <td>${index + 1}</td>
-            <td class="date-cell">${formatearFecha(c.fecha)}</td>
+            <td class="date-cell">${c.creado || formatearFecha(c.fecha)}</td>
             <td><span class="badge ${getEstadoClass(c.estado)}">${c.estado || 'Borrador'}</span></td>
             <td><span class="code-pill">${c.numero || '-'}</span></td>
             <td class="left">${c.producto || '-'}</td>
@@ -321,7 +343,7 @@ function renderComparativos() {
                     <button onclick="editComparativo(${c.id})">✏️ Editar</button>
                     <button onclick="selectProveedor(${c.id})">✅ Seleccionar proveedor</button>
                     <div class="menu-divider"></div>
-                    <button class="danger" onclick="deleteComparativo(${c.id})">🗑 Eliminar</button>
+                    <button class="danger" onclick="deleteComparativo(${c.id})">🗑️ Eliminar</button>
                 </div>
             </td>
         </tr>`;
@@ -338,7 +360,11 @@ function renderOrdenes() {
     let filtered = (ordenesData || []).filter(o => {
         const matchSearch = (o.numero || '').toLowerCase().includes(search) ||
                            (o.proveedor || '').toLowerCase().includes(search) ||
-                           (o.ruc || '').includes(search);
+                           (o.ruc || '').includes(search) ||
+                           (o.pc_numeros || '').toLowerCase().includes(search) ||
+                           (o.clientes_pedido || '').toLowerCase().includes(search) ||
+                           (o.motivo_compra || '').toLowerCase().includes(search) ||
+                           (o.items || []).some(i => (i.producto || '').toLowerCase().includes(search));
         const matchStatus = statusFilter === '' || o.estado === statusFilter;
         const matchFecha = filtrarPorFecha(o, 'ordenFechaInicio', 'ordenFechaFin');
         return matchSearch && matchStatus && matchFecha;
@@ -350,16 +376,19 @@ function renderOrdenes() {
     renderOrdenKPI();
     
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px;color:#94A3B8;">No hay órdenes de compra</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:#94A3B8;">No hay órdenes de compra</td></tr>`;
         return;
     }
     
     tbody.innerHTML = filtered.map((o, index) => `
         <tr>
             <td>${index + 1}</td>
-            <td class="date-cell">${formatearFecha(o.fecha || o.fecha_creacion)}</td>
+            <td class="date-cell">${o.creado || formatearFecha(o.fecha || o.fecha_creacion)}</td>
             <td><span class="badge ${getEstadoClass(o.estado)}">${o.estado || 'Borrador'}</span></td>
             <td><span class="code-pill">${o.numero || '-'}</span></td>
+            <td class="left">${o.sin_pedido
+                ? `<span class="badge-sin-pedido">Compra sin pedido</span><small class="sub">${escCompras(o.motivo_compra || 'Sin motivo (OC antigua)')}</small>`
+                : `<b>${escCompras(o.pc_numeros)}</b><small class="sub">${escCompras(o.clientes_pedido)}${o.cotizaciones_cliente ? ' · ' + escCompras(o.cotizaciones_cliente) : ''}</small>`}</td>
             <td class="left">${o.proveedor || '-'}</td>
             <td>${o.ruc || '-'}</td>
             <td class="left">${(o.items || []).map(i => i.producto).join(', ') || '-'}</td>
@@ -369,10 +398,12 @@ function renderOrdenes() {
                 <button class="kebab" onclick="toggleMenu(event, 'orden-${o.id}')">⋯</button>
                 <div class="menu-pop" id="menu-orden-${o.id}" style="display:none;">
                     <button onclick="editOrden(${o.id})">✏️ Editar</button>
+                    <button class="menu-pdf" onclick="window.open('/compras/orden/${o.id}/preview','_blank')">🖨️ Imprimir para el proveedor</button>
                     <button class="menu-order" onclick="sendOrden(${o.id})">📤 Enviar a proveedor</button>
                     <button class="menu-receive" onclick="createRecepcionFromOrden(${o.id})">📦 Recibir mercadería</button>
-                    <div class="menu-divider"></div>
-                    <button class="danger" onclick="deleteOrden(${o.id})">🗑 Eliminar</button>
+                    ${ES_ADMIN_COMPRAS ? `<div class="menu-divider"></div>
+                    ${o.estado !== 'Anulada' ? `<button class="danger" onclick="anularOrden(${o.id})">⛔ Anular</button>` : ''}
+                    <button class="danger" onclick="deleteOrden(${o.id})">🗑️ Eliminar</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -406,7 +437,7 @@ function renderComprobantesProveedor() {
     tbody.innerHTML = filtered.map((c, index) => `
         <tr>
             <td>${index + 1}</td>
-            <td class="date-cell">${formatearFecha(c.fecha)}</td>
+            <td class="date-cell">${c.creado || formatearFecha(c.fecha)}</td>
             <td><span class="badge ${getEstadoClass(c.estado)}">${c.estado || 'Pendiente'}</span></td>
             <td>${c.tipo || 'Factura'}</td>
             <td><span class="code-pill">${c.numero || '-'}</span></td>
@@ -418,8 +449,7 @@ function renderComprobantesProveedor() {
                 <div class="menu-pop" id="menu-comp-prov-${c.id}" style="display:none;">
                     <button onclick="editComprobanteProveedor(${c.id})">✏️ Editar</button>
                     <button onclick="payComprobanteProveedor(${c.id})">💰 Marcar pagado</button>
-                    <div class="menu-divider"></div>
-                    <button class="danger" onclick="deleteComprobanteProveedor(${c.id})">🗑 Eliminar</button>
+                    ${ES_ADMIN_COMPRAS && c.estado !== 'Anulado' ? `<button class="danger" onclick="deleteComprobanteProveedor(${c.id})">⛔ Anular</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -454,7 +484,7 @@ function renderRecepciones() {
     tbody.innerHTML = filtered.map((r, index) => `
         <tr>
             <td>${index + 1}</td>
-            <td class="date-cell">${formatearFecha(r.fecha)}</td>
+            <td class="date-cell">${r.creado || formatearFecha(r.fecha)}</td>
             <td><span class="badge ${getEstadoClass(r.estado)}">${r.estado || 'Pendiente'}</span></td>
             <td><span class="code-pill">${r.numero || '-'}</span></td>
             <td><span class="code-pill">${r.orden || '-'}</span></td>
@@ -468,7 +498,7 @@ function renderRecepciones() {
                     <button class="menu-approve" onclick="approveRecepcion(${r.id})">✅ Aprobar recepción</button>
                     <button onclick="storeRecepcion(${r.id})">📦 Almacenar</button>
                     <div class="menu-divider"></div>
-                    <button class="danger" onclick="deleteRecepcion(${r.id})">🗑 Eliminar</button>
+                    <button class="danger" onclick="deleteRecepcion(${r.id})">🗑️ Eliminar</button>
                 </div>
             </td>
         </tr>
@@ -619,6 +649,10 @@ document.addEventListener('click', function() {
 
 function formatearFecha(fecha) {
     if (!fecha) return '-';
+    // "2026-10-16" / "2026-10-16T14:47:48" (hora de Lima): se toma el texto tal cual; new Date() lo corría un día
+    const m = String(fecha).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    if (window.fechaHoraLima) return window.fechaHoraLima(fecha, false);
     try {
         const date = new Date(fecha);
         if (isNaN(date.getTime())) return fecha;
@@ -637,23 +671,69 @@ function filtrarPorFecha(item, fechaInicioId, fechaFinId) {
     
     if (!fechaInicio && !fechaFin) return true;
     
-    const fechaItem = item.fecha ? new Date(item.fecha) : null;
-    if (!fechaItem) return true;
-    
-    if (fechaInicio) {
-        const inicio = new Date(fechaInicio);
-        inicio.setHours(0, 0, 0, 0);
-        if (fechaItem < inicio) return false;
-    }
-    
-    if (fechaFin) {
-        const fin = new Date(fechaFin);
-        fin.setHours(23, 59, 59, 999);
-        if (fechaItem > fin) return false;
-    }
-    
+    // Se compara el texto AAAA-MM-DD: con new Date() la fecha se corría un día por la zona horaria de Lima
+    const fechaItem = fechaISO(item.fecha || item.fecha_creacion);
+    if (!fechaItem) return false;
+    if (fechaInicio && fechaItem < fechaInicio) return false;
+    if (fechaFin && fechaItem > fechaFin) return false;
     return true;
 }
+
+function fechaISO(v) {
+    if (!v) return '';
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function escCompras(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ============================================================
+// FILTROS: la tabla se actualiza sola al cambiar cualquier filtro
+// (antes no había ningún evento conectado a los filtros, por eso no pasaba nada)
+// ============================================================
+const FILTROS_COMPRAS = {
+    solicitud: { render: () => renderSolicitudes(), ids: ['solicitudSearch', 'solicitudStatus', 'solicitudFechaInicio', 'solicitudFechaFin'] },
+    comparativo: { render: () => renderComparativos(), ids: ['comparativoSearch', 'comparativoStatus', 'comparativoFechaInicio', 'comparativoFechaFin'] },
+    orden: { render: () => renderOrdenes(), ids: ['ordenSearch', 'ordenStatus', 'ordenFechaInicio', 'ordenFechaFin'] },
+    compProv: { render: () => renderComprobantesProveedor(), ids: ['compProvSearch', 'compProvStatus', 'compProvFechaInicio', 'compProvFechaFin'] },
+    recepcion: { render: () => renderRecepciones(), ids: ['recepcionSearch', 'recepcionStatus', 'recepcionFechaInicio', 'recepcionFechaFin'] }
+};
+
+function conectarFiltrosCompras() {
+    Object.values(FILTROS_COMPRAS).forEach(f => {
+        f.ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || el.dataset.filtroConectado) return;
+            el.dataset.filtroConectado = '1';
+            el.addEventListener('input', f.render);
+            el.addEventListener('change', f.render);
+        });
+    });
+}
+
+// La "X" del filtro de fechas: antes llamaba a funciones que no existían (no hacía nada)
+function limpiarFechasCompras(clave) {
+    const f = FILTROS_COMPRAS[clave];
+    if (!f) return;
+    document.getElementById(f.ids[2]).value = '';
+    document.getElementById(f.ids[3]).value = '';
+    f.render();
+}
+function clearSolicitudDateFilter() { limpiarFechasCompras('solicitud'); }
+function clearComparativoDateFilter() { limpiarFechasCompras('comparativo'); }
+function clearOrdenDateFilter() { limpiarFechasCompras('orden'); }
+function clearCompProvDateFilter() { limpiarFechasCompras('compProv'); }
+function clearRecepcionDateFilter() { limpiarFechasCompras('recepcion'); }
+
+const ES_ADMIN_COMPRAS = (document.currentScript && document.currentScript.dataset.admin === 'true')
+    || (document.body && document.body.dataset && document.body.dataset.comprasAdmin === 'true');
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', conectarFiltrosCompras);
+else conectarFiltrosCompras();
 
 // ============================================================
 // FUNCIONES DE EDICIÓN
@@ -712,7 +792,7 @@ function editComparativo(id) {
                 <td><input type="number" step="0.01" style="width:100%;border:none;background:transparent;padding:4px;text-align:right;" value="${p.precio || 0}" placeholder="0.00"></td>
                 <td><input style="width:100%;border:none;background:transparent;padding:4px;" value="${p.plazo || ''}" placeholder="días"></td>
                 <td><input style="width:100%;border:none;background:transparent;padding:4px;" value="${p.condPago || 'Contado'}" placeholder="Contado/Crédito"></td>
-                <td><button onclick="this.closest('tr').remove();" style="background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;">✕</button></td>
+                <td><button onclick="this.closest('tr').remove();" type="button" class="btn-tachito" title="Quitar" aria-label="Quitar">🗑️</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -737,36 +817,28 @@ function editOrden(id) {
         return;
     }
     
+    ordResetForm();
     window._ordenEditId = id;  // al guardar se actualiza esta orden en lugar de crear otra
     document.getElementById('ordenCompraModal').classList.add('show');
     document.getElementById('ordNumero').value = orden.numero || '';
-    document.getElementById('ordFecha').value = orden.fecha ? orden.fecha.split('T')[0] : '';
+    document.getElementById('ordFecha').value = orden.fecha ? String(orden.fecha).slice(0, 10) : '';
     document.getElementById('ordProveedor').value = orden.proveedor || '';
     document.getElementById('ordRuc').value = orden.ruc || '';
+    document.getElementById('ordDireccion').value = orden.direccion || '';
+    document.getElementById('ordContacto').value = orden.contacto_proveedor || '';
+    document.getElementById('ordTelefono').value = orden.telefono_proveedor || '';
+    document.getElementById('ordEmail').value = orden.email_proveedor || '';
     document.getElementById('ordCondPago').value = orden.condicion_pago || 'Contado';
     document.getElementById('ordMoneda').value = orden.moneda || 'Soles (S/)';
+    document.getElementById('ordNotas').value = orden.notas || '';
+    document.getElementById('ordMotivo').value = orden.motivo_compra || '';
+    document.getElementById('ordMotivoDetalle').value = orden.motivo_stock && orden.motivo_stock !== orden.motivo_compra ? orden.motivo_stock : '';
+    ordCargarPedidos(orden.pedido_id || '');
     
     const tbody = document.getElementById('ordenItemsBody');
     tbody.innerHTML = '';
-    
-    if (orden.items && orden.items.length > 0) {
-        orden.items.forEach((item, index) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${index + 1}</td>
-                <td><input style="width:100%;border:none;background:transparent;padding:4px;" value="${item.producto || ''}" placeholder="Descripción del producto"></td>
-                <td><input type="number" style="width:70px;border:none;background:transparent;padding:4px;text-align:center;" value="${item.cantidad || 1}" onchange="calcularTotalOrden(this)"></td>
-                <td><input type="number" step="0.01" style="width:100px;border:none;background:transparent;padding:4px;text-align:right;" value="${item.precioUnitario || 0}" onchange="calcularTotalOrden(this)"></td>
-                <td style="font-weight:900;">S/ ${((item.cantidad || 0) * (item.precioUnitario || 0)).toFixed(2)}</td>
-                <td><button onclick="this.closest('tr').remove();calcularTotalOrdenGeneral();" style="background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;">✕</button></td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } else {
-        addOrdenItemRow();
-    }
-    
-    calcularTotalOrdenGeneral();
+    (orden.items && orden.items.length ? orden.items : [{}]).forEach(item => addOrdenItemRowConDatos(item));
+    ordRecalcular();
     
     const saveBtn = document.querySelector('#ordenCompraModal .btn-primary');
     if (saveBtn) {
@@ -882,12 +954,9 @@ async function deleteSolicitud(id) {
         title: '🗑️ Eliminar solicitud de compra',
         message: '¿Estás seguro de eliminar esta solicitud de compra?',
         details: `📋 Solicitud: ${solicitud.numero}\n📦 Producto: ${solicitud.producto}\n👤 Solicitante: ${solicitud.solicitante}\n📅 Fecha: ${formatearFecha(solicitud.fecha)}`,
-        onConfirm: async () => {
+        onConfirm: async (motivo) => {
             try {
-                const response = await fetch(`/compras/api/solicitudes/${id}`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
+                const result = await enviarConMotivo(`/compras/api/solicitudes/${id}`, 'DELETE', motivo);
                 if (result.success) {
                     showToast('✅ Solicitud eliminada correctamente', 'success');
                     await cargarDatosCompras();
@@ -946,12 +1015,9 @@ async function deleteOrden(id) {
         title: '🗑️ Eliminar orden de compra',
         message: '¿Estás seguro de eliminar esta orden de compra?',
         details: `📄 Orden: ${orden.numero}\n🏢 Proveedor: ${orden.proveedor}\n💰 Total: ${orden.moneda || 'S/'} ${orden.total.toFixed(2)}`,
-        onConfirm: async () => {
+        onConfirm: async (motivo) => {
             try {
-                const response = await fetch(`/compras/api/ordenes/${id}`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
+                const result = await enviarConMotivo(`/compras/api/ordenes/${id}`, 'DELETE', motivo);
                 if (result.success) {
                     showToast('✅ Orden eliminada correctamente', 'success');
                     await cargarDatosCompras();
@@ -962,6 +1028,31 @@ async function deleteOrden(id) {
             } catch (error) {
                 console.error('Error eliminando orden:', error);
                 showToast('❌ Error al eliminar', 'error');
+            }
+        }
+    });
+}
+
+async function anularOrden(id) {
+    const orden = ordenesData.find(o => o.id === id);
+    if (!orden) { showToast('❌ Orden no encontrada', 'error'); return; }
+    showDeleteModal({
+        title: '⛔ Anular orden de compra',
+        message: '¿Anular esta orden de compra? No se borra: queda como "Anulada" con tu motivo.',
+        details: `📄 Orden: ${orden.numero}\n🏢 Proveedor: ${orden.proveedor}\n💰 Total: S/ ${orden.total.toFixed(2)}`,
+        confirmText: '⛔ Sí, anular',
+        onConfirm: async (motivo) => {
+            try {
+                const result = await enviarConMotivo(`/compras/api/ordenes/${id}/toggle`, 'PUT', motivo, { estado: 'Anulada' });
+                if (result.success) {
+                    showToast('✅ Orden anulada', 'success');
+                    await cargarDatosCompras();
+                    renderOrdenes();
+                } else {
+                    showToast(`❌ Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showToast('❌ Error al anular', 'error');
             }
         }
     });
@@ -1009,17 +1100,15 @@ async function deleteComprobanteProveedor(id) {
     }
     
     showDeleteModal({
-        title: '🗑️ Eliminar comprobante',
-        message: '¿Estás seguro de eliminar este comprobante?',
+        title: '⛔ Anular comprobante del proveedor',
+        message: '¿Anular este comprobante? No se borra: queda como "Anulado" con tu motivo y sale de Cuentas por pagar.',
         details: `🧾 Tipo: ${comprobante.tipo}\n📋 N°: ${comprobante.numero}\n🏢 Proveedor: ${comprobante.proveedor}\n💰 Monto: S/ ${comprobante.monto.toFixed(2)}`,
-        onConfirm: async () => {
+        confirmText: '⛔ Sí, anular',
+        onConfirm: async (motivo) => {
             try {
-                const response = await fetch(`/compras/api/comprobantes-proveedor/${id}`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
+                const result = await enviarConMotivo(`/compras/api/comprobantes-proveedor/${id}`, 'DELETE', motivo);
                 if (result.success) {
-                    showToast('✅ Comprobante eliminado correctamente', 'success');
+                    showToast('✅ Comprobante anulado', 'success');
                     await cargarDatosCompras();
                     renderComprobantesProveedor();
                 } else {
@@ -1193,24 +1282,14 @@ function createOrdenFromSolicitud(id) {
         btnClass: 'btn-blue',
         confirmText: '📄 Sí, crear orden',
         onConfirm: () => {
-            const nuevaOrden = {
-                id: ordenesData.length + 1,
-                numero: `OC-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(ordenesData.length + 1).padStart(4,'0')}`,
-                fecha: new Date().toISOString().slice(0,10),
-                estado: 'Borrador',
-                proveedor: 'Por definir',
-                ruc: 'Por definir',
-                condPago: 'Contado',
-                moneda: 'Soles (S/)',
-                items: [{ producto: solicitud.producto, cantidad: solicitud.cantidad, precioUnitario: 0, total: 0 }],
-                subtotal: 0,
-                igv: 0,
-                total: 0
-            };
-            ordenesData.push(nuevaOrden);
-            renderOrdenes();
-            showToast(`📄 Orden de compra creada desde solicitud ${solicitud.numero}`, 'success');
+            // Antes se creaba una OC "de mentira" solo en pantalla (no se guardaba). Ahora abre el formulario real.
             switchTab('orden_compra');
+            openOrdenCompraModal();
+            const tbody = document.getElementById('ordenItemsBody');
+            tbody.innerHTML = '';
+            addOrdenItemRowConDatos({ producto: solicitud.producto, cantidad: solicitud.cantidad, um: solicitud.unidad });
+            document.getElementById('ordNotas').value = `Según solicitud ${solicitud.numero}`;
+            showToast(`📄 Completa la orden para la solicitud ${solicitud.numero}`, 'info');
         }
     });
 }
@@ -1289,9 +1368,35 @@ async function storeRecepcion(id) {
 // FUNCIONES DE MODALES
 // ============================================================
 
+function hoyLocalISO() {
+    return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function resetSolicitudForm() {
+    // Antes "+ Nueva solicitud" reabría el último modal (con sus datos y en modo "Actualizar"):
+    // el id de edición quedaba guardado en el botón y los campos no se limpiaban.
+    const modal = document.getElementById('solicitudModal');
+    modal.querySelectorAll('input, textarea').forEach(el => {
+        if (el.type === 'number') el.value = el.defaultValue || '';
+        else el.value = '';
+    });
+    modal.querySelectorAll('select').forEach(el => {
+        const def = [...el.options].findIndex(o => o.defaultSelected);
+        el.selectedIndex = def >= 0 ? def : 0;
+    });
+    const saveBtn = modal.querySelector('.btn-primary');
+    if (saveBtn) {
+        delete saveBtn.dataset.editId;
+        saveBtn.textContent = '📤 Enviar a aprobación';
+    }
+    document.getElementById('solicitudModalTitle').textContent = '📋 Nueva solicitud de compra';
+    if (typeof solCalcularTotal === 'function') solCalcularTotal();
+}
+
 function openSolicitudModal() {
+    resetSolicitudForm();
     document.getElementById('solicitudModal').classList.add('show');
-    document.getElementById('solFecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('solFecha').value = hoyLocalISO();
     document.getElementById('solNumero').value = `SOL-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(solicitudesData.length + 1).padStart(4,'0')}`;
 }
 
@@ -1302,12 +1407,11 @@ function openComparativoModal() {
 }
 
 function openOrdenCompraModal() {
-    window._ordenEditId = null;
+    // Antes solo cambiaba la fecha y el número: proveedor, productos y totales de la OC anterior seguían ahí.
+    ordResetForm();
+    ordCargarPedidos('');
+    ordRecalcular();
     document.getElementById('ordenCompraModal').classList.add('show');
-    document.getElementById('ordFecha').value = new Date().toISOString().slice(0,10);
-    // El número definitivo lo asigna el servidor al guardar (evita duplicados)
-    document.getElementById('ordNumero').value = '';
-    document.getElementById('ordNumero').placeholder = 'Se asigna al guardar';
 }
 
 function openComprobanteProveedorModal() {
@@ -1351,6 +1455,8 @@ async function saveSolicitud(estado) {
         const result = await response.json();
         if (result.success) {
             showToast(`✅ Solicitud ${data.numero_solicitud} guardada correctamente`, 'success');
+            resetSolicitudForm();
+            closeModal('solicitudModal');
             await cargarDatosCompras();
             renderSolicitudes();
         } else {
@@ -1360,14 +1466,6 @@ async function saveSolicitud(estado) {
         console.error('Error guardando solicitud:', error);
         showToast('❌ Error al guardar en la base de datos', 'error');
     }
-    
-    const saveBtn = document.querySelector('#solicitudModal .btn-primary');
-    if (saveBtn) {
-        delete saveBtn.dataset.editId;
-        saveBtn.textContent = '📤 Enviar a aprobación';
-    }
-    document.getElementById('solicitudModalTitle').textContent = '📋 Nueva solicitud de compra';
-    closeModal('solicitudModal');
 }
 
 async function saveComparativo(estado) {
@@ -1417,14 +1515,26 @@ async function saveComparativo(estado) {
 async function saveOrdenCompra(estado) {
     const items = [];
     document.querySelectorAll('#ordenItemsBody tr').forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        if (inputs.length >= 2) {
-            const producto = inputs[0].value || 'Sin producto';
-            const cantidad = parseFloat(inputs[1].value) || 0;
-            const precioUnitario = parseFloat(inputs[2].value) || 0;
-            items.push({ producto, cantidad, precioUnitario, total: cantidad * precioUnitario });
-        }
+        const desc = row.querySelector('.ord-item-desc');
+        if (!desc) return;
+        const producto = desc.value.trim() || 'Sin producto';
+        const cantidad = parseFloat(row.querySelector('.ord-item-cant')?.value) || 0;
+        const precioUnitario = parseFloat(row.querySelector('.ord-item-precio')?.value) || 0;
+        items.push({ producto, cantidad, precioUnitario, total: cantidad * precioUnitario,
+                     unidad: row.querySelector('.ord-item-unidad')?.value || 'UND' });
     });
+    const pedidoId = document.getElementById('ordPedido')?.value || '';
+    const motivoCompra = document.getElementById('ordMotivo')?.value || '';
+    const motivoDetalle = (document.getElementById('ordMotivoDetalle')?.value || '').trim();
+    if (!pedidoId && !motivoCompra) {
+        showToast('⚠️ Es una compra SIN pedido: elige el motivo', 'warning');
+        document.getElementById('ordMotivo')?.focus();
+        return;
+    }
+    if (!pedidoId && motivoCompra === 'Otro' && motivoDetalle.length < 5) {
+        showToast('⚠️ Elegiste "Otro": escribe el detalle del motivo', 'warning');
+        return;
+    }
     
     const subtotal = items.reduce((sum, i) => sum + i.total, 0);
     const igv = subtotal * 0.18;
@@ -1436,9 +1546,21 @@ async function saveOrdenCompra(estado) {
         fecha_creacion: document.getElementById('ordFecha').value,
         estado: estado,
         proveedor: document.getElementById('ordProveedor').value,
+        proveedor_id: window._ordProveedorId || null,
         ruc: document.getElementById('ordRuc').value,
         condicion_pago: document.getElementById('ordCondPago').value,
         moneda: document.getElementById('ordMoneda').value,
+        fecha_requerida: document.getElementById('ordFechaRequerida').value,
+        tiempo_entrega: document.getElementById('ordTiempoEntrega').value,
+        lugar_entrega: document.getElementById('ordLugarEntrega').value,
+        contacto_proveedor: document.getElementById('ordContacto').value,
+        telefono_proveedor: document.getElementById('ordTelefono').value,
+        email_proveedor: document.getElementById('ordEmail').value,
+        notas: document.getElementById('ordNotas').value,
+        descuento_porcentaje: document.getElementById('ordDescuentoTipo').value === 'porcentaje' ? (parseFloat(document.getElementById('ordDescuento').value) || 0) : 0,
+        pedido_id: pedidoId || null,
+        motivo_compra: pedidoId ? '' : motivoCompra,
+        motivo_stock: pedidoId ? '' : motivoDetalle,
         items: items,
         subtotal: subtotal,
         igv: igv,
@@ -1456,6 +1578,7 @@ async function saveOrdenCompra(estado) {
             showToast(`✅ Orden ${(result.data && result.data.numero_orden) || data.numero_orden} guardada`, 'success');
             if (result.advertencia) showToast('⚠️ ' + result.advertencia, 'warning');
             window._ordenEditId = null;
+            closeModal('ordenCompraModal');
             await cargarDatosCompras();
             renderOrdenes();
         } else {
@@ -1465,7 +1588,6 @@ async function saveOrdenCompra(estado) {
         console.error('Error guardando orden:', error);
         showToast('❌ Error al guardar', 'error');
     }
-    closeModal('ordenCompraModal');
 }
 
 async function saveComprobanteProveedor(estado) {
@@ -1591,52 +1713,15 @@ function addComparativoRow() {
         <td><input type="number" step="0.01" style="width:100%;border:none;background:transparent;padding:4px;text-align:right;" placeholder="0.00"></td>
         <td><input style="width:100%;border:none;background:transparent;padding:4px;" placeholder="días"></td>
         <td><input style="width:100%;border:none;background:transparent;padding:4px;" placeholder="Contado/Crédito"></td>
-        <td><button onclick="this.closest('tr').remove();" style="background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;">✕</button></td>
+        <td><button onclick="this.closest('tr').remove();" type="button" class="btn-tachito" title="Quitar" aria-label="Quitar">🗑️</button></td>
     `;
     tbody.appendChild(tr);
 }
 
-function addOrdenItemRow() {
-    const tbody = document.getElementById('ordenItemsBody');
-    const count = tbody.children.length + 1;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-        <td>${count}</td>
-        <td><input style="width:100%;border:none;background:transparent;padding:4px;" placeholder="Descripción del producto"></td>
-        <td><input type="number" style="width:70px;border:none;background:transparent;padding:4px;text-align:center;" value="1" onchange="calcularTotalOrden(this)"></td>
-        <td><input type="number" step="0.01" style="width:100px;border:none;background:transparent;padding:4px;text-align:right;" value="0" onchange="calcularTotalOrden(this)"></td>
-        <td style="font-weight:900;">S/ 0.00</td>
-        <td><button onclick="this.closest('tr').remove();calcularTotalOrdenGeneral();" style="background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;">✕</button></td>
-    `;
-    tbody.appendChild(tr);
-}
-
-function calcularTotalOrden(input) {
-    const row = input.closest('tr');
-    const cantidad = parseFloat(row.querySelectorAll('input')[0]?.value) || 0;
-    const precio = parseFloat(row.querySelectorAll('input')[1]?.value) || 0;
-    const total = cantidad * precio;
-    row.querySelectorAll('td')[4].textContent = `S/ ${total.toFixed(2)}`;
-    calcularTotalOrdenGeneral();
-}
-
-function calcularTotalOrdenGeneral() {
-    let subtotal = 0;
-    document.querySelectorAll('#ordenItemsBody tr').forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        if (inputs.length >= 2) {
-            const cantidad = parseFloat(inputs[0].value) || 0;
-            const precio = parseFloat(inputs[1].value) || 0;
-            subtotal += cantidad * precio;
-        }
-    });
-    const igv = subtotal * 0.18;
-    const total = subtotal + igv;
-    
-    document.getElementById('ordSubtotal').textContent = subtotal.toFixed(2);
-    document.getElementById('ordIgv').textContent = igv.toFixed(2);
-    document.getElementById('ordTotal').textContent = total.toFixed(2);
-}
+// Las filas de la OC las crea el modal (orden_compra_modal.html: addOrdenItemRow / ordRecalcular).
+// Antes este archivo tenía otra versión de addOrdenItemRow sin clases que la reemplazaba y rompía los totales.
+function calcularTotalOrden() { ordRecalcular(); }
+function calcularTotalOrdenGeneral() { ordRecalcular(); }
 
 // ============================================================
 // FUNCIONES DE UTILIDAD
@@ -1810,7 +1895,6 @@ window.showToast = showToast;
 window.exportData = exportData;
 window.toggleMenu = toggleMenu;
 window.addComparativoRow = addComparativoRow;
-window.addOrdenItemRow = addOrdenItemRow;
 window.calcularTotalOrden = calcularTotalOrden;
 window.calcularTotalOrdenGeneral = calcularTotalOrdenGeneral;
 
@@ -1818,6 +1902,12 @@ window.approveSolicitud = approveSolicitud;
 window.deleteSolicitud = deleteSolicitud;
 window.deleteComparativo = deleteComparativo;
 window.deleteOrden = deleteOrden;
+window.anularOrden = anularOrden;
+window.clearSolicitudDateFilter = clearSolicitudDateFilter;
+window.clearComparativoDateFilter = clearComparativoDateFilter;
+window.clearOrdenDateFilter = clearOrdenDateFilter;
+window.clearCompProvDateFilter = clearCompProvDateFilter;
+window.clearRecepcionDateFilter = clearRecepcionDateFilter;
 window.sendOrden = sendOrden;
 window.deleteComprobanteProveedor = deleteComprobanteProveedor;
 window.deleteRecepcion = deleteRecepcion;

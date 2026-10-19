@@ -93,6 +93,19 @@ function fechaParaInput(v) {
     return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}T${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
 }
 // Elige la condición de pago aunque esté escrita distinto ("Credito 30 Dias" = "Crédito 30 días")
+// El descuento de la cotización se guarda en la cabecera. Para PC, guía y factura se usa el precio
+// por producto YA descontado (precio_neto, calculado en el servidor); la edición de la cotización
+// sigue usando el precio de lista.
+function preciosNetosCotizacion(data) {
+    ((data && data.productos) || []).forEach(p => {
+        if (p.precio_neto !== undefined && p.precio_neto !== null) {
+            if (p.precio_lista === undefined) p.precio_lista = p.valorVenta;
+            p.valorVenta = Number(p.precio_neto);
+        }
+    });
+    return data;
+}
+
 function setCondicionPagoPC(valor) {
     const sel = document.getElementById('pcCondicion');
     if (!sel) return;
@@ -170,11 +183,11 @@ function money(n) {
 }
 
 function now() {
-    return new Date().toLocaleString('es-PE', { hour12: false });
+    return new Date().toLocaleString('es-PE', { hour12: false, timeZone: 'America/Lima' });
 }
 
 function today() {
-    return new Date().toISOString().slice(0,10);
+    return isoLima();
 }
 
 function badgeStatus(s) {
@@ -394,6 +407,7 @@ async function apiFetch(url, options = {}) {
 
 function formatFecha(fechaStr) {
     if (!fechaStr) return '-';
+    if (window.fechaHoraLima) return window.fechaHoraLima(fechaStr);   // DD/MM/AAAA HH:MM, hora de Lima
     
     try {
         const fecha = new Date(fechaStr);
@@ -1134,7 +1148,7 @@ function renderCotizaciones() {
             }
             
             if (fechaObj && !isNaN(fechaObj.getTime())) {
-                const fechaStr = fechaObj.toISOString().split('T')[0];
+                const fechaStr = isoLima(fechaObj);
                 if (fechaInicio && fechaFin) {
                     matchFecha = fechaStr >= fechaInicio && fechaStr <= fechaFin;
                 } else if (fechaInicio) {
@@ -1406,7 +1420,7 @@ function renderDespachos() {
             }
             
             if (fechaObj && !isNaN(fechaObj.getTime())) {
-                const fechaStr = fechaObj.toISOString().split('T')[0];
+                const fechaStr = isoLima(fechaObj);
                 if (fechaInicio && fechaFin) {
                     matchFecha = fechaStr >= fechaInicio && fechaStr <= fechaFin;
                 } else if (fechaInicio) {
@@ -1711,7 +1725,7 @@ function renderGuias() {
             }
             
             if (fechaObj && !isNaN(fechaObj.getTime())) {
-                const fechaStr = fechaObj.toISOString().split('T')[0];
+                const fechaStr = isoLima(fechaObj);
                 if (fechaInicio && fechaFin) {
                     matchFecha = fechaStr >= fechaInicio && fechaStr <= fechaFin;
                 } else if (fechaInicio) {
@@ -1790,7 +1804,7 @@ function renderComprobantes() {
             }
             
             if (fechaObj && !isNaN(fechaObj.getTime())) {
-                const fechaStr = fechaObj.toISOString().split('T')[0];
+                const fechaStr = isoLima(fechaObj);
                 if (fechaInicio && fechaFin) {
                     matchFecha = fechaStr >= fechaInicio && fechaStr <= fechaFin;
                 } else if (fechaInicio) {
@@ -2241,7 +2255,8 @@ async function guardarCotizacion(estado) {
                 um: p.um || 'NIU',
                 cantidad: p.cantidad || 1,
                 valorVenta: p.valorVenta || 0,
-                stock: p.stock || 0
+                stock: p.stock || 0,
+                estado_entrega: p.estado_entrega === 'Entregado' ? 'Entregado' : 'Pendiente'
             }))
         };
 
@@ -5099,7 +5114,7 @@ window.createDocFromCotizacion = async function(id, tipo) {
                     return;
                 }
                 
-                const cotizacion = response.data;
+                const cotizacion = preciosNetosCotizacion(response.data);
                 console.log('📦 Datos de cotización:', cotizacion);
                 
                 // Verificar que la cotización esté aceptada para crear guía
@@ -5800,7 +5815,7 @@ window.loadGuiaFromCotizacion = function(numeroCotizacion) {
     apiFetch(`/ventas/api/cotizaciones/${cotizacion.id}/completa`)
         .then(response => {
             if (response.success) {
-                const data = response.data;
+                const data = preciosNetosCotizacion(response.data);
                 document.getElementById('guiaCliente').value = data.cliente_razon_social || '';
                 document.getElementById('guiaRuc').value = data.cliente_ruc || '';
                 document.getElementById('guiaDestino').value = data.direccion_entrega || data.cliente_direccion || '';
@@ -5841,7 +5856,7 @@ window.loadComprobanteFromCotizacion = function(numeroCotizacion) {
     apiFetch(`/ventas/api/cotizaciones/${cotizacion.id}/completa`)
         .then(response => {
             if (response.success) {
-                const data = response.data;
+                const data = preciosNetosCotizacion(response.data);
 
                 document.getElementById('compCliente').value = data.cliente_razon_social || '';
                 document.getElementById('compRuc').value = data.cliente_ruc || '';
@@ -7682,7 +7697,7 @@ function addSelectedProductsGuia() {
                 <td style="padding:2px 4px;"><input class="guia-producto-cant" type="number" value="${cantidad}" min="0.01" step="0.01" style="width:100%; border:1px solid #E5E7EB; border-radius:3px; font-size:8px; padding:2px 4px; text-align:center; font-weight:900;" onchange="actualizarPesoTotalGuia()"></td>
                 <td style="padding:2px 4px;"><input class="guia-producto-peso" type="number" value="${peso_unitario}" step="0.01" style="width:100%; border:1px solid #E5E7EB; border-radius:3px; font-size:8px; padding:2px 4px; text-align:center;" onchange="actualizarPesoTotalGuia()"></td>
                 <td style="padding:2px 4px; text-align:center;">
-                    <button onclick="this.closest('tr').remove(); actualizarPesoTotalGuia(); actualizarContadorProductosGuia();" style="background:transparent; border:none; color:#DC2626; cursor:pointer; font-size:10px;">✕</button>
+                    <button class="btn-tachito" title="Eliminar este producto" onclick="this.closest('tr').remove(); actualizarPesoTotalGuia(); actualizarContadorProductosGuia();">🗑️</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -7863,8 +7878,7 @@ function agregarFilaProductoGuia() {
                    onchange="actualizarPesoTotalGuia()">
         </td>
         <td style="padding:2px 4px; text-align:center;">
-            <button onclick="this.closest('tr').remove(); actualizarPesoTotalGuia(); actualizarContadorProductosGuia();" 
-                    style="background:transparent; border:none; color:#DC2626; cursor:pointer; font-size:10px; font-weight:900; padding:0 4px;">✕</button>
+            <button class="btn-tachito" title="Eliminar este producto" onclick="this.closest('tr').remove(); actualizarPesoTotalGuia(); actualizarContadorProductosGuia();">🗑️</button>
         </td>
     `;
     tbody.appendChild(tr);
@@ -7957,9 +7971,9 @@ function recolectarDatosGuia() {
     
     return {
         serie: "T001",
-        fecha_emision: document.getElementById('guiaFechaEmision').value || new Date().toISOString().split('T')[0],
-        fecha_traslado: document.getElementById('guiaFechaEmision').value || new Date().toISOString().split('T')[0],
-        fecha_inicio_traslado: document.getElementById('guiaFechaInicio').value || new Date().toISOString().split('T')[0],
+        fecha_emision: document.getElementById('guiaFechaEmision').value || isoLima(),
+        fecha_traslado: document.getElementById('guiaFechaEmision').value || isoLima(),
+        fecha_inicio_traslado: document.getElementById('guiaFechaInicio').value || isoLima(),
         motivo_traslado: document.getElementById('guiaMotivo').value || '',
         modalidad_transporte: document.getElementById('guiaModalidadTransporte').value || 'PRIVADO',
         peso_bruto_total: parseFloat(document.getElementById('guiaPeso').value) || 0,
@@ -8622,13 +8636,9 @@ function generarOrdenCompra(id) {
     showConfirmModal(
         '🛒 Generar orden de compra',
         `El PC requiere compra de productos por falta de stock.`,
-        '⚠️ Se generará una solicitud de compra al módulo de Compras.',
+        '⚠️ Se abrirá Compras → Pedidos por comprar, donde está la tabla de lo que falta comprar.',
         async function() {
-            showToast('🛒 Generando orden de compra...', 'info');
-            setTimeout(() => {
-                showToast('✅ Orden de compra generada', 'success');
-                renderValidacion();
-            }, 1500);
+            window.location.href = '/compras?tab=pedidos';
         },
         '🛒 Generar compra'
     );
@@ -9057,7 +9067,7 @@ function openPedidoCompraModal(mode = 'cot') {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     document.getElementById('pcFecha').value = now.toISOString().slice(0, 16);
-    document.getElementById('pcNumero').value = 'PC-' + new Date().toISOString().slice(0, 10).replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
+    document.getElementById('pcNumero').value = 'PC-' + isoLima().replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
     
     // Agregar un ítem por defecto
     addPedidoItem();
@@ -9245,9 +9255,15 @@ function renderQuoteProducts() {
             <td class="col-price"><input style="width:90px;text-align:right" value="${p.valorVenta || 0}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Number(this.value);renderQuoteProducts();calcQuote();"></td>
             <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
             <td class="col-stock">${stockVivo(p.codigo, p.stock)}</td>
-            <td class="col-delivery">${p.entrega === 'Inmediata' ? '<span class="badge b-ok">Inmediata</span>' : '<span class="badge b-draft">' + (p.entrega || 'Por confirmar') + '</span>'}</td>
+            <td class="col-delivery">
+                <select class="entrega-select ${p.estado_entrega === 'Entregado' ? 'entrega-ok' : 'entrega-pend'}" title="Estado de entrega de este producto"
+                        onchange="quoteProducts[${i}].estado_entrega=this.value;this.className='entrega-select '+(this.value==='Entregado'?'entrega-ok':'entrega-pend');">
+                    <option value="Pendiente" ${p.estado_entrega !== 'Entregado' ? 'selected' : ''}>Pendiente</option>
+                    <option value="Entregado" ${p.estado_entrega === 'Entregado' ? 'selected' : ''}>Entregado</option>
+                </select>
+            </td>
             <td class="col-actions">
-                <button class="btn btn-sm btn-danger" onclick="quoteProducts.splice(${i},1);renderQuoteProducts();calcQuote();">✕</button>
+                <button class="btn-tachito" title="Eliminar este producto" onclick="quoteProducts.splice(${i},1);renderQuoteProducts();calcQuote();">🗑️</button>
             </td>
         </tr>
     `}).join('');
@@ -9957,7 +9973,7 @@ function openGuiaModal(id = null) {
     }
     
     // Inicializar fechas
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = isoLima();
     
     // Generar opciones de motivos
     const motivos = ['VENTA', 'COMPRA', 'TRANSFERENCIA ENTRE ALMACENES', 'DEVOLUCIÓN', 'CONSIGNACIÓN', 'OTRO'];
@@ -10243,7 +10259,7 @@ function openGuiaModal(id = null) {
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:70px;">Unidad</th>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:60px;">Cantidad</th>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:70px;">Peso U.</th>
-                            <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:35px;">✕</th>
+                            <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:35px;" title="Eliminar">🗑️</th>
                         </tr>
                     </thead>
                     <tbody id="guiaProductosBody">
@@ -10697,7 +10713,7 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
             return;
         }
         
-        const data = response.data;
+        const data = preciosNetosCotizacion(response.data);
         const productos = data.productos || [];
         
         console.log(`📦 ${productos.length} productos encontrados`);
@@ -11581,7 +11597,7 @@ function exportarEliminadasCSV() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `eliminadas_${new Date().toISOString().slice(0,10)}.csv`;
+    link.download = `eliminadas_${isoLima()}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
     
@@ -13722,7 +13738,7 @@ function renderCotizacionFormContent(isEdit) {
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:55px;">Unidad</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:50px;">Cant</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:90px;">Valor Venta Unitario S/.</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:100px;">Valor total S/.</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:100px;">Valor Total S/.</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:55px;">Stock</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:70px;">Entrega</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:40px;">Acciones </th>
@@ -14245,6 +14261,7 @@ window.openCotizacionModal = function(id = null) {
         }, 100);
     } else {
         const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         const fechaStr = now.toISOString().slice(0, 16);
         document.getElementById('fFecha')?.setAttribute('value', fechaStr);
         document.getElementById('fVendedor')?.setAttribute('value', CONFIG.asesorDefault);
@@ -14346,7 +14363,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
                 return;
             }
             
-            const data = response.data;
+            const data = preciosNetosCotizacion(response.data);
             console.log('📦 Datos completos de cotización:', data);
             
             // Guardar la cotización completa
@@ -14398,7 +14415,8 @@ function seleccionarCotizacionSAP(cotizacionId) {
             setReadonlyValue('pcCliente', data.cliente_razon_social || '');
             setReadonlyValue('pcRuc', data.cliente_ruc || '');
             setReadonlyValue('pcMontoConIgv', data.total || 0);
-            setReadonlyValue('pcMonto', data.subtotal || 0);
+            // Monto sin IGV YA con el descuento de la cotización (antes salía el subtotal sin descontar)
+            setReadonlyValue('pcMonto', (data.subtotal_neto ?? data.subtotal) || 0);
             setReadonlyValue('pcCondicionPago', data.condicion_pago || 'Contado');
             setReadonlyValue('pcVendedor', data.vendedor || 'Helen Blas Príncipe');
             
@@ -14547,7 +14565,9 @@ function seleccionarCotizacionSAP(cotizacionId) {
                 }
             }, 200);
             
-            showToast(`✅ Cotización ${data.numero_cotizacion} cargada con ${productos.length} productos`, 'success');
+            const _desc = Number(data.descuento_total || 0);
+            showToast(`✅ Cotización ${data.numero_cotizacion} cargada con ${productos.length} productos` +
+                (_desc > 0 ? ` · descuento de ${_desc.toFixed(2)} ya aplicado en los precios` : ''), 'success');
         })
         .catch(error => {
             console.error('❌ Error cargando cotización completa:', error);
@@ -15412,7 +15432,7 @@ async function savePedidoCompraSAP(force) {
                 numeroPC = pedidoExistente.numero;
             }
         } else if (!numeroPC) {
-            numeroPC = 'PC-' + new Date().toISOString().slice(0, 10).replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
+            numeroPC = 'PC-' + isoLima().replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
         }
         
         console.log(`📋 Número de PC final: ${numeroPC} | editingId: ${editingId} | modalMode: ${modalMode}`);
@@ -15853,7 +15873,8 @@ function showSuccessModal(cotizacionId) {
         hour: '2-digit', 
         minute: '2-digit',
         second: '2-digit',
-        hour12: false
+        hour12: false,
+        timeZone: 'America/Lima'
     });
     const numeroCotizacion = `COT-${String(Date.now()).slice(-8)}`;
     const productosCount = quoteProducts.length;

@@ -264,10 +264,44 @@ def api_cxc():
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
 
 
+ORDEN_SEMAFORO_CXP = {'Vencido': 0, 'Por vencer': 1, 'Al día': 2, 'Pagado': 3}
+
+
+def ordenar_cxp(lista):
+    """Cuentas por pagar ordenadas como pidió Erika: primero lo vencido (más días de atraso arriba),
+    luego lo que vence pronto (menos días que faltan arriba), luego al día y al final lo pagado."""
+    hoy = date.today()
+    for x in lista:
+        venc = x.get('fecha_vencimiento')
+        try:
+            dv = datetime.strptime(str(venc)[:10], '%Y-%m-%d').date() if venc else None
+        except ValueError:
+            dv = None
+        x['dias_para_vencer'] = (dv - hoy).days if dv and x['semaforo'] in ('Por vencer', 'Al día') else None
+        x['condicion'] = 'Crédito' if (x.get('dias_credito') or 0) > 0 or 'crédito' in str(x.get('condicion_pago') or '').lower() \
+            or 'credito' in str(x.get('condicion_pago') or '').lower() else 'Contado'
+    clave = lambda x: (ORDEN_SEMAFORO_CXP.get(x['semaforo'], 9),
+                       -(x.get('dias_vencido') or 0) if x['semaforo'] == 'Vencido' else (x.get('dias_para_vencer') or 0) if x['semaforo'] != 'Pagado' else 0,
+                       str(x.get('fecha_vencimiento') or ''))
+    return sorted(lista, key=clave)
+
+
+def totales_cxp(lista):
+    def suma(cond):
+        return round(sum(x['saldo'] for x in lista if cond(x)), 2)
+    return {'vencido': suma(lambda x: x['semaforo'] == 'Vencido'),
+            'por_vencer': suma(lambda x: x['semaforo'] == 'Por vencer'),
+            'al_dia': suma(lambda x: x['semaforo'] == 'Al día'),
+            'total': suma(lambda x: True),
+            'docs_vencidos': sum(1 for x in lista if x['semaforo'] == 'Vencido'),
+            'docs_por_vencer': sum(1 for x in lista if x['semaforo'] == 'Por vencer')}
+
+
 @finanzas_bp.route('/finanzas/api/cxp', methods=['GET'])
 def api_cxp():
     try:
-        return jsonify({'success': True, 'data': _filtrar(_cuentas('cxp'))})
+        todas = _cuentas('cxp')
+        return jsonify({'success': True, 'data': ordenar_cxp(_filtrar(todas)), 'totales': totales_cxp(todas)})
     except Exception as e:
         print(f"❌ Error en finanzas api_cxp: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500

@@ -44,6 +44,19 @@ def get_connection():
     try:
         with conn.cursor() as cur:
             cur.execute("SET TIME ZONE %s", (ZONA_HORARIA,))
+            # Usuario de la sesión para la auditoría (disparador fn_erp_auditoria).
+            # Solo para esta transacción (true): Supabase usa el pooler en modo transacción,
+            # así un usuario nunca queda pegado a una conexión que luego usa otra persona.
+            try:
+                from routes.auditoria import SQL_SET_USUARIO, datos_usuario_para_bd
+                cur.execute("SAVEPOINT aud_usr")
+                cur.execute(SQL_SET_USUARIO.format(l='true'), datos_usuario_para_bd())
+                cur.execute("RELEASE SAVEPOINT aud_usr")
+            except Exception:
+                try:
+                    cur.execute("ROLLBACK TO SAVEPOINT aud_usr")
+                except Exception:
+                    pass
     except Exception:
         conn.rollback()
     return conn

@@ -9,7 +9,35 @@
             <link rel="stylesheet" href="/static/css/style.css">
             <!-- Colores de la empresa elegida arriba (salen de Configuración ▸ Empresas) -->
             <link rel="stylesheet" href="/static/css/tema_empresa.css">
+            <!-- Letra distinta por empresa (KCF: Montserrat, AGD: Roboto Slab) para no confundirse de empresa -->
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Roboto+Slab:wght@400;600;700;800&display=swap">
             <script>window.EMPRESA_ACTIVA = {{ (emp_ctx or {})|tojson }};</script>
+            <script>
+            // Fecha y hora de Lima en formato DD/MM/AAAA HH:MM para todo el sistema (17/10/2026).
+            // El servidor ya manda la hora de Lima ("2026-10-16T14:30:00"): se muestra tal cual,
+            // sin que el navegador la cambie de zona. conHora=false muestra solo la fecha.
+            window.fechaHoraLima = function (v, conHora) {
+                if (v === null || v === undefined || v === '') return '-';
+                var s = String(v), p2 = function (n) { return String(n).padStart(2, '0'); };
+                var m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+                if (m) return m[3] + '/' + m[2] + '/' + m[1] + (m[4] && conHora !== false ? ' ' + m[4] + ':' + m[5] : '');
+                var d = new Date(s);
+                if (isNaN(d.getTime())) return s;
+                // Formato antiguo "... GMT": la hora guardada ya era la de Lima, se toman sus componentes tal cual
+                var utc = /GMT|UTC|Z$/.test(s);
+                var dia = utc ? d.getUTCDate() : d.getDate(), mes = (utc ? d.getUTCMonth() : d.getMonth()) + 1;
+                var anio = utc ? d.getUTCFullYear() : d.getFullYear();
+                var hh = utc ? d.getUTCHours() : d.getHours(), mi = utc ? d.getUTCMinutes() : d.getMinutes();
+                return p2(dia) + '/' + p2(mes) + '/' + anio + (conHora !== false ? ' ' + p2(hh) + ':' + p2(mi) : '');
+            };
+            // Fecha AAAA-MM-DD en hora de Lima (toISOString daba el día siguiente después de las 7 p. m.).
+            window.isoLima = function (d) {
+                d = d || new Date();
+                try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
+                catch (e) { var p = function (n) { return String(n).padStart(2, '0'); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+            };
+            </script>
 
             <!-- Bootstrap Icons -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -125,6 +153,7 @@
         <a href="/compras?tab=hoy" class="child-btn" data-screen="hoy" style="text-decoration:none;">🔔 Hoy en Compras</a>
         <a href="/compras?tab=pedidos" class="child-btn" data-screen="pedidos" style="text-decoration:none;">🛒 Pedidos por comprar</a>
         <a href="/compras?tab=ordenes" class="child-btn" data-screen="ordenes" style="text-decoration:none;">📄 Órdenes de compra</a>
+        <a href="/compras?tab=ordenes&nueva=1" class="child-btn" style="text-decoration:none;">➕ Nueva orden</a>
         <a href="/compras?tab=recibir" class="child-btn" data-screen="recibir" style="text-decoration:none;">📦 Recibir mercadería</a>
         <a href="/compras?tab=facturas" class="child-btn" data-screen="facturas" style="text-decoration:none;">💳 Pagos y facturas</a>
         <a href="/compras?tab=precios" class="child-btn" data-screen="precios" style="text-decoration:none;">💲 Precios por producto</a>
@@ -179,10 +208,10 @@
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/reportes" class="child-btn" style="text-decoration:none;">Reporte de ventas</a>
-                        <a href="/reportes" class="child-btn" style="text-decoration:none;">Reporte de compras</a>
-                        <a href="/reportes" class="child-btn" style="text-decoration:none;">Reporte de inventario</a>
-                        <a href="/reportes" class="child-btn" style="text-decoration:none;">Reporte de finanzas</a>
+                        <a href="/reportes?tab=ventas" class="child-btn" style="text-decoration:none;">Reporte de ventas</a>
+                        <a href="/reportes?tab=compras" class="child-btn" style="text-decoration:none;">Reporte de compras</a>
+                        <a href="/reportes?tab=inventario" class="child-btn" style="text-decoration:none;">Reporte de inventario</a>
+                        <a href="/reportes?tab=cxc" class="child-btn" style="text-decoration:none;">Reporte de finanzas</a>
                         <a href="/reportes" class="child-btn" style="text-decoration:none;">SUNAT</a>
                     </div>
                 </div>
@@ -2362,8 +2391,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // ============================================================
 function _fechaCorta(v) {
     if (!v) return '—';
-    const d = new Date(v);
-    return isNaN(d) ? _esc(v) : d.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' });
+    return _esc(window.fechaHoraLima(v));
 }
 
 function _panelCuentasAuth() {
@@ -2790,7 +2818,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <input type="text" class="cuenta-numero" placeholder="1234567890" style="width:100%;border:1px solid #D1D5DB;border-radius:6px;height:36px;padding:0 10px;font-size:13px;">
                                     </div>
                                     <div style="display:flex;gap:6px;align-items:end;padding-bottom:2px;">
-                                        <button type="button" class="btn-remove-cuenta" style="height:34px;border-radius:8px;border:1px solid #E5E7EB;padding:0 10px;font-weight:700;cursor:pointer;background:white;color:#0F172A;">✕</button>
+                                        <button type="button" class="btn-tachito btn-remove-cuenta" title="Eliminar">🗑️</button>
                                         <button type="button" class="btn-add-cuenta" style="height:34px;border-radius:8px;border:0;padding:0 10px;font-weight:700;cursor:pointer;background:#EF233C;color:white;">+</button>
                                     </div>
                                 </div>
@@ -2916,7 +2944,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <input type="text" class="cuenta-numero" placeholder="1234567890" style="width:100%;border:1px solid #D1D5DB;border-radius:6px;height:36px;padding:0 10px;font-size:13px;">
                     </div>
                     <div style="display:flex;gap:6px;align-items:end;padding-bottom:2px;">
-                        <button type="button" class="btn-remove-cuenta" style="height:34px;border-radius:8px;border:1px solid #E5E7EB;padding:0 10px;font-weight:700;cursor:pointer;background:white;color:#0F172A;">✕</button>
+                        <button type="button" class="btn-tachito btn-remove-cuenta" title="Eliminar">🗑️</button>
                         <button type="button" class="btn-add-cuenta" style="height:34px;border-radius:8px;border:0;padding:0 10px;font-weight:700;cursor:pointer;background:#EF233C;color:white;">+</button>
                     </div>
                 `;
@@ -3014,7 +3042,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <input type="text" class="cuenta-numero" placeholder="1234567890" value="${numero}">
                     </div>
                     <div class="field" style="display:flex;gap:6px;align-items:end;padding-bottom:2px;">
-                        <button type="button" class="btn btn-secondary btn-remove-cuenta" style="height:34px;padding:0 10px;">✕</button>
+                        <button type="button" class="btn-tachito btn-remove-cuenta" title="Eliminar">🗑️</button>
                         <button type="button" class="btn btn-primary btn-add-cuenta" style="height:34px;padding:0 10px;">+</button>
                     </div>
                 `;
@@ -3081,7 +3109,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="text" class="cuenta-numero" placeholder="1234567890" value="${numero}">
                 </div>
                 <div class="field" style="display:flex;gap:6px;align-items:end;padding-bottom:2px;">
-                    <button type="button" class="btn btn-secondary btn-remove-cuenta" style="height:34px;padding:0 10px;">✕</button>
+                    <button type="button" class="btn-tachito btn-remove-cuenta" title="Eliminar">🗑️</button>
                     <button type="button" class="btn btn-primary btn-add-cuenta" style="height:34px;padding:0 10px;">+</button>
                 </div>
             `;

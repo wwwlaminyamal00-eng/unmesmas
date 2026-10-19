@@ -16,15 +16,19 @@
     let lineas = [];           // líneas del formulario de OC
     let provElegido = null;    // proveedor elegido en el formulario
     let detalleActual = null;
+    const extrasStock = {};    // "Comprar para stock" que escribe el usuario en la tabla de pedidos (clave pedido_item)
 
     // ---------- utilidades ----------
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const soles = n => 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const cant = n => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
-    const fecha = v => {
+    // Fechas del servidor: "2026-10-16" o "2026-10-16T14:47:48" (hora de Lima) -> DD/MM/YYYY [HH:MM]
+    const fecha = (v, conHora = true) => {
         if (!v) return '—';
-        const [d, h] = String(v).split(' ');
-        return d.split('-').reverse().join('/') + (h ? ' ' + h : '');
+        if (window.fechaHoraLima) return window.fechaHoraLima(v, conHora);
+        const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+        if (!m) return String(v);
+        return `${m[3]}/${m[2]}/${m[1]}` + (m[4] && conHora ? ` ${m[4]}:${m[5]}` : '');
     };
     const hoyISO = (masDias = 0) => {
         const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + masDias * 86400000);
@@ -91,7 +95,8 @@
     async function cargarCatalogos() {
         const r = await api('/compras/api/flujo/catalogos');
         Object.assign(cat, { empresas: r.empresas, sedes: r.sedes, proveedores: r.proveedores, usuarios: r.usuarios,
-            registro: r.registro_sunat, empresaDefecto: r.empresa_defecto, usuarioId: r.usuario_id, metodos: r.metodos });
+            registro: r.registro_sunat, empresaDefecto: r.empresa_defecto, usuarioId: r.usuario_id, metodos: r.metodos,
+            motivos: r.motivos_sin_pedido || [] });
         document.querySelectorAll('select[data-empresas]').forEach(s => {
             s.innerHTML = (s.dataset.todas ? `<option value="">${esc(s.dataset.todas)}</option>` : '')
                 + cat.empresas.map(e => `<option value="${e.id}">${esc(e.nombre)} · ${esc(e.razon_social || '')}</option>`).join('');
@@ -144,24 +149,55 @@
                     <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(p.estado || 'Pendiente')}</span>
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
-                <table class="inv-table inv-mini">
-                    <thead><tr><th></th><th class="left">Producto</th><th>Pidió el cliente</th><th>Ya en órdenes</th><th>Falta comprar</th><th>Stock libre en el grupo</th></tr></thead>
+                <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
+                    <thead><tr><th></th><th class="left">Producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>En stock (empresa)</th>
+                        <th>Comprar para pedido</th><th>Comprar para stock</th><th>Total a comprar</th><th>Saldo después de entregar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
                         const marcable = PUEDE.comprar && it.falta > 0 && !sinProducto;
-                        return `<tr class="${it.falta <= 0 ? 'com-ok' : ''}">
+                        const r = calcResumen(p, i);
+                        const clave = `${p.id}_${i}`;
+                        return `<tr class="${it.falta <= 0 ? 'com-ok' : ''}" data-res="${clave}">
                             <td>${marcable ? `<input type="checkbox" class="ped-check" data-ped="${p.id}" data-i="${i}">` : (it.falta <= 0 ? '✔' : '')}</td>
-                            <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}</td>
+                            <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}
+                                ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
                             <td class="num">${cant(it.comprado)}</td>
-                            <td class="num"><b>${cant(it.falta)}</b></td>
-                            <td>${it.stock_libre > 0 && it.falta > 0
-                                ? `<span class="com-stock-si" title="Hay stock sin separar en alguna empresa/sede del grupo">⚠️ Hay ${cant(it.stock_libre)}: úsalo primero</span>`
-                                : '<span class="com-stock-no">No hay</span>'}</td></tr>`;
+                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}</td>
+                            <td class="num"><b>${cant(r.pedido)}</b></td>
+                            <td>${marcable ? `<input type="number" class="inp-num ped-extra" min="0" step="any" value="${r.extra}" data-ped="${p.id}" data-i="${i}" title="0 por defecto: comprar de más es una decisión y pide motivo">` : ''}</td>
+                            <td class="num"><b data-res-total>${cant(r.total)}</b></td>
+                            <td class="num"><span data-res-saldo class="${r.saldo > 0 ? 'com-saldo' : ''}">${cant(r.saldo)}</span></td></tr>`;
                     }).join('')}</tbody>
-                </table>
+                </table></div>
             </div>`).join('') : '<div class="inv-vacio">No hay pedidos de clientes pendientes de compra. 👍</div>';
         contarMarcados();
+    }
+
+    // Pedido 40, stock 10 -> comprar para pedido 30; + 100 para stock -> total 130, saldo después de entregar 100
+    function calcResumen(p, i) {
+        const it = p.items[i];
+        const falta = Math.max(Number(it.falta) || 0, 0);
+        const stock = Math.max(Number(it.stock_empresa) || 0, 0);
+        const pedido = it.comprar_pedido !== undefined && it.comprar_pedido !== null ? Number(it.comprar_pedido) : Math.max(falta - stock, 0);
+        const extra = Math.max(Number(extrasStock[`${p.id}_${i}`]) || 0, 0);
+        const total = pedido + extra;
+        return { stock, pedido, extra, total, saldo: Math.max(stock + total - falta, 0) };
+    }
+
+    function actualizarResumen(input) {
+        const p = pedidosCache.find(x => String(x.id) === input.dataset.ped);
+        if (!p) return;
+        const i = Number(input.dataset.i);
+        extrasStock[`${p.id}_${i}`] = Math.max(Number(input.value) || 0, 0);
+        const r = calcResumen(p, i);
+        const tr = input.closest('tr');
+        tr.querySelector('[data-res-total]').textContent = cant(r.total);
+        const s = tr.querySelector('[data-res-saldo]');
+        s.textContent = cant(r.saldo);
+        s.classList.toggle('com-saldo', r.saldo > 0);
+        const chk = tr.querySelector('.ped-check');
+        if (chk && r.extra > 0 && !chk.checked) { chk.checked = true; contarMarcados(); }
     }
 
     function contarMarcados() {
@@ -173,10 +209,20 @@
     function crearDesdePedidos() {
         const elegidos = [...document.querySelectorAll('.ped-check:checked')].map(c => {
             const p = pedidosCache.find(x => String(x.id) === c.dataset.ped);
-            const it = p.items[Number(c.dataset.i)];
-            return { producto_id: it.producto_id, texto: `${it.codigo} · ${it.descripcion}`, cantidad: it.falta,
-                     precio_unitario: '', pedido_id: p.id, para: `${p.numero} · ${p.cliente || ''}`, max: it.falta };
-        });
+            const i = Number(c.dataset.i);
+            const it = p.items[i];
+            const r = calcResumen(p, i);
+            const texto = `${it.codigo} · ${it.descripcion}`;
+            const out = [];
+            if (r.pedido > 0) out.push({ producto_id: it.producto_id, texto, cantidad: r.pedido, precio_unitario: '',
+                pedido_id: p.id, para: `${p.numero} · ${p.cliente || ''}`, max: it.falta });
+            if (r.extra > 0) out.push({ producto_id: it.producto_id, texto, cantidad: r.extra, precio_unitario: '', pedido_id: null, para: '' });
+            return out;
+        }).flat();
+        if (!elegidos.length) {
+            aviso('Lo marcado ya está cubierto con el stock de la empresa. Si igual quieres comprar, escribe la cantidad en "Comprar para stock".', 'warning');
+            return;
+        }
         abrirNuevaOC(elegidos);
     }
 
@@ -191,8 +237,10 @@
     }
 
     function paraHtml(o) {
-        if (o.tipo_compra === 'Para stock' && !o.clientes) return '<span class="com-stock-si">Para stock</span>';
-        return `${esc(o.clientes || '')}<small>${esc(o.pedidos || '')}${o.tipo_compra === 'Para stock' ? ' + stock' : ''}</small>`;
+        const motivo = o.motivo_compra ? `<small class="com-motivo">Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</small>` : '';
+        if (o.sin_pedido || (o.tipo_compra === 'Para stock' && !o.clientes)) return `<span class="badge-sin-pedido">SIN PEDIDO</span>${motivo}`;
+        const cot = o.cotizaciones || o.cotizaciones_cliente;
+        return `${esc(o.clientes || o.clientes_pedido || '')}<small>${esc(o.pedidos || o.pc_numeros || '')}${cot ? ' · Cot. ' + esc(cot) : ''}${o.tipo_compra === 'Para stock' ? ' + stock' : ''}</small>${o.tipo_compra === 'Para stock' ? motivo : ''}`;
     }
 
     async function cargarOrdenes() {
@@ -201,11 +249,12 @@
             if ($('ocEmpresa').value) params.set('empresa_id', $('ocEmpresa').value);
             if ($('ocPaso').value) params.set('paso', $('ocPaso').value);
             if ($('ocBuscar').value.trim()) params.set('q', $('ocBuscar').value.trim());
+            if ($('ocSinPedido') && $('ocSinPedido').checked) params.set('sin_pedido', '1');
             const { data } = await api('/compras/api/flujo/ordenes?' + params);
             ordenesCache = data;
             $('ocBody').innerHTML = data.length ? data.map(o => `<tr class="com-fila" data-ver="${o.id}">
                 <td><b>${esc(o.numero)}</b>${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
-                <td>${fecha(String(o.fecha).slice(0, 10))}</td>
+                <td>${fecha(o.created_at || o.fecha)}</td>
                 <td><b>${esc(o.empresa || '—')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}<small>${esc(o.ruc || '')}</small></td>
                 <td class="left">${paraHtml(o)}</td>
@@ -259,6 +308,8 @@
         $('ocCotizacion').value = oc ? (oc.num_cotizacion || '') : '';
         $('ocNotas').value = oc ? (oc.notas || '') : '';
         $('ocMotivo').value = oc ? (oc.motivo_stock || '') : '';
+        $('ocMotivoCompra').value = oc && oc.motivo_compra ? oc.motivo_compra : '';
+        $('ocProv').querySelector('.pp-lista').style.display = 'none';
         lineas = oc ? oc.items.map(i => ({ producto_id: i.producto_id, texto: `${i.codigo || ''} · ${i.producto}`, cantidad: i.cantidad,
             precio_unitario: i.precio_unitario, pedido_id: i.pedido_id, para: i.pedido_id ? `${i.pedido_numero} · ${i.cliente || ''}` : '' }))
             : precargadas;
@@ -276,12 +327,22 @@
         $('ocRecojoWrap').style.display = $('ocModalidad').value === 'Nosotros recogemos' ? '' : 'none';
         if ($('ocModalidad').value === 'Nosotros recogemos' && !$('ocRecojo').value && provElegido)
             $('ocRecojo').value = provElegido.lugar_recojo || provElegido.direccion || '';
-        $('ocMotivoWrap').style.display = lineas.some(l => l.producto_id && !l.pedido_id) ? '' : 'none';
+        const conProducto = lineas.filter(l => l.producto_id);
+        const sinPedido = conProducto.filter(l => !l.pedido_id);
+        $('ocMotivoWrap').style.display = sinPedido.length ? '' : 'none';
+        $('ocSinPedidoTxt').textContent = sinPedido.length && sinPedido.length === conProducto.length
+            ? 'COMPRA SIN PEDIDO' : 'Compra para stock (además del pedido)';
+        $('ocMotivoReq').textContent = $('ocMotivoCompra').value === 'Otro' ? '(obligatorio: escribe el motivo)' : '(opcional)';
+        $('ocMotivoReq').classList.toggle('neg', $('ocMotivoCompra').value === 'Otro');
         avisoSunat();
     }
 
     function pintarProveedor() {
         const p = provElegido;
+        // Datos del proveedor (proveedores + contacto principal de proveedores_contactos), solo lectura
+        const campos = { ocProvRazon: 'razon_social', ocProvRuc: 'ruc', ocProvDireccion: 'direccion', ocProvContacto: 'contacto',
+                         ocProvTelefono: 'telefono', ocProvEmail: 'email' };
+        Object.entries(campos).forEach(([id, k]) => { if ($(id)) $(id).value = p ? (p[k] || '') : ''; });
         if (!p) { $('ocProvInfo').innerHTML = ''; return; }
         const cuenta = p.numero_cuenta || p.cci;
         $('ocProvInfo').innerHTML = `<div class="com-prov-card">
@@ -332,11 +393,11 @@
                 ? `<b>${esc(l.texto)}</b>`
                 : `<div class="prod-picker com-pp" data-linea-pp="${i}"><input type="search" class="pp-input" value="${esc(l.texto)}" placeholder="Buscar producto..." autocomplete="off"><div class="pp-lista"></div></div>`}
                 <div class="com-info-linea" id="info-${i}"></div></td>
-            <td class="left">${l.pedido_id ? `<span class="com-para">${esc(l.para)}</span>` : '<span class="com-stock-si">Para stock</span>'}</td>
+            <td class="left">${l.pedido_id ? `<span class="com-para">${esc(l.para)}</span>` : '<span class="badge-sin-pedido">Para stock · sin pedido</span>'}</td>
             <td><input type="number" class="inp-num" data-campo="cantidad" min="0" step="any" value="${esc(l.cantidad)}">${l.max ? `<small>máx. ${cant(l.max)}</small>` : ''}</td>
             <td><input type="number" class="inp-num" data-campo="precio_unitario" min="0" step="0.0001" value="${esc(l.precio_unitario)}"></td>
             <td class="num" id="tot-${i}">${soles((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0))}</td>
-            <td><button class="btn-mini danger" data-quitar="${i}" title="Quitar">✕</button></td></tr>`).join('');
+            <td><button class="btn-mini btn-tachito" data-quitar="${i}" title="Quitar" aria-label="Quitar">🗑️</button></td></tr>`).join('');
         lineas.forEach((l, i) => {
             const el = document.querySelector(`[data-linea-pp="${i}"]`);
             if (el) pickerLinea(el, i);
@@ -429,8 +490,13 @@
             id: $('ocId').value || null, empresa_id: $('ocEmp').value, proveedor_id: provElegido.id,
             condicion_pago: $('ocCondicion').value, dias_credito: $('ocDias').value, modalidad_entrega: $('ocModalidad').value,
             direccion_recojo: $('ocRecojo').value, almacen_entrega_id: $('ocSede').value, fecha_compromiso: $('ocFecha').value,
-            num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value, motivo_stock: $('ocMotivo').value, items, enviar
+            num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value,
+            motivo_compra: $('ocMotivoCompra').value, motivo_stock: $('ocMotivo').value.trim(), items, enviar
         };
+        if (items.some(i => !i.pedido_id)) {
+            if (!body.motivo_compra) { aviso('Hay productos SIN pedido de cliente: elige el motivo de la compra.', 'error'); $('ocMotivoCompra').focus(); return; }
+            if (body.motivo_compra === 'Otro' && body.motivo_stock.length < 5) { aviso('Elegiste "Otro": escribe el motivo.', 'error'); $('ocMotivo').focus(); return; }
+        }
         await guardarCon(btn, async () => {
             const r = await post('/compras/api/flujo/ordenes', body);
             aviso(r.message, r.alertas && r.alertas.length ? 'warning' : 'success');
@@ -475,6 +541,9 @@
                 <div class="com-siguiente com-paso-${o.paso.codigo}">👉 <b>Siguiente paso:</b> ${esc(o.paso.texto)} <small>(${esc(o.paso.quien)})</small></div>
                 ${(o.avisos || []).map(a => `<div class="inv-aviso">⚠️ ${esc(a)}</div>`).join('')}
                 ${o.motivo_anulacion ? `<div class="inv-alerta danger">Anulada: ${esc(o.motivo_anulacion)}</div>` : ''}
+                ${o.motivo_compra ? `<div class="com-sin-pedido"><div class="com-sin-pedido-tit">⚠️ ${o.items.every(i => !i.pedido_id) ? 'COMPRA SIN PEDIDO' : 'Incluye compra para stock'} · Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</div></div>` : ''}
+                ${o.pc_numeros || o.clientes_pedido ? `<div class="inv-tip com-interno">🔒 <b>Solo interno</b> (no sale en la orden del proveedor): corresponde a
+                    <b>${esc(o.pc_numeros || '')}</b>${o.cotizaciones_cliente ? ` · Cotización ${esc(o.cotizaciones_cliente)}` : ''}${o.clientes_pedido ? ` · Cliente ${esc(o.clientes_pedido)}` : ''}</div>` : ''}
                 <div class="com-datos">
                     <div><small>Empresa que compra</small><b>${esc(o.empresa || '—')}</b></div>
                     <div><small>Proveedor</small><b>${esc(o.proveedor || '')}</b><span>RUC ${esc(o.ruc || '—')}</span></div>
@@ -492,7 +561,7 @@
                     <thead><tr><th>Código</th><th class="left">Producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
                     <tbody>${o.items.map(i => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
                         <td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
-                        <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}</small>` : '<span class="com-stock-si">Stock</span>'}</td>
+                        <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Stock</span>'}</td>
                         <td class="num">${cant(i.cantidad)} ${esc(i.unidad || '')}</td><td class="num">${cant(i.cantidad_recibida)}</td>
                         <td class="num">${soles(i.precio_unitario)}</td><td class="num">${soles(i.total)}</td></tr>`).join('')}</tbody>
                     <tfoot><tr><td colspan="6" class="num">Subtotal ${soles(o.subtotal)} · IGV ${soles(o.igv)} · <b>Total</b></td><td class="num"><b>${soles(o.total)}</b></td></tr></tfoot>
@@ -780,6 +849,9 @@
     document.addEventListener('change', e => {
         if (e.target.classList.contains('ped-check')) contarMarcados();
     });
+    document.addEventListener('input', e => {
+        if (e.target.classList.contains('ped-extra')) actualizarResumen(e.target);
+    });
 
     $('ocLineas').addEventListener('input', e => {
         const tr = e.target.closest('tr[data-linea]');
@@ -800,7 +872,8 @@
         $('btnLineaStock').onclick = () => { lineas.push(lineaVacia()); pintarLineas(); ajustarForm(); };
         $('pedTodos').onchange = cargarPedidos;
         $('pedBuscar').oninput = pintarPedidos;
-        ['ocEmpresa', 'ocPaso'].forEach(i => { $(i).onchange = cargarOrdenes; });
+        ['ocEmpresa', 'ocPaso', 'ocSinPedido'].forEach(i => { if ($(i)) $(i).onchange = cargarOrdenes; });
+        $('ocMotivoCompra').onchange = ajustarForm;
         let tOc;
         $('ocBuscar').oninput = () => { clearTimeout(tOc); tOc = setTimeout(cargarOrdenes, 300); };
         $('preBuscar').oninput = () => { clearTimeout(tPre); tPre = setTimeout(cargarPrecios, 300); };
@@ -828,7 +901,14 @@
             iniciarEventos();
             if (!cat.empresas.length || !cat.sedes.length)
                 aviso('Faltan datos: registra las empresas (Configuración ▸ Empresas) y las sedes (Maestros ▸ Almacenes).', 'error');
-            cambiarTab(app.dataset.tab || new URLSearchParams(location.search).get('tab') || 'hoy', false);
+            const qs = new URLSearchParams(location.search);
+            cambiarTab(app.dataset.tab || qs.get('tab') || 'hoy', false);
+            // Acceso directo "+ Nueva orden": /compras?tab=ordenes&nueva=1
+            if (app.dataset.nueva === 'true' || qs.get('nueva') === '1') {
+                if (tabActual !== 'ordenes') cambiarTab('ordenes');
+                abrirNuevaOC();
+                const url = new URL(window.location); url.searchParams.delete('nueva'); window.history.replaceState({}, '', url);
+            }
         } catch (e) { aviso('No se pudo cargar Compras: ' + e.message, 'error'); }
     })();
 })();

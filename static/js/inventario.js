@@ -27,7 +27,7 @@
     const fecha = v => {
         if (!v) return '—';
         const [d, h] = String(v).split(' ');
-        return d.split('-').reverse().join('/') + (h ? ' ' + h : '');
+        return d.split('-').reverse().join('/') + (h ? ' ' + h.slice(0, 5) : '');   // DD/MM/AAAA HH:MM (hora de Lima)
     };
     const hoyISO = (masDias = 0) => {
         const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + masDias * 86400000);
@@ -645,14 +645,18 @@
         try {
             const { data } = await api('/inventario/api/kardex?' + params);
             const filas = data.slice().reverse();  // del más antiguo al más reciente, como un kardex en papel
-            $('kdxBody').innerHTML = filas.length ? filas.map(m => {
+            // El último movimiento de cada producto + empresa + sede es su SALDO FINAL: se resalta
+            const ultimo = {};
+            filas.forEach((m, i) => { ultimo[`${m.producto_id}|${m.empresa_id}|${m.almacen_id}`] = i; });
+            $('kdxBody').innerHTML = filas.length ? filas.map((m, i) => {
                 const e = m.tipo === 'ENTRADA';
-                return `<tr><td>${fecha(m.fecha)}</td><td>${esc(m.numero)}</td><td>${esc(m.empresa)}</td><td>${esc(m.sede)}</td>
+                const fin = ultimo[`${m.producto_id}|${m.empresa_id}|${m.almacen_id}`] === i;
+                return `<tr${fin ? ' class="kdx-final" title="Saldo final de este producto en esta empresa y sede"' : ''}><td>${fecha(m.fecha)}</td><td>${esc(m.numero)}</td><td>${esc(m.empresa)}</td><td>${esc(m.sede)}</td>
                     <td class="left">${esc(m.codigo)} · ${esc(m.descripcion)}</td><td class="left">${esc(m.motivo_texto)}${m.tercero ? `<small>${esc(m.tercero)}</small>` : ''}</td>
                     <td>${esc(m.documento_numero || '')}</td>
                     <td class="num grp-in">${e ? cant(m.cantidad) : ''}</td><td class="num grp-in">${e ? num4(m.costo_unitario) : ''}</td><td class="num grp-in">${e ? num4(m.costo_total) : ''}</td>
                     <td class="num grp-out">${e ? '' : cant(m.cantidad)}</td><td class="num grp-out">${e ? '' : num4(m.costo_unitario)}</td><td class="num grp-out">${e ? '' : num4(m.costo_total)}</td>
-                    <td class="num grp-saldo"><b>${cant(m.saldo_cantidad)}</b></td><td class="num grp-saldo">${num4(m.saldo_costo_promedio)}</td><td class="num grp-saldo">${num4(m.saldo_valor)}</td>
+                    <td class="num grp-saldo">${fin ? '<span class="kdx-final-etq">SALDO FINAL</span>' : ''}<b>${cant(m.saldo_cantidad)}</b></td><td class="num grp-saldo">${num4(m.saldo_costo_promedio)}</td><td class="num grp-saldo">${num4(m.saldo_valor)}</td>
                     <td>${esc(m.usuario_nombre || '')}</td></tr>`;
             }).join('') : '<tr><td colspan="17">Sin movimientos para este filtro.</td></tr>';
         } catch (e) { $('kdxBody').innerHTML = `<tr><td colspan="17" class="neg">${esc(e.message)}</td></tr>`; }

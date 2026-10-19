@@ -298,6 +298,8 @@ class TestCompras:
     def test_orden_compra_completa(self, vendedor):
         payload = {'proveedor': 'PROVEEDOR ACEROS S.A.C.', 'ruc': '20600011111', 'estado': 'Borrador',
                    'condicion_pago': 'Crédito 30 días',
+                   # compra sin pedido de cliente: el motivo es obligatorio (regla de Compras)
+                   'motivo_compra': 'Stock estratégico',
                    'items': [{'producto': 'GUANTE DE NITRILO', 'cantidad': 100, 'precioUnitario': 8.5}]}
         r = vendedor.post('/compras/api/ordenes/guardar', json=payload)
         assert r.status_code == 200, r.json
