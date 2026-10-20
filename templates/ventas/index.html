@@ -168,6 +168,12 @@
     color: #0044CC;
 }
 
+/* Entregas: pendiente = rojo encendido, terminado = verde fluorescente (20/10/2026) */
+.desp-por{display:inline-block;padding:5px 12px;border-radius:999px;background:#E30613;color:#fff;font-weight:900;font-size:11px;white-space:nowrap;box-shadow:0 0 0 2px #FFB3B8}
+.desp-hecho{display:inline-block;padding:5px 12px;border-radius:999px;background:#00E676;color:#003D1A;font-weight:900;font-size:11px;white-space:nowrap;box-shadow:0 0 0 2px #B9F6CA}
+.btn-confirmar-despacho{padding:6px 10px;font-size:11px;border-radius:8px;border:none;background:#E30613;color:#fff;font-weight:900;cursor:pointer;box-shadow:0 2px 0 #9B0010}
+.btn-confirmar-despacho:hover{background:#B8000F}
+
 /* 🚚 Crear despacho - Naranja fluorescente NEON */
 .menu-pop .menu-despacho {
     color: #FF6600;
@@ -3006,10 +3012,10 @@
             <tr>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nr° PC</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Cliente</th>
-                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Producto</th>
+                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nombre producto</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Precio</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Cantidad</th>
-                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Entrega</th>
+                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Estado entrega</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Moneda</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Transporte</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Vigencia</th>
@@ -3416,7 +3422,7 @@
                         <tr>
                             <th style="width:40px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleAllProductCheckboxes(this.checked)"></th>
                             <th style="width:70px;">Código de producto</th>
-                            <th>Producto</th>
+                            <th>Nombre producto</th>
                             <th style="width:80px;">Modelo</th>
                             <th style="width:80px;">Marca</th>
                             <th style="width:70px;">Unidad</th>

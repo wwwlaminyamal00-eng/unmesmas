@@ -26,11 +26,13 @@ def _leer(rel):
 def test_validacion_exige_la_fila_de_la_parihuela(vendedor):
     r = vendedor.post('/ventas/api/cotizaciones/guardar', json={**BASE_COT, 'estado': 'Por validar', 'nota_interna': ''})
     assert r.status_code == 400 and r.json['codigo'] == 'faltan_campos'
-    assert 'Nota interna' in r.json['faltan'] and r.json['error'].startswith('Faltan campos obligatorios para enviar a validación')
+    # La nota interna dejó de ser obligatoria (Erika, 20/10/2026 17:19)
+    assert 'Nota interna' not in r.json['faltan'] and 'Seguimiento' in r.json['faltan']
+    assert r.json['error'].startswith('Faltan campos obligatorios para enviar a validación')
     # Un borrador sí se guarda sin la nota; con todo completo sí va a validación
     assert vendedor.post('/ventas/api/cotizaciones/guardar', json={**BASE_COT, 'estado': 'Borrador'}).status_code == 200
     r = vendedor.post('/ventas/api/cotizaciones/guardar', json={**BASE_COT, 'estado': 'Por validar', 'seguimiento': 'Hellen',
-                                                                'motivo': 'Recompra', 'nota_interna': 'Ninguna'})
+                                                                'motivo': 'Recompra', 'nota_interna': ''})
     assert r.status_code == 200, r.json
 
 

@@ -1004,7 +1004,8 @@ def guardar_pc_db(data):
         valida_stock = data.get('valida_stock', False)
         valida_entrega = data.get('valida_entrega', False)
         valida_montos = data.get('valida_montos', False)
-        valida_transporte = data.get('valida_transporte', False)
+        # Transporte ya no es parte de la validación comercial del PC (pedido de Erika 20/10/2026)
+        valida_transporte = data.get('valida_transporte', True)
         # La pantalla no tiene interruptor de margen: si no se manda, no debe dejar el PC siempre "observado"
         valida_margen = data.get('valida_margen', True)
         valida_vigencia = data.get('valida_vigencia', False)
@@ -1015,7 +1016,6 @@ def guardar_pc_db(data):
             valida_cantidades,
             valida_entrega,
             valida_montos,
-            valida_transporte,
             valida_margen,
             valida_vigencia
         ])
@@ -1517,12 +1517,12 @@ def api_cotizaciones_guardar():
             ('Transporte', data.get('transporte')),
             ('Parihuela (si incluye o no)', data.get('parihuela')),
         ) if str(valor or '').strip() in ('', 'Seleccione', 'Personalizado')]
-        # Pedido de Erika 20/10/2026: para "Solicitar validación" también la fila de la parihuela completa
+        # Pedido de Erika 20/10/2026: para "Solicitar validación" también seguimiento y motivo.
+        # La nota interna NO es obligatoria (lo corrigió el mismo 20/10 a las 17:19).
         if estado_nuevo in ('Por validar', 'En revisión'):
             faltan += [nombre for nombre, valor in (
                 ('Seguimiento', data.get('seguimiento')),
                 ('Motivo', data.get('motivo')),
-                ('Nota interna', data.get('nota_interna')),
             ) if str(valor or '').strip() in ('', 'Seleccione')]
         if faltan:
             titulo = ('Faltan campos obligatorios para enviar a validación'

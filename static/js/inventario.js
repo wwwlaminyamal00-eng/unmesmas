@@ -257,7 +257,7 @@
         $('conExportar').href = '/inventario/api/consolidado/exportar?q=' + encodeURIComponent($('conBuscar').value.trim());
         const E = empresasVista(), S = cat.sedes;
         $('conHead').innerHTML = `
-            <tr><th rowspan="2" class="left">Producto</th>
+            <tr><th rowspan="2" class="left">Nombre producto</th>
                 ${E.map(e => `<th colspan="${S.length + 1}" class="emp-col">${esc(e.nombre)}</th>`).join('')}
                 <th rowspan="2" class="tot-col">TOTAL<br>GRUPO</th><th rowspan="2">Separado</th><th rowspan="2" class="disp-col">Disponible</th>
                 <th rowspan="2">Valor</th><th rowspan="2">Rotación</th><th rowspan="2">Ver</th></tr>
@@ -596,7 +596,7 @@
         const contando = c.estado === 'En conteo';
         if (contando) {
             $('cntAyuda').innerHTML = '🔢 Ve a la sede, busca cada producto y escribe <b>cuántas unidades ves</b>. Si no hay ninguno, escribe 0. No se muestra lo que dice el sistema a propósito.';
-            $('cntHead').innerHTML = '<tr><th class="left">Producto</th><th>Unidad</th><th>Contado</th><th class="left">Comentario</th></tr>';
+            $('cntHead').innerHTML = '<tr><th class="left">Nombre producto</th><th>Unidad</th><th>Contado</th><th class="left">Comentario</th></tr>';
             $('cntItems').innerHTML = items.map(i => `<tr><td class="left"><b>${esc(i.codigo)}</b> ${esc(i.descripcion)}<small>${esc([i.marca, i.modelo].filter(Boolean).join(' · '))}</small></td><td>${esc(i.unidad || '')}</td>
                 <td><input type="number" min="0" step="any" class="inp-num" data-cnt="${i.id}" value="${i.cantidad_contada ?? ''}"></td>
                 <td><input type="text" class="inp-txt" data-com="${i.id}" value="${esc(i.comentario || '')}" maxlength="200"></td></tr>`).join('');
@@ -616,7 +616,7 @@
         } else {
             $('cntAyuda').innerHTML = `Contó: <b>${esc(c.contado_por || '')}</b> el ${fecha(c.contado_en)}. ` +
                 (c.estado === 'Por aprobar' ? 'Revisa las diferencias. Si algo no cuadra, pide volver a contar. Al aprobar, el kardex se ajusta.' : `Aprobó: <b>${esc(c.aprobado_por || '')}</b>.`);
-            $('cntHead').innerHTML = '<tr><th class="left">Producto</th><th>Sistema</th><th>Contado</th><th>Diferencia</th><th>Valor S/</th><th class="left">Comentario</th></tr>';
+            $('cntHead').innerHTML = '<tr><th class="left">Nombre producto</th><th>Sistema</th><th>Contado</th><th>Diferencia</th><th>Valor S/</th><th class="left">Comentario</th></tr>';
             $('cntItems').innerHTML = items.map(i => `<tr class="${i.diferencia ? 'fila-dif' : ''}"><td class="left"><b>${esc(i.codigo)}</b> ${esc(i.descripcion)}</td>
                 <td class="num">${cant(i.stock_sistema)}</td><td class="num">${cant(i.cantidad_contada)}</td>
                 <td class="num ${i.diferencia < 0 ? 'neg' : ''}">${i.diferencia > 0 ? '+' : ''}${cant(i.diferencia)}</td><td class="num ${i.valor_diferencia < 0 ? 'neg' : ''}">${soles(i.valor_diferencia)}</td>

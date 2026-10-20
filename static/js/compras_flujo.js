@@ -150,7 +150,7 @@
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
                 <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
-                    <thead><tr><th></th><th class="left">Producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>En stock (empresa)</th>
+                    <thead><tr><th></th><th class="left">Nombre producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>En stock (empresa)</th>
                         <th>Comprar para pedido</th><th>Comprar para stock</th><th>Total a comprar</th><th>Saldo después de entregar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
@@ -407,7 +407,7 @@
         }).join('');
         caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento <small>${esc(emp.nombre || 'Empresa')} · se recalcula solo</small></div>
             <div class="table-wrap"><table class="inv-table com-abast-tabla">
-                <thead><tr><th class="left">Producto</th><th>Stock actual<small>disponible en ${esc(emp.codigo || emp.nombre || 'la empresa')}</small></th>
+                <thead><tr><th class="left">Nombre producto</th><th>Stock actual<small>disponible en ${esc(emp.codigo || emp.nombre || 'la empresa')}</small></th>
                     <th>Pedido del cliente<small>lo que falta cubrir</small></th><th>Sugerido<small>pedido − stock</small></th>
                     <th>Extra para stock<small>opcional: pedir de más</small></th>
                     <th>Total a comprar<small>en esta orden</small></th><th class="left">Resultado</th></tr></thead>
@@ -681,7 +681,7 @@
                 ${o.notas ? `<div class="inv-tip">📝 ${esc(o.notas)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
                 <div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>Código de producto</th><th class="left">Producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
                     <tbody>${o.items.map(i => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
                         <td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
                         <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Stock</span>'}</td>
@@ -856,7 +856,7 @@
             const color = { Completo: 'ok', Faltante: 'danger', Sobrante: 'warn', 'Con dañados': 'warn' };
             res.innerHTML = `<div class="inv-alerta ${r.resultado.some(x => x.estado !== 'Completo') ? 'warn' : 'ok'}"><div>${esc(r.message)}</div></div>
                 <div class="inv-subtitulo">Ahora sí: lo que se esperaba y lo que contaste</div>
-                <table class="inv-table"><thead><tr><th class="left">Producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
+                <table class="inv-table"><thead><tr><th class="left">Nombre producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
                 <tbody>${r.resultado.map(x => `<tr><td class="left">${esc(x.producto)}</td><td class="num">${cant(x.esperado)}</td><td class="num">${cant(x.buena)}</td>
                     <td class="num">${cant(x.danada)}</td><td><span class="com-paso com-paso-${color[x.estado] || 'info'}">${esc(x.estado)}</span></td></tr>`).join('')}</tbody></table>
                 <div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>`;

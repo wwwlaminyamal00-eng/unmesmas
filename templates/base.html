@@ -176,6 +176,13 @@
             .confirm-modal-overlay{z-index:10000000!important} /* la confirmación siempre encima de la ventana que la abrió */
             tr.fila-recien{animation:filaRecien 1.2s ease-in-out 4;outline:3px solid #16A34A;outline-offset:-3px}
             @keyframes filaRecien{50%{background:#BBF7D0}}
+            /* Tablas de las pantallas sin scroll lateral (pedido de Erika 20/10/2026): las columnas se acomodan
+               al ancho y el texto largo baja de línea en vez de empujar la tabla hacia la derecha */
+            .table-scroll>table,.table-wrap>table,table.master-table,#repTabla table{width:100%!important;min-width:0!important;table-layout:auto}
+            :is(.table-scroll,.table-wrap,#repTabla)>table :is(th,td),table.master-table :is(th,td){white-space:normal!important;overflow-wrap:break-word;word-break:normal;padding-left:6px!important;padding-right:6px!important}
+            :is(.table-scroll,.table-wrap,#repTabla)>table th,table.master-table th{hyphens:manual}
+            :is(.table-scroll,.table-wrap)>table td :is(.ts-reg,.abast-badge,.com-paso,.badge-sin-pedido),:is(.table-scroll,.table-wrap)>table td>div{white-space:normal!important}
+            #cotizacionModal .product-wide table{min-width:1220px!important}
             </style>
 
             <!-- Bootstrap Icons -->

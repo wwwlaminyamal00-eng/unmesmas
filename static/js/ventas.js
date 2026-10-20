@@ -181,7 +181,8 @@ function sd(v) {
 }
 
 function money(n) {
-    return 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Espacio que no se corta: en tablas angostas "S/" no queda en una línea y el monto en otra
+    return 'S/\u00A0' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function now() {
@@ -754,7 +755,7 @@ function renderPedidos() {
                         <th>Nr° PC (pedido de compra)</th>
                         <th>Nr° cotización</th>
                         <th>Cliente</th>
-                        <th>Lugar de Entrega</th>
+                        <th>Lugar entrega</th>
                         <th>RUC</th>
                         <th>Descripción</th>
                         <th>Monto (Sin IGV)</th>
@@ -772,7 +773,7 @@ function renderPedidos() {
                         <th>Nr° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
-                        <th>Lugar de Entrega</th>
+                        <th>Lugar entrega</th>
                         <th>Descripción</th>
                         <th>Monto (Sin IGV)</th>
                         <th>Monto (Con IGV)</th>
@@ -920,7 +921,7 @@ function renderPedidos() {
                 <th>Nr° PC (pedido de compra)</th>
                 <th>Nr° cotización</th>
                 <th>Cliente</th>
-                <th>Lugar de Entrega</th>
+                <th>Lugar entrega</th>
                 <th>RUC</th>
                 <th>Descripción</th>
                 <th>Monto (Sin IGV)</th>
@@ -983,7 +984,7 @@ function renderPedidos() {
             <th>Nr° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
-            <th>Lugar de Entrega</th>
+            <th>Lugar entrega</th>
             <th>Descripción</th>
             <th>Monto (Sin IGV)</th>
             <th>Monto (Con IGV)</th>
@@ -1027,7 +1028,6 @@ function renderPedidos() {
         if (r.valida_stock !== undefined) validaciones.push(`Stock: ${r.valida_stock ? '✅' : '❌'}`);
         if (r.valida_entrega !== undefined) validaciones.push(`Entrega: ${r.valida_entrega ? '✅' : '❌'}`);
         if (r.valida_montos !== undefined) validaciones.push(`Montos: ${r.valida_montos ? '✅' : '❌'}`);
-        if (r.valida_transporte !== undefined) validaciones.push(`Transporte: ${r.valida_transporte ? '✅' : '❌'}`);
         if (r.valida_vigencia !== undefined) validaciones.push(`Vigencia: ${r.valida_vigencia ? '✅' : '❌'}`);
         if (r.valida_margen !== undefined) validaciones.push(`Margen: ${r.valida_margen ? '✅' : '❌'}`);
         
@@ -1290,7 +1290,7 @@ if (cotizacionViewMode === 'principal') {
             <th>Cond. Pago</th>
             <th>Tiempo Entrega</th>
             <th>Validez</th>
-            <th>Dirección Entrega</th>
+            <th>Lugar entrega</th>
             <th>Requerimiento</th>
             <th>Nota Comercial</th>
             <th>Seguimiento</th>
@@ -1387,6 +1387,17 @@ function setPedidoView(mode) {
     renderPedidos();
 }
 
+// Entregas (pedido de Erika 20/10/2026): lo pendiente en rojo encendido, lo terminado en verde fluorescente.
+// Solo cambia lo que se ve; en la base el estado sigue siendo "Pendiente despacho" / "Despachado".
+function estadoDespachoHTML(estado) {
+    const e = estado || 'Pendiente despacho';
+    if (e === 'Despachado' || e === 'Entregado') return `<span class="desp-hecho">✔ ${e}</span>`;
+    if (/pendiente/i.test(e)) return '<span class="desp-por">⏳ Por despachar</span>';
+    if (/preparaci/i.test(e)) return '<span class="desp-por">📦 En preparación</span>';
+    return badgeStatus(e);
+}
+window.estadoDespachoHTML = estadoDespachoHTML;
+
 function renderDespachos() {
     const q = document.getElementById('despachoSearch')?.value?.toLowerCase() || '';
     const st = document.getElementById('despachoStatus')?.value || '';
@@ -1475,7 +1486,7 @@ function renderDespachos() {
         <tr class="${despachado ? 'fila-despachada' : ''}">
             <td>${i + 1}</td>
             <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
-            <td>${despachado ? `<span class="badge badge-despachado">🚚 ${r.estado}</span>` : badgeStatus(r.estado)}${despachado ? '' : abastBadge('despachos', r.id)}</td>
+            <td>${estadoDespachoHTML(r.estado)}${despachado ? '' : abastBadge('despachos', r.id)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.pc_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
@@ -1484,8 +1495,8 @@ function renderDespachos() {
             <td>${sd(r.destino)}</td>
             <td>
                 ${r.estado !== 'Despachado' && r.estado !== 'Entregado' ? 
-                    `<button class="btn btn-sm btn-green" onclick="marcarDespachado(${r.id})" style="padding:4px 10px; font-size:10px; border-radius:6px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer;">🚚 Despachar</button>` : 
-                    `<span class="badge b-ok">✅ ${r.estado || 'Completado'}</span>
+                    `<button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">🚚 Confirmar despacho</button>` : 
+                    `<span class="desp-hecho">✔ ${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
                      <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>`
                 }
                 <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">🏷️ Rótulo</button>
@@ -2129,7 +2140,7 @@ async function guardarCotizacion(estado) {
             showValidationWarningModal(camposFaltantes);
             return null;
         }
-        const vaciosInfo = infoAdicionalVacia().filter(x => !((estado === 'Por validar' || estado === 'En revisión') && /seguimiento|nota interna/i.test(x)));
+        const vaciosInfo = infoAdicionalVacia().filter(x => !((estado === 'Por validar' || estado === 'En revisión') && /seguimiento/i.test(x)));
         if (vaciosInfo.length && !(await avisoAmarilloCotizacion(vaciosInfo))) return null;
         // ============================================================
         // 1. BUSCAR EL CLIENTE POR RUC
@@ -2421,8 +2432,9 @@ function avisoAmarilloCotizacion(vacios) {
 function faltanDatosParihuela() {
     const faltan = [];
     const vacio = v => !v || /^(seleccione|--.*)$/i.test(String(v).trim());
+    // La nota interna NO es obligatoria (Erika, 20/10/2026 17:19)
     [['fSeguimiento', 'Seguimiento'], ['fMotivo', 'Motivo'], ['fTransporte', 'Transporte'],
-     ['fParihuela', 'Parihuela (si incluye o no)'], ['fNotaInterna', 'Nota interna (si no hay, escribe "Ninguna")']]
+     ['fParihuela', 'Parihuela (si incluye o no)']]
         .forEach(([id, nombre]) => {
             if (vacio((document.getElementById(id)?.value || '').trim())) { faltan.push(nombre); _cotMarcarFalta(id); }
         });
@@ -3335,7 +3347,9 @@ function renderComprobanteFormContent(isEdit, data) {
     const _condFac = window.normalizarCondicion ? window.normalizarCondicion(data?.condicion || data?.condicion_pago || '') : (data?.condicion || '');
     const _opcFac = ['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'];
     if (_condFac && !_opcFac.includes(_condFac)) _opcFac.push(_condFac);
-    const condicionOptions = _opcFac.map(o => `<option value="${o}" ${_condFac === o ? 'selected' : ''}>${o}</option>`).join('');
+    // Factura nueva: la condición empieza vacía y se llena sola (PC → guía → cliente); antes quedaba "Contado" sin avisar
+    const condicionOptions = (_condFac ? '' : '<option value="" selected>— Se llena sola: elige PC, guía, cotización o RUC —</option>') +
+        _opcFac.map(o => `<option value="${o}" ${_condFac === o ? 'selected' : ''}>${o}</option>`).join('');
     const _condicionOptionsAntiguas = `
         <option value="Contado" ${data?.condicion === 'Contado' ? 'selected' : ''}>Contado</option>
         <option value="Crédito 7 días" ${data?.condicion === 'Crédito 7 días' ? 'selected' : ''}>Crédito 7 días</option>
@@ -3755,7 +3769,7 @@ function renderProductosComprobanteHTML(productos) {
                     <tr>
                         <th>Item</th>
                         <th>Código de producto</th>
-                        <th>Producto</th>
+                        <th>Nombre producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
@@ -3889,7 +3903,7 @@ function renderProductosComprobanteHTML(productos) {
                     <tr>
                         <th>Item</th>
                         <th>Código de producto</th>
-                        <th>Producto</th>
+                        <th>Nombre producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
@@ -4200,7 +4214,16 @@ async function _saveComprobante(estado) {
         const hiddenField = document.getElementById('compTieneRetencion');
         const tieneRetencion = hiddenField ? hiddenField.value === 'true' : false;
         
-        const condicion = document.getElementById('compCondicion')?.value || 'Contado';
+        // Condición de pago obligatoria: si sigue vacía se intenta llenar (PC → guía → cliente) antes de guardar
+        if (!document.getElementById('compCondicion')?.value && typeof aplicarCondicionFactura === 'function') {
+            await aplicarCondicionFactura(true);
+        }
+        const condicion = document.getElementById('compCondicion')?.value || '';
+        if (!condicion) {
+            showToast('⚠️ Falta la condición de pago. Elige el PC o la guía, o escríbela (el cliente no tiene una registrada).', 'error');
+            document.getElementById('compCondicion')?.focus();
+            return;
+        }
         const esCredito = condicion.includes('Crédito');
         
         // ============================================================
@@ -5746,6 +5769,7 @@ async function openComprobanteModalWithData(id, cotizacion) {
             <div class="form-field col-4">
                 <label>Condición de pago</label>
                 <select id="compCondicion">
+                    <option value="" selected>— Se llena sola desde el PC o el cliente —</option>
                     ${['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'].map(o => `<option>${o}</option>`).join('')}
                 </select>
                 <small style="display:block;margin-top:3px;font-size:11px;font-weight:700;color:#92400E">La condición sale del PC del cliente, no de la cotización</small>
@@ -5766,6 +5790,8 @@ async function openComprobanteModalWithData(id, cotizacion) {
     
     window._compProductos = productos;
     document.getElementById('comprobanteModal').classList.add('show');
+    // Condición de pago desde el PC de esta cotización (o del cliente); antes quedaba "Contado" (20/10/2026)
+    if (typeof aplicarCondicionFactura === 'function') setTimeout(aplicarCondicionFactura, 50);
 }
 
 function closeComprobanteModal() {
@@ -6108,8 +6134,11 @@ async function createDespachoFromPedido(id) {
         });
 
         if (result.success) {
-            showToast(`✅ Despacho ${result.data.numero} creado desde PC ${pc.numero}`, 'success');
-            if (typeof loadDespachos === 'function') loadDespachos();
+            const nuevoDesp = (Array.isArray(result.data) ? result.data[0] : result.data) || {};  // antes decía "Despacho undefined"
+            showToast(`✅ Despacho ${nuevoDesp.numero || ''} creado desde PC ${pc.numero}`, 'success');
+            // Pedido de Erika 20/10/2026: llevar a "Entregas" y resaltar el despacho recién creado
+            if (typeof loadDespachos === 'function') await loadDespachos();
+            irAPestanaYResaltar('despachar', 'despachoSearch', [nuevoDesp.numero, pc.numero], typeof renderDespachos === 'function' ? renderDespachos : null);
         } else {
             showToast('❌ Error al crear el despacho: ' + (result.error || 'Desconocido'), 'error');
         }
@@ -8426,12 +8455,12 @@ function renderValidacion() {
         if (todasValidas && v.faltante <= 0) {
             resultado = '✅ Listo para despacho';
             badgeClass = 'badge-val-ok';
-            accionHtml = `<button class="btn btn-green btn-sm" onclick="enviarADespacho(${v.id})" style="height:20px; padding:0 8px; font-size:8px; border-radius:4px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer;">🚚 Despachar</button>`;
+            accionHtml = `<button class="btn btn-green btn-sm" onclick="enviarADespacho(${v.id})" style="height:20px; padding:0 8px; font-size:8px; border-radius:4px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer;" title="Crea el despacho y te lleva a Entregas">🚚 Enviar a Entregas</button>`;
         } else if (todasValidas && v.faltante > 0) {
             resultado = '🔄 Requiere compra (stock insuficiente)';
             badgeClass = 'badge-val-warning';
             accionHtml = `<button class="btn btn-warning btn-sm" onclick="generarOrdenCompra(${v.id})" style="height:20px; padding:0 8px; font-size:8px; border-radius:4px; border:none; background:#F59E0B; color:#000; font-weight:800; cursor:pointer;">🛒 Comprar</button>
-                          <button class="btn btn-green btn-sm" onclick="enviarADespacho(${v.id})" style="height:20px; padding:0 8px; font-size:8px; border-radius:4px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer; margin-left:4px;">🚚 Despachar</button>`;
+                          <button class="btn btn-green btn-sm" onclick="enviarADespacho(${v.id})" style="height:20px; padding:0 8px; font-size:8px; border-radius:4px; border:none; background:#16A34A; color:#fff; font-weight:800; cursor:pointer; margin-left:4px;" title="Crea el despacho y te lleva a Entregas">🚚 Enviar a Entregas</button>`;
         } else if (esObservado) {
             resultado = '⚠️ Bloqueado por observación';
             badgeClass = 'badge-val-error';
@@ -8888,18 +8917,10 @@ async function enviarADespacho(id) {
                     await loadDespachos();
                     renderValidacion();
                     
-                    // Cambiar a la pestaña de despachos
-                    setTimeout(() => {
-                        const tabBtn = document.querySelector('.tab-btn[data-tab="despachar"]');
-                        if (tabBtn) {
-                            tabBtn.click();
-                            setTimeout(() => {
-                                if (typeof renderDespachos === 'function') {
-                                    renderDespachos();
-                                }
-                            }, 300);
-                        }
-                    }, 1000);
+                    // Cambiar a "Entregas" y resaltar el despacho recién creado (pedido de Erika 20/10/2026)
+                    irAPestanaYResaltar('despachar', 'despachoSearch',
+                        [((Array.isArray(despachoResult.data) ? despachoResult.data[0] : despachoResult.data) || {}).numero, despachoData.numero, pedido.numero],
+                        typeof renderDespachos === 'function' ? renderDespachos : null);
                     
                 } else {
                     showToast('❌ Error al crear despacho: ' + (despachoResult.error || 'Desconocido'), 'error');
@@ -9915,7 +9936,7 @@ function productTableHtml(productos) {
         <div class="table-scroll">
             <table class="master-table">
                 <thead><tr>
-                    <th>Item</th><th>Código de producto</th><th>Producto</th><th>Marca</th><th>UM SUNAT</th>
+                    <th>Item</th><th>Código de producto</th><th>Nombre producto</th><th>Marca</th><th>UM SUNAT</th>
                     <th>Cant.</th><th>Stock</th>
                 </tr></thead>
                 <tbody>
@@ -10867,7 +10888,7 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
                         <tr>
                             <th>Item</th>
                             <th>Código de producto</th>
-                            <th>Producto</th>
+                            <th>Nombre producto</th>
                             <th>Marca</th>
                             <th>Modelo</th>
                             <th>Unidad</th>
@@ -11171,7 +11192,7 @@ function renderProductosComprobante(productos) {
                     <tr>
                         <th>Item</th>
                         <th>Código de producto</th>
-                        <th>Producto</th>
+                        <th>Nombre producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
@@ -13845,7 +13866,7 @@ function renderCotizacionFormContent(isEdit) {
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:90px;">Valor Venta Unitario S/.</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:100px;">Valor Total S/.</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:55px;">Stock</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:70px;">Entrega</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:70px;">Estado entrega</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:40px;">Acciones </th>
                     </tr>
                 </thead>
@@ -15383,10 +15404,9 @@ async function savePedidoCompraSAP(force) {
         const validationSwitches = [
             { id: 'vPrecio', label: 'Precio' },
             { id: 'vCantidad', label: 'Cantidad' },
-            { id: 'vProducto', label: 'Producto' },
-            { id: 'vEntrega', label: 'Lugar de Entrega' },
+            { id: 'vProducto', label: 'Nombre producto' },
+            { id: 'vEntrega', label: 'Lugar entrega' },
             { id: 'vMoneda', label: 'Moneda' },
-            { id: 'vTransporte', label: 'Transporte' },
             { id: 'vVigencia', label: 'Vigencia' }
         ];
         
@@ -17126,7 +17146,7 @@ function mostrarErrorStockDespacho(faltan, mensaje) {
         <div style="padding:16px 20px;color:#7F1D1D">
           <div style="font-size:16px;font-weight:800;margin-bottom:10px">${filas ? 'Estos productos no alcanzan en la empresa y sede elegidas:' : esc(mensaje || 'No hay stock suficiente.')}</div>
           ${filas ? `<table style="width:100%;border-collapse:collapse;font-size:15px;background:#fff;border:2px solid #FCA5A5;border-radius:10px">
-            <thead><tr style="background:#FEE2E2"><th style="padding:8px;text-align:left">Producto</th><th style="padding:8px">Empresa · Sede</th>
+            <thead><tr style="background:#FEE2E2"><th style="padding:8px;text-align:left">Nombre producto</th><th style="padding:8px">Empresa · Sede</th>
               <th style="padding:8px;text-align:right">Pide</th><th style="padding:8px;text-align:right">Hay</th><th style="padding:8px;text-align:right">Falta</th></tr></thead>
             <tbody>${filas}</tbody></table>` : ''}
           <div style="font-size:14px;font-weight:700;margin-top:12px">Qué hacer: elige otra empresa o sede que diga ✅ "hay todo", o pide la compra / la transferencia de esos productos. Nada se descontó.</div>
@@ -17168,10 +17188,10 @@ window.prepararUbicacionDespacho = prepararUbicacionDespacho;
 // Sale del PC de origen; si no hay PC, de la guía; si no, del cliente. Nunca de la cotización.
 // Antes un PC a 30 días terminaba en factura "Contado".
 // ============================================================
-async function aplicarCondicionFactura() {
+async function aplicarCondicionFactura(alGuardar) {
     const sel = document.getElementById('compCondicion');
     if (!sel) return;
-    if (typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value) return; // factura ya guardada: se respeta
+    if (typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value && !alGuardar) return; // factura ya guardada: se respeta
     const v = id => (document.getElementById(id)?.value || '').trim();
     const qs = new URLSearchParams({ pc: v('compPC'), guia: v('compGuia'), cotizacion: v('compCotizacion'), ruc: v('compRuc') });
     let j = null;
@@ -17180,7 +17200,15 @@ async function aplicarCondicionFactura() {
         j = await r.json();
     } catch (e) { return; }
     j = j && j.data ? j.data : j;
-    if (!j || !j.condicion) return;
+    if (!j || !j.condicion) {
+        if (!sel.value && v('compRuc')) {
+            let aviso = document.getElementById('compCondicionOrigen');
+            if (!aviso) { aviso = document.createElement('small'); aviso.id = 'compCondicionOrigen'; sel.insertAdjacentElement('afterend', aviso); }
+            aviso.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#B91C1C';
+            aviso.textContent = '⚠ Elige la condición: no hay PC y el cliente no tiene una registrada';
+        }
+        return;
+    }
     window.ponerCondicion(sel, j.condicion);
     const pcSel = document.getElementById('compPC');
     if (pcSel && !pcSel.value && j.pc) {
@@ -17193,16 +17221,16 @@ async function aplicarCondicionFactura() {
     if (!nota) {
         nota = document.createElement('small');
         nota.id = 'compCondicionOrigen';
-        nota.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#065F46';
         sel.insertAdjacentElement('afterend', nota);
     }
+    nota.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#065F46';
     const fuente = /^PC/i.test(j.fuente || '') ? 'del ' + j.fuente : (j.fuente === 'cliente' ? 'de la ficha del cliente (no hay PC)' : '');
     nota.textContent = fuente ? '✔ Tomada ' + fuente : '';
     if (typeof actualizarEstadoRetencion === 'function') actualizarEstadoRetencion();
     if (typeof calcularRetencionComprobante === 'function') calcularRetencionComprobante();
 }
 window.aplicarCondicionFactura = aplicarCondicionFactura;
-['loadComprobanteFromGuia', 'loadComprobanteFromPC', 'loadComprobanteFromCotizacion'].forEach(nombre => {
+['loadComprobanteFromGuia', 'loadComprobanteFromPC', 'loadComprobanteFromCotizacion', 'cargarProductosComprobanteDesdeCotizacion'].forEach(nombre => {
     const original = window[nombre];
     if (typeof original !== 'function' || original._conCondicion) return;
     const envuelta = function () {
@@ -17212,6 +17240,11 @@ window.aplicarCondicionFactura = aplicarCondicionFactura;
     };
     envuelta._conCondicion = true;
     window[nombre] = envuelta;
+});
+// También se llena al escribir el RUC a mano o al elegir la cotización en la factura (20/10/2026: antes quedaba "Contado")
+document.addEventListener('change', e => {
+    const id = e.target && e.target.id;
+    if (id === 'compRuc' || (id === 'compCotizacion' && !e.target.getAttribute('onchange'))) setTimeout(aplicarCondicionFactura, 150);
 });
 // Observaciones de la factura: primera letra en mayúscula
 document.addEventListener('focusout', e => {

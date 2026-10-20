@@ -202,7 +202,7 @@
         try {
             const d = await api('/herramientas/api/recalcular_stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
             el.innerHTML = '<div class="hr-aviso ' + (d.cambiados.length ? 'warn' : 'ok') + '">' + esc(d.message) + '</div>' +
-                (d.cambiados.length ? '<table class="hr-table"><thead><tr><th>Producto</th><th>Stock antes</th><th>Stock ahora</th></tr></thead><tbody>' +
+                (d.cambiados.length ? '<table class="hr-table"><thead><tr><th>Nombre producto</th><th>Stock antes</th><th>Stock ahora</th></tr></thead><tbody>' +
                     d.cambiados.map(c => '<tr><td class="hr-mono">' + esc(c.codigo) + '</td><td class="num">' + c.antes + '</td><td class="num"><b>' + c.despues + '</b></td></tr>').join('') + '</tbody></table>' : '');
         } catch (e) { el.innerHTML = '<div class="hr-aviso danger">' + esc(e.message) + '</div>'; }
     }
