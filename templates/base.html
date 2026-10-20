@@ -37,7 +37,146 @@
                 try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
                 catch (e) { var p = function (n) { return String(n).padStart(2, '0'); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
             };
+            // Condición de pago: separa "Crédito 30 días", "Credito", "30", "Crédito - 7 días"... en tipo + número de días,
+            // y la vuelve a escribir siempre igual: "Contado", "Contra entrega" o "Crédito 30 días" (igual en todo el sistema, 19/10/2026).
+            window.condPagoPartes = function (texto, dias) {
+                var s = String(texto || '').trim(), n = parseInt(dias, 10);
+                var m = s.match(/\d+/);
+                if (!n && m) n = parseInt(m[0], 10);
+                if (/contra/i.test(s)) return { tipo: 'Contra entrega', dias: 0 };
+                if (/cr[eé]d/i.test(s) || /^\d+\s*(d[ií]as?)?$/i.test(s)) return { tipo: 'Crédito', dias: n || 0 };
+                return { tipo: s ? 'Contado' : '', dias: 0 };
+            };
+            window.condPagoTexto = function (tipo, dias) {
+                var n = parseInt(dias, 10);
+                if (tipo === 'Crédito') return n > 0 ? 'Crédito ' + n + ' días' : 'Crédito';
+                return tipo || '';
+            };
+            // Fecha y hora de creación y de la última modificación, debajo de la fecha de cada fila (pedido 19/10/2026)
+            window.tiemposHTML = function (r) {
+                if (!r) return '';
+                var c = r.creado_en || r.created_at || r.fecha_creacion, m = r.modificado_en || r.updated_at;
+                if (!c && !m) return '';
+                var fc = c ? window.fechaHoraLima(c) : '', fm = m ? window.fechaHoraLima(m) : '';
+                var h = '<div class="ts-reg">' + (fc ? 'Creado ' + fc : '');
+                if (fm && fm !== fc) h += (fc ? '<br>' : '') + 'Modificado ' + fm;
+                return h + '</div>';
+            };
+            window.condPagoMostrar = function (texto, dias) {
+                var p = window.condPagoPartes(texto, dias);
+                return p.tipo ? window.condPagoTexto(p.tipo, p.dias) : '';
+            };
+            // Condición de pago escrita siempre igual ('Contado', 'Contra entrega', 'Crédito N días'). Antes
+            // 'Credito 45 Dias' no coincidía con 'Crédito 45 días' y la factura caía en "Contado" (19/10/2026).
+            window.normalizarCondicion = function (texto) {
+                var t = String(texto || '').trim();
+                if (!t || /^(seleccione|personalizado|--|-)$/i.test(t)) return '';
+                var b = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                var n = b.match(/(\d+)/);
+                if (/contra/.test(b) && /entrega/.test(b)) return 'Contra entrega';
+                if (/contado/.test(b) && !n) return 'Contado';
+                if (n && !/letra/.test(b) && (/credito|dia/.test(b) || /^\d+$/.test(b))) {
+                    var d = parseInt(n[1], 10);
+                    return d === 0 ? 'Contado' : 'Crédito ' + d + ' días';
+                }
+                return t;
+            };
+            // Pone la condición en un <select> aunque esté escrita distinto; si no existe la opción, la agrega
+            window.ponerCondicion = function (sel, texto) {
+                if (typeof sel === 'string') sel = document.getElementById(sel);
+                if (!sel) return '';
+                var v = window.normalizarCondicion(texto);
+                if (!v) { sel.value = ''; return ''; }
+                var op = Array.prototype.find.call(sel.options, function (o) {
+                    return window.normalizarCondicion(o.value) === v;
+                });
+                if (!op) { op = new Option(v, v); sel.add(op, sel.options[sel.options.length - 1] && /personaliz/i.test(sel.options[sel.options.length - 1].value) ? sel.options.length - 1 : null); }
+                sel.value = op.value;
+                return v;
+            };
+            // Montos: máximo 2 decimales al calcular y al mostrar (pedido de Erika 19/10/2026)
+            window.redondear2 = function (x) {
+                var n = Number(x);
+                return isFinite(n) ? Math.round((n + Number.EPSILON) * 100) / 100 : 0;
+            };
+            // Ventana grande "¿Qué hacer ahora?" con pasos y un botón que lleva al siguiente lugar (modo paso a paso)
+            window.mostrarPasos = function (cfg) {
+                var viejo = document.getElementById('ventanaPasos');
+                if (viejo) viejo.remove();
+                var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+                var f = document.createElement('div');
+                f.id = 'ventanaPasos';
+                f.className = 'pasos-fondo';
+                f.innerHTML = '<div class="pasos-caja" role="dialog" aria-labelledby="pasosTitulo">' +
+                    '<div class="pasos-cabeza" id="pasosTitulo">' + esc(cfg.titulo) + (cfg.subtitulo ? '<small>' + cfg.subtitulo + '</small>' : '') + '</div>' +
+                    '<div class="pasos-cuerpo"><h4>¿Qué hacer ahora?</h4><ol class="pasos-lista">' +
+                    (cfg.pasos || []).map(function (p, i) {
+                        return '<li class="' + (p.hecho ? 'hecho' : '') + '"><b class="n">' + (p.hecho ? '✓' : (i + 1)) + '</b><span>👉 ' + p.texto + '</span></li>';
+                    }).join('') + '</ol></div>' +
+                    '<div class="pasos-botones"><button type="button" class="pasos-cerrar">Cerrar</button>' +
+                    (cfg.boton ? '<button type="button" class="pasos-ir">' + esc(cfg.boton.texto) + '</button>' : '') + '</div></div>';
+                document.body.appendChild(f);
+                f.querySelector('.pasos-cerrar').onclick = function () { f.remove(); };
+                var ir = f.querySelector('.pasos-ir');
+                if (ir) { ir.onclick = function () { f.remove(); cfg.boton.accion(); }; ir.focus(); }
+            };
+            // Botón "Entendido"/× del aviso del comparativo: existía en la pantalla pero sin función (auditoría 19/10)
+            window.cerrarModalGanador = window.cerrarModalGanador || function () {
+                var m = document.getElementById('modalGanador');
+                if (m) { m.classList.remove('active'); m.style.display = ''; }
+            };
+            // Casillas de dinero (step 0.01): nunca más de 2 decimales, ni al mostrarse ni al escribir
+            (function () {
+                var SEL = 'input[type="number"][step="0.01"]';
+                var arreglar = function (el) {
+                    if (!el || el.value === '' || el === document.activeElement) return;
+                    var n = Number(el.value);
+                    if (isFinite(n) && /\.\d{3,}$/.test(el.value)) el.value = window.redondear2(n).toFixed(2);
+                };
+                var pend = false;
+                var revisar = function () {
+                    pend = false;
+                    document.querySelectorAll(SEL).forEach(arreglar);
+                };
+                document.addEventListener('change', function (e) {
+                    if (e.target && e.target.matches && e.target.matches(SEL) && /\.\d{3,}$/.test(e.target.value)) {
+                        e.target.value = window.redondear2(e.target.value).toFixed(2);
+                    }
+                }, true);
+                var iniciar = function () {
+                    revisar();
+                    new MutationObserver(function () {
+                        if (!pend) { pend = true; requestAnimationFrame(revisar); }
+                    }).observe(document.body, { childList: true, subtree: true });
+                };
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+            })();
             </script>
+            <style>.ts-reg{font-size:9.5px;line-height:1.25;color:#475569;font-weight:600;margin-top:3px;white-space:nowrap}
+            .btn-clave-usuario{margin-top:4px;padding:3px 8px;font-size:11px;font-weight:800;border-radius:6px;border:1px solid #1D4ED8;background:#EFF6FF;color:#1D4ED8;cursor:pointer;white-space:nowrap}
+            .np-fondo,.pasos-fondo{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000001;display:flex;align-items:center;justify-content:center;padding:16px}
+            .np-caja{background:#fff;color:#0F172A;border-radius:12px;max-width:520px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+            .np-caja h3{margin:0 0 8px;font-size:18px}.np-ayuda{font-size:13px;color:#475569;margin:0 0 12px}
+            .np-fila{display:flex;gap:8px}.np-fila input{flex:1;height:38px;border:2px solid #CBD5E1;border-radius:8px;padding:0 10px;font-size:15px;font-family:monospace}
+            .np-resultado{margin-top:12px;padding:10px 12px;border-radius:8px;background:#DCFCE7;border:2px solid #16A34A;font-size:14px}
+            .np-resultado code{font-size:16px;font-weight:800;background:#fff;padding:2px 6px;border-radius:4px}
+            .np-botones{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+            .pasos-caja{background:#fff;color:#0F172A;border-radius:16px;max-width:620px;width:100%;overflow:hidden;box-shadow:0 25px 70px rgba(0,0,0,.4);border:4px solid #16A34A}
+            .pasos-cabeza{background:#16A34A;color:#fff;padding:18px 22px;font-size:24px;font-weight:900;line-height:1.2}
+            .pasos-cabeza small{display:block;font-size:15px;font-weight:700;opacity:.95;margin-top:4px}
+            .pasos-cuerpo{padding:18px 22px}.pasos-cuerpo h4{margin:0 0 10px;font-size:18px;font-weight:900}
+            .pasos-lista{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+            .pasos-lista li{display:flex;gap:12px;align-items:flex-start;background:#F0FDF4;border:2px solid #BBF7D0;border-radius:10px;padding:10px 12px;font-size:16px;font-weight:700}
+            .pasos-lista li b.n{flex:0 0 32px;height:32px;border-radius:50%;background:#16A34A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px}
+            .pasos-lista li.hecho{background:#F8FAFC;border-color:#E2E8F0;color:#64748B;text-decoration:line-through}
+            .pasos-lista li.hecho b.n{background:#94A3B8}
+            .pasos-botones{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;padding:0 22px 20px}
+            .pasos-ir{background:#1D4ED8;color:#fff;border:0;border-radius:10px;padding:12px 20px;font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 0 0 4px #BFDBFE}
+            .pasos-ir:hover{background:#1E40AF}.pasos-cerrar{background:#fff;color:#334155;border:2px solid #CBD5E1;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:800;cursor:pointer}
+            .confirm-modal-overlay{z-index:10000000!important} /* la confirmación siempre encima de la ventana que la abrió */
+            tr.fila-recien{animation:filaRecien 1.2s ease-in-out 4;outline:3px solid #16A34A;outline-offset:-3px}
+            @keyframes filaRecien{50%{background:#BBF7D0}}
+            </style>
 
             <!-- Bootstrap Icons -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -178,6 +317,7 @@
         <a href="/inventario?tab=transferencias" class="child-btn" data-screen="transferencias" style="text-decoration:none;">Traslados e intercompany</a>
         <a href="/inventario?tab=separaciones" class="child-btn" data-screen="separaciones" style="text-decoration:none;">Separaciones</a>
         <a href="/inventario?tab=conteos" class="child-btn" data-screen="conteos" style="text-decoration:none;">Conteos</a>
+        <a href="/inventario?tab=vencimientos" class="child-btn" data-screen="vencimientos" style="text-decoration:none;">⏳ Vencimientos</a>
         <a href="/inventario?tab=kardex" class="child-btn" data-screen="kardex" style="text-decoration:none;">Kardex</a>
         <a href="/inventario?tab=sedes" class="child-btn" data-screen="sedes" style="text-decoration:none;">Sedes y SUNAT</a>
     </div>
@@ -2271,9 +2411,12 @@ function _dibujarTablaUsuarios() {
         const empresaId = estado?.empresaId || '';
         const celdas = PERM_COLUMNAS.map(c => `<td>${checkEye(_estadoColumna(estado, c.col), u.usuario_sistema, c.col, u.id, empresaId)}</td>`).join('');
         const aviso = estado?.gerencia ? ' <span class="badge badge-info" title="Ve todos los módulos">👑 Todo</span>' : '';
+        const btnClave = _esAdminSistema()
+            ? `<br><button type="button" class="btn-clave-usuario" onclick="abrirNuevaPassword(${Number(u.id)}, '${_esc(u.usuario_sistema)}')" title="Asignar una contraseña nueva (no pide la anterior)">🔑 Nueva contraseña</button>`
+            : '';
         return `
         <tr>
-            <td class="left"><b>${_esc(u.usuario_sistema)}</b>${aviso}</td>
+            <td class="left"><b>${_esc(u.usuario_sistema)}</b>${aviso}${btnClave}</td>
             <td class="left">${_esc(u.area || '-')}</td>
             <td>${empresasHtml}</td>
             <td>${rolesHtml}</td>
@@ -2479,10 +2622,55 @@ function _pintarInactivos(r) {
             <td class="left">${_esc(u.correo || '')}</td>
             <td><span class="badge badge-gray">${_esc(u.rol || '')}</span></td>
             <td><span class="badge badge-danger">Inactivo</span></td>
-            <td><button type="button" class="btn btn-primary btn-activar-usuario" data-id="${_esc(u.id)}" data-user="${_esc(u.usuario_sistema)}">Activar</button></td>
+            <td><button type="button" class="btn btn-primary btn-activar-usuario" data-id="${_esc(u.id)}" data-user="${_esc(u.usuario_sistema)}">Activar</button>
+                <button type="button" class="btn-clave-usuario" onclick="abrirNuevaPassword(${Number(u.id)}, '${_esc(u.usuario_sistema)}')">🔑 Nueva contraseña</button></td>
         </tr>`).join('') :
         `<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:14px;">No hay usuarios inactivos.</td></tr>`;
     tb.querySelectorAll('.btn-activar-usuario').forEach(b => b.addEventListener('click', () => activarUsuarioERP(b.dataset.id, b.dataset.user)));
+}
+
+// ============================================================
+// CONTRASEÑA NUEVA POR EL ADMINISTRADOR (pedido de Erika 19/10/2026): no pide la anterior
+// ============================================================
+function abrirNuevaPassword(id, usuario) {
+    document.getElementById('modalNuevaPassword')?.remove();
+    const m = document.createElement('div');
+    m.id = 'modalNuevaPassword';
+    m.className = 'np-fondo';
+    m.innerHTML = `
+        <div class="np-caja" role="dialog" aria-labelledby="npTitulo">
+            <h3 id="npTitulo">🔑 Contraseña nueva para <b>${_esc(usuario)}</b></h3>
+            <p class="np-ayuda">No hace falta la contraseña anterior. Mínimo 8 caracteres, con letras y números.
+               Se guarda cifrada: después nadie puede leerla, ni siquiera el administrador.</p>
+            <div class="np-fila">
+                <input type="text" id="npClave" autocomplete="new-password" placeholder="Escribe la nueva contraseña">
+                <button type="button" class="btn btn-secondary" id="npGenerar">🎲 Generar</button>
+            </div>
+            <div id="npResultado" class="np-resultado" hidden></div>
+            <div class="np-botones">
+                <button type="button" class="btn btn-secondary" id="npCerrar">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="npGuardar">💾 Guardar contraseña</button>
+            </div>
+        </div>`;
+    document.body.appendChild(m);
+    const input = m.querySelector('#npClave');
+    m.querySelector('#npCerrar').onclick = () => m.remove();
+    m.querySelector('#npGenerar').onclick = () => { input.value = generarPasswordTemporal(14); input.focus(); };
+    m.querySelector('#npGuardar').onclick = async () => {
+        const clave = input.value.trim();
+        if (!clave) { input.focus(); mostrarNotificacion('warning', 'Falta la contraseña', 'Escríbela o pulsa "Generar".'); return; }
+        const r = await _permApi(`/api/config/usuarios/${encodeURIComponent(id)}/password`,
+                                 { method: 'POST', body: JSON.stringify({ password: clave }) });
+        if (!r.ok) { mostrarNotificacion('error', 'No se cambió', r.error); return; }
+        const res = m.querySelector('#npResultado');
+        res.hidden = false;
+        res.innerHTML = `✅ Listo. <b>${_esc(usuario)}</b> ahora entra con: <code>${_esc(clave)}</code><br>
+            <small>Cópiala y entrégasela en persona. Al cerrar esta ventana ya no se podrá ver.</small>`;
+        m.querySelector('#npGuardar').disabled = true;
+        input.disabled = true;
+        m.querySelector('#npGenerar').disabled = true;
+    };
+    input.focus();
 }
 
 async function activarUsuarioERP(id, usuario) {
@@ -4298,6 +4486,8 @@ window.bdPorPagina = 20;
 
         </script>
         {% block extra_js %}{% endblock %}
+        <!-- Exportar a Excel la tabla que se ve (va después de los scripts de cada pantalla para reemplazar los botones que no hacían nada) -->
+        <script src="{{ url_for('static', filename='js/exportar_tabla.js') }}?v=20261019"></script>
 
 
 

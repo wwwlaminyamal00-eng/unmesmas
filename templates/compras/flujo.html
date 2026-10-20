@@ -117,13 +117,13 @@
                     </select>
                     <input type="search" id="ocBuscar" placeholder="Buscar OC, proveedor, cliente, producto...">
                     <label class="inv-check"><input type="checkbox" id="ocSinPedido"> Solo compras sin pedido</label>
-                    <a class="btn btn-secondary" href="/compras/api/flujo/ordenes/exportar">⬇ Excel (CSV)</a>
+                    <button type="button" class="btn btn-secondary" onclick="exportarTabla(this, 'Compras - Órdenes de compra')">⬇ Exportar Excel</button>
                     <button class="btn btn-primary" id="btnNuevaOC">+ Nueva orden</button>
                 </div>
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N°</th><th>Creada</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para</th><th>Entrega en</th><th>Pago</th><th>Total</th><th>Llegó</th><th>Estado</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <thead><tr><th>Nr° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para</th><th>Entrega en</th><th>Pago</th><th>Total</th><th>Llegó</th><th>Estado</th><th class="left">Siguiente paso</th><th></th></tr></thead>
                     <tbody id="ocBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -178,8 +178,9 @@
             <div class="inv-head">
                 <div>
                     <div class="inv-title">Facturas de proveedores por registrar</div>
-                    <div class="inv-help">Copia los datos <b>tal como están en la factura</b>. El sistema la compara con lo que realmente llegó: si no cuadra, queda como diferencia por resolver. Las facturas registradas pasan a Finanzas ▸ Cuentas por pagar.</div>
+                    <div class="inv-help">Copia los datos <b>tal como están en la factura</b>. El sistema la compara con lo que realmente llegó: si no cuadra, <b>no se guarda</b> y te pide corregirla en ese momento. Las facturas registradas pasan a Finanzas ▸ Cuentas por pagar.</div>
                 </div>
+                <button class="btn btn-secondary" id="btnVerUltimaFactura" type="button" title="Abre la última factura de proveedor que registraste">👁 Ver la factura registrada recientemente</button>
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
@@ -206,7 +207,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>Código</th><th class="left">Producto</th><th class="left">Proveedor</th><th>Compras</th><th>Último precio</th><th>Más barato</th><th>Más caro</th><th>Última compra</th></tr></thead>
+                    <thead><tr><th>Código de producto</th><th class="left">Producto</th><th class="left">Proveedor</th><th>Compras</th><th>Último precio</th><th>Más barato</th><th>Más caro</th><th>Última compra</th></tr></thead>
                     <tbody id="preBody"><tr><td colspan="8">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -243,7 +244,7 @@
                             <option value="Crédito">Crédito</option>
                         </select>
                     </label>
-                    <label id="ocDiasWrap" style="display:none">Días de crédito<input type="number" id="ocDias" min="1" step="1" placeholder="Ej. 30"></label>
+                    <label id="ocDiasWrap" style="display:none">Número de días de crédito<input type="number" id="ocDias" min="1" step="1" placeholder="Ej. 30"><small id="ocCondTexto" class="com-cond-texto"></small></label>
                     <div class="inv-full com-prov-campos">
                         <label>Razón social<input type="text" id="ocProvRazon" readonly placeholder="Se llena al elegir el proveedor"></label>
                         <label>RUC<input type="text" id="ocProvRuc" readonly></label>
@@ -371,7 +372,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>Código</th><th class="left">Producto</th><th>¿Cuántos llegaron <b>en buen estado</b>?</th><th>¿Cuántos <b>dañados</b>?</th><th>Lote / serie / IMEI</th><th>Vence</th><th>Comentario</th></tr></thead>
+                    <thead><tr><th>Código de producto</th><th class="left">Producto</th><th>¿Cuántos llegaron <b>en buen estado</b>?</th><th>¿Cuántos <b>dañados</b>?</th><th>Lote / serie / IMEI</th><th>Vence</th><th>Comentario</th></tr></thead>
                     <tbody id="recItems"></tbody>
                 </table>
             </div>
@@ -400,10 +401,30 @@
             <label>Fecha de emisión<input type="date" id="facFecha"></label>
             <label>Total de la factura con IGV (S/)<input type="number" id="facMonto" min="0" step="0.01"></label>
             <label class="inv-full">Observaciones<textarea id="facObs" rows="2" maxlength="500"></textarea></label>
+            <div class="inv-full com-fac-nocuadra" id="facNoCuadra" role="alert" style="display:none"></div>
+            <div class="inv-full com-fac-dif" id="facDifWrap" style="display:none">
+                <label class="com-fac-dif-check"><input type="checkbox" id="facAceptarDif"><span>La factura física del proveedor <b>realmente</b> dice este monto: registrarla con diferencia (queda por resolver dentro de su orden, no suelta).</span></label>
+                <input type="text" id="facMotivoDif" maxlength="200" placeholder="Motivo (obligatorio). Ej.: el proveedor cobró flete">
+            </div>
         </div>
         <div class="modal-foot">
             <button class="btn btn-secondary" data-close="facModal">Cancelar</button>
             <button class="btn btn-primary" id="facGuardar">Registrar factura</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: VER FACTURA DEL PROVEEDOR (20/10/2026) -->
+<div class="modal-bg" id="facVerModal">
+    <div class="modal inv-modal">
+        <div class="modal-head">
+            <div class="modal-title" id="facVerTitulo">Factura registrada</div>
+            <button class="btn btn-secondary" data-close="facVerModal">✕</button>
+        </div>
+        <div class="modal-body" id="facVerCuerpo"></div>
+        <div class="modal-foot">
+            <button class="btn btn-secondary" id="facVerOrden" type="button">📄 Ver la orden de compra</button>
+            <button class="btn btn-primary" data-close="facVerModal">Cerrar</button>
         </div>
     </div>
 </div>

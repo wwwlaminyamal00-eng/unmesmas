@@ -110,8 +110,10 @@ function setCondicionPagoPC(valor) {
     const sel = document.getElementById('pcCondicion');
     if (!sel) return;
     const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const v = valor || 'Contado';
-    const opt = Array.from(sel.options).find(o => norm(o.value) === norm(v));
+    const v = window.normalizarCondicion ? window.normalizarCondicion(valor) : (valor || '');
+    if (!v) { sel.value = ''; if (typeof pcAvisoCondicion === 'function') pcAvisoCondicion(); return; }
+    let opt = Array.from(sel.options).find(o => norm(o.value) === norm(v));
+    if (!opt && window.ponerCondicion) { window.ponerCondicion(sel, v); opt = Array.from(sel.options).find(o => norm(o.value) === norm(v)); }
     const custom = document.getElementById('pcCondicionCustom');
     if (opt) {
         sel.value = opt.value;
@@ -749,8 +751,8 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>N° Pedido de Compra</th>
-                        <th>N° Cotización</th>
+                        <th>Nr° PC (pedido de compra)</th>
+                        <th>Nr° cotización</th>
                         <th>Cliente</th>
                         <th>Lugar de Entrega</th>
                         <th>RUC</th>
@@ -766,8 +768,8 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th> N° Pedido de Compra</th>
-                        <th>N° Cotización</th>
+                        <th>Nr° PC (pedido de compra)</th>
+                        <th>Nr° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>Lugar de Entrega</th>
@@ -795,7 +797,7 @@ function renderPedidos() {
     }
     
     const list = pedidosData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.cotizacion_numero || ''}`.toLowerCase();
+        const searchStr = `${r.numero || ''} ${r.oc_cliente || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.cotizacion_numero || ''}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         
@@ -915,8 +917,8 @@ function renderPedidos() {
                 <th>Item</th>
                 <th>Fecha / Hora</th>
                 <th>Estado</th>
-                <th> N° Pedido de Compra</th>
-                <th>N° Cotización</th>
+                <th>Nr° PC (pedido de compra)</th>
+                <th>Nr° cotización</th>
                 <th>Cliente</th>
                 <th>Lugar de Entrega</th>
                 <th>RUC</th>
@@ -951,9 +953,9 @@ function renderPedidos() {
             return `
             <tr class="${pcDespachado(r) ? 'fila-despachada' : ''}">
                 <td>${i + 1}</td>
-                <td class="date-cell">${fechaDisplay}</td>
+                <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
                 <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
-                <td><b>${r.numero || '-'}</b>${badgeNuevo(r, 'created_at')}</td>
+                <td><b>${r.numero || '-'}</b>${r.oc_cliente ? `<div style="font-size:10px;font-weight:800;color:#1D4ED8;white-space:nowrap" title="N° OC del cliente">OC cliente: ${esc(r.oc_cliente)}</div>` : ''}${badgeNuevo(r, 'created_at')}</td>
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
                 <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
@@ -977,8 +979,8 @@ function renderPedidos() {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>N° Pedido de Compra  </th>
-            <th>N° Cotización</th>
+            <th>Nr° PC (pedido de compra)</th>
+            <th>Nr° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
             <th>Lugar de Entrega</th>
@@ -1039,7 +1041,7 @@ function renderPedidos() {
         return `
         <tr class="${pcDespachado(r) ? 'fila-despachada' : ''}">
             <td>${i + 1}</td>
-            <td class="date-cell">${fechaDisplay}</td>
+            <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
             <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
             <td><b>${r.numero || '-'}</b></td>
             <td>${r.cotizacion_numero || '-'}</td>
@@ -1049,7 +1051,7 @@ function renderPedidos() {
             <td class="left">${r.descripcion || r.observaciones || '-'}</td>
             <td><b>${money(montoSinIgv)}</b></td>
             <td><b>${money(montoConIgv)}</b></td>
-            <td>${r.condicion_pago || '-'}</td>
+            <td>${esc(window.normalizarCondicion(r.condicion_pago) || '-')}</td>
             <td>${r.vendedor || '-'}</td>
             <td>${r.medio || '-'}</td>
             <td>${r.req_compra || '-'}</td>
@@ -1224,9 +1226,9 @@ if (cotizacionViewMode === 'principal') {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>N° Cotización</th>
+            <th>Nr° cotización</th>
             <th>RUC</th>
-            <th>Cód. Cliente</th>
+            <th>Código de cliente</th>
             <th>Razón social (Cliente)</th>
             <th>Descripción principal</th>
             <th>Monto total<br><small>(Sin IGV)</small></th>
@@ -1248,8 +1250,8 @@ if (cotizacionViewMode === 'principal') {
         return `
         <tr>
             <td><b>${i + 1}</b></td>
-            <td class="date-cell">${formatFecha(r.fecha)}</td>
-            <td>${badgeStatus(r.estado)}${abastBadge('cotizaciones', r.id)}</td>
+            <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
+            <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
@@ -1257,7 +1259,7 @@ if (cotizacionViewMode === 'principal') {
             <td class="left">${sd(getDescripcionPrincipal(r))}</td>
             <td><b>${money(totalSinIgv)}</b></td>
             <td><b>${money(totalConIgv)}</b></td>
-            <td>${sd(r.condicion || r.condicion_pago || r.forma_pago)}</td>
+            <td>${sd(window.normalizarCondicion(r.condicion || r.condicion_pago || r.forma_pago))}</td>
             <td>
                 <button class="kebab" onclick="showCotizacionMenu(event, ${r.id})">⋮</button>
             </td>
@@ -1274,9 +1276,9 @@ if (cotizacionViewMode === 'principal') {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>N° Cotización</th>
+            <th>Nr° cotización</th>
             <th>RUC</th>
-            <th>Cód. Cliente</th>
+            <th>Código de cliente</th>
             <th>Razón social (Cliente) </th>
             <th>Contacto</th>
             <th>Teléfono</th>
@@ -1311,8 +1313,8 @@ if (cotizacionViewMode === 'principal') {
         return `
         <tr>
             <td><b>${i + 1}</b></td>
-            <td class="date-cell">${formatFecha(r.fecha)}</td>
-            <td>${badgeStatus(r.estado)}${abastBadge('cotizaciones', r.id)}</td>
+            <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
+            <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b></td>
             <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
@@ -1324,7 +1326,7 @@ if (cotizacionViewMode === 'principal') {
             <td><b>${money(r.subtotal || 0)}</b></td>
             <td><b>${money(r.igv || 0)}</b></td>
             <td><b>${money(r.total || r.monto || 0)}</b></td>
-            <td>${sd(r.condicion || r.condicion_pago || r.forma_pago)}</td>
+            <td>${sd(window.normalizarCondicion(r.condicion || r.condicion_pago || r.forma_pago))}</td>
             <td>${sd(r.tiempo_entrega)}</td>
             <td>${sd(r.validez || r.validez_oferta)}</td>
             <td class="left">${sd(r.direccion_entrega)}</td>
@@ -1472,7 +1474,7 @@ function renderDespachos() {
         return `
         <tr class="${despachado ? 'fila-despachada' : ''}">
             <td>${i + 1}</td>
-            <td class="date-cell">${fechaDisplay}</td>
+            <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
             <td>${despachado ? `<span class="badge badge-despachado">🚚 ${r.estado}</span>` : badgeStatus(r.estado)}${despachado ? '' : abastBadge('despachos', r.id)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.pc_numero)}</td>
@@ -1754,7 +1756,7 @@ function renderGuias() {
     tbody.innerHTML = list.map((r, i) => `
         <tr>
             <td>${i + 1}</td>
-            <td class="date-cell">${formatearFechaGuia(r.fecha)}</td>
+            <td class="date-cell">${formatearFechaGuia(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.ruc)}</td>
@@ -1870,19 +1872,20 @@ function renderComprobantes() {
         return `
         <tr>
             <td>${i + 1}</td>
-            <td class="date-cell">${formatearFechaComprobante(r.fecha)}</td>
+            <td class="date-cell">${formatearFechaComprobante(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td>${r.tipo || '-'}</td>
-            <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
             <td>${sd(r.guia_numero)}</td>
+            <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
-                    ${esCredito ? badgeCredito : sd(r.condicion)}
+                    <b style="white-space:nowrap;color:${esCredito ? '#1D4ED8' : '#0F172A'}">${sd(window.normalizarCondicion(r.condicion))}</b>
+                    ${esCredito && estadoCredito ? badgeCredito : ''}
                     ${badgeRetencion}
                 </div>
             </td>
@@ -1963,7 +1966,7 @@ function renderNotas() {
     tbody.innerHTML = list.map((r, i) => `
         <tr>
             <td>${i + 1}</td>
-            <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}</td>
+            <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td>${sd(r.tipo)}</td>
             <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
@@ -2001,7 +2004,7 @@ function renderDevoluciones() {
     tbody.innerHTML = list.map((r, i) => `
         <tr>
             <td>${i + 1}</td>
-            <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}</td>
+            <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.ruc)}</td>
@@ -2111,11 +2114,23 @@ async function guardarCotizacion(estado) {
             }
         }
 
+        faltanCamposCotizacion().forEach(c => {
+            if (!camposFaltantes.some(x => x.toLowerCase().startsWith(c.toLowerCase().slice(0, 10)))) camposFaltantes.push(c);
+        });
+        if (estado === 'Por validar' || estado === 'En revisión') {
+            faltanDatosParihuela().forEach(c => {
+                if (!camposFaltantes.some(x => x.toLowerCase().startsWith(c.toLowerCase().slice(0, 10)))) camposFaltantes.push(c);
+            });
+        }
         if (camposFaltantes.length > 0) {
+            if (estado === 'Por validar' || estado === 'En revisión') {
+                showToast('⛔ Faltan campos obligatorios para enviar a validación: ' + camposFaltantes.join(', '), 'error');
+            }
             showValidationWarningModal(camposFaltantes);
             return null;
         }
-
+        const vaciosInfo = infoAdicionalVacia().filter(x => !((estado === 'Por validar' || estado === 'En revisión') && /seguimiento|nota interna/i.test(x)));
+        if (vaciosInfo.length && !(await avisoAmarilloCotizacion(vaciosInfo))) return null;
         // ============================================================
         // 1. BUSCAR EL CLIENTE POR RUC
         // ============================================================
@@ -2168,7 +2183,8 @@ async function guardarCotizacion(estado) {
                 nombre_contacto: document.getElementById('fContacto')?.value?.trim() || '',
                 telefono_contacto: document.getElementById('fTelefono')?.value?.trim() || '',
                 email_contacto: document.getElementById('fCorreo')?.value?.trim() || '',
-                condicion_pago: condicionFinal,
+                condicion_pago: 'Contado',   // 20/10/2026: el crédito del cliente se aprueba en Maestros, no al cotizar
+                dias_credito: 0,
                 estado: 'Activo'
             };
 
@@ -2358,6 +2374,71 @@ function sendCotizacionToReview() {
 // ============================================================
 // FUNCIÓN AUXILIAR PARA VALIDAR CAMPOS OBLIGATORIOS DE COTIZACIÓN
 // ============================================================
+// ============================================================
+// 4 CAMPOS OBLIGATORIOS DE LA COTIZACIÓN (pedido de Erika 19/10/2026): condición de pago, tiempo de entrega,
+// transporte y parihuela. Sin ellos no se guarda ni se envía a validación. El resto de "información
+// adicional" vacío solo muestra un aviso amarillo.
+// ============================================================
+function _cotMarcarFalta(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.borderColor = '#DC2626';
+    el.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.25)';
+    setTimeout(() => { el.style.borderColor = ''; el.style.boxShadow = ''; }, 4000);
+}
+function faltanCamposCotizacion() {
+    const faltan = [];
+    const vacio = v => !v || /^(seleccione|personalizado|--.*)$/i.test(String(v).trim());
+    const val = (sel, custom) => {
+        const s = document.getElementById(sel)?.value || '';
+        return s === 'Personalizado' ? (document.getElementById(custom)?.value || '').trim() : s;
+    };
+    if (vacio(val('fCondicion', 'fCondicionCustom'))) { faltan.push('Condición de pago'); _cotMarcarFalta(document.getElementById('fCondicion')?.value === 'Personalizado' ? 'fCondicionCustom' : 'fCondicion'); }
+    if (vacio(val('fTiempo', 'fTiempoCustom'))) { faltan.push('Tiempo de entrega'); _cotMarcarFalta(document.getElementById('fTiempo')?.value === 'Personalizado' ? 'fTiempoCustom' : 'fTiempo'); }
+    if (vacio(document.getElementById('fTransporte')?.value)) { faltan.push('Transporte'); _cotMarcarFalta('fTransporte'); }
+    if (vacio(document.getElementById('fParihuela')?.value)) { faltan.push('Parihuela (si incluye o no)'); _cotMarcarFalta('fParihuela'); }
+    return faltan;
+}
+function avisoAmarilloCotizacion(vacios) {
+    return new Promise(resolve => {
+        document.getElementById('avisoAmarilloCot')?.remove();
+        const f = document.createElement('div');
+        f.id = 'avisoAmarilloCot';
+        f.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:10000002;display:flex;align-items:center;justify-content:center;padding:16px';
+        f.innerHTML = `<div style="background:#FEFCE8;border:4px solid #EAB308;border-radius:14px;max-width:480px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#422006">
+            <div style="font-size:20px;font-weight:900;margin-bottom:8px">⚠️ Ojo: No has llenado la información adicional. ¿Seguro que deseas continuar?</div>
+            <div style="font-size:14px;font-weight:700;margin-bottom:14px">Está vacío: ${vacios.join(', ')}</div>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+              <button type="button" data-r="0" style="padding:10px 16px;border-radius:10px;border:2px solid #A16207;background:#fff;color:#713F12;font-weight:800;font-size:15px;cursor:pointer">Volver y llenar</button>
+              <button type="button" data-r="1" style="padding:10px 16px;border-radius:10px;border:0;background:#CA8A04;color:#fff;font-weight:900;font-size:15px;cursor:pointer">Sí, continuar</button>
+            </div></div>`;
+        document.body.appendChild(f);
+        f.querySelectorAll('button').forEach(b => b.onclick = () => { f.remove(); resolve(b.dataset.r === '1'); });
+    });
+}
+// Pedido de Erika 20/10/2026: los datos de la fila de la parihuela (sección 5) son obligatorios para
+// "Solicitar validación". Un borrador se puede guardar sin ellos.
+function faltanDatosParihuela() {
+    const faltan = [];
+    const vacio = v => !v || /^(seleccione|--.*)$/i.test(String(v).trim());
+    [['fSeguimiento', 'Seguimiento'], ['fMotivo', 'Motivo'], ['fTransporte', 'Transporte'],
+     ['fParihuela', 'Parihuela (si incluye o no)'], ['fNotaInterna', 'Nota interna (si no hay, escribe "Ninguna")']]
+        .forEach(([id, nombre]) => {
+            if (vacio((document.getElementById(id)?.value || '').trim())) { faltan.push(nombre); _cotMarcarFalta(id); }
+        });
+    return faltan;
+}
+window.faltanDatosParihuela = faltanDatosParihuela;
+
+function infoAdicionalVacia() {
+    const v = [];
+    if (!(document.getElementById('fSeguimiento')?.value || '').trim()) v.push('Seguimiento');
+    if (!(document.getElementById('fNotaInterna')?.value || '').trim()) v.push('Nota interna');
+    const dir = (typeof getDireccionEntregaValue === 'function' ? getDireccionEntregaValue() : '') || '';
+    if (!String(dir).trim()) v.push('Dirección de entrega');
+    return v;
+}
+
 function validarCamposObligatoriosCotizacion() {
     const camposFaltantes = [];
     
@@ -2439,6 +2520,9 @@ function validarCamposObligatoriosCotizacion() {
         }
     }
 
+    faltanCamposCotizacion().forEach(c => {
+        if (!camposFaltantes.some(x => x.toLowerCase().startsWith(c.toLowerCase().slice(0, 10)))) camposFaltantes.push(c);
+    });
     return camposFaltantes;
 }
 
@@ -2838,6 +2922,7 @@ function agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio
     if (!tbody) return;
     stock = stockVivo(codigo, stock);
     cantidad = Number(cantidad) || 0;
+    precio = Math.round((Number(precio) || 0) * 100) / 100; // 2 decimales
     
     const rowCount = tbody.children.length + 1;
     const faltante = Math.max(cantidad - stock, 0);
@@ -2878,12 +2963,12 @@ function agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio
                    onchange="actualizarResumenDesdeInput(this)">
         </td>
         <td style="padding:2px 3px; width:65px;">
-            <input type="number" step="0.01" value="${precio}" 
+            <input type="number" step="0.01" value="${Number(precio || 0).toFixed(2)}" 
                    style="width:55px; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; text-align:center;"
                    readonly>
         </td>
         <td style="padding:2px 3px; width:65px;">
-            <input type="number" step="0.01" value="${precio}" 
+            <input type="number" step="0.01" value="${Number(precio || 0).toFixed(2)}" 
                    style="width:55px; border:none; background:transparent; font-size:9px; padding:0; outline:none; text-align:center; font-weight:900; color:#0F172A;"
                    onchange="actualizarResumenDesdeInput(this)">
         </td>
@@ -3247,7 +3332,11 @@ function renderComprobanteFormContent(isEdit, data) {
     ).join('');
     
     // Opciones de condición de pago
-    const condicionOptions = `
+    const _condFac = window.normalizarCondicion ? window.normalizarCondicion(data?.condicion || data?.condicion_pago || '') : (data?.condicion || '');
+    const _opcFac = ['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'];
+    if (_condFac && !_opcFac.includes(_condFac)) _opcFac.push(_condFac);
+    const condicionOptions = _opcFac.map(o => `<option value="${o}" ${_condFac === o ? 'selected' : ''}>${o}</option>`).join('');
+    const _condicionOptionsAntiguas = `
         <option value="Contado" ${data?.condicion === 'Contado' ? 'selected' : ''}>Contado</option>
         <option value="Crédito 7 días" ${data?.condicion === 'Crédito 7 días' ? 'selected' : ''}>Crédito 7 días</option>
         <option value="Crédito 15 días" ${data?.condicion === 'Crédito 15 días' ? 'selected' : ''}>Crédito 15 días</option>
@@ -3665,7 +3754,7 @@ function renderProductosComprobanteHTML(productos) {
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Código</th>
+                        <th>Código de producto</th>
                         <th>Producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
@@ -3799,7 +3888,7 @@ function renderProductosComprobanteHTML(productos) {
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Código</th>
+                        <th>Código de producto</th>
                         <th>Producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
@@ -4064,7 +4153,7 @@ function cargarDatosComprobante(data) {
     setVal('compDireccion', data.cliente_direccion);
     setVal('compMonto', data.total || data.monto);
     setVal('compObs', data.observaciones);
-    setVal('compCondicion', data.condicion_pago || data.condicion || 'Contado');
+    window.ponerCondicion('compCondicion', data.condicion_pago || data.condicion || 'Contado');
     setVal('compCotizacion', data.documento_asociado || data.cotizacion);
     setVal('compGuia', data.guia_vinculada || data.guia);
     setVal('compPC', data.pc_vinculado || data.pc);
@@ -4165,7 +4254,7 @@ async function _saveComprobante(estado) {
             subtotal: subtotalCalc,
             igv: igvCalc,
             condicion: condicion,
-            observaciones: document.getElementById('compObs')?.value || '',
+            observaciones: (v => v.charAt(0).toLocaleUpperCase('es-PE') + v.slice(1))((document.getElementById('compObs')?.value || '').replace(/^\s+/, '')),
             items: productos,
             // 🔽 DATOS DE RETENCIÓN (3% - LEY PERUANA)
             tiene_retencion: tieneRetencion,
@@ -4188,16 +4277,32 @@ async function _saveComprobante(estado) {
         });
         
         if (response.success) {
+            const eraNueva = !data.id;
             showToast(`✅ Comprobante guardado como: ${estado}`, 'success');
             closeModal('comprobanteModal');
             await loadComprobantes();
+            if (typeof loadGuias === 'function') { try { await loadGuias(); } catch (e) {} }
             window._compProductos = null;
+            if (eraNueva) {
+                const d = response.data || {};
+                const nro = d.serie && d.numero ? `${d.serie}-${d.numero}` : (d.numero || '');
+                window.mostrarPasos({
+                    titulo: `✅ ¡${data.tipo || 'Factura'} creada con éxito!`,
+                    subtitulo: nro ? `N° ${nro}${data.guia ? ' · de la guía ' + data.guia : ''}` : '',
+                    pasos: [
+                        ...(data.guia ? [{ texto: `Guía de remisión ${data.guia} creada.`, hecho: true }] : []),
+                        { texto: `${data.tipo || 'Factura'} creada${nro ? ' (' + nro + ')' : ''}.`, hecho: true },
+                        { texto: 'Ve al menú <b>"Facturas"</b> para revisarla, descargar el PDF o enviarla.' }
+                    ],
+                    boton: { texto: '🧾 Ir a Facturas', accion: () => irAPestanaYResaltar('comprobantes', 'comprobanteSearch', [nro, d.serie && d.numero ? `${d.serie}-${parseInt(d.numero, 10)}` : ''], typeof renderComprobantes === 'function' ? renderComprobantes : null) }
+                });
+            }
         } else {
             showToast('❌ Error: ' + (response.error || 'No se pudo guardar'), 'error');
         }
     } catch (error) {
         console.error('❌ Error guardando comprobante:', error);
-        showToast('❌ Error al guardar el comprobante', 'error');
+        showToast('❌ No se guardó: ' + (error && error.message ? error.message : 'error al guardar el comprobante'), 'error');
     }
 }
 
@@ -4210,10 +4315,7 @@ function saveComprobante(estado) {
     const cliente = document.getElementById('compCliente')?.value || 'el cliente';
     const estadoLabel = estado || 'Borrador';
 
-    // CERRAR EL MODAL DE COMPROBANTES PRIMERO
-    closeModal('comprobanteModal');
-    
-    // Pequeño delay para que el modal de comprobantes se cierre antes de mostrar la confirmación
+    // El modal de la factura queda abierto mientras se confirma (antes se cerraba y, si cancelabas, se perdía lo escrito)
     setTimeout(() => {
         showConfirmModal(
             `🧾 ¿Guardar ${tipo.toLowerCase()}?`,
@@ -4224,7 +4326,7 @@ function saveComprobante(estado) {
             },
             '💾 Sí, guardar'
         );
-    }, 300);
+    }, 50);
 }
 // ============================================================
 // GUARDAR COMPROBANTE CON DATOS DE RETENCIÓN
@@ -4499,15 +4601,24 @@ async function marcarDespachado(id) {
                     showToast('❌ Elige de qué empresa y sede sale la mercadería', 'error');
                     return;
                 }
+                // Si en esa empresa/sede no alcanza, se avisa en grande antes de intentar (pedido de Erika 20/10/2026)
+                const elegida = (window._despOpciones || []).find(o => `${o.empresa_id}|${o.almacen_id}` === `${empresaId}|${almacenId}`);
+                if (elegida && !elegida.alcanza && (elegida.faltan || []).length) {
+                    mostrarErrorStockDespacho(elegida.faltan.map(f => ({ ...f, empresa: elegida.empresa, sede: elegida.sede })));
+                    return;
+                }
                 showToast('⏳ Procesando despacho...', 'info');
                 
                 // PASO 1: Cambiar estado del despacho (y descontar el stock)
-                const response = await apiFetch(`/ventas/api/despachos/${id}/toggle`, {
+                const resp = await fetch(`/ventas/api/despachos/${id}/toggle`, {
                     method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ estado: 'Despachado', empresa_id: empresaId, almacen_id: almacenId })
                 });
+                const response = await resp.json().catch(() => ({ success: false, error: `HTTP ${resp.status}` }));
                 
-                if (!response.success) {
+                if (!resp.ok || !response.success) {
+                    if (response.codigo === 'falta_stock') { mostrarErrorStockDespacho(response.faltan || [], response.error); return; }
                     showToast('❌ Error al marcar despacho: ' + (response.error || 'Desconocido'), 'error');
                     return;
                 }
@@ -4667,6 +4778,7 @@ async function marcarDespachado(id) {
                     fecha_traslado: fechaSolo,
                     // 🔽 DOCUMENTOS ASOCIADOS
                     documento_asociado: despacho.cotizacion_numero || '',
+                    despacho_numero: despacho.numero || '',
                     orden_compra_cliente: '',
                     factura: '',
                     // 🔽 MOTIVO Y OBSERVACIONES
@@ -4708,25 +4820,17 @@ async function marcarDespachado(id) {
                     await loadDespachos();
                     await loadGuias();
                     
-                    setTimeout(() => {
-                        showConfirmModal(
-                            '📦 ¿Ver la guía creada?',
-                            `Se ha creado la Guía de Remisión <b>T001-${guiaData.numero}</b> con ${items.length} productos en estado "Borrador".`,
-                            '⚠️ La guía está en borrador. Debes revisarla y completarla antes de emitirla.',
-                            function() {
-                                const tabBtn = document.querySelector('.tab-btn[data-tab="guias"]');
-                                if (tabBtn) {
-                                    tabBtn.click();
-                                    setTimeout(() => {
-                                        if (guiaResult.data && guiaResult.data.id) {
-                                            openGuiaModal(guiaResult.data.id);
-                                        }
-                                    }, 500);
-                                }
-                            },
-                            '📦 Ver guía ahora'
-                        );
-                    }, 500);
+                    const g = guiaResult.data || {};
+                    const nroGuia = g.serie && g.numero ? `${g.serie}-${g.numero}` : `T001-${guiaData.numero}`;
+                    window.mostrarPasos({
+                        titulo: '✅ ¡Guía creada con éxito!',
+                        subtitulo: `Guía ${nroGuia} · ${items.length} producto(s) · en borrador`,
+                        pasos: [
+                            { texto: 'Paso 1: Ve al menú <b>"Guías de Remisión"</b>.' },
+                            { texto: 'Paso 2: Busca tu guía y haz clic en <b>"Crear Factura"</b> (está en los 3 puntos <b>⋮</b> de su fila; te la dejo marcada en verde).' }
+                        ],
+                        boton: { texto: '🚚 Ir a Guías de Remisión', accion: () => irAPestanaYResaltar('guias', 'guiaSearch', String(g.numero || guiaData.numero), typeof renderGuias === 'function' ? renderGuias : null) }
+                    });
                     
                 } else {
                     showToast('⚠️ Despacho marcado, pero error al crear guía: ' + (guiaResult.error || 'Desconocido'), 'warning');
@@ -5642,14 +5746,9 @@ async function openComprobanteModalWithData(id, cotizacion) {
             <div class="form-field col-4">
                 <label>Condición de pago</label>
                 <select id="compCondicion">
-                    <option ${cotizacion.condicion_pago === 'Contado' ? 'selected' : ''}>Contado</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 7 días' ? 'selected' : ''}>Crédito 7 días</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 15 días' ? 'selected' : ''}>Crédito 15 días</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 30 días' ? 'selected' : ''}>Crédito 30 días</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 45 días' ? 'selected' : ''}>Crédito 45 días</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 60 días' ? 'selected' : ''}>Crédito 60 días</option>
-                    <option ${cotizacion.condicion_pago === 'Crédito 90 días' ? 'selected' : ''}>Crédito 90 días</option>
+                    ${['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'].map(o => `<option>${o}</option>`).join('')}
                 </select>
+                <small style="display:block;margin-top:3px;font-size:11px;font-weight:700;color:#92400E">La condición sale del PC del cliente, no de la cotización</small>
             </div>
             <div class="form-field col-12">
                 <label>Observaciones</label>
@@ -5866,14 +5965,7 @@ window.loadComprobanteFromCotizacion = function(numeroCotizacion) {
                 document.getElementById('compMonto').value = data.total || 0;
                 actualizarObservacionesComprobante();
 
-                // Condición de pago
-                const condSelect = document.getElementById('compCondicion');
-                if (condSelect && data.condicion_pago) {
-                    const opciones = Array.from(condSelect.options).map(o => o.value);
-                    if (opciones.includes(data.condicion_pago)) {
-                        condSelect.value = data.condicion_pago;
-                    }
-                }
+                // Condición de pago: NO se copia de la cotización; la pone aplicarCondicionFactura (PC → guía → cliente)
 
                 // Productos
                 const productos = data.productos || [];
@@ -6565,8 +6657,10 @@ function deleteDevolucion(id) {
     }
 }
 
+// Exportar: lo hace static/js/exportar_tabla.js (Excel de la tabla que se ve, con los filtros puestos)
 function exportData(module) {
-    showToast(`Exportando datos de ${module}...`, 'info');
+    if (typeof window.exportarModulo === 'function') return window.exportarModulo(module);
+    showToast('⚠️ No se pudo cargar el exportador. Recarga la página (Ctrl+F5).', 'warning');
 }
 
 // ============================================================
@@ -6721,6 +6815,13 @@ function solicitarValidacion() {
         showToast('⚠️ Primero busca un cliente por RUC', 'warning');
         return;
     }
+    const faltanVal = validarCamposObligatoriosCotizacion();
+    faltanDatosParihuela().forEach(c => { if (!faltanVal.some(x => x.toLowerCase().startsWith(c.toLowerCase().slice(0, 10)))) faltanVal.push(c); });
+    if (faltanVal.length > 0) {
+        showToast('⛔ Faltan campos obligatorios para enviar a validación: ' + faltanVal.join(', '), 'error');
+        showValidationWarningModal(faltanVal);
+        return;
+    }
     
     showConfirmModal(
         '⭐ ¿Solicitar validación?',
@@ -6736,7 +6837,8 @@ function solicitarValidacion() {
             
             try {
                 // Guardar con estado "Por validar"
-                await guardarCotizacion('Por validar');
+                const guardada = await guardarCotizacion('Por validar');
+                if (!guardada) return; // no se envió: el motivo ya se mostró
                 showToast('⭐ Cotización enviada a validación', 'success');
                 closeModal('cotizacionModal');
                 await loadCotizaciones();
@@ -6826,7 +6928,14 @@ if (contactoGuardado) {
 // LLENAR CONDICIONES COMERCIALES - con soporte para personalizado
 // ============================================================
 if (c.condicion_pago) {
-    setFieldValue('fCondicion', 'fCondicionCustom', c.condicion_pago);
+    const condN = window.normalizarCondicion ? window.normalizarCondicion(c.condicion_pago) : c.condicion_pago;
+    if (condN && window.ponerCondicion) {
+        window.ponerCondicion('fCondicion', condN);
+        const cc = document.getElementById('fCondicionCustom');
+        if (cc) { cc.value = ''; cc.style.display = 'none'; }
+    } else {
+        setFieldValue('fCondicion', 'fCondicionCustom', c.condicion_pago);
+    }
 }
 
 if (c.tiempo_entrega) {
@@ -8966,7 +9075,7 @@ function openPedidoCompraModal(mode = 'cot') {
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Código / Producto </th>
+                            <th>Código de producto</th>
                             <th>Descripción</th>
                             <th>Cant. cotizada</th>
                             <th>Cant. PC</th>
@@ -9235,6 +9344,7 @@ function renderQuoteProducts() {
     
     tbody.innerHTML = quoteProducts.map((p, i) => {
         const cantidad = Number(p.cantidad || 1);
+        p.valorVenta = (window.redondear2 || (n => Math.round((Number(n) || 0) * 100 + Number.EPSILON) / 100))(p.valorVenta); // máximo 2 decimales (pedido de Erika 19/10)
         const valorVenta = Number(p.valorVenta || 0);
         // 🔽 VALOR TOTAL SIN IGV (solo cantidad × valor unitario)
         const valorTotalSinIgv = cantidad * valorVenta;
@@ -9255,7 +9365,7 @@ function renderQuoteProducts() {
                 </select>
             </td>
             <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);renderQuoteProducts();calcQuote();"></td>
-            <td class="col-price"><input style="width:90px;text-align:right" value="${p.valorVenta || 0}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Number(this.value);renderQuoteProducts();calcQuote();"></td>
+            <td class="col-price"><input style="width:90px;text-align:right" value="${Number(p.valorVenta || 0).toFixed(2)}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Math.round(Number(this.value)*100)/100;renderQuoteProducts();calcQuote();"></td>
             <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
             <td class="col-stock">${stockVivo(p.codigo, p.stock)}</td>
             <td class="col-delivery">
@@ -9275,7 +9385,8 @@ function renderQuoteProducts() {
 
 
 function calcQuote() {
-    const subtotal = quoteProducts.reduce((s, p) => s + (Number(p.cantidad || 0) * Number(p.valorVenta || 0)), 0);
+    const r2 = (window.redondear2 || (n => Math.round((Number(n) || 0) * 100 + Number.EPSILON) / 100));
+    const subtotal = r2(quoteProducts.reduce((s, p) => s + r2(Number(p.cantidad || 0) * r2(p.valorVenta)), 0));
     
     // Descuento especial desde el campo fDescuentoEspecial (nuevo)
     const descuentoEspecial = Number(document.getElementById('fDescuentoEspecial')?.value || 0);
@@ -9283,10 +9394,10 @@ function calcQuote() {
     const dt = document.getElementById('fDiscountType')?.value || '%';
     
     // Sumar descuento especial + descuento normal
-    const discount = (dt === '%' ? subtotal * (dv / 100) : Math.min(dv, subtotal)) + descuentoEspecial;
-    const valorVenta = subtotal - discount;
-    const igv = valorVenta * CONFIG.igv;
-    const total = valorVenta + igv;
+    const discount = r2((dt === '%' ? subtotal * (dv / 100) : Math.min(dv, subtotal)) + descuentoEspecial);
+    const valorVenta = r2(subtotal - discount);
+    const igv = r2(valorVenta * CONFIG.igv);
+    const total = r2(valorVenta + igv);
     
     const tiempoEntrega = getFieldValue('fTiempo', 'fTiempoCustom') || '5 días hábiles';
     
@@ -9698,10 +9809,12 @@ async function saveClientFromQuote() {
    nombre_contacto: getContactoSeleccionadoNombre(),
 telefono_contacto: document.getElementById('fTelefono')?.value?.trim() || '',
 email_contacto: document.getElementById('fCorreo')?.value?.trim() || '',
-    condicion_pago: document.getElementById('fCondicion')?.value || 'Contado',
     activo: true,
     estado: 'Activo'
 };
+        // 20/10/2026: la condición de la cotización NO cambia la del cliente (el crédito se aprueba en Maestros ▸ Clientes).
+        // Un cliente nuevo creado desde aquí nace al contado; uno existente conserva su condición, contactos y puntos.
+        if (!clienteExistente) { clienteData.condicion_pago = 'Contado'; clienteData.dias_credito = 0; }
         console.log('📦 Datos a guardar:', clienteData);
         
         // ============================================================
@@ -9802,7 +9915,7 @@ function productTableHtml(productos) {
         <div class="table-scroll">
             <table class="master-table">
                 <thead><tr>
-                    <th>Item</th><th>Código</th><th>Producto</th><th>Marca</th><th>UM SUNAT</th>
+                    <th>Item</th><th>Código de producto</th><th>Producto</th><th>Marca</th><th>UM SUNAT</th>
                     <th>Cant.</th><th>Stock</th>
                 </tr></thead>
                 <tbody>
@@ -10257,7 +10370,7 @@ function openGuiaModal(id = null) {
                     <thead>
                         <tr>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:35px;">#</th>
-                            <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:80px;">Código</th>
+                            <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:80px;">Código de producto</th>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center;">Descripción</th>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:70px;">Unidad</th>
                             <th style="padding:2px 4px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:60px;">Cantidad</th>
@@ -10753,7 +10866,7 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Código</th>
+                            <th>Código de producto</th>
                             <th>Producto</th>
                             <th>Marca</th>
                             <th>Modelo</th>
@@ -11057,7 +11170,7 @@ function renderProductosComprobante(productos) {
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Código</th>
+                        <th>Código de producto</th>
                         <th>Producto</th>
                         <th>Marca</th>
                         <th>Modelo</th>
@@ -11141,7 +11254,7 @@ async function cargarComprobanteParaEditar(id) {
         setVal('compRuc', c.cliente_numero_doc);
         setVal('compMonto', c.total);
         setVal('compObs', c.observaciones);
-        setVal('compCondicion', c.condicion_pago || 'Contado');
+        window.ponerCondicion('compCondicion', c.condicion_pago || 'Contado');
         setVal('compCotizacion', c.documento_asociado);
         setVal('compGuia', c.guia_vinculada);
         setVal('compPC', c.pc_vinculado);
@@ -11920,7 +12033,8 @@ function openPedidoCompraModalSAP(mode, id) {
     
     // Limpiar dropdowns
     const condicion = document.getElementById('pcCondicion');
-    if (condicion) condicion.value = 'Contado';
+    if (condicion) condicion.value = ''; // se elige leyendo la OC del cliente
+    clearElement('pcOcCliente', '');
     
     const moneda = document.getElementById('pcMoneda');
     if (moneda) moneda.value = 'S/)';
@@ -12128,7 +12242,8 @@ function cargarPCParaEdicion(pcId) {
                 setValue('pcNumero', pc.numero || '');
                 setValue('pcContacto', pc.responsable || pc.cliente_contacto || '');
                 setValue('pcFecha', fechaParaInput(pc.fecha || pc.fecha_recepcion));
-                setCondicionPagoPC(pc.condicion_pago || pc.condicion_atencion || 'Contado');
+                setCondicionPagoPC(pc.condicion_pago || pc.condicion_atencion || '');
+                setValue('pcOcCliente', pc.oc_cliente || '');
                 setValue('pcMoneda', pc.moneda || 'S/)');
                 setValue('pcMontoPC', montoSinIgv.toFixed(2));
                 setValue('pcEntrega', pc.lugar_entrega || pc.entrega || '');
@@ -12340,25 +12455,8 @@ async function cargarPCParaEditar(id) {
         }
         
         // Condición pago
-        const condSelect = document.getElementById('pcCondicion');
-        if (condSelect && pc.condicion_pago) {
-            let found = false;
-            for (let opt of condSelect.options) {
-                if (opt.value === pc.condicion_pago) {
-                    opt.selected = true;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                // Si no está en las opciones, añadirla
-                const opt = document.createElement('option');
-                opt.value = pc.condicion_pago;
-                opt.textContent = pc.condicion_pago;
-                condSelect.appendChild(opt);
-                condSelect.value = pc.condicion_pago;
-            }
-        }
+        setCondicionPagoPC(pc.condicion_pago || '');
+        setValue('pcOcCliente', pc.oc_cliente || '');
         
         // Moneda
         const monedaSelect = document.getElementById('pcMoneda');
@@ -12391,8 +12489,8 @@ async function cargarPCParaEditar(id) {
                     const modelo = item.modelo || '';
                     const cantidadCotizada = parseFloat(item.cantidad_cotizada) || 0;
                     const cantidadPC = parseFloat(item.cantidad_pc) || 1;
-                    const precioCotizado = parseFloat(item.precio_cotizado) || 0;
-                    const precioPC = parseFloat(item.precio_pc) || 0;
+                    const precioCotizado = Math.round((parseFloat(item.precio_cotizado) || 0) * 100) / 100; // 2 decimales
+                    const precioPC = Math.round((parseFloat(item.precio_pc) || 0) * 100) / 100;
                     const stock = parseFloat(item.stock) || 0;
                     const faltante = Math.max(cantidadPC - stock, 0);
                     const valorTotal = cantidadPC * precioPC;
@@ -12434,12 +12532,12 @@ async function cargarPCParaEditar(id) {
                                    onchange="actualizarValorTotalPCSAP(this)">
                         </td>
                         <td style="padding:2px 3px; width:65px;">
-                            <input type="number" step="0.01" value="${precioCotizado}" 
+                            <input type="number" step="0.01" value="${Number(precioCotizado || 0).toFixed(2)}" 
                                    style="width:55px; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; text-align:center;"
                                    readonly>
                         </td>
                         <td style="padding:2px 3px; width:65px;">
-                            <input type="number" step="0.01" value="${precioPC}" 
+                            <input type="number" step="0.01" value="${Number(precioPC || 0).toFixed(2)}" 
                                    style="width:55px; border:none; background:transparent; font-size:9px; padding:0; outline:none; text-align:center; font-weight:900; color:#0F172A;"
                                    onchange="actualizarValorTotalPCSAP(this)">
                         </td>
@@ -12690,8 +12788,9 @@ function actualizarValorTotalPCSAP(input) {
     // Índices: [0]=código, [1]=descripción, [2]=marca, [3]=modelo
     // [4]=cant_cot, [5]=cant_pc, [6]=precio_cot, [7]=precio_pc, [8]=stock
     const cantidadPC = Number(inputs[5]?.value || 0);
-    const precioPC = Number(inputs[7]?.value || 0);
-    const valorTotal = cantidadPC * precioPC;
+    const precioPC = Math.round(Number(inputs[7]?.value || 0) * 100) / 100; // 2 decimales
+    if (inputs[7] && inputs[7].value !== '' && Number(inputs[7].value) !== precioPC) inputs[7].value = precioPC.toFixed(2);
+    const valorTotal = Math.round(cantidadPC * precioPC * 100) / 100;
     
     // Buscar el span del Valor Total en la columna (10ma columna, index 9)
     const valueSpan = row.querySelector('td:nth-child(10) span');
@@ -13579,21 +13678,24 @@ function renderCotizacionFormContent(isEdit) {
             <div class="form-field">
                 <label style="display:block;font-size:7.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Condición de Pago <span style="color:#DC2626;font-weight:900;">*</span></label>
                 <select id="fCondicion" onchange="toggleCustomField('fCondicion','fCondicionCustom')" style="width:100%;height:22px;border:1px solid #E5E7EB;border-radius:5px;background:#FFFFFF;outline:none;color:#0F172A;font-size:10px;padding:0 3px;border-left:3px solid #DC2626;">
+                    <option value="" selected>-- Elegir --</option>
                     <option value="Contado">Contado</option>
-                    <option value="Credito 7 Dias">Credito 7 Dias</option>
-                    <option value="Credito 15 Dias">Credito 15 Dias</option>
-                    <option value="Credito 30 Dias">Credito 30 Dias</option>
-                    <option value="Credito 45 Dias">Credito 45 Dias</option>
-                    <option value="Credito 60 Dias">Credito 60 Dias</option>
-                    <option value="Credito 90 Dias">Credito 90 Dias</option>
-                    <option value="Credito 120 Dias">Credito 120 Dias</option>
-                    <option value="Personalizado" selected>✏️ Personalizado...</option>
+                    <option value="Contra entrega">Contra entrega</option>
+                    <option value="Crédito 7 días">Crédito 7 días</option>
+                    <option value="Crédito 15 días">Crédito 15 días</option>
+                    <option value="Crédito 30 días">Crédito 30 días</option>
+                    <option value="Crédito 45 días">Crédito 45 días</option>
+                    <option value="Crédito 60 días">Crédito 60 días</option>
+                    <option value="Crédito 90 días">Crédito 90 días</option>
+                    <option value="Crédito 120 días">Crédito 120 días</option>
+                    <option value="Personalizado">✏️ Personalizado...</option>
                 </select>
-                <input id="fCondicionCustom" placeholder="Ej: 50% anticipo, 50% contra entrega" style="display:block;margin-top:1px;width:100%;height:20px;border:1px solid #E5E7EB;border-radius:4px;background:#FFFFFF;outline:none;color:#0F172A;font-size:9px;padding:0 5px;border-left:3px solid #DC2626;" value="Personalizado">
+                <input id="fCondicionCustom" placeholder="Ej: 50% anticipo, 50% contra entrega" style="display:none;margin-top:1px;width:100%;height:20px;border:1px solid #E5E7EB;border-radius:4px;background:#FFFFFF;outline:none;color:#0F172A;font-size:9px;padding:0 5px;border-left:3px solid #DC2626;" value="Personalizado">
             </div>
             <div class="form-field">
                 <label style="display:block;font-size:7.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Tiempo de Entrega <span style="color:#DC2626;font-weight:900;">*</span></label>
                 <select id="fTiempo" onchange="toggleCustomField('fTiempo','fTiempoCustom')" style="width:100%;height:22px;border:1px solid #E5E7EB;border-radius:5px;background:#FFFFFF;outline:none;color:#0F172A;font-size:10px;padding:0 3px;border-left:3px solid #DC2626;">
+                    <option value="" selected>-- Elegir --</option>
                     <option value="Inmediata">Inmediata</option>
                     <option value="1 día hábil">1 día hábil</option>
                     <option value="2 días hábiles">2 días hábiles</option>
@@ -13602,7 +13704,7 @@ function renderCotizacionFormContent(isEdit) {
                     <option value="7 días hábiles">7 días hábiles</option>
                     <option value="10 días hábiles">10 días hábiles</option>
                     <option value="15 días hábiles">15 días hábiles</option>
-                    <option value="Personalizado"selected>✏️ Personalizado...</option>
+                    <option value="Personalizado">✏️ Personalizado...</option>
                 </select>
                 <input id="fTiempoCustom" placeholder="Ej: 10 días" style="display:none;margin-top:1px;width:100%;height:20px;border:1px solid #E5E7EB;border-radius:4px;background:#FFFFFF;outline:none;color:#0F172A;font-size:9px;padding:0 5px;border-left:3px solid #DC2626;">
             </div>
@@ -13790,9 +13892,9 @@ function renderCotizacionFormContent(isEdit) {
             
             <!-- Transporte -->
             <div class="form-field">
-                <label style="display:block;font-size:8.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Transporte</label>
+                <label style="display:block;font-size:8.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Transporte <span style="color:#DC2626;font-weight:900;">*</span></label>
                 <select id="fTransporte" 
-                        style="width:100%;height:28px;border:1px solid #E5E7EB;border-radius:6px;background:#FFFFFF;outline:none;color:#0F172A;font-size:11px;padding:0 4px;">
+                        style="width:100%;height:28px;border:1px solid #E5E7EB;border-left:3px solid #DC2626;border-radius:6px;background:#FFFFFF;outline:none;color:#0F172A;font-size:11px;padding:0 4px;">
                     <option value="Seleccione" selected>-- Seleccione --</option>
                     <option value="Motorizado">Motorizado</option>
                     <option value="Auto">Auto</option>
@@ -13805,9 +13907,9 @@ function renderCotizacionFormContent(isEdit) {
             
             <!-- Parihuela -->
             <div class="form-field">
-                <label style="display:block;font-size:8.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Parihuela</label>
+                <label style="display:block;font-size:8.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Parihuela <span style="color:#DC2626;font-weight:900;">*</span></label>
                 <select id="fParihuela" 
-                        style="width:100%;height:28px;border:1px solid #E5E7EB;border-radius:6px;background:#FFFFFF;outline:none;color:#0F172A;font-size:11px;padding:0 4px;">
+                        style="width:100%;height:28px;border:1px solid #E5E7EB;border-left:3px solid #DC2626;border-radius:6px;background:#FFFFFF;outline:none;color:#0F172A;font-size:11px;padding:0 4px;">
                     <option value="Seleccione" selected>-- Seleccione --</option>
                     <option value="No">No</option>
                     <option value="Sí - estándar">Sí - estándar</option>
@@ -14452,24 +14554,17 @@ function seleccionarCotizacionSAP(cotizacionId) {
             // ============================================================
             // ACTUALIZAR CONDICIÓN DE PAGO
             // ============================================================
+            // La condición de la PC NO se copia de la cotización (pedido de Erika 19/10): queda en blanco
+            // y se elige leyendo la OC del cliente. Solo se muestra lo cotizado como referencia.
             const condSelect = document.getElementById('pcCondicion');
-            if (condSelect && data.condicion_pago) {
-                let found = false;
-                for (let opt of condSelect.options) {
-                    if (opt.value === data.condicion_pago) {
-                        opt.selected = true;
-                        found = true;
-                        break;
-                    }
+            if (condSelect) {
+                condSelect.value = '';
+                const aviso = document.getElementById('pcCondicionAviso');
+                if (aviso) {
+                    aviso.dataset.cotizada = data.condicion_pago || '';
+                    aviso.textContent = data.condicion_pago ? `Cotizado: ${data.condicion_pago}. Elige la de la OC del cliente` : 'Léela en la OC del cliente';
                 }
-                if (!found) {
-                    condSelect.value = 'Personalizado';
-                    const customInput = document.getElementById('pcCondicionCustom');
-                    if (customInput) {
-                        customInput.value = data.condicion_pago;
-                        customInput.style.display = 'block';
-                    }
-                }
+                if (typeof pcAvisoCondicion === 'function') pcAvisoCondicion();
             }
             
             // ============================================================
@@ -14500,7 +14595,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
             
             productos.forEach((p, i) => {
                 const cantidadCotizada = p.cantidad || 1;
-                const precioCotizado = p.valorVenta || 0;
+                const precioCotizado = Math.round((Number(p.valorVenta) || 0) * 100) / 100; // 2 decimales
                 const stock = stockVivo(p.codigo, p.stock);
                 const faltante = Math.max(cantidadCotizada - stock, 0);
                 const valorTotal = cantidadCotizada * precioCotizado;
@@ -14537,11 +14632,11 @@ function seleccionarCotizacionSAP(cotizacionId) {
                                onchange="actualizarValorTotalPCSAP(this)">
                     </td>
                     <td style="padding:2px 3px; width:65px;">
-                        <input type="number" step="0.01" value="${precioCotizado}" 
+                        <input type="number" step="0.01" value="${Number(precioCotizado || 0).toFixed(2)}" 
                                style="width:55px; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; text-align:center; cursor:not-allowed;" readonly>
                     </td>
                     <td style="padding:2px 3px; width:65px;">
-                        <input type="number" step="0.01" value="${precioCotizado}" 
+                        <input type="number" step="0.01" value="${Number(precioCotizado || 0).toFixed(2)}" 
                                style="width:55px; border:none; background:transparent; font-size:9px; padding:0; outline:none; text-align:center; font-weight:900; color:#0F172A;"
                                onchange="actualizarValorTotalPCSAP(this)">
                     </td>
@@ -14859,12 +14954,11 @@ function clearPedidoModalSAP() {
     // ============================================================
     const condSelect = document.getElementById('pcCondicion');
     if (condSelect) {
-        for (let opt of condSelect.options) {
-            if (opt.value === 'Contado') {
-                opt.selected = true;
-                break;
-            }
-        }
+        condSelect.value = ''; // en blanco: se elige leyendo la OC del cliente
+        const aviso = document.getElementById('pcCondicionAviso');
+        if (aviso) { aviso.dataset.cotizada = ''; aviso.textContent = 'Léela en la OC del cliente'; }
+        const oc = document.getElementById('pcOcCliente');
+        if (oc) oc.value = '';
         condSelect.disabled = false;
         condSelect.style.background = '#FFFFFF';
         condSelect.style.cursor = 'pointer';
@@ -15057,19 +15151,7 @@ function forzarLimpiezaModalPC() {
     // 1. Limpiar Condición de Pago - Forzar "Contado"
     const condSelect = document.getElementById('pcCondicion');
     if (condSelect) {
-        let found = false;
-        for (let opt of condSelect.options) {
-            if (opt.value === 'Contado') {
-                opt.selected = true;
-                found = true;
-                console.log('✅ Cond. Pago forzado a: Contado');
-                break;
-            }
-        }
-        if (!found && condSelect.options.length > 0) {
-            condSelect.selectedIndex = 0;
-            console.log('⚠️ "Contado" no encontrado, usando primera opción:', condSelect.options[0]?.value);
-        }
+        condSelect.value = ''; // en blanco: se elige leyendo la OC del cliente
         // Asegurar que el select esté habilitado
         condSelect.disabled = false;
         condSelect.style.background = '#FFFFFF';
@@ -15241,7 +15323,6 @@ async function savePedidoCompraSAP(force) {
         // Array de campos obligatorios con sus nombres para mostrar
         const camposObligatorios = [
             { id: 'pcFecha', valor: pcFecha, nombre: 'Fecha recepción' },
-            { id: 'pcNumero', valor: pcNumero, nombre: 'N° PC Pedido Compra' },
             { id: 'pcContacto', valor: pcContacto, nombre: 'Comprador' },
             { id: 'pcCondicion', valor: pcCondicion, nombre: 'Condición de pago' },
             { id: 'pcMoneda', valor: pcMoneda, nombre: 'Moneda' },
@@ -15419,9 +15500,14 @@ async function savePedidoCompraSAP(force) {
         // ============================================================
         const condicionSelect = document.getElementById('pcCondicion');
         const condicionCustom = document.getElementById('pcCondicionCustom');
-        let condicionPago = condicionSelect?.value || 'Contado';
+        let condicionPago = condicionSelect?.value || '';
         if (condicionPago === 'Personalizado' && condicionCustom) {
-            condicionPago = condicionCustom.value.trim() || 'Personalizado';
+            condicionPago = condicionCustom.value.trim();
+        }
+        if (!condicionPago || condicionPago === 'Seleccione') {
+            showToast('⚠️ Elige la condición de pago leyendo la orden de compra del cliente (no se copia de la cotización)', 'warning');
+            condicionSelect?.focus();
+            return;
         }
         
         // ============================================================
@@ -15434,8 +15520,8 @@ async function savePedidoCompraSAP(force) {
             if (!numeroPC.trim() && pedidoExistente && pedidoExistente.numero) {
                 numeroPC = pedidoExistente.numero;
             }
-        } else if (!numeroPC) {
-            numeroPC = 'PC-' + isoLima().replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
+        } else {
+            numeroPC = ''; // el N° PC interno lo pone el sistema (correlativo por empresa)
         }
         
         console.log(`📋 Número de PC final: ${numeroPC} | editingId: ${editingId} | modalMode: ${modalMode}`);
@@ -15475,6 +15561,7 @@ async function savePedidoCompraSAP(force) {
             entrega: document.getElementById('pcEntrega')?.value || '',
             lugar_entrega: document.getElementById('pcEntrega')?.value || '',
             condicion_pago: condicionPago,
+            oc_cliente: (document.getElementById('pcOcCliente')?.value || '').trim(),
             vendedor: document.getElementById('pcVendedor')?.value || 'Helen Blas Príncipe',
             responsable: 'Hellen',
             observaciones: document.getElementById('pcObs')?.value || '',
@@ -15500,7 +15587,7 @@ async function savePedidoCompraSAP(force) {
         const confirmado = await new Promise(resolve => {
             showConfirmModal(
                 '💾 ¿Guardar Pedido de Compra?',
-                `Vas a guardar el PC <b>${pcData.numero}</b> de <b>${pcData.cliente || 'el cliente'}</b> como <b>"${pcData.estado}"</b>.`,
+                `Vas a guardar el PC <b>${pcData.numero || '(N° automático)'}</b> de <b>${pcData.cliente || 'el cliente'}</b> como <b>"${pcData.estado}"</b>.`,
                 '⚠️ Esta acción registrará el PC con las validaciones actuales.',
                 () => resolve(true),
                 '💾 Sí, guardar'
@@ -15525,7 +15612,8 @@ async function savePedidoCompraSAP(force) {
         console.log('📦 Respuesta del servidor:', result);
         
         if (result.success) {
-            let mensaje = `✅ PC guardado como: ${estado}`;
+            const nroGuardado = (result.data && result.data.numero) || pcData.numero;
+            let mensaje = `✅ PC ${nroGuardado || ''} guardado como: ${estado}`;
             if (estado === 'PC conforme') {
                 const stockFalta = items.some(i => Number(i.cantidad_pc) > Number(i.stock));
                 if (stockFalta) {
@@ -16926,6 +17014,12 @@ const ABAST_ESTILOS = {
     'Por llegar': { icono: '📦', clase: 'abast-llegar' },
     'Con stock': { icono: '✅', clase: 'abast-ok' }
 };
+// Pedido de Erika 20/10/2026: en cotizaciones la etiqueta de abastecimiento ("Pendiente por compra") solo sale
+// cuando el cliente ya aceptó (no en "Generada" ni antes).
+function cotAceptadaCliente(r) {
+    return ['Aceptada por Cliente', 'Aceptada'].includes(String((r && r.estado) || '').trim());
+}
+window.cotAceptadaCliente = cotAceptadaCliente;
 function abastBadge(tipo, id) {
     const info = (abastData[tipo] || {})[id];
     if (!info || !info.estado) return '';
@@ -16989,6 +17083,7 @@ async function prepararUbicacionDespacho(id) {
         return null;
     }
     const primera = opciones[0];
+    window._despOpciones = opciones;
     window._despUbicacion = primera.alcanza ? `${primera.empresa_id}|${primera.almacen_id}` : '';
     const opts = opciones.map(o => {
         const valor = `${o.empresa_id}|${o.almacen_id}`;
@@ -17010,6 +17105,38 @@ async function prepararUbicacionDespacho(id) {
         </div>`;
     return { html };
 }
+
+// Error de stock al despachar: rojo, grande y diciendo qué producto falta y en qué sede (pedido de Erika 20/10/2026)
+function mostrarErrorStockDespacho(faltan, mensaje) {
+    document.getElementById('errorStockDespacho')?.remove();
+    const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const num = n => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+    const filas = (faltan || []).map(f => `<tr>
+            <td style="padding:8px;border-bottom:1px solid #FCA5A5;text-align:left"><b>${esc(f.producto)}</b></td>
+            <td style="padding:8px;border-bottom:1px solid #FCA5A5">${esc(f.empresa)} · ${esc(f.sede)}</td>
+            <td style="padding:8px;border-bottom:1px solid #FCA5A5;text-align:right">${num(f.pide)}</td>
+            <td style="padding:8px;border-bottom:1px solid #FCA5A5;text-align:right">${num(f.hay)}</td>
+            <td style="padding:8px;border-bottom:1px solid #FCA5A5;text-align:right;color:#B91C1C;font-weight:900">${num(Math.max((f.pide || 0) - (f.hay || 0), 0))}</td></tr>`).join('');
+    const d = document.createElement('div');
+    d.id = 'errorStockDespacho';
+    d.setAttribute('role', 'alertdialog');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(127,29,29,.55);z-index:10000003;display:flex;align-items:center;justify-content:center;padding:16px';
+    d.innerHTML = `<div style="background:#FEF2F2;border:5px solid #DC2626;border-radius:16px;max-width:720px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.45)">
+        <div style="background:#DC2626;color:#fff;padding:16px 20px;font-size:24px;font-weight:950;letter-spacing:.3px">⛔ NO SE PUEDE DESPACHAR: FALTA STOCK</div>
+        <div style="padding:16px 20px;color:#7F1D1D">
+          <div style="font-size:16px;font-weight:800;margin-bottom:10px">${filas ? 'Estos productos no alcanzan en la empresa y sede elegidas:' : esc(mensaje || 'No hay stock suficiente.')}</div>
+          ${filas ? `<table style="width:100%;border-collapse:collapse;font-size:15px;background:#fff;border:2px solid #FCA5A5;border-radius:10px">
+            <thead><tr style="background:#FEE2E2"><th style="padding:8px;text-align:left">Producto</th><th style="padding:8px">Empresa · Sede</th>
+              <th style="padding:8px;text-align:right">Pide</th><th style="padding:8px;text-align:right">Hay</th><th style="padding:8px;text-align:right">Falta</th></tr></thead>
+            <tbody>${filas}</tbody></table>` : ''}
+          <div style="font-size:14px;font-weight:700;margin-top:12px">Qué hacer: elige otra empresa o sede que diga ✅ "hay todo", o pide la compra / la transferencia de esos productos. Nada se descontó.</div>
+          <div style="text-align:right;margin-top:14px"><button type="button" style="padding:12px 22px;border:0;border-radius:10px;background:#DC2626;color:#fff;font-size:16px;font-weight:900;cursor:pointer">Entendido</button></div>
+        </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('button').onclick = () => d.remove();
+    if (typeof showToast === 'function') showToast('⛔ No se puede despachar: falta stock', 'error');
+}
+window.mostrarErrorStockDespacho = mostrarErrorStockDespacho;
 
 function anularDespacho(id) {
     const despacho = (despachosData || []).find(d => d.id === id) || {};
@@ -17034,3 +17161,88 @@ function anularDespacho(id) {
 }
 window.anularDespacho = anularDespacho;
 window.prepararUbicacionDespacho = prepararUbicacionDespacho;
+
+
+// ============================================================
+// CONDICIÓN DE PAGO DE LA FACTURA (pedido de Erika 19/10/2026)
+// Sale del PC de origen; si no hay PC, de la guía; si no, del cliente. Nunca de la cotización.
+// Antes un PC a 30 días terminaba en factura "Contado".
+// ============================================================
+async function aplicarCondicionFactura() {
+    const sel = document.getElementById('compCondicion');
+    if (!sel) return;
+    if (typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value) return; // factura ya guardada: se respeta
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    const qs = new URLSearchParams({ pc: v('compPC'), guia: v('compGuia'), cotizacion: v('compCotizacion'), ruc: v('compRuc') });
+    let j = null;
+    try {
+        const r = await fetch('/ventas/api/comprobantes/condicion-origen?' + qs.toString());
+        j = await r.json();
+    } catch (e) { return; }
+    j = j && j.data ? j.data : j;
+    if (!j || !j.condicion) return;
+    window.ponerCondicion(sel, j.condicion);
+    const pcSel = document.getElementById('compPC');
+    if (pcSel && !pcSel.value && j.pc) {
+        if (![...pcSel.options].some(o => o.value === j.pc)) pcSel.add(new Option(j.pc, j.pc));
+        pcSel.value = j.pc;
+    }
+    const oc = document.getElementById('compOrdenCompra');
+    if (oc && !oc.value.trim() && j.oc_cliente) oc.value = j.oc_cliente;
+    let nota = document.getElementById('compCondicionOrigen');
+    if (!nota) {
+        nota = document.createElement('small');
+        nota.id = 'compCondicionOrigen';
+        nota.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#065F46';
+        sel.insertAdjacentElement('afterend', nota);
+    }
+    const fuente = /^PC/i.test(j.fuente || '') ? 'del ' + j.fuente : (j.fuente === 'cliente' ? 'de la ficha del cliente (no hay PC)' : '');
+    nota.textContent = fuente ? '✔ Tomada ' + fuente : '';
+    if (typeof actualizarEstadoRetencion === 'function') actualizarEstadoRetencion();
+    if (typeof calcularRetencionComprobante === 'function') calcularRetencionComprobante();
+}
+window.aplicarCondicionFactura = aplicarCondicionFactura;
+['loadComprobanteFromGuia', 'loadComprobanteFromPC', 'loadComprobanteFromCotizacion'].forEach(nombre => {
+    const original = window[nombre];
+    if (typeof original !== 'function' || original._conCondicion) return;
+    const envuelta = function () {
+        const r = original.apply(this, arguments);
+        Promise.resolve(r).finally(() => setTimeout(aplicarCondicionFactura, 150));
+        return r;
+    };
+    envuelta._conCondicion = true;
+    window[nombre] = envuelta;
+});
+// Observaciones de la factura: primera letra en mayúscula
+document.addEventListener('focusout', e => {
+    const el = e.target;
+    if (el && el.id === 'compObs' && el.value) {
+        const t = el.value.replace(/^\s+/, '');
+        el.value = t.charAt(0).toLocaleUpperCase('es-PE') + t.slice(1);
+    }
+});
+
+// ============================================================
+// AYUDA PASO A PASO (pedido de Erika 19/10/2026): después de crear la guía o la factura,
+// una ventana grande dice qué hacer y un botón lleva a la lista con el documento resaltado.
+// ============================================================
+function irAPestanaYResaltar(tab, buscarId, texto, render) {
+    const textos = (Array.isArray(texto) ? texto : [texto]).filter(Boolean).map(String);
+    const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+    if (btn) btn.click();
+    setTimeout(() => {
+        const buscador = document.getElementById(buscarId);
+        if (buscador && buscador.value) { buscador.value = ''; }
+        if (typeof render === 'function') { try { render(); } catch (e) {} }
+        setTimeout(() => {
+            const filas = [...document.querySelectorAll('tbody tr')].filter(tr => tr.offsetParent !== null && textos.some(t => tr.textContent.includes(t)));
+            const fila = filas[0];
+            if (fila) {
+                fila.classList.add('fila-recien');
+                fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => fila.classList.remove('fila-recien'), 6000);
+            }
+        }, 250);
+    }, 300);
+}
+window.irAPestanaYResaltar = irAPestanaYResaltar;

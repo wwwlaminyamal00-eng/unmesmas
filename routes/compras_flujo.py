@@ -599,7 +599,7 @@ SQL_OC_LISTA = """
            oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, oc.num_cotizacion, oc.notas,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
            oc.subtotal, oc.igv, oc.total, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
-           oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at,
+           oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at, oc.updated_at,
            COALESCE(it.pedidos, oc.pc_numeros) AS pc_numeros, COALESCE(it.cotizaciones, oc.cotizaciones_cliente) AS cotizaciones_cliente,
            COALESCE(it.clientes, oc.clientes_pedido) AS clientes_pedido,
            (COALESCE(it.pedidos, oc.pc_numeros) IS NULL) AS sin_pedido,
@@ -1629,13 +1629,26 @@ def api_orden_factura(oc_id):
             ya_facturado = a_decimal(cur.fetchone()['f'])
             esperado = redondear(redondear(base) + redondear(base * tasa_igv()) - ya_facturado)
             cuadra = abs(monto - esperado) <= TOLERANCIA_FACTURA
+            # Pedido de Erika 20/10/2026: si no cuadra NO se guarda; se avisa y se corrige en el mismo momento.
+            # Solo si la factura física realmente dice ese monto se registra (dentro de su OC) marcando
+            # "aceptar_diferencia" con el motivo; queda como diferencia por resolver, nunca suelta.
+            motivo_dif = (d.get('motivo_diferencia') or '').strip()
+            if not cuadra and not d.get('aceptar_diferencia'):
+                return jsonify({'success': False, 'codigo': 'no_cuadra', 'esperado': float(esperado), 'monto': float(monto),
+                                'diferencia': float(redondear(monto - esperado)),
+                                'error': f'La factura no cuadra: escribiste S/ {monto} y según lo recibido debería ser '
+                                         f'S/ {esperado} (diferencia S/ {redondear(monto - esperado)}). Revisa el total y corrígelo.'}), 409
+            if not cuadra and len(motivo_dif) < 5:
+                raise ErrorCompras('Escribe por qué registras la factura con diferencia (por ejemplo: "el proveedor cobró flete").')
             vence = fecha + timedelta(days=int(oc['dias_credito'] or 0))
             cur.execute("""
                 INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, orden_compra_id,
                     orden_compra_numero, estado, observaciones, creado_por, empresa_id, fecha_vencimiento, monto_esperado, cuadra)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'Pendiente',%s,%s,%s,%s,%s,%s) RETURNING id
             """, (tipo, numero, fecha, monto, ruc, oc['razon_social'], oc_id, oc['numero_orden'],
-                  (d.get('observaciones') or '').strip() or None, uid, oc['empresa_id'], vence, esperado, cuadra))
+                  ' · '.join(x for x in ((d.get('observaciones') or '').strip(),
+                                         f'Registrada con diferencia: {motivo_dif}' if not cuadra else '') if x) or None,
+                  uid, oc['empresa_id'], vence, esperado, cuadra))
             cp_id = cur.fetchone()['id']
             # Los pagos adelantados de la OC pasan a esta factura (así Cuentas por pagar muestra el saldo real)
             cur.execute("""SELECT id, monto FROM finanzas_pagos WHERE documento_tabla = 'ordenes_compra' AND documento_id = %s
@@ -1660,9 +1673,42 @@ def api_orden_factura(oc_id):
         msg += ' Cuadra con lo recibido. ✔' if cuadra else f' OJO: no cuadra, debería ser S/ {esperado}. Quedó como diferencia por resolver.'
         if aplicado:
             msg += f' Se le aplicó el pago adelantado de S/ {aplicado}.'
-        return jsonify({'success': True, 'message': msg, 'cuadra': cuadra, 'esperado': float(esperado)})
+        return jsonify({'success': True, 'message': msg, 'cuadra': cuadra, 'esperado': float(esperado), 'id': cp_id})
     except Exception as e:
         return _respuesta_error(e)
+
+
+def _factura_proveedor(where, params):
+    filas = db_query(f"""
+        SELECT cp.id, cp.tipo, cp.numero, cp.fecha, cp.monto, cp.monto_esperado, cp.cuadra, cp.estado,
+               cp.fecha_vencimiento, cp.observaciones, cp.created_at, cp.ruc_proveedor, cp.proveedor_nombre,
+               cp.orden_compra_id, cp.orden_compra_numero, u.nombre_completo AS registrado_por
+        FROM comprobantes_proveedor cp LEFT JOIN usuarios u ON u.id::text = cp.creado_por::text
+        WHERE {where} ORDER BY cp.id DESC LIMIT 1""", params)
+    if not filas:
+        return None
+    f = dict(filas[0])
+    for k in ('monto', 'monto_esperado'):
+        f[k] = float(f[k]) if f.get(k) is not None else None
+    for k in ('fecha', 'fecha_vencimiento', 'created_at'):
+        f[k] = f[k].isoformat() if f.get(k) else None
+    return f
+
+
+@compras_flujo_bp.route('/compras/api/flujo/facturas/ultima')
+def api_factura_ultima():
+    """La última factura de proveedor que registró este usuario (botón "Ver la factura registrada recientemente")."""
+    uid, _ = _usuario()
+    f = _factura_proveedor('cp.creado_por::text = %s AND cp.orden_compra_id IS NOT NULL', (str(uid),)) if uid else None
+    return jsonify({'success': True, 'data': f})
+
+
+@compras_flujo_bp.route('/compras/api/flujo/facturas/<int:fid>')
+def api_factura_ver(fid):
+    f = _factura_proveedor('cp.id = %s', (fid,))
+    if not f:
+        return jsonify({'success': False, 'error': 'La factura no existe.'}), 404
+    return jsonify({'success': True, 'data': f})
 
 
 # ============================================================

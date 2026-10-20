@@ -1612,6 +1612,44 @@ def crear_usuario_desde_auth(auth_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@config_seguridad_bp.route('/usuarios/<int:usuario_id>/password', methods=['POST'])
+def asignar_password_usuario(usuario_id):
+    """El administrador asigna una contraseña NUEVA a cualquier usuario, sin pedir la anterior
+    (pedido de Erika 19/10/2026). Body: password (mín. 8, letras y números) o generar: true.
+    Se guarda cifrada; la generada se muestra una sola vez. Queda en la Auditoría (sin la contraseña)."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        data = request.get_json(silent=True) or {}
+        filas = db_query("SELECT id, usuario_sistema FROM usuarios WHERE id = %s", (usuario_id,))
+        if not filas:
+            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
+        generada = None
+        password = data.get('password') or ''
+        if not password and data.get('generar'):
+            password = generada = _password_temporal()
+        if not password:
+            return jsonify({'success': False, 'error': 'Escribe la nueva contraseña o pulsa "Generar".'}), 400
+        if not _password_aceptable(password):
+            return jsonify({'success': False, 'error': 'La contraseña debe tener al menos 8 caracteres, con letras y números.'}), 400
+        from werkzeug.security import generate_password_hash
+        db_execute("UPDATE usuarios SET password = %s, updated_at = NOW() WHERE id = %s",
+                   (generate_password_hash(password), usuario_id))
+        from routes.auditoria import registrar_auditoria
+        registrar_auditoria('cambiar_contraseña', 'Usuarios', tabla='usuarios', registro_id=usuario_id,
+                            detalle=f"El administrador asignó una contraseña nueva a '{filas[0]['usuario_sistema']}'")
+        respuesta = {'id': usuario_id, 'usuario_sistema': filas[0]['usuario_sistema']}
+        if generada:
+            respuesta['password_generada'] = generada   # solo esta vez; en la base queda cifrada
+        return jsonify({'success': True, 'data': respuesta,
+                        'message': f"Contraseña nueva asignada a '{filas[0]['usuario_sistema']}'. "
+                                   f"Desde ahora entra con esa contraseña."})
+    except Exception as e:
+        print(f"❌ Error en asignar_password_usuario: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @config_seguridad_bp.route('/usuarios-inactivos', methods=['GET'])
 def listar_usuarios_inactivos():
     """Usuarios del ERP con estado distinto de 'activo' (la lista principal solo muestra activos)."""

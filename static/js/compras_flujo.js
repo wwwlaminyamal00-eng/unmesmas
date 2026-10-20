@@ -254,12 +254,12 @@
             ordenesCache = data;
             $('ocBody').innerHTML = data.length ? data.map(o => `<tr class="com-fila" data-ver="${o.id}">
                 <td><b>${esc(o.numero)}</b>${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
-                <td>${fecha(o.created_at || o.fecha)}</td>
+                <td>${fecha(o.created_at || o.fecha)}${o.updated_at && fecha(o.updated_at) !== fecha(o.created_at || o.fecha) ? `<small>Modificada ${fecha(o.updated_at)}</small>` : ''}</td>
                 <td><b>${esc(o.empresa || '—')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}<small>${esc(o.ruc || '')}</small></td>
                 <td class="left">${paraHtml(o)}</td>
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
-                <td>${esc(o.condicion_pago || '')}</td>
+                <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
                 <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span>${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
@@ -297,9 +297,9 @@
         provElegido = oc && oc.proveedor_id ? cat.proveedores.find(p => p.id === oc.proveedor_id) || null : null;
         $('ocProv').querySelector('.pp-input').value = provElegido ? `${provElegido.ruc || ''} · ${provElegido.razon_social}` : '';
         $('ocProv').classList.toggle('pp-ok', !!provElegido);
-        const cond = oc ? (String(oc.condicion_pago || '').startsWith('Crédito') ? 'Crédito' : oc.condicion_pago) : 'Contado';
-        $('ocCondicion').value = cond || 'Contado';
-        $('ocDias').value = oc && oc.dias_credito ? oc.dias_credito : '';
+        const cp = oc ? condPagoPartes(oc.condicion_pago, oc.dias_credito) : { tipo: 'Contado', dias: 0 };
+        $('ocCondicion').value = cp.tipo || 'Contado';
+        $('ocDias').value = cp.dias || '';
         $('ocModalidad').value = oc ? (oc.modalidad_entrega || 'Proveedor entrega') : 'Proveedor entrega';
         $('ocRecojo').value = oc ? (oc.direccion_recojo || '') : '';
         const smp = cat.sedes[0];
@@ -323,7 +323,11 @@
     const lineaVacia = () => ({ producto_id: null, texto: '', cantidad: '', precio_unitario: '', pedido_id: null, para: '' });
 
     function ajustarForm() {
-        $('ocDiasWrap').style.display = $('ocCondicion').value === 'Crédito' ? '' : 'none';
+        const credito = $('ocCondicion').value === 'Crédito';
+        $('ocDiasWrap').style.display = credito ? '' : 'none';
+        if (!credito) $('ocDias').value = '';
+        const ct = $('ocCondTexto');
+        if (ct) ct.textContent = credito ? condPagoTexto('Crédito', $('ocDias').value) : '';
         $('ocRecojoWrap').style.display = $('ocModalidad').value === 'Nosotros recogemos' ? '' : 'none';
         if ($('ocModalidad').value === 'Nosotros recogemos' && !$('ocRecojo').value && provElegido)
             $('ocRecojo').value = provElegido.lugar_recojo || provElegido.direccion || '';
@@ -378,7 +382,7 @@
         const filas = ids.map(pid => {
             const d = abastDatos[pid];
             const comprar = lineas.filter(l => l.producto_id === pid).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
-            if (!d) return `<tr><td class="left">${esc((lineas.find(l => l.producto_id === pid) || {}).texto || '')}</td><td colspan="5">Calculando...</td></tr>`;
+            if (!d) return `<tr><td class="left">${esc((lineas.find(l => l.producto_id === pid) || {}).texto || '')}</td><td colspan="6">Calculando...</td></tr>`;
             const saldo = d.stock + comprar - d.pedido_cliente;
             const usar = d.sugerido > 0 && Math.abs(comprar - d.sugerido) > 1e-9
                 ? `<button type="button" class="btn-mini sec" data-sugerido="${pid}" title="Poner esta cantidad en la línea del producto">Usar</button>` : '';
@@ -388,6 +392,7 @@
                     ? `<span class="com-abast-sem verde">✔ Cubre el pedido${saldo > 0 ? ` · quedan ${cant(saldo)} en stock` : ''}</span>`
                     : `<span class="com-abast-sem ambar">Para stock · quedarán ${cant(saldo)}</span>`);
             const pcs = d.pedidos.map(p => `${p.numero} (${cant(p.falta)})`).join(', ');
+            const extra = lineas.filter(l => l.producto_id === pid && !l.pedido_id).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
             return `<tr>
                 <td class="left"><b>${esc(d.codigo || '')}</b> ${esc(d.descripcion || '')}</td>
                 <td class="num"><span class="com-abast-num ${d.stock > 0 ? 'hay' : 'cero'}">${cant(d.stock)}</span>
@@ -395,6 +400,8 @@
                 <td class="num"><span class="com-abast-num ped">${cant(d.pedido_cliente)}</span>
                     ${pcs ? `<small title="${esc(pcs)}">${d.pedidos.length} pedido(s)${d.ya_en_ordenes > 0 ? ` · ya hay ${cant(d.ya_en_ordenes)} en otras OC` : ''}</small>` : '<small>Sin pedidos pendientes</small>'}</td>
                 <td class="num"><span class="com-abast-num sug">${cant(d.sugerido)}</span>${usar}</td>
+                <td class="num"><input type="number" class="inp-num com-abast-extra" min="0" step="any" value="${extra || ''}" placeholder="0"
+                    data-extra-pid="${pid}" title="Si quieres comprar más de lo que pide el cliente, escribe aquí cuánto más (queda en stock y pide motivo)"></td>
                 <td class="num"><span class="com-abast-num comp">${cant(comprar)}</span></td>
                 <td>${estado}</td></tr>`;
         }).join('');
@@ -402,8 +409,38 @@
             <div class="table-wrap"><table class="inv-table com-abast-tabla">
                 <thead><tr><th class="left">Producto</th><th>Stock actual<small>disponible en ${esc(emp.codigo || emp.nombre || 'la empresa')}</small></th>
                     <th>Pedido del cliente<small>lo que falta cubrir</small></th><th>Sugerido<small>pedido − stock</small></th>
-                    <th>A comprar<small>en esta orden</small></th><th class="left">Resultado</th></tr></thead>
+                    <th>Extra para stock<small>opcional: pedir de más</small></th>
+                    <th>Total a comprar<small>en esta orden</small></th><th class="left">Resultado</th></tr></thead>
                 <tbody>${filas}</tbody></table></div>`;
+    }
+
+    // "Extra para stock" del panel (pedido de Erika 20/10/2026): una línea aparte "Para stock · sin pedido"
+    // del mismo producto, así lo del cliente y lo de más quedan separados y la compra extra pide motivo.
+    function ponerExtraStock(pid, valor) {
+        const extra = Math.max(Number(valor) || 0, 0);
+        const base = lineas.find(l => l.producto_id === pid);
+        if (!base) return;
+        const deStock = lineas.map((l, i) => [l, i]).filter(([l]) => l.producto_id === pid && !l.pedido_id);
+        const conPedido = lineas.some(l => l.producto_id === pid && l.pedido_id);
+        if (!conPedido && deStock.length && extra === 0) {
+            aviso('Esta línea no es de un pedido de cliente: cambia la cantidad en la tabla de productos.', 'warning');
+            pintarAbastecimiento();
+            return;
+        }
+        if (deStock.length) {
+            const [, i0] = deStock[0];
+            const otras = deStock.slice(1).reduce((s, [l]) => s + (Number(l.cantidad) || 0), 0);
+            if (extra === 0 && conPedido) {
+                lineas = lineas.filter(l => !(l.producto_id === pid && !l.pedido_id));
+            } else {
+                lineas[i0].cantidad = Math.max(extra - otras, 0);
+            }
+        } else if (extra > 0) {
+            lineas.push({ producto_id: pid, texto: base.texto, cantidad: extra, precio_unitario: base.precio_unitario || '',
+                          pedido_id: null, para: '' });
+        }
+        pintarLineas();
+        ajustarForm();
     }
 
     function usarSugerido(pid) {
@@ -460,10 +497,10 @@
             input.value = `${provElegido.ruc || ''} · ${provElegido.razon_social}`;
             el.classList.add('pp-ok');
             lista.style.display = 'none';
-            const cp = String(provElegido.condicion_pago || '').toLowerCase();
-            if (cp.includes('crédito') || cp.includes('credito')) {
+            const cp = condPagoPartes(provElegido.condicion_pago);
+            if (cp.tipo === 'Crédito') {
                 $('ocCondicion').value = 'Crédito';
-                const dias = parseInt(String(provElegido.tiempo_credito || '').replace(/\D/g, ''), 10);
+                const dias = cp.dias || parseInt(String(provElegido.tiempo_credito || '').replace(/\D/g, ''), 10);
                 if (dias) $('ocDias').value = dias;
             }
             pintarProveedor();
@@ -480,7 +517,7 @@
                 <div class="com-info-linea" id="info-${i}"></div></td>
             <td class="left">${l.pedido_id ? `<span class="com-para">${esc(l.para)}</span>` : '<span class="badge-sin-pedido">Para stock · sin pedido</span>'}</td>
             <td><input type="number" class="inp-num" data-campo="cantidad" min="0" step="any" value="${esc(l.cantidad)}">${l.max ? `<small>máx. ${cant(l.max)}</small>` : ''}</td>
-            <td><input type="number" class="inp-num" data-campo="precio_unitario" min="0" step="0.0001" value="${esc(l.precio_unitario)}"></td>
+            <td><input type="number" class="inp-num" data-campo="precio_unitario" min="0" step="0.01" value="${esc(l.precio_unitario)}"></td>
             <td class="num" id="tot-${i}">${soles((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0))}</td>
             <td><button class="btn-mini btn-tachito" data-quitar="${i}" title="Quitar" aria-label="Quitar">🗑️</button></td></tr>`).join('');
         lineas.forEach((l, i) => {
@@ -633,7 +670,7 @@
                 <div class="com-datos">
                     <div><small>Empresa que compra</small><b>${esc(o.empresa || '—')}</b></div>
                     <div><small>Proveedor</small><b>${esc(o.proveedor || '')}</b><span>RUC ${esc(o.ruc || '—')}</span></div>
-                    <div><small>Condición de pago</small><b>${esc(o.condicion_pago || '')}</b></div>
+                    <div><small>Condición de pago</small><b>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</b></div>
                     <div><small>Cómo llega</small><b>${esc(o.modalidad_entrega || '')}</b><span>${esc(o.direccion_recojo || '')}</span></div>
                     <div><small>Debe quedar en</small><b>${esc(o.sede || '—')}</b><span>Fecha prometida ${fecha(o.fecha_compromiso)}${o.atrasada ? ' · <b class="neg">ATRASADA</b>' : ''}</span></div>
                     <div><small>Tipo</small><b>${esc(o.tipo_compra || '')}</b><span>${esc(o.motivo_stock || '')}</span></div>
@@ -644,7 +681,7 @@
                 ${o.notas ? `<div class="inv-tip">📝 ${esc(o.notas)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
                 <div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>Código</th><th class="left">Producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Código de producto</th><th class="left">Producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
                     <tbody>${o.items.map(i => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
                         <td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
                         <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Stock</span>'}</td>
@@ -653,7 +690,7 @@
                     <tfoot><tr><td colspan="6" class="num">Subtotal ${soles(o.subtotal)} · IGV ${soles(o.igv)} · <b>Total</b></td><td class="num"><b>${soles(o.total)}</b></td></tr></tfoot>
                 </table></div>
                 ${o.incidencias.length ? `<div class="inv-subtitulo">Diferencias</div><div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>N°</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
+                    <thead><tr><th>Nr° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
                     <tbody>${o.incidencias.map(i => `<tr><td>${esc(i.numero)}</td><td><b>${esc(i.tipo)}</b></td><td class="left">${esc(i.detalle)}<small>Reportó ${esc(i.reportado_por || '')} · ${fecha(i.fecha)}</small></td>
                         <td class="num">${i.monto ? soles(i.monto) : ''}</td><td><span class="${claseEstado(i.estado === 'Abierta' ? 'pendiente' : 'registrado')}">${esc(i.estado)}</span></td>
                         <td class="left">${esc(i.resolucion || '')}${i.resuelto_por ? `<small>${esc(i.resuelto_por)}</small>` : ''}</td>
@@ -837,7 +874,7 @@
             const porPagar = data.filter(o => ['pagar', 'pagar_credito'].includes(o.paso.codigo));
             $('pagBody').innerHTML = porPagar.length ? porPagar.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
-                <td class="left">${esc(o.proveedor || '')}</td><td>${esc(o.condicion_pago || '')}</td>
+                <td class="left">${esc(o.proveedor || '')}</td><td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}</td><td class="num">${soles(o.pagado)}</td><td class="num"><b>${soles(o.saldo_pago)}</b></td>
                 <td>${PUEDE.pagar ? `<button class="btn-mini" data-pagar="${o.id}">💸 Pagar</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="8">No hay órdenes por pagar. 👍</td></tr>';
@@ -859,9 +896,82 @@
         $('facOc').value = o.id;
         $('facTitulo').textContent = `Factura del proveedor · ${o.numero}`;
         $('facTipo').value = 'Factura';
-        ['facNumero', 'facMonto', 'facObs'].forEach(i => { $(i).value = ''; });
+        ['facNumero', 'facMonto', 'facObs', 'facMotivoDif'].forEach(i => { $(i).value = ''; });
         $('facFecha').value = hoyISO();
+        limpiarNoCuadra();
         abrir('facModal');
+    }
+
+    // Factura que no cuadra (pedido de Erika 20/10/2026): no se guarda; aviso rojo y a corregir en el momento
+    function limpiarNoCuadra() {
+        $('facNoCuadra').style.display = 'none';
+        $('facNoCuadra').innerHTML = '';
+        $('facDifWrap').style.display = 'none';
+        $('facAceptarDif').checked = false;
+        $('facMonto').classList.remove('com-fac-mal');
+    }
+    function mostrarNoCuadra(r) {
+        $('facNoCuadra').innerHTML = `⛔ <b>La factura NO cuadra. No se guardó.</b><br>
+            Escribiste <b>${soles(r.monto)}</b> y según lo recibido debería ser <b>${soles(r.esperado)}</b>
+            (diferencia ${soles(r.diferencia)}).<br>Revisa el total que copiaste y corrígelo aquí mismo.`;
+        $('facNoCuadra').style.display = '';
+        $('facDifWrap').style.display = '';
+        $('facMonto').classList.add('com-fac-mal');
+        $('facMonto').focus();
+        $('facMonto').select();
+        aviso('La factura no cuadra: corrígela antes de guardar.', 'error');
+    }
+
+    async function guardarFactura(btn) {
+        if (btn) { btn.disabled = true; btn.dataset.txt = btn.textContent; btn.textContent = 'Guardando...'; }
+        try {
+            const body = { tipo: $('facTipo').value, numero: $('facNumero').value, fecha: $('facFecha').value, monto: $('facMonto').value,
+                           observaciones: $('facObs').value, aceptar_diferencia: $('facAceptarDif').checked,
+                           motivo_diferencia: $('facMotivoDif').value };
+            const resp = await fetch(`/compras/api/flujo/ordenes/${$('facOc').value}/factura`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify(body) });
+            const r = await resp.json().catch(() => ({}));
+            if (resp.status === 401) { window.location.href = '/login'; return; }
+            if (r.codigo === 'no_cuadra') { mostrarNoCuadra(r); return; }
+            if (!resp.ok || r.success === false) throw new Error(r.error || `Error ${resp.status}`);
+            aviso(r.message, r.cuadra ? 'success' : 'warning');
+            cerrar('facModal');
+            ultimaFacturaId = r.id || null;
+            const b = $('btnVerUltimaFactura');
+            if (b && r.id) { b.classList.add('com-recien'); b.textContent = `👁 Ver la factura registrada recientemente (${body.numero.trim().toUpperCase()})`; }
+            refrescar();
+        } catch (e) { aviso(e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.txt; } }
+    }
+
+    let ultimaFacturaId = null;
+    async function verUltimaFactura() {
+        try {
+            const r = ultimaFacturaId ? await api('/compras/api/flujo/facturas/' + ultimaFacturaId) : await api('/compras/api/flujo/facturas/ultima');
+            if (!r.data) { aviso('Todavía no registraste ninguna factura de proveedor.', 'warning'); return; }
+            verFacturaProveedor(r.data);
+        } catch (e) { aviso(e.message, 'error'); }
+    }
+    function verFacturaProveedor(f) {
+        $('facVerTitulo').textContent = `${f.tipo || 'Factura'} ${f.numero} · ${f.proveedor_nombre || ''}`;
+        const cuadra = f.cuadra !== false;
+        $('facVerCuerpo').innerHTML = `
+            <div class="com-fac-estado ${cuadra ? 'ok' : 'mal'}">${cuadra ? '✔ Cuadra con lo recibido' : `⚠️ Registrada con diferencia: debía ser ${soles(f.monto_esperado)}`}</div>
+            <div class="com-fac-ver">
+                <div><small>Nr° factura</small><b>${esc(f.numero)}</b></div>
+                <div><small>Nr° OC</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
+                <div><small>Proveedor</small><b>${esc(f.proveedor_nombre || '')}</b><br><span>RUC ${esc(f.ruc_proveedor || '—')}</span></div>
+                <div><small>Total con IGV</small><b>${soles(f.monto)}</b></div>
+                <div><small>Fecha de emisión</small><b>${fecha(String(f.fecha || '').slice(0, 10), false)}</b></div>
+                <div><small>Vence</small><b>${f.fecha_vencimiento ? fecha(String(f.fecha_vencimiento).slice(0, 10), false) : '—'}</b></div>
+                <div><small>Estado</small><b>${esc(f.estado || '')}</b></div>
+                <div><small>Registrada</small><b>${f.created_at ? esc(new Date(f.created_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })) : '—'}</b><br><span>${esc(f.registrado_por || '')}</span></div>
+                ${f.observaciones ? `<div style="grid-column:1/-1"><small>Observaciones</small>${esc(f.observaciones)}</div>` : ''}
+            </div>`;
+        $('facVerOrden').style.display = f.orden_compra_id ? '' : 'none';
+        $('facVerOrden').onclick = () => { cerrar('facVerModal'); verOrden(f.orden_compra_id); };
+        abrir('facVerModal');
     }
 
     // ========================================================
@@ -953,6 +1063,9 @@
         const b = e.target.closest('[data-sugerido]');
         if (b) usarSugerido(Number(b.dataset.sugerido));
     });
+    document.addEventListener('change', e => {
+        if (e.target.dataset && e.target.dataset.extraPid) ponerExtraStock(Number(e.target.dataset.extraPid), e.target.value);
+    });
 
     function iniciarEventos() {
         crearPickerProveedor();
@@ -969,6 +1082,7 @@
         $('ocBuscar').oninput = () => { clearTimeout(tOc); tOc = setTimeout(cargarOrdenes, 300); };
         $('preBuscar').oninput = () => { clearTimeout(tPre); tPre = setTimeout(cargarPrecios, 300); };
         ['ocCondicion', 'ocModalidad', 'ocEmp', 'ocSede'].forEach(i => { $(i).onchange = ajustarForm; });
+        $('ocDias').oninput = () => { $('ocCondTexto').textContent = condPagoTexto('Crédito', $('ocDias').value); };
         $('ocGuardar').onclick = () => guardarOC(false, $('ocGuardar'));
         $('ocEnviar').onclick = () => guardarOC(true, $('ocEnviar'));
         $('recTraidoTipo').onchange = ajustarTraido;
@@ -978,12 +1092,9 @@
                 numero_operacion: $('pagoOperacion').value, observaciones: $('pagoObs').value });
             aviso(r.message, 'success'); cerrar('pagoModal'); refrescar();
         });
-        $('facGuardar').onclick = () => guardarCon($('facGuardar'), async () => {
-            const r = await post(`/compras/api/flujo/ordenes/${$('facOc').value}/factura`, {
-                tipo: $('facTipo').value, numero: $('facNumero').value, fecha: $('facFecha').value, monto: $('facMonto').value,
-                observaciones: $('facObs').value });
-            aviso(r.message, r.cuadra ? 'success' : 'warning'); cerrar('facModal'); refrescar();
-        });
+        $('facGuardar').onclick = () => guardarFactura($('facGuardar'));
+        $('facMonto').addEventListener('input', () => $('facMonto').classList.remove('com-fac-mal'));
+        $('btnVerUltimaFactura').onclick = verUltimaFactura;
     }
 
     (async function iniciar() {

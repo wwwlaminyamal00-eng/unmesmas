@@ -59,7 +59,22 @@ def generar_codigo_con_lock(cur):
 import threading
 SQL_DDL_PRODUCTOS = """
     ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_operacion VARCHAR(60);
+    ALTER TABLE productos ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
 """
+
+
+def fecha_vencimiento_de(data):
+    """Fecha de vencimiento del formulario (AAAA-MM-DD o DD/MM/AAAA); '' o nada = sin vencimiento."""
+    v = str(data.get('fecha_vencimiento') or '').strip()
+    if not v:
+        return None
+    from datetime import datetime as _dt
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return _dt.strptime(v[:10], fmt).date()
+        except ValueError:
+            pass
+    raise ValueError('La fecha de vencimiento no es válida (usa día/mes/año).')
 _columnas_listas = False
 _lock_columnas = threading.Lock()
 
@@ -357,7 +372,8 @@ def productos_editar(producto_id):
                 costo_unitario, precio_unitario, stock, stock_minimo,
                 estado, presentacion_proveedor, presentacion_venta,
                 venta_minima, codigo_barras, origen, tiempo_entrega,
-                abastecimiento, activo, proveedor_id, tipo_operacion
+                abastecimiento, activo, proveedor_id, tipo_operacion, fecha_vencimiento,
+                fecha_creacion, updated_at
             FROM productos
             WHERE id = %s AND activo = TRUE
         """, (producto_id,))
@@ -482,7 +498,7 @@ def get_producto(producto_id):
                 p.stock_minimo,
                 p.estado, p.presentacion_proveedor, p.presentacion_venta,
                 p.venta_minima, p.codigo_barras, p.origen, p.tiempo_entrega,
-                p.abastecimiento, p.activo, p.fecha_creacion, p.updated_at,
+                p.abastecimiento, p.activo, p.fecha_creacion, p.updated_at, p.fecha_vencimiento,
                 p.proveedor_id, pv.razon_social as proveedor_nombre
             FROM productos p
             LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
@@ -602,6 +618,9 @@ def create_producto():
             ))
 
             resultado = cur.fetchone()
+            if data.get('fecha_vencimiento'):
+                cur.execute("UPDATE productos SET fecha_vencimiento = %s WHERE id = %s",
+                            (fecha_vencimiento_de(data), resultado['id']))
 
             # Marca / categoría escritas a mano: quedan en sus tablas maestras para la próxima vez
             registrar_en_maestro(cur, 'marcas', data.get('marca'))
@@ -717,6 +736,9 @@ def update_producto(producto_id):
 
             registrar_en_maestro(cur, 'marcas', data.get('marca'))
             registrar_en_maestro(cur, 'categorias', data.get('familia') or data.get('categoria'))
+            if 'fecha_vencimiento' in data:   # solo si la pantalla lo manda (otras pantallas no lo borran)
+                cur.execute("UPDATE productos SET fecha_vencimiento = %s WHERE id = %s",
+                            (fecha_vencimiento_de(data), producto_id))
 
             # Agregar stock inicial al editar: solo si escribió una cantidad mayor a 0
             mensaje_stock = ''

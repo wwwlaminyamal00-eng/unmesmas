@@ -163,10 +163,20 @@ def test_flujo_completo_bajo_pedido(cx, aprobador, app):
              'costo_unitario': 4000, 'documento_numero': 'EG01-00000123', 'recepcion_id': rec_id}
     assert cx['alm'].post('/inventario/api/movimientos', json=doble).status_code == 400
 
-    # 8. Factura que no cuadra -> diferencia abierta; la OC no se cierra
-    r = cx['fin'].post(f'/compras/api/flujo/ordenes/{oc_id}/factura', json={
-        'tipo': 'Factura', 'numero': 'F001-00000777', 'fecha': '2026-10-13', 'monto': total + 50})
+    # 8. Factura que no cuadra -> NO se guarda (20/10/2026): aviso con lo esperado y se corrige en el momento
+    fac = {'tipo': 'Factura', 'numero': 'F001-00000777', 'fecha': '2026-10-13', 'monto': total + 50}
+    r = cx['fin'].post(f'/compras/api/flujo/ordenes/{oc_id}/factura', json=fac)
+    assert r.status_code == 409 and r.get_json()['codigo'] == 'no_cuadra'
+    assert r.get_json()['esperado'] == pytest.approx(total) and r.get_json()['diferencia'] == pytest.approx(50)
+    assert _sql("SELECT COUNT(*) FROM comprobantes_proveedor WHERE numero = 'F001-00000777'")[0][0] == 0
+    # Solo si la factura física de verdad dice eso: con motivo queda dentro de su OC como diferencia por resolver
+    assert cx['fin'].post(f'/compras/api/flujo/ordenes/{oc_id}/factura', json={**fac, 'aceptar_diferencia': True}).status_code == 400
+    r = cx['fin'].post(f'/compras/api/flujo/ordenes/{oc_id}/factura',
+                       json={**fac, 'aceptar_diferencia': True, 'motivo_diferencia': 'El proveedor cobró flete'})
     assert r.status_code == 200 and r.get_json()['cuadra'] is False
+    ver = cx['fin'].get(f"/compras/api/flujo/facturas/{r.get_json()['id']}").get_json()['data']
+    assert ver['numero'] == 'F001-00000777' and ver['orden_compra_id'] == oc_id and 'flete' in ver['observaciones']
+    assert cx['fin'].get('/compras/api/flujo/facturas/ultima').get_json()['data']['id'] == ver['id']
     det = cx['fin'].get(f'/compras/api/flujo/ordenes/{oc_id}').get_json()['data']
     assert det['estado'] == 'Recibida' and det['paso']['codigo'] == 'incidencia'
     # El pago adelantado pasó a la factura (Finanzas ve el saldo real)

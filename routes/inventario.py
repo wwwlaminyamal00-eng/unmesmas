@@ -45,6 +45,10 @@ DIAS_LENTO = int(os.environ.get('INV_DIAS_LENTO', '30'))
 DIAS_INMOVILIZADO = int(os.environ.get('INV_DIAS_INMOVILIZADO', '90'))
 DIAS_SEPARACION = int(os.environ.get('INV_DIAS_SEPARACION', '7'))
 DIAS_AVISO_VENCIMIENTO = int(os.environ.get('INV_DIAS_AVISO_VENCIMIENTO', '30'))
+# Pedido de Erika (19/10/2026): avisar con tiempo para hacer campañas. Amarillo = vence en 6 meses o menos,
+# rojo = 3 meses o menos (y los ya vencidos).
+DIAS_VENCE_AMARILLO = int(os.environ.get('INV_DIAS_VENCE_AMARILLO', '183'))
+DIAS_VENCE_ROJO = int(os.environ.get('INV_DIAS_VENCE_ROJO', '92'))
 PRODUCTOS_CONTEO_SORPRESA = int(os.environ.get('INV_PRODUCTOS_CONTEO_SORPRESA', '10'))
 
 # Motivos de movimiento: código -> (tipo, texto para el usuario, código de operación SUNAT tabla 12,
@@ -1629,9 +1633,69 @@ def api_conteo_aprobar(cid):
 # ============================================================
 # RESUMEN Y ALERTAS ("Qué revisar hoy")
 # ============================================================
-def _vencimientos():
+def nivel_vencimiento(fecha, hoy=None):
+    """('vencido'|'rojo'|'amarillo'|'ok', días que faltan) según la fecha de vencimiento."""
+    hoy = hoy or date.today()
+    dias = (fecha - hoy).days
+    if dias < 0:
+        return 'vencido', dias
+    if dias <= DIAS_VENCE_ROJO:
+        return 'rojo', dias
+    if dias <= DIAS_VENCE_AMARILLO:
+        return 'amarillo', dias
+    return 'ok', dias
+
+
+def lista_vencimientos(empresa_id=None, dias=None):
+    """Lotes y productos con stock que vencen dentro de `dias` (por defecto 6 meses) o ya vencieron.
+    - Por lote: la fecha que se anotó al registrar el ingreso (el stock se reparte del ingreso más nuevo al más antiguo).
+    - Por producto: la fecha de vencimiento de la ficha del producto, para el stock que no tiene lote con fecha."""
+    dias = DIAS_VENCE_AMARILLO if dias is None else dias
+    try:   # columna productos.fecha_vencimiento (se crea sola la primera vez)
+        from routes.productos import asegurar_columnas_productos
+        asegurar_columnas_productos()
+    except Exception as e:
+        print(f'⚠️ No se pudo preparar productos.fecha_vencimiento: {e}')
+    hoy = date.today()
+    limite = hoy + timedelta(days=dias)
+    filas = []
+    cubierto = {}
+    for v in _vencimientos(limite=limite, todos=True):
+        if empresa_id and str(v['empresa_id']) != str(empresa_id):
+            continue
+        clave = (v['empresa_id'], v['almacen_id'], v['producto_id'])
+        cubierto[clave] = cubierto.get(clave, 0) + v['cantidad']
+        f = date.fromisoformat(v['fecha_vencimiento'])
+        if f > limite:
+            continue
+        nivel, faltan = nivel_vencimiento(f, hoy)
+        filas.append(dict(v, origen='Lote', nivel=nivel, dias=faltan))
+    try:
+        por_producto = db_query("""
+            SELECT s.empresa_id, s.almacen_id, s.producto_id, s.cantidad, p.codigo, p.descripcion, p.fecha_vencimiento
+            FROM inv_stock s JOIN productos p ON p.id = s.producto_id
+            WHERE s.cantidad > 0 AND p.fecha_vencimiento IS NOT NULL AND p.fecha_vencimiento <= %s
+              AND (%s::text IS NULL OR s.empresa_id::text = %s::text)""",
+            (limite, None if empresa_id is None else str(empresa_id), None if empresa_id is None else str(empresa_id)))
+    except Exception as e:
+        print(f'⚠️ Vencimientos por producto: {e}')
+        por_producto = []   # base sin la columna productos.fecha_vencimiento todavía
+    for p in por_producto:
+        resto = float(p['cantidad']) - cubierto.get((p['empresa_id'], p['almacen_id'], p['producto_id']), 0)
+        if resto <= 0:
+            continue
+        nivel, faltan = nivel_vencimiento(p['fecha_vencimiento'], hoy)
+        filas.append({'empresa_id': p['empresa_id'], 'almacen_id': p['almacen_id'], 'producto_id': p['producto_id'],
+                      'codigo': p['codigo'], 'descripcion': p['descripcion'], 'lote_serie': None, 'cantidad': resto,
+                      'fecha_vencimiento': p['fecha_vencimiento'].isoformat(), 'vencido': nivel == 'vencido',
+                      'origen': 'Producto', 'nivel': nivel, 'dias': faltan})
+    return sorted(filas, key=lambda x: (x['fecha_vencimiento'], x['descripcion'] or ''))
+
+
+def _vencimientos(limite=None, todos=False):
     """Atribuye el stock actual a los ingresos más recientes (primero que entra, primero que sale)
-    para saber qué lotes con fecha de vencimiento siguen en el almacén."""
+    para saber qué lotes con fecha de vencimiento siguen en el almacén.
+    todos=True devuelve todos los lotes con fecha que siguen en el almacén (sin importar cuándo vencen)."""
     stock = db_query("SELECT empresa_id, almacen_id, producto_id, cantidad FROM inv_stock WHERE cantidad > 0")
     if not stock:
         return []
@@ -1646,7 +1710,7 @@ def _vencimientos():
     por_clave = {}
     for e in entradas:
         por_clave.setdefault((e['empresa_id'], e['almacen_id'], e['producto_id']), []).append(e)
-    limite = date.today() + timedelta(days=DIAS_AVISO_VENCIMIENTO)
+    limite = limite or (date.today() + timedelta(days=DIAS_AVISO_VENCIMIENTO))
     alertas = []
     for s in stock:
         restante = a_decimal(s['cantidad'])
@@ -1655,13 +1719,36 @@ def _vencimientos():
                 break
             parte = min(restante, a_decimal(e['cantidad']))
             restante -= parte
-            if e['fecha_vencimiento'] and e['fecha_vencimiento'] <= limite:
+            if e['fecha_vencimiento'] and (todos or e['fecha_vencimiento'] <= limite):
                 alertas.append({'empresa_id': s['empresa_id'], 'almacen_id': s['almacen_id'],
                                 'producto_id': s['producto_id'], 'codigo': e['codigo'], 'descripcion': e['descripcion'],
                                 'lote_serie': e['lote_serie'], 'cantidad': float(parte),
                                 'fecha_vencimiento': e['fecha_vencimiento'].isoformat(),
                                 'vencido': e['fecha_vencimiento'] < date.today()})
     return alertas
+
+
+def _contar_niveles(filas):
+    c = {'vencido': 0, 'rojo': 0, 'amarillo': 0}
+    for f in filas:
+        if f['nivel'] in c:
+            c[f['nivel']] += 1
+    return c
+
+
+@inventario_bp.route('/api/vencimientos')
+def api_vencimientos():
+    """Lista con semáforo de lo que vence en los próximos 6 meses (o ?dias=N; ?dias=3650 = todo)."""
+    try:
+        dias = request.args.get('dias', type=int)
+        filas = lista_vencimientos(empresa_id=_empresa_vista(), dias=dias)
+        nivel = request.args.get('nivel')
+        if nivel in ('vencido', 'rojo', 'amarillo'):
+            filas = [f for f in filas if f['nivel'] == nivel]
+        return jsonify({'success': True, 'data': filas, 'conteo': _contar_niveles(filas),
+                        'dias_amarillo': DIAS_VENCE_AMARILLO, 'dias_rojo': DIAS_VENCE_ROJO})
+    except Exception as e:
+        return _respuesta_error(e)
 
 
 @inventario_bp.route('/api/resumen')
@@ -1752,6 +1839,7 @@ def api_resumen():
             'sin_ubicar': [_fila(s) for s in sin_ubicar],
             'sedes_no_declaradas': sunat,
             'vencimientos': _vencimientos(),
+            'vencimientos_semaforo': _contar_niveles(lista_vencimientos(empresa_id=ev)),
             'dias_lento': DIAS_LENTO, 'dias_inmovilizado': DIAS_INMOVILIZADO,
         }})
     except Exception as e:

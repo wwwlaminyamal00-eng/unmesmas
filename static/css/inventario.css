@@ -152,3 +152,10 @@
 #kdxBody tr.kdx-final td { background: #C6FFB3 !important; border-top: 2px solid #22C55E; border-bottom: 2px solid #22C55E; }
 #kdxBody tr.kdx-final td.grp-saldo b { color: #0047FF; font-size: 17px; font-weight: 900; }
 .kdx-final-etq { display: block; font-size: 9px; font-weight: 900; color: #0047FF; letter-spacing: .04em; }
+/* Vencimientos (19/10/2026): semáforo fuerte, igual que el resto del ERP */
+.venc-chip{display:inline-block;padding:3px 9px;border-radius:999px;font-weight:900;font-size:11px;white-space:nowrap;border:2px solid transparent}
+.venc-amarillo{background:#FFD600 !important;color:#1F1600 !important;border-color:#C7A600}
+.venc-rojo{background:#D50000 !important;color:#fff !important;border-color:#9B0000}
+.venc-vencido{background:#4A0000 !important;color:#fff !important;border-color:#000}
+.venc-ok{background:#00C853;color:#fff;border-color:#00962F}
+.venc-kpi small,.venc-kpi span,.venc-kpi b{color:inherit !important}

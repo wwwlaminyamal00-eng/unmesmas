@@ -28,7 +28,11 @@ def nueva_cotizacion(cliente, estado='Borrador', **extra):
     payload = {'cliente_id': 1, 'estado': estado, 'productos': PRODUCTOS,
                'subtotal': 1, 'igv': 1, 'total': 99999,  # importes manipulados: el servidor los recalcula
                'contacto': 'Ana Compras', 'telefono': '999888777', 'email': 'ana@cliente.pe',
-               'validez': '15 días', 'descuento_valor': 0, 'descuento_tipo': '%'}
+               'validez': '15 días', 'descuento_valor': 0, 'descuento_tipo': '%',
+               # 4 campos obligatorios desde el 19/10/2026
+               'condicion_pago': 'Crédito 30 días', 'tiempo_entrega': '2 días hábiles',
+               'transporte': 'Auto', 'parihuela': 'No',
+               'seguimiento': 'Hellen', 'motivo': 'Recompra', 'nota_interna': 'Ninguna'}
     payload.update(extra)
     return cliente.post('/ventas/api/cotizaciones/guardar', json=payload)
 
@@ -203,14 +207,14 @@ class TestCotizaciones:
 class TestPedidoCliente:
     def test_pc_requiere_cotizacion_validada(self, vendedor, aprobador):
         cid = nueva_cotizacion(vendedor).json['data']['id']
-        r = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': []})
+        r = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'condicion_pago': 'Crédito 30 días'})
         assert r.status_code == 409
         aprobador.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Validado por Hellen'})
         aprobador.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Generada'})
-        r1 = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'monto': 253.7})
+        r1 = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'monto': 253.7, 'condicion_pago': 'Crédito 30 días'})
         assert r1.status_code == 200, r1.json
         assert r1.json['advertencia'] is None
-        r2 = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'monto': 10})
+        r2 = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'monto': 10, 'condicion_pago': 'Crédito 30 días'})
         assert r2.status_code == 200 and 'ya tiene' in r2.json['advertencia']
         n1, n2 = r1.json['data']['numero'], r2.json['data']['numero']
         assert n1 != n2 and n1.startswith('PC-')

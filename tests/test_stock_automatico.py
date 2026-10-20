@@ -71,7 +71,12 @@ def test_despachar_exige_empresa_y_sede(sa, vendedor):
 def test_si_falta_stock_no_se_despacha_nada(sa, vendedor):
     r = vendedor.put(f"/ventas/api/despachos/{sa['desp']}/toggle",
                      json={'estado': 'Despachado', 'empresa_id': str(sa['emp']['KCF']), 'almacen_id': sa['sede']['SMP']})
-    assert r.status_code == 400 and 'separados para otros clientes' in r.get_json()['error']
+    # 20/10/2026: dice qué producto falta y en qué empresa y sede (para el aviso rojo grande)
+    j = r.get_json()
+    assert r.status_code == 409 and j['codigo'] == 'falta_stock' and 'No hay stock suficiente' in j['error']
+    assert [f['producto'] for f in j['faltan']] == ['CASCO DE SEGURIDAD']
+    assert j['faltan'][0]['sede'] and j['faltan'][0]['empresa'] and j['faltan'][0]['pide'] > 0
+    assert 'separados para otros clientes' in j['faltan'][0]['detalle']
     # todo o nada: los guantes tampoco salieron y el despacho sigue pendiente
     assert _stock(sa, 'SA-002') == 20 and _stock(sa, 'SA-001') == 10
     assert _sql("SELECT estado FROM despachos WHERE id = %s", (sa['desp'],))[0][0] == 'Pendiente despacho'

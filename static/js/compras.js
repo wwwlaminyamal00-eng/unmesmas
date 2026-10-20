@@ -393,7 +393,7 @@ function renderOrdenes() {
             <td>${o.ruc || '-'}</td>
             <td class="left">${(o.items || []).map(i => i.producto).join(', ') || '-'}</td>
             <td><b>${o.moneda || 'S/'} ${(o.total || 0).toFixed(2)}</b></td>
-            <td>${o.condicion_pago || '-'}</td>
+            <td>${condPagoMostrar(o.condicion_pago) || '-'}</td>
             <td>
                 <button class="kebab" onclick="toggleMenu(event, 'orden-${o.id}')">⋯</button>
                 <div class="menu-pop" id="menu-orden-${o.id}" style="display:none;">
@@ -828,7 +828,7 @@ function editOrden(id) {
     document.getElementById('ordContacto').value = orden.contacto_proveedor || '';
     document.getElementById('ordTelefono').value = orden.telefono_proveedor || '';
     document.getElementById('ordEmail').value = orden.email_proveedor || '';
-    document.getElementById('ordCondPago').value = orden.condicion_pago || 'Contado';
+    ordPonerCondicion(orden.condicion_pago || 'Contado');
     document.getElementById('ordMoneda').value = orden.moneda || 'Soles (S/)';
     document.getElementById('ordNotas').value = orden.notas || '';
     document.getElementById('ordMotivo').value = orden.motivo_compra || '';
@@ -1540,6 +1540,10 @@ async function saveOrdenCompra(estado) {
     const igv = subtotal * 0.18;
     const total = subtotal + igv;
     
+    if (document.getElementById('ordCondPago').value === 'Crédito' && !(parseInt(document.getElementById('ordDiasCredito').value, 10) > 0)) {
+        showToast('⚠️ Escribe el número de días de crédito', 'warning');
+        return;
+    }
     const data = {
         id: window._ordenEditId || null,
         numero_orden: document.getElementById('ordNumero').value,
@@ -1548,7 +1552,7 @@ async function saveOrdenCompra(estado) {
         proveedor: document.getElementById('ordProveedor').value,
         proveedor_id: window._ordProveedorId || null,
         ruc: document.getElementById('ordRuc').value,
-        condicion_pago: document.getElementById('ordCondPago').value,
+        condicion_pago: ordCondicionValor(),
         moneda: document.getElementById('ordMoneda').value,
         fecha_requerida: document.getElementById('ordFechaRequerida').value,
         tiempo_entrega: document.getElementById('ordTiempoEntrega').value,
@@ -1664,6 +1668,8 @@ async function saveRecepcion(estado) {
 // ============================================================
 
 function exportData(tipo) {
+    // Antes bajaba un .json que Excel no abre; ahora exporta la tabla que se ve a Excel (static/js/exportar_tabla.js)
+    if (typeof window.exportarModulo === 'function') return window.exportarModulo(tipo);
     let data = [];
     let filename = '';
     

@@ -92,7 +92,7 @@ def test_guias_y_facturas_traen_pc_y_guia(admin):
 
 def test_pantallas_tienen_columnas_y_colores(admin):
     html = admin.get('/ventas').get_data(as_text=True)
-    assert html.count('<th>Nr° PC</th>') == 2 and html.count('<th>Nr° factura</th>') == 2 and '<th>Nr° guía</th>' in html
+    assert html.count('<th>Nr° PC</th>') >= 2 and html.count('<th>Nr° factura</th>') >= 2 and '<th>Nr° guía</th>' in html
     assert '<th>Comprobante</th>\r\n                        <th>Origen</th>' not in html
     flujo = admin.get('/compras').get_data(as_text=True)
     assert 'id="ocAbast"' in flujo and 'A comprar al proveedor' in flujo

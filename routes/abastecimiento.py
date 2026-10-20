@@ -135,13 +135,14 @@ def api_pc():
 
 @abastecimiento_bp.route('/cotizaciones')
 def api_cotizaciones():
-    """Estado de abastecimiento de las cotizaciones vigentes (informativo para el vendedor)."""
+    """Estado de abastecimiento de las cotizaciones aceptadas por el cliente (informativo para el vendedor).
+    Pedido de Erika 20/10/2026: en "Generada" (o antes) no se muestra "Pendiente por compra"."""
     _preparar()
     filas = db_query("""
         SELECT d.cotizacion_id, d.producto_id, p.codigo, p.descripcion, SUM(d.cantidad) AS cantidad
         FROM cotizacion_detalle d JOIN cotizaciones c ON c.id = d.cotizacion_id
         LEFT JOIN productos p ON p.id = d.producto_id
-        WHERE COALESCE(c.estado, '') NOT IN ('Anulada', 'Eliminada', 'No concretada')
+        WHERE COALESCE(c.estado, '') IN ('Aceptada por Cliente', 'Aceptada')
         GROUP BY d.cotizacion_id, d.producto_id, p.codigo, p.descripcion
     """)
     docs = defaultdict(lambda: {'pedido_id': None, 'items': []})

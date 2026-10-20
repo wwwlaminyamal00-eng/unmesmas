@@ -166,3 +166,40 @@ def id_empresa(valor):
     if texto.isdigit() and int(texto) > 0:
         return int(texto)
     return None
+
+
+# ============================================================
+# CONDICIÓN DE PAGO Y TEXTOS (pedido de Erika 19/10/2026)
+# ============================================================
+def normalizar_condicion(texto):
+    """Escribe la condición de pago siempre igual: 'Contado', 'Contra entrega' o 'Crédito N días'.
+    Antes convivían 'Credito 45 Dias', 'Crédito 45 días' y '45', y la factura no los reconocía
+    (salía "Contado" aunque el PC fuera a crédito). Devuelve '' si viene vacío."""
+    t = (texto or '').strip()
+    if not t or t.lower() in ('seleccione', 'personalizado', '--', '-'):
+        return ''
+    bajo = t.lower().replace('é', 'e').replace('í', 'i')
+    numero = re.search(r'(\d+)', bajo)
+    if 'contra' in bajo and 'entrega' in bajo:
+        return 'Contra entrega'
+    if 'contado' in bajo and not numero:
+        return 'Contado'
+    if numero and 'letra' not in bajo and ('credito' in bajo or 'dia' in bajo or bajo.isdigit()):
+        dias = int(numero.group(1))
+        return 'Contado' if dias == 0 else f'Crédito {dias} días'
+    return t
+
+
+def dias_de_condicion(texto):
+    """Días de crédito de una condición ('Crédito 30 días' -> 30; 'Contado' -> 0)."""
+    m = re.search(r'(\d+)', normalizar_condicion(texto))
+    return int(m.group(1)) if m else 0
+
+
+def mayuscula_inicial(texto):
+    """Primera letra en mayúscula (observaciones de facturas); el resto se respeta tal cual."""
+    t = (texto or '').strip()
+    for i, c in enumerate(t):
+        if c.isalpha():
+            return t[:i] + c.upper() + t[i + 1:]
+    return t

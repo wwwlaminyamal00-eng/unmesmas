@@ -1,10 +1,34 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
-from utils import login_required
+from utils import login_required, normalizar_condicion
 from database import db_query
 from routes.multiempresa import visible_por_ambito
 from psycopg2.extras import RealDictCursor
 import traceback
 import psycopg2
+
+
+def _ordenar_condicion_cliente(data):
+    """Condición comercial del cliente coherente (pedido de Erika 19/10/2026): si es crédito, los días son un
+    número mayor a 0 (7, 15, 30...); si es contado, los días quedan en 0. Devuelve un mensaje de error o None.
+    Acepta también 'Crédito 30 días' (así lo manda la cotización al crear un cliente nuevo)."""
+    texto = str(data.get('condicion_pago') or 'Contado').strip()
+    try:
+        dias = int(float(str(data.get('dias_credito') or 0).strip() or 0))
+    except (TypeError, ValueError):
+        dias = 0
+    dias_texto = normalizar_condicion(texto)
+    if dias_texto.startswith('Crédito ') and dias_texto.endswith(' días'):
+        texto, dias = 'Crédito aprobado', dias or int(dias_texto.split()[1])
+    bajo = texto.lower()
+    if 'cr' in bajo and 'dito' in bajo:
+        if dias <= 0:
+            return 'Si la condición es "Crédito aprobado", elige los días de crédito (7, 15, 30, 60, 90, 120...). "Contado" no vale para un crédito.'
+        data['condicion_pago'], data['dias_credito'] = 'Crédito aprobado', dias
+    elif normalizar_condicion(texto) == 'Contado' or not texto:
+        data['condicion_pago'], data['dias_credito'] = 'Contado', 0
+    else:
+        data['dias_credito'] = 0 if 'bloque' in bajo else dias
+    return None
 
 maestros_bp = Blueprint('maestros', __name__, url_prefix='/maestros')
 
@@ -159,6 +183,9 @@ def api_clientes_guardar():
     try:
         data = request.get_json()
         current_app.logger.info(f"📝 Datos recibidos para guardar cliente: {data}")
+        error_cond = _ordenar_condicion_cliente(data)
+        if error_cond:
+            return jsonify({"success": False, "codigo": "dias_credito", "error": error_cond}), 400
 
         if not data.get('razon_social'):
             return jsonify({"success": False, "error": "Razón social obligatoria"})
@@ -398,8 +425,27 @@ def api_clientes_obtener(id):
 def api_clientes_actualizar(id):
     """Actualizar cliente"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         current_app.logger.info(f"📝 Datos recibidos para actualizar cliente {id}: {data}")
+        # Bug encontrado el 20/10/2026: el botón "Guardar / Actualizar" de la cotización manda solo unos datos y
+        # antes se borraban los contactos, puntos de entrega, días de crédito, límite y observaciones del cliente.
+        # Ahora lo que no viene se conserva tal como está.
+        actual = db_query("SELECT * FROM clientes WHERE id = %s", (id,))
+        if not actual:
+            return jsonify({"success": False, "error": "Cliente no encontrado"}), 404
+        actual = actual[0]
+        vino_condicion = 'condicion_pago' in data or 'dias_credito' in data
+        for campo in ('tipo_documento', 'razon_social', 'nombre_comercial', 'direccion_fiscal', 'telefono_contacto',
+                      'nombre_contacto', 'email_contacto', 'condicion_pago', 'dias_credito', 'limite_credito',
+                      'descuento', 'estado', 'ambito', 'observaciones', 'activo'):
+            if campo not in data and campo in actual:
+                data[campo] = actual[campo]
+        if not data.get('numero_documento') and not data.get('ruc'):
+            data['numero_documento'] = actual.get('numero_documento')
+        # La condición comercial solo se revisa si la pantalla la cambia (la ficha del cliente); si no, se respeta
+        error_cond = _ordenar_condicion_cliente(data) if vino_condicion else None
+        if error_cond:
+            return jsonify({"success": False, "codigo": "dias_credito", "error": error_cond}), 400
 
         if not data.get('razon_social'):
             return jsonify({"success": False, "error": "Razón social obligatoria"})
@@ -462,11 +508,11 @@ def api_clientes_actualizar(id):
             data.get('email_contacto') or data.get('email'),
             data.get('condicion_pago', 'Contado'),
             int(data.get('dias_credito', 0) or 0),
-            data.get('limite_credito', ''),
-            data.get('descuento', ''),
-            data.get('estado', 'Activo'),
-            data.get('ambito', 'COMPARTIDO'),
-            data.get('observaciones', ''),
+            data.get('limite_credito') if data.get('limite_credito') is not None else '',
+            data.get('descuento') if data.get('descuento') is not None else '',
+            data.get('estado') or 'Activo',
+            data.get('ambito') or 'COMPARTIDO',
+            data.get('observaciones') or '',
             data.get('activo', True),
             id
         )
@@ -474,9 +520,10 @@ def api_clientes_actualizar(id):
         cur.execute(query, params)
         result = cur.fetchone()
 
-        # 2. Reemplazar contactos
-        cur.execute("DELETE FROM clientes_contactos WHERE cliente_id = %s", (id,))
-        for c in data.get('contactos', []):
+        # 2. Reemplazar contactos (solo si la pantalla los manda: la cotización no los manda)
+        if 'contactos' in data:
+            cur.execute("DELETE FROM clientes_contactos WHERE cliente_id = %s", (id,))
+        for c in (data.get('contactos') or []):
             if not (c.get('nombre') or c.get('telefono') or c.get('email')):
                 continue
             cur.execute("""
@@ -493,9 +540,10 @@ def api_clientes_actualizar(id):
                 bool(c.get('principal', False))
             ))
 
-        # 3. Reemplazar puntos de entrega
-        cur.execute("DELETE FROM clientes_puntos_entrega WHERE cliente_id = %s", (id,))
-        for p in data.get('puntos_entrega', []):
+        # 3. Reemplazar puntos de entrega (solo si la pantalla los manda)
+        if 'puntos_entrega' in data:
+            cur.execute("DELETE FROM clientes_puntos_entrega WHERE cliente_id = %s", (id,))
+        for p in (data.get('puntos_entrega') or []):
             if not (p.get('punto') or p.get('direccion') or p.get('instrucciones')):
                 continue
             cur.execute("""
@@ -993,18 +1041,36 @@ def api_proveedores_obtener(id):
 @maestros_bp.route('/api/proveedores/<int:id>', methods=['DELETE'])
 @login_required
 def api_proveedores_eliminar(id):
-    """Eliminar proveedor"""
+    """Eliminar proveedor.
+    Pedido de Erika (19/10/2026): si tiene productos (o compras, facturas, pagos...) NO se borra: se avisa con un
+    mensaje claro y se ofrece desactivarlo (queda todo su historial). Solo se borra si nunca se usó."""
     try:
         from database import DATABASE_URL
 
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
-        cur.execute("SELECT id FROM proveedores WHERE id = %s", (id,))
-        if not cur.fetchone():
+        cur.execute("SELECT id, razon_social FROM proveedores WHERE id = %s", (id,))
+        prov = cur.fetchone()
+        if not prov:
             cur.close()
             conn.close()
             return jsonify({"success": False, "error": "Proveedor no encontrado"}), 404
+
+        usos = usos_proveedor(cur, id)
+        if usos:
+            cur.close()
+            conn.close()
+            n_prod = usos.get('productos', 0)
+            if n_prod:
+                msg = ("No se puede eliminar el proveedor porque tiene productos asociados. "
+                       "Primero reasigne los productos a otro proveedor.")
+            else:
+                msg = "No se puede eliminar el proveedor porque ya tiene historial (compras, facturas o pagos)."
+            detalle = ', '.join(f'{n} {NOMBRES_USO.get(t, t)}' for t, n in usos.items())
+            return jsonify({"success": False, "codigo": "proveedor_en_uso", "error": msg, "usos": usos,
+                            "detalle": detalle, "puede_desactivar": True,
+                            "sugerencia": "Puede desactivarlo: no aparecerá en compras nuevas y se guarda todo su historial."}), 409
 
         cur.execute("DELETE FROM proveedores_contactos WHERE proveedor_id = %s", (id,))
         cur.execute("DELETE FROM proveedores_puntos_entrega WHERE proveedor_id = %s", (id,))
@@ -1033,6 +1099,77 @@ def api_proveedores_eliminar(id):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
  
+
+# Tablas que guardan proveedor_id. Antes de borrar se cuentan todas: solo productos tiene llave foránea en
+# Supabase; las órdenes de compra, facturas y pagos quedaban "huérfanas" si se borraba el proveedor.
+NOMBRES_USO = {
+    'productos': 'productos', 'ordenes_compra': 'órdenes de compra', 'solicitudes_compra': 'solicitudes de compra',
+    'comprobantes_proveedor': 'facturas de proveedor', 'com_pagos': 'pagos', 'com_facturas': 'facturas de proveedor',
+    'recepciones': 'recepciones', 'cuadros_comparativos': 'cuadros comparativos',
+    'costos_productos': 'costos registrados',
+}
+TABLAS_SIN_HISTORIAL = ('proveedores_contactos', 'proveedores_puntos_entrega')
+
+
+def usos_proveedor(cur, proveedor_id):
+    """{tabla: cantidad} de registros que usan este proveedor (sin contar sus contactos y puntos de entrega)."""
+    cur.execute("""SELECT c.table_name FROM information_schema.columns c
+                   JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+                   WHERE c.table_schema = current_schema() AND c.column_name = 'proveedor_id'
+                     AND t.table_type = 'BASE TABLE' ORDER BY c.table_name""")
+    tablas = [r[0] if not isinstance(r, dict) else r['table_name'] for r in cur.fetchall()]
+    usos = {}
+    for t in tablas:
+        if t in TABLAS_SIN_HISTORIAL:
+            continue
+        cur.execute(f'SELECT COUNT(*) FROM "{t}" WHERE proveedor_id = %s', (proveedor_id,))
+        r = cur.fetchone()
+        n = r[0] if not isinstance(r, dict) else list(r.values())[0]
+        if n:
+            usos[t] = int(n)
+    # productos primero (es lo que Erika pidió explicar)
+    return dict(sorted(usos.items(), key=lambda x: x[0] != 'productos'))
+
+
+@maestros_bp.route('/api/proveedores/<int:id>/desactivar', methods=['PUT', 'POST'])
+@login_required
+def api_proveedores_desactivar(id):
+    """Baja lógica: activo = false y estado Inactivo. No borra nada; se puede reactivar o restaurar desde la Papelera."""
+    try:
+        from database import DATABASE_URL
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() "
+                    "AND table_name = 'proveedores'")
+        cols = {r[0] for r in cur.fetchall()}
+        sets = ['activo = false']
+        if 'estado' in cols:
+            sets.append("estado = 'Inactivo'")
+        if 'updated_at' in cols:
+            sets.append('updated_at = NOW()')
+        if 'desactivado_en' in cols:
+            sets.append('desactivado_en = NOW()')
+        if 'desactivado_por' in cols:
+            sets.append('desactivado_por = %s')
+        params = ([session.get('nombre_completo') or session.get('usuario') or ''] if 'desactivado_por' in cols else []) + [id]
+        cur.execute(f"UPDATE proveedores SET {', '.join(sets)} WHERE id = %s RETURNING id, razon_social", params)
+        r = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        if not r:
+            return jsonify({"success": False, "error": "Proveedor no encontrado"}), 404
+        try:
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('desactivar', 'Proveedores', tabla='proveedores', registro_id=id,
+                                detalle=f'Desactivó al proveedor {r[1]} (no se borró: se guarda su historial)')
+        except Exception:
+            pass
+        return jsonify({"success": True, "message": "Proveedor desactivado. Ya no aparecerá en compras nuevas; su historial se guarda."})
+    except Exception as e:
+        current_app.logger.error(f"❌ Error desactivando proveedor: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @maestros_bp.route('/api/proveedores/<int:id>', methods=['PUT'])
 @login_required
@@ -2235,6 +2372,37 @@ def api_um_toggle(id):
 def api_test():
     """Endpoint para probar que la API funciona"""
     return jsonify({"success": True, "message": "API de maestros funcionando correctamente"})
+
+
+@maestros_bp.route('/api/ruc-registrado', methods=['GET'])
+@login_required
+def api_ruc_registrado():
+    """¿Este RUC ya está registrado? (pedido de Erika 20/10/2026: aviso visible apenas se escribe o carga el RUC).
+    tipo=cliente|proveedor · excluir=id del registro que se está editando."""
+    ruc = ''.join(ch for ch in (request.args.get('ruc') or '') if ch.isalnum())
+    tipo = request.args.get('tipo', 'cliente')
+    try:
+        excluir = int(request.args.get('excluir') or 0)
+    except ValueError:
+        excluir = 0
+    if len(ruc) < 8:
+        return jsonify({'success': True, 'registrado': False})
+    if tipo == 'proveedor':
+        filas = db_query("""SELECT id, codigo_proveedor AS codigo, razon_social,
+                                 COALESCE(to_jsonb(p) ->> 'estado', CASE WHEN COALESCE((to_jsonb(p) ->> 'activo')::boolean, TRUE)
+                                          THEN 'Activo' ELSE 'Inactivo' END) AS estado
+                            FROM proveedores p WHERE REPLACE(COALESCE(ruc, ''), ' ', '') = %s AND id <> %s
+                            ORDER BY id LIMIT 1""", (ruc, excluir))
+    else:
+        filas = db_query("""SELECT id, codigo_cliente AS codigo, razon_social,
+                                 COALESCE(to_jsonb(c) ->> 'estado', 'Activo') AS estado
+                            FROM clientes c WHERE REPLACE(COALESCE(numero_documento, ''), ' ', '') = %s AND id <> %s
+                            ORDER BY id LIMIT 1""", (ruc, excluir))
+    if not filas:
+        return jsonify({'success': True, 'registrado': False})
+    f = filas[0]
+    return jsonify({'success': True, 'registrado': True, 'id': f['id'], 'codigo': f.get('codigo') or '',
+                    'razon_social': f.get('razon_social') or '', 'estado': f.get('estado') or ''})
 
 
 @maestros_bp.route('/api/clientes/buscar', methods=['GET'])

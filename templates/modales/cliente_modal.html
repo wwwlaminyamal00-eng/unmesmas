@@ -94,17 +94,17 @@
           <div class="cm-grid cm-grid-comercial">
             <div class="cm-field">
               <label>CONDICIÓN DE PAGO *</label>
-              <select id="cli_condicion">
+              <select id="cli_condicion" onchange="cliSincronizarDias()">
                 <option value="Contado">Contado</option>
                 <option value="Crédito aprobado">Crédito aprobado</option>
                 <option value="Bloqueado">Bloqueado</option>
               </select>
             </div>
-            <div class="cm-field">
-              <label>DÍAS DE CRÉDITO</label>
+            <div class="cm-field" id="cli_diasCreditoCampo">
+              <label>DÍAS DE CRÉDITO *</label>
               <div style="display:flex; gap:6px;">
                 <select id="cli_diasCredito" style="flex:1;">
-                  <option value="0">Contado</option>
+                  <option value="">-- Elegir días --</option>
                   <option value="7">7 días</option>
                   <option value="15">15 días</option>
                   <option value="30">30 días</option>

@@ -33,6 +33,7 @@
         <button class="tab-btn" data-tab="transferencias">🔄 Traslados y ventas entre empresas</button>
         <button class="tab-btn" data-tab="separaciones">🔒 Separaciones</button>
         <button class="tab-btn" data-tab="conteos">✅ Conteos</button>
+        <button class="tab-btn" data-tab="vencimientos">⏳ Vencimientos</button>
         <button class="tab-btn" data-tab="kardex">📒 Kardex</button>
         <button class="tab-btn" data-tab="sedes">🏢 Sedes y SUNAT</button>
     </div>
@@ -161,7 +162,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N°</th><th>Fecha</th><th>Tipo</th><th class="left">Motivo</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Documento</th><th class="left">Cliente / proveedor</th><th>Registró</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>Nr° movimiento</th><th>Fecha y hora</th><th>Tipo</th><th class="left">Motivo</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Documento (tipo y Nr°)</th><th class="left">Cliente / proveedor</th><th>Registró</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="movBody"><tr><td colspan="13">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -191,7 +192,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N°</th><th>Fecha</th><th>Empresa</th><th>De</th><th>A</th><th class="left">Productos</th><th>Guía</th><th>Lleva</th><th>Envió</th><th>Recibió</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>Nr° traslado</th><th>Fecha y hora</th><th>Empresa</th><th>De</th><th>A</th><th class="left">Productos</th><th>Nr° guía</th><th>Lleva</th><th>Envió</th><th>Recibió</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="traBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -235,7 +236,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N°</th><th class="left">Cliente</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Pedido / cotización</th><th>Vence</th><th>Separó</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>Nr° separación</th><th class="left">Cliente</th><th class="left">Producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>Nr° PC / cotización</th><th>Vence</th><th>Separó</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="sepBody"><tr><td colspan="11">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -259,7 +260,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N°</th><th>Fecha</th><th>Tipo</th><th>Empresa</th><th>Sede</th><th>Productos</th><th>Contó</th><th>Con diferencia</th><th>Diferencia S/</th><th>Aprobó</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>Nr° conteo</th><th>Fecha y hora</th><th>Tipo</th><th>Empresa</th><th>Sede</th><th>Productos</th><th>Contó</th><th>Con diferencia</th><th>Diferencia S/</th><th>Aprobó</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="cntBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -269,6 +270,43 @@
     <!-- ======================================================= -->
     <!-- KARDEX -->
     <!-- ======================================================= -->
+    <!-- ======================================================= -->
+    <!-- VENCIMIENTOS (pedido de Erika 19/10/2026: avisar 6 y 3 meses antes para hacer campañas) -->
+    <!-- ======================================================= -->
+    <section class="section" id="sec-vencimientos">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div>
+                    <div class="inv-title">Productos por vencer</div>
+                    <div class="inv-help">
+                        <span class="venc-chip venc-amarillo">Amarillo</span> vence en 6 meses o menos ·
+                        <span class="venc-chip venc-rojo">Rojo</span> vence en 3 meses o menos ·
+                        <span class="venc-chip venc-vencido">Vencido</span> ya venció. Sirve para planear campañas antes de que se pierda.
+                        La fecha sale del lote (al registrar el ingreso) o de la ficha del producto.
+                    </div>
+                </div>
+                <div class="inv-filters">
+                    <select id="vencNivel">
+                        <option value="">Todo lo que vence en 6 meses</option>
+                        <option value="vencido">Solo vencidos</option>
+                        <option value="rojo">Solo rojo (3 meses o menos)</option>
+                        <option value="amarillo">Solo amarillo (3 a 6 meses)</option>
+                        <option value="todo">Todo lo que tiene fecha de vencimiento</option>
+                    </select>
+                    <input type="search" id="vencBuscar" placeholder="Buscar producto, código o lote...">
+                </div>
+            </div>
+            <div class="inv-kpis" id="vencKpis"></div>
+            <div class="table-wrap">
+                <table class="inv-table" id="vencTabla">
+                    <thead><tr><th>Semáforo</th><th>Fecha de vencimiento</th><th>Días que faltan</th><th>Código de producto</th>
+                        <th class="left">Producto</th><th>Lote / serie</th><th>Cantidad</th><th>Empresa</th><th>Sede</th><th>Fecha tomada de</th></tr></thead>
+                    <tbody id="vencBody"><tr><td colspan="10">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
     <section class="section" id="sec-kardex">
         <div class="inv-panel">
             <div class="inv-head">
@@ -291,7 +329,7 @@
             <div class="table-wrap">
                 <table class="inv-table">
                     <thead>
-                        <tr><th rowspan="2">Fecha</th><th rowspan="2">N°</th><th rowspan="2">Empresa</th><th rowspan="2">Sede</th><th rowspan="2" class="left">Producto</th><th rowspan="2" class="left">Motivo</th><th rowspan="2">Documento</th>
+                        <tr><th rowspan="2">Fecha</th><th rowspan="2">Nr° movimiento</th><th rowspan="2">Empresa</th><th rowspan="2">Sede</th><th rowspan="2" class="left">Producto</th><th rowspan="2" class="left">Motivo</th><th rowspan="2">Documento</th>
                             <th colspan="3" class="grp-in">Entradas</th><th colspan="3" class="grp-out">Salidas</th><th colspan="3" class="grp-saldo">Saldo</th><th rowspan="2">Responsable</th></tr>
                         <tr><th class="grp-in">Cant.</th><th class="grp-in">C. unit.</th><th class="grp-in">Total</th>
                             <th class="grp-out">Cant.</th><th class="grp-out">C. unit.</th><th class="grp-out">Total</th>
@@ -345,7 +383,7 @@
             <label>3. ¿De qué empresa es?<select id="movEmpresa" data-empresas></select></label>
             <label>4. ¿En qué sede está físicamente?<select id="movSede" data-sedes></select></label>
             <label>5. Cantidad<input type="number" id="movCantidad" min="0" step="any"></label>
-            <label id="movCostoWrap">Costo unitario sin IGV (S/)<input type="number" id="movCosto" min="0" step="0.0001"></label>
+            <label id="movCostoWrap">Costo unitario sin IGV (S/)<input type="number" id="movCosto" min="0" step="0.01"></label>
             <label id="movDocTipoWrap">Tipo de documento
                 <select id="movDocTipo">
                     <option>Guía de remisión</option><option>Factura</option><option>Boleta</option>
@@ -431,7 +469,7 @@
             <label class="inv-full">Producto<div class="prod-picker" data-picker="ic"></div></label>
             <label>Sede donde está la mercadería<select id="icSede" data-sedes></select></label>
             <label>Cantidad<input type="number" id="icCantidad" min="0" step="any"></label>
-            <label>Precio unitario sin IGV de la factura (S/)<input type="number" id="icPrecio" min="0" step="0.0001" placeholder="Si lo dejas vacío, se usa el costo"></label>
+            <label>Precio unitario sin IGV de la factura (S/)<input type="number" id="icPrecio" min="0" step="0.01" placeholder="Si lo dejas vacío, se usa el costo"></label>
             <label>N° de factura<input type="text" id="icFactura" maxlength="60" placeholder="Ej. F001-00000456"></label>
             <label class="inv-full">Observaciones<input type="text" id="icObs" maxlength="300"></label>
             <div class="inv-tip inv-full">💡 Toda venta entre empresas necesita su factura. Si la registras sin número, queda una alerta hasta que lo completes.</div>

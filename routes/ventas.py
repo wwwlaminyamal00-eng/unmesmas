@@ -23,7 +23,8 @@ from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, 
                                  empresa_por_codigo, marca_pdf)
 from psycopg2.extras import RealDictCursor
 from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
-                   totales_consistentes, bloquear_numeracion)
+                   totales_consistentes, bloquear_numeracion, normalizar_condicion, dias_de_condicion,
+                   mayuscula_inicial)
 
 ventas_bp = Blueprint('ventas', __name__)
 
@@ -137,6 +138,16 @@ def crear_tabla_cotizaciones_eliminadas_si_no_existe():
         print(f"❌ Error creando tabla cotizaciones_eliminadas: {e}")
         raise
 
+def _tiempos(row, creado='created_at'):
+    """Fecha y hora de creación y de la última modificación (pedido de Erika 19/10/2026), en hora de Lima."""
+    def txt(v):
+        if isinstance(v, datetime):
+            return v.strftime('%Y-%m-%d %H:%M:%S')
+        return v
+    return {'creado_en': txt(row.get(creado) or row.get('created_at') or row.get('fecha_creacion')),
+            'modificado_en': txt(row.get('updated_at'))}
+
+
 def obtener_cotizaciones_db():
     """Obtiene todas las cotizaciones con datos del cliente"""
     try:
@@ -145,7 +156,7 @@ def obtener_cotizaciones_db():
                 c.id, 
                 c.numero_cotizacion, 
                 c.cliente_id, 
-                c.fecha_creacion, 
+                c.fecha_creacion, c.updated_at,
                 c.estado,
                 c.subtotal, 
                 c.igv, 
@@ -801,6 +812,7 @@ def obtener_pc_db():
                 created_at, updated_at,
                 items_json,
                 to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos,
+                to_jsonb(pedido_compra_pc) ->> 'oc_cliente' AS oc_cliente,
                 (SELECT d.estado FROM despachos d WHERE d.pc_id = pedido_compra_pc.id
                  ORDER BY d.id DESC LIMIT 1) AS despacho_estado
             FROM pedido_compra_pc
@@ -900,8 +912,8 @@ def obtener_pc_db():
                     'modelo': '',
                     'cantidad_cotizada': 1,
                     'cantidad_pc': 1,
-                    'precio_cotizado': float(row.get('monto', 0)) if row.get('monto') else 0,
-                    'precio_pc': float(row.get('monto', 0)) if row.get('monto') else 0,
+                    'precio_cotizado': float(row.get('monto') or 0) if row.get('monto') else 0,
+                    'precio_pc': float(row.get('monto') or 0) if row.get('monto') else 0,
                     'stock': 0
                 }]
                 print(f"⚠️ PC {row.get('id')} sin items, usando item genérico")
@@ -921,6 +933,7 @@ def obtener_pc_db():
             
             if not row.get('condicion_pago') and row.get('condicion_atencion'):
                 row['condicion_pago'] = row['condicion_atencion']
+            row['condicion_pago'] = normalizar_condicion(row.get('condicion_pago')) or row.get('condicion_pago')
             
             if not row.get('req_compra'):
                 if row.get('estado') == 'PC observado':
@@ -1164,7 +1177,21 @@ def guardar_pc_db(data):
             req_compra
         )
         
-        result = db_query(query, params)
+        numero_pedido = str(data.get('numero') or '')
+        if numero_pedido.startswith('PC-') and numero_pedido.endswith('-'):
+            # N° interno por empresa: se calcula y se guarda en la MISMA transacción con bloqueo,
+            # así dos PC creadas al mismo tiempo nunca reciben el mismo número.
+            with db_tx() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                bloquear_numeracion(cur, 'pedido_compra_pc:' + numero_pedido)
+                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::bigint), 0) + 1 AS sig
+                               FROM pedido_compra_pc WHERE numero ~ %s""",
+                            (len(numero_pedido) + 1, '^' + numero_pedido + '[0-9]+$'))
+                params = (numero_pedido + str(cur.fetchone()['sig']).zfill(6),) + tuple(params[1:])
+                cur.execute(query, params)
+                result = cur.fetchall()
+        else:
+            result = db_query(query, params)
         print(f"✅ Resultado INSERT: {result}")
         if result:
             marcar_empresa(None, 'pedido_compra_pc', result[0]['id'], empresa_pc)
@@ -1406,9 +1433,9 @@ def api_cotizaciones_listar():
                 'razon': row.get('cliente_razon_social') or row.get('cliente_nombre_comercial') or f"Cliente {row.get('cliente_id', '')}",
                 'descripcion': row.get('nota_cotizacion') or row.get('notas') or '',
                 'primer_producto': row.get('primer_producto_descripcion') or '',
-                'monto': float(row.get('total', 0)),
-                'subtotal': float(row.get('subtotal', 0)),
-                'igv': float(row.get('igv', 0)),
+                'monto': float(row.get('total') or 0),
+                'subtotal': float(row.get('subtotal') or 0),
+                'igv': float(row.get('igv') or 0),
                 'condicion': row.get('condicion_pago') or row.get('forma_pago'),
                 'vendedor': row.get('vendedor') or str(row.get('usuario_id', '')),
                 'vencimiento': row.get('validez_oferta'),
@@ -1416,8 +1443,8 @@ def api_cotizaciones_listar():
                 'direccion_entrega': row.get('direccion_entrega'),
                 'requerimiento': row.get('requerimiento'),
                 'nota': row.get('nota_cotizacion'),
-                'descuento_porcentaje': float(row.get('descuento_porcentaje', 0)),
-                'descuento_monto': float(row.get('descuento_monto', 0)),
+                'descuento_porcentaje': float(row.get('descuento_porcentaje') or 0),
+                'descuento_monto': float(row.get('descuento_monto') or 0),
                 'descuento_tipo': row.get('descuento_tipo'),
                 'contacto': row.get('contacto_cliente'),
                 'telefono': row.get('telefono_cliente'),
@@ -1429,7 +1456,8 @@ def api_cotizaciones_listar():
                 'motivo': row.get('motivo', 'Proyecto nuevo'),
                 'transporte': row.get('transporte', 'Seleccione'),
                 'parihuela': row.get('parihuela', 'Seleccione'),
-                'nota_interna': row.get('nota_interna', '')
+                'nota_interna': row.get('nota_interna', ''),
+                **_tiempos(row, 'fecha_creacion')
             })
         
         print(f"✅ Datos formateados: {len(formatted_data)} cotizaciones")
@@ -1480,6 +1508,27 @@ def api_cotizaciones_guardar():
             return jsonify({'success': False, 'error': 'Agrega al menos un producto a la cotización'}), 400
 
         estado_nuevo = (data.get('estado') or 'Borrador').strip()
+
+        # Puntos críticos (audio de Erika 19/10/2026): sin estos 4 datos la cotización no se guarda
+        data['condicion_pago'] = normalizar_condicion(data.get('condicion_pago') or data.get('forma_pago'))
+        faltan = [nombre for nombre, valor in (
+            ('Condición de pago', data.get('condicion_pago')),
+            ('Tiempo de entrega', data.get('tiempo_entrega')),
+            ('Transporte', data.get('transporte')),
+            ('Parihuela (si incluye o no)', data.get('parihuela')),
+        ) if str(valor or '').strip() in ('', 'Seleccione', 'Personalizado')]
+        # Pedido de Erika 20/10/2026: para "Solicitar validación" también la fila de la parihuela completa
+        if estado_nuevo in ('Por validar', 'En revisión'):
+            faltan += [nombre for nombre, valor in (
+                ('Seguimiento', data.get('seguimiento')),
+                ('Motivo', data.get('motivo')),
+                ('Nota interna', data.get('nota_interna')),
+            ) if str(valor or '').strip() in ('', 'Seleccione')]
+        if faltan:
+            titulo = ('Faltan campos obligatorios para enviar a validación'
+                      if estado_nuevo in ('Por validar', 'En revisión') else 'Faltan campos obligatorios')
+            return jsonify({'success': False, 'codigo': 'faltan_campos', 'faltan': faltan,
+                            'error': f"{titulo}: {', '.join(faltan)}."}), 400
 
         # El frontend envía algunos campos con otro nombre: se aceptan ambos
         contacto = data.get('contacto_cliente') or data.get('contacto')
@@ -1543,7 +1592,8 @@ def api_cotizaciones_guardar():
                     continue
 
                 cantidad = a_decimal(producto.get('cantidad'), '1')
-                precio = a_decimal(producto.get('valorVenta', producto_bd.get('precio_unitario') or 0))
+                # Máximo 2 decimales en precios (pedido de Erika 19/10/2026)
+                precio = redondear(producto.get('valorVenta', producto_bd.get('precio_unitario') or 0))
                 if cantidad <= 0:
                     return jsonify({'success': False, 'error': f'Cantidad inválida en la línea {idx} ({codigo_producto})'}), 400
                 if precio < 0:
@@ -1639,7 +1689,7 @@ def api_cotizaciones_guardar():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (cotizacion_id, l['producto_id'], l['cantidad'], l['costo'], redondear(subtotal_costo),
                       redondear(margen), l['precio'], redondear(subtotal_venta),
-                      redondear((1 - factor) * 100), redondear(precio_desc, 4),
+                      redondear((1 - factor) * 100), redondear(precio_desc),
                       redondear(subtotal_venta * factor), redondear(subtotal_venta * (1 - factor)),
                       redondear(margen_final), l['entrega']))
 
@@ -2233,7 +2283,8 @@ def api_guias_listar():
                 'items': items,
                 'placa': row.get('placa_vehiculo'),
                 'conductor': row.get('conductor_nombre'),
-                'transportista': row.get('transportista_nombre')
+                'transportista': row.get('transportista_nombre'),
+                **_tiempos(row)
             })
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
@@ -2357,39 +2408,47 @@ def api_guias_guardar():
                 numero = _siguiente_numero(cur, 'guias_remision', serie, extra_where='AND empresa_id IS NOT DISTINCT FROM %s',
                                            extra_params=(empresa_guia,))
             data['numero'] = numero
-        
-        params = (
-            serie,
-            data.get('numero'),
-            fecha_emision,  # ← YA VIENE CON HORA DEL FRONTEND
-            fecha_traslado,
-            data.get('ruc_remitente') or ORIGEN_FIJO['ruc'],
-            data.get('remitente_nombre') or ORIGEN_FIJO['nombre'],
-            data.get('remitente_direccion') or ORIGEN_FIJO['direccion'],
-            data.get('remitente_ubigeo') or ORIGEN_FIJO['ubigeo'],
-            data.get('ruc_destinatario', ''),
-            data.get('destinatario_nombre', ''),
-            data.get('destinatario_direccion', ''),
-            data.get('destinatario_ubigeo', ''),
-            data.get('modalidad_transporte', 'PRIVADO'),
-            data.get('placa_vehiculo', ''),
-            data.get('conductor_dni', ''),
-            data.get('conductor_nombre', ''),
-            data.get('licencia_conductor', ''),
-            data.get('transportista_ruc', ''),
-            data.get('transportista_nombre', ''),
-            data.get('motivo_traslado', '01'),
-            data.get('documento_asociado', ''),
-            data.get('orden_compra_cliente',''),
-            data.get('factura',''),
-            float(data.get('peso_total', 0)),
-            items_json,
-            data.get('observaciones', ''),
-            data.get('estado', 'BORRADOR'),
-            usuario_id
-        )
-        
-        result = db_query(query, params)
+            # La guía se guarda dentro de la misma transacción del número: dos guías al mismo tiempo
+            # ya no pueden recibir el mismo correlativo (antes el bloqueo se soltaba antes de guardar).
+            params = (
+                serie,
+                data.get('numero'),
+                fecha_emision,  # ← YA VIENE CON HORA DEL FRONTEND
+                fecha_traslado,
+                data.get('ruc_remitente') or ORIGEN_FIJO['ruc'],
+                data.get('remitente_nombre') or ORIGEN_FIJO['nombre'],
+                data.get('remitente_direccion') or ORIGEN_FIJO['direccion'],
+                data.get('remitente_ubigeo') or ORIGEN_FIJO['ubigeo'],
+                data.get('ruc_destinatario', ''),
+                data.get('destinatario_nombre', ''),
+                data.get('destinatario_direccion', ''),
+                data.get('destinatario_ubigeo', ''),
+                data.get('modalidad_transporte', 'PRIVADO'),
+                data.get('placa_vehiculo', ''),
+                data.get('conductor_dni', ''),
+                data.get('conductor_nombre', ''),
+                data.get('licencia_conductor', ''),
+                data.get('transportista_ruc', ''),
+                data.get('transportista_nombre', ''),
+                data.get('motivo_traslado', '01'),
+                data.get('documento_asociado', ''),
+                data.get('orden_compra_cliente',''),
+                data.get('factura',''),
+                float(data.get('peso_total', 0)),
+                items_json,
+                data.get('observaciones', ''),
+                data.get('estado', 'BORRADOR'),
+                usuario_id
+            )
+            cur.execute(query, params)
+            result = cur.fetchall()
+            if result:
+                marcar_empresa(cur, 'guias_remision', result[0]['id'], empresa_guia)
+            if result and data.get('despacho_numero'):
+                # El despacho queda con su guía (antes quedaba vacío y no se sabía qué guía era de qué despacho)
+                cur.execute("""UPDATE despachos SET guia = %s
+                               WHERE numero = %s AND COALESCE(guia, '') = ''""",
+                            (f"{serie}-{result[0]['numero']}", data['despacho_numero']))
         
         if result and len(result) > 0:
             row = result[0]
@@ -2407,6 +2466,7 @@ def api_guias_guardar():
                     'message': 'Guía creada correctamente',
                     'data': {
                         'id': guia_id,
+                        'serie': serie,
                         'numero': guia_numero
                     }
                 })
@@ -2513,12 +2573,18 @@ def api_comprobantes_listar():
                 'cotizacion': row.get('documento_asociado'),
                 'pc_numero': row.get('pc_numero') or '',
                 'guia_numero': row.get('guia_numero') or '',
-                'monto': float(row.get('total', 0)),
-                'subtotal': float(row.get('subtotal', 0)),
-                'igv': float(row.get('igv', 0)),
-                'condicion': 'Contado',
+                'monto': float(row.get('total') or 0),
+                'subtotal': float(row.get('subtotal') or 0),
+                'igv': float(row.get('igv') or 0),
+                # Antes decía siempre 'Contado' aunque la factura fuera a crédito (bug visto por Erika 19/10/2026)
+                'condicion': normalizar_condicion(row.get('condicion_pago')) or 'Contado',
+                'dias_credito': row.get('dias_credito'),
+                'estado_credito': row.get('estado_credito'),
+                'tiene_retencion': row.get('tiene_retencion'),
+                'porcentaje_retencion': row.get('porcentaje_retencion'),
                 'observaciones': row.get('observaciones'),
-                'items': items
+                'items': items,
+                **_tiempos(row)
             })
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
@@ -2598,6 +2664,78 @@ def _params_insert_comprobante(comprobante_data):
     )
 
 
+def _pc_de_comprobante(data):
+    """PC de origen de una factura: la vinculada; si no, la de su guía (por la PC anotada en la guía
+    o por el despacho de la guía)."""
+    pc = (data.get('pc') or data.get('pc_vinculado') or '').strip()
+    filas = []
+    if pc:
+        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+                            FROM pedido_compra_pc p WHERE numero = %s ORDER BY id DESC LIMIT 1""", (pc,))
+    guia = (data.get('guia') or data.get('guia_vinculada') or '').strip()
+    if not filas and guia:
+        # La guía guarda su cotización (documento_asociado) y el despacho guarda su PC
+        filas = db_query("""
+            SELECT p.numero, p.condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+            FROM guias_remision g
+            JOIN pedido_compra_pc p ON p.id IN (
+                     SELECT d.pc_id FROM despachos d
+                     WHERE d.guia IN (g.numero, g.serie || '-' || g.numero))
+                 OR (p.cotizacion_numero = g.documento_asociado AND COALESCE(g.documento_asociado, '') <> ''
+                     AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulada'))
+            WHERE (g.serie || '-' || g.numero) = %s OR g.numero = %s
+            ORDER BY p.id DESC LIMIT 1""", (guia, guia))
+    cot = (data.get('cotizacion') or data.get('cotizacion_numero') or '').strip()
+    if not filas and cot:
+        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+                            FROM pedido_compra_pc p WHERE cotizacion_numero = %s
+                              AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')
+                            ORDER BY id DESC LIMIT 1""", (cot,))
+    return filas[0] if filas else None
+
+
+def _condicion_del_cliente(ruc):
+    ruc = (ruc or '').strip()
+    if not ruc:
+        return ''
+    filas = db_query("""SELECT to_jsonb(c) ->> 'condicion_pago' AS condicion, to_jsonb(c) ->> 'dias_credito' AS dias
+                        FROM clientes c
+                        WHERE numero_documento = %s OR to_jsonb(c) ->> 'ruc' = %s LIMIT 1""", (ruc, ruc))
+    if not filas:
+        return ''
+    texto = (filas[0].get('condicion') or '').strip()
+    try:
+        dias = int(float(filas[0].get('dias') or 0))
+    except (TypeError, ValueError):
+        dias = 0
+    # En la ficha del cliente la condición es "Contado" / "Crédito aprobado" / "Bloqueado" y los días van aparte
+    if 'bloque' in texto.lower():
+        return ''
+    if 'cr' in texto.lower() and 'dito' in texto.lower() and dias > 0:
+        return f'Crédito {dias} días'
+    cond = normalizar_condicion(texto)
+    return cond if cond in ('Contado', 'Contra entrega') or cond.startswith('Crédito ') and cond.endswith(' días') else ''
+
+
+@ventas_bp.route('/ventas/api/comprobantes/condicion-origen', methods=['GET'])
+@login_required
+def api_condicion_origen_factura():
+    """Condición de pago que le corresponde a una factura: la de su PC (o la de la PC de su guía o
+    cotización) y, si no hay PC, la del cliente. Lo usa la pantalla de la factura para llenarla sola."""
+    try:
+        args = request.args
+        pc = _pc_de_comprobante({'pc': args.get('pc'), 'guia': args.get('guia'), 'cotizacion': args.get('cotizacion')})
+        if pc and normalizar_condicion(pc.get('condicion_pago')):
+            return jsonify({'success': True, 'data': {
+                'condicion': normalizar_condicion(pc.get('condicion_pago')), 'fuente': f"PC {pc.get('numero')}",
+                'pc': pc.get('numero'), 'oc_cliente': pc.get('oc_cliente') or ''}})
+        cond = _condicion_del_cliente(args.get('ruc'))
+        return jsonify({'success': True, 'data': {'condicion': cond, 'fuente': 'cliente' if cond else '',
+                                                  'pc': None, 'oc_cliente': ''}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @ventas_bp.route('/ventas/api/comprobantes/guardar', methods=['POST'])
 @login_required
 def api_comprobantes_guardar():
@@ -2620,10 +2758,27 @@ def api_comprobantes_guardar():
         monto_retenido = float(data.get('monto_retenido', 0))
         monto_a_pagar = float(data.get('monto_a_pagar', 0))
         obs_retencion = data.get('obs_retencion')
-        condicion_pago = data.get('condicion', 'Contado')
+
+        # Condición de pago (pedido de Erika 19/10/2026): la que se elige en la factura; si viene vacía, la del
+        # PC de origen, luego la de la guía (su PC) y al final la del cliente. Nunca la de la cotización.
+        pc_origen = _pc_de_comprobante(data)
+        condicion_pago = normalizar_condicion(data.get('condicion') or data.get('condicion_pago'))
+        if not condicion_pago and pc_origen:
+            condicion_pago = normalizar_condicion(pc_origen.get('condicion_pago'))
+        if not condicion_pago:
+            condicion_pago = _condicion_del_cliente(data.get('ruc')) or 'Contado'
+        dias_condicion = dias_de_condicion(condicion_pago)
+        if dias_condicion > 0:
+            es_credito = True
+            dias_credito = dias_condicion
+        elif condicion_pago == 'Contado':
+            es_credito = False
+            dias_credito = None
         
-        # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
+        # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL (si no se escribe, sale de la PC: N° OC del cliente)
         orden_compra_cliente = data.get('orden_compra_cliente', '') or ''
+        if not orden_compra_cliente and pc_origen:
+            orden_compra_cliente = pc_origen.get('oc_cliente') or ''
         
         # ============================================================
         # 🔽 VALIDACIONES DE FACTURACIÓN (cliente, documento, importes, IGV)
@@ -2722,7 +2877,7 @@ def api_comprobantes_guardar():
             'igv': igv,
             'total': monto_total,
             'items_json': json.dumps(items_json),
-            'observaciones': data.get('observaciones', ''),
+            'observaciones': mayuscula_inicial(data.get('observaciones', '')),
             'estado_sunat': data.get('estado', 'BORRADOR'),
             'condicion_pago': condicion_pago,
             'documento_asociado': data.get('cotizacion') or data.get('cotizacion_numero') or '',
@@ -3044,8 +3199,9 @@ def api_notas_credito_listar():
                 'cliente': row.get('cliente_nombre'),
                 'comprobante': row.get('comprobante_asociado'),
                 'motivo': row.get('motivo'),
-                'monto': float(row.get('monto', 0)),
-                'observaciones': row.get('observaciones')
+                'monto': float(row.get('monto') or 0),
+                'observaciones': row.get('observaciones'),
+                **_tiempos(row)
             })
         return jsonify({'success': True, 'data': formatted_data})
     except Exception as e:
@@ -3167,6 +3323,19 @@ def api_pedido_compra_listar():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+_OC_CLIENTE_LISTA = False
+
+
+def _asegurar_columna_oc_cliente():
+    """N° de la orden de compra del cliente en la PC (migración 011; aquí por si la base aún no la tiene)."""
+    global _OC_CLIENTE_LISTA
+    if not _OC_CLIENTE_LISTA:
+        if not db_query("""SELECT 1 FROM information_schema.columns
+                           WHERE table_name = 'pedido_compra_pc' AND column_name = 'oc_cliente'"""):
+            db_execute("ALTER TABLE pedido_compra_pc ADD COLUMN IF NOT EXISTS oc_cliente VARCHAR(60)")
+        _OC_CLIENTE_LISTA = True
+
+
 @ventas_bp.route('/ventas/api/pedido-compra/guardar', methods=['POST'])
 @login_required
 def api_pedido_compra_guardar():
@@ -3174,6 +3343,17 @@ def api_pedido_compra_guardar():
         data = request.get_json()
         usuario_id = session.get('usuario_id')
         data['creado_por'] = usuario_id
+
+        # Condición de pago: SIEMPRE la escribe la persona leyendo la OC del cliente (pedido de Erika 19/10/2026).
+        # No se copia de la cotización: el cliente cotizado a 7 días a veces manda su OC a 120 días.
+        condicion = normalizar_condicion(data.get('condicion_pago') or data.get('condicion_atencion'))
+        if not condicion:
+            return jsonify({'success': False, 'codigo': 'falta_condicion',
+                            'error': 'Elige la condición de pago leyendo la orden de compra del cliente '
+                                     '(no se copia de la cotización).'}), 400
+        data['condicion_pago'] = data['condicion_atencion'] = condicion
+        if 'oc_cliente' in data:
+            data['oc_cliente'] = str(data.get('oc_cliente') or '').strip()[:60]
         
         print("=" * 80)
         print("📦 API PEDIDO COMPRA GUARDAR")
@@ -3264,8 +3444,6 @@ def api_pedido_compra_guardar():
                     data['cotizacion_numero'] = cot.get('numero_cotizacion')
                 if not data.get('lugar_entrega'):
                     data['lugar_entrega'] = cot.get('direccion_entrega')
-                if not data.get('condicion_pago'):
-                    data['condicion_pago'] = cot.get('condicion_pago')
 
                 if 'monto' not in data or not data['monto']:
                  data['monto'] = 0.0
@@ -3277,14 +3455,13 @@ def api_pedido_compra_guardar():
             print(f"⚠️ Número de PC {data['numero']} ya existe; se asigna uno nuevo")
             data['numero'] = None
         if not pc_id and not data.get('numero'):
-            # Correlativo diario PC-AAAAMMDD-NNNN (antes se usaban 4 dígitos de la hora y podían repetirse)
-            prefijo = f"PC-{datetime.now().strftime('%Y%m%d')}-"
-            with db_tx() as conn:
-                cur = conn.cursor(cursor_factory=RealDictCursor)
-                bloquear_numeracion(cur, 'pedido_compra_pc:' + prefijo)
-                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
-                               FROM pedido_compra_pc WHERE numero LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
-                data['numero'] = prefijo + str(cur.fetchone()['sig']).zfill(4)
+            # N° interno correlativo por empresa: PC-KCF-000001, PC-AGD-000001... (pedido de Erika 19/10/2026).
+            # El número de la OC del cliente (Komatsu: IT40...) va aparte en oc_cliente. Las PC antiguas no se renumeran.
+            empresa_pc = empresa_para_crear(empresa_de(None, 'cotizaciones', 'id', cotizacion_id)
+                                            or empresa_de(None, 'cotizaciones', 'numero_cotizacion', cotizacion_numero))
+            codigo_emp = ((empresa_por_id(empresa_pc) or {}).get('codigo') or 'KCF').upper()
+            prefijo = f"PC-{codigo_emp}-"
+            data['numero'] = prefijo   # guardar_pc_db pone el correlativo dentro de la transacción
         
         # Fecha si no tiene
         if not data.get('fecha'):
@@ -3301,6 +3478,11 @@ def api_pedido_compra_guardar():
                          (bool(data.get('valida_productos')), result['id']))
             except Exception as e:
                 print(f"⚠️ No se pudo guardar valida_productos: {e}")
+
+        if result and 'oc_cliente' in data:
+            _asegurar_columna_oc_cliente()
+            db_execute("UPDATE pedido_compra_pc SET oc_cliente = %s WHERE id = %s",
+                       (data['oc_cliente'] or None, result['id']))
 
         if result:
             # Si tiene cotizacion_id y es NUEVO, actualizar estado de la cotización
@@ -4296,14 +4478,43 @@ def _aplicar_descuento_cotizacion(result):
         for p in productos)
     for p in productos:
         if por_linea:
-            p['precio_neto'] = round(float(p['precio_venta_con_descuento']), 4)
+            p['precio_neto'] = round(float(p['precio_venta_con_descuento']), 2)
         else:
-            p['precio_neto'] = round(p['precio_lista'] * factor, 4)
+            p['precio_neto'] = round(p['precio_lista'] * factor, 2)
     neto = round(sum(float(p.get('cantidad') or 0) * p['precio_neto'] for p in productos), 2)
     result['descuento_factor'] = factor
     result['descuento_total'] = round(base - neto, 2) if productos else round(monto, 2)
     result['subtotal_neto'] = neto if productos else float(result.get('subtotal') or 0) - monto
+    result['subtotal_lista'] = round(base, 2)
     return result
+
+
+@ventas_bp.route('/ventas/api/cotizaciones/descuento', methods=['GET'])
+@login_required
+def api_cotizacion_descuento():
+    """Descuento de una cotización por su número, para mostrarlo en el resumen de la PC (pedido de Erika 19/10/2026):
+    precio de lista y precio con descuento de cada producto, tipo (% o S/) y total descontado."""
+    numero = (request.args.get('numero') or '').strip()
+    if not numero:
+        return jsonify({'success': False, 'error': 'Falta el número de cotización'}), 400
+    fila = db_query("SELECT id FROM cotizaciones WHERE numero_cotizacion = %s OR codigo_cotizacion = %s ORDER BY id DESC LIMIT 1",
+                    (numero, numero))
+    if not fila:
+        return jsonify({'success': True, 'data': None})
+    resp = api_cotizaciones_obtener_completa(fila[0]['id'])
+    resp = resp[0] if isinstance(resp, tuple) else resp
+    d = (resp.get_json() or {}).get('data')
+    if not d:
+        return jsonify({'success': True, 'data': None})
+    lista = {}
+    for p in d.get('productos') or []:
+        if p.get('codigo'):
+            lista[p['codigo']] = {'lista': p.get('precio_lista'), 'neto': p.get('precio_neto')}
+    return jsonify({'success': True, 'data': {
+        'numero': d.get('numero_cotizacion'), 'descuento_tipo': d.get('descuento_tipo'),
+        'descuento_porcentaje': float(d.get('descuento_porcentaje') or 0), 'descuento_monto': float(d.get('descuento_monto') or 0),
+        'descuento_total': d.get('descuento_total'), 'subtotal_lista': d.get('subtotal_lista'),
+        'subtotal_neto': d.get('subtotal_neto'), 'productos': lista}})
 
 
 @ventas_bp.route('/ventas/api/cotizaciones/<int:id>/duplicar', methods=['POST'])
@@ -5722,9 +5933,9 @@ def api_cotizaciones_buscar():
                 'numero': row.get('numero_cotizacion'),
                 'fecha': row.get('fecha_creacion'),
                 'estado': row.get('estado'),
-                'total': float(row.get('total', 0)),
-                'subtotal': float(row.get('subtotal', 0)),
-                'igv': float(row.get('igv', 0)),
+                'total': float(row.get('total') or 0),
+                'subtotal': float(row.get('subtotal') or 0),
+                'igv': float(row.get('igv') or 0),
                 'ruc': row.get('cliente_ruc'),
                 'razon': row.get('cliente_razon_social') or row.get('cliente_nombre_comercial'),
                 'cod_cliente': row.get('cod_cliente'),
@@ -6037,7 +6248,8 @@ def api_pedido_compra_obtener(id):
                 medio, entrega, req_compra, guia, factura,
                 condicion_pago, vendedor, items_json,
                 created_at, updated_at,
-                to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos
+                to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos,
+                to_jsonb(pedido_compra_pc) ->> 'oc_cliente' AS oc_cliente
             FROM pedido_compra_pc
             WHERE id = %s
         """
@@ -7705,9 +7917,9 @@ def api_cotizaciones_revision():
                 'codigo': row.get('codigo'),
                 'fecha': row.get('fecha'),
                 'estado': row.get('estado'),
-                'subtotal': float(row.get('subtotal', 0)),
-                'igv': float(row.get('igv', 0)),
-                'total': float(row.get('total', 0)),
+                'subtotal': float(row.get('subtotal') or 0),
+                'igv': float(row.get('igv') or 0),
+                'total': float(row.get('total') or 0),
                 'condicion_pago': row.get('condicion_pago'),
                 'vendedor': row.get('vendedor', '--'),
                 'requerimiento': row.get('requerimiento'),

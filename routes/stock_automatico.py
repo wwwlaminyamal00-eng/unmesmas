@@ -99,9 +99,22 @@ def _separaciones_cliente(cur, desp, empresa_id, almacen_id, producto_id):
     return cur.fetchall()
 
 
+class ErrorFaltaStock(ErrorInventario):
+    """No alcanza el stock para despachar. `faltan` dice qué producto, en qué empresa y sede, cuánto pide y cuánto hay."""
+    def __init__(self, mensaje, faltan):
+        super().__init__(mensaje)
+        self.faltan = faltan
+
+
 def descontar_despacho(cur, desp, empresa_id, almacen_id):
-    """Saca del stock todos los productos del despacho. Lanza ErrorInventario si algo no alcanza."""
+    """Saca del stock todos los productos del despacho. Si algo no alcanza lanza ErrorFaltaStock con TODOS los
+    productos que faltan (pedido de Erika 20/10/2026: decir qué producto falta y en qué sede)."""
     _validar_empresa_sede(cur, empresa_id, almacen_id)
+    cur.execute("SELECT COALESCE(NULLIF(nombre_corto, ''), codigo, razon_social) AS n FROM erp_empresas WHERE id = %s", (empresa_id,))
+    nom_empresa = (cur.fetchone() or {}).get('n') or ''
+    cur.execute("SELECT nombre FROM almacenes WHERE id = %s", (almacen_id,))
+    nom_sede = (cur.fetchone() or {}).get('nombre') or ''
+    faltan = []
     items, sin_codigo = _items_despacho(cur, desp)
     if not items:
         raise ErrorInventario('Este despacho no tiene productos del catálogo: no se puede descontar stock. '
@@ -116,6 +129,7 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
                                   'Primero regístralo en Inventario con "Stock inicial".')
         seps = _separaciones_cliente(cur, desp, empresa_id, almacen_id, pid)
         usar = min(sum((a_decimal(s['cantidad']) for s in seps), Decimal('0')), cantidad)
+        cur.execute("SAVEPOINT desp_item")
         try:
             mov = aplicar_movimiento(
                 cur, empresa_id=empresa_id, almacen_id=almacen_id, producto_id=pid, motivo='VENTA', cantidad=cantidad,
@@ -123,7 +137,14 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
                 observaciones=f"Despacho {desp.get('numero') or ''}" + (f" · PC {desp['pc_numero']}" if desp.get('pc_numero') else ''),
                 separacion_id=seps[0]['id'] if seps else None, usar_reservado=usar)
         except ErrorInventario as e:
-            raise ErrorInventario(f'"{nombre}": {e}')
+            cur.execute("ROLLBACK TO SAVEPOINT desp_item")
+            cur.execute("""SELECT COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
+                           WHERE empresa_id = %s AND almacen_id = %s AND producto_id = %s""", (empresa_id, almacen_id, pid))
+            hay = a_decimal((cur.fetchone() or {}).get('hay'))
+            faltan.append({'producto': nombre, 'codigo': it.get('codigo') or '', 'empresa': nom_empresa, 'sede': nom_sede,
+                           'pide': float(cantidad), 'hay': float(hay), 'detalle': str(e)})
+            continue
+        cur.execute("RELEASE SAVEPOINT desp_item")
         cur.execute("UPDATE inv_movimientos SET despacho_id = %s WHERE id = %s", (desp['id'], mov['id']))
         usadas, resto = [], usar
         for s in seps:
@@ -141,6 +162,9 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
             usadas.append({'id': s['id'], 'cantidad': float(t)})
         detalle.append({'movimiento_id': mov['id'], 'movimiento': mov['numero'], 'producto_id': pid,
                         'producto': nombre, 'cantidad': float(cantidad), 'separaciones': usadas})
+    if faltan:
+        lista = '; '.join(f'"{f["producto"]}" (pide {f["pide"]:g}, hay {f["hay"]:g})' for f in faltan)
+        raise ErrorFaltaStock(f'No hay stock suficiente en {nom_empresa} · {nom_sede}: {lista}.', faltan)
     cur.execute("""UPDATE despachos SET stock_empresa_id = %s, stock_almacen_id = %s, stock_estado = 'Descontado',
                    stock_detalle = %s, stock_fecha = NOW() WHERE id = %s""",
                 (empresa_id, almacen_id, json.dumps(detalle), desp['id']))
@@ -294,6 +318,8 @@ def cambiar_estado_despacho(did, nuevo_estado, empresa_id=None, almacen_id=None,
             fila = cur.fetchone()
         texto = 'Despacho anulado.' if nuevo_estado == 'Anulado' else f'Despacho actualizado a {nuevo_estado}.'
         return {'success': True, 'message': texto + msg_extra, 'data': dict(fila)}, 200
+    except ErrorFaltaStock as e:
+        return {'success': False, 'codigo': 'falta_stock', 'faltan': e.faltan, 'error': str(e)}, 409
     except ErrorInventario as e:
         return {'success': False, 'error': str(e)}, 400
 

@@ -1259,6 +1259,12 @@ def api_comprobantes_proveedor_guardar():
                           (data.get('orden_compra') or data.get('orden_compra_numero'),))
             if oc:
                 data['orden_compra_id'] = oc[0]['id']
+        # 20/10/2026: la factura de una OC nueva se registra en Compras ▸ Pagos y facturas, donde se compara con lo
+        # recibido; aquí se saltaba esa revisión y quedaba como factura aparte.
+        if data.get('orden_compra_id') and db_query("SELECT 1 FROM ordenes_compra WHERE id = %s AND flujo = 'v2'",
+                                                    (data['orden_compra_id'],)):
+            return jsonify({'success': False, 'error': 'Esta orden es del flujo nuevo: registra su factura en Compras ▸ '
+                                                       'Pagos y facturas ("🧾 Registrar factura"), así se revisa si cuadra.'}), 409
 
         result = guardar_comprobante_proveedor_db(data)
         if result:

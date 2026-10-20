@@ -730,6 +730,12 @@
 <div class="page-head">
     <div>
         <h1 style="font-size: 22px; margin: 0;">{% if editando %}Editar producto{% else %}Nuevo producto{% endif %}</h1>
+        {% if editando and producto and (producto.fecha_creacion or producto.updated_at) %}
+        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:2px;">
+            {% if producto.fecha_creacion %}Creado el {{ producto.fecha_creacion.strftime('%d/%m/%Y %H:%M') if producto.fecha_creacion.strftime is defined else producto.fecha_creacion }}{% endif %}
+            {% if producto.updated_at %} · Última modificación {{ producto.updated_at.strftime('%d/%m/%Y %H:%M') if producto.updated_at.strftime is defined else producto.updated_at }}{% endif %}
+        </div>
+        {% endif %}
         <p class="subtitle" style="font-size: 13px; margin: 2px 0 0 0;">{% if editando %}Modifica la información del producto seleccionado.{% else %}Crea o edita la información principal del producto.{% endif %}</p>
     </div>
     
@@ -976,6 +982,11 @@
                                value="{{ producto.stock_minimo if producto else 0 }}" />
                         <span>Und.</span>
                     </div>
+                </div>
+                <div class="field"><label>Fecha de vencimiento <span class="optional">(consumibles, químicos)</span></label>
+                    <input name="fecha_vencimiento" type="date" id="fechaVencimientoProducto"
+                           value="{{ producto.fecha_vencimiento.isoformat() if producto and producto.fecha_vencimiento else '' }}" />
+                    <small style="color:#64748B;font-size:11px;">Avisa en Inventario 6 meses antes (amarillo) y 3 meses antes (rojo). Si cada lote vence distinto, ponga la fecha al registrar el ingreso.</small>
                 </div>
                 <div class="field" id="field-transporte">
                     <label>Transporte <span class="req">*</span></label>

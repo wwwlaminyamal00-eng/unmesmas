@@ -84,7 +84,7 @@
                                        style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; background:#F1F5F9; font-weight:800; font-size:10px; color:#64748B; cursor:not-allowed;">
                             </div>
                             <div class="form-field">
-                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Condición pago</label>
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Solo referencia: la condición de la PC se escribe abajo leyendo la OC del cliente">Condición cotizada</label>
                                 <input id="pcCondicionPago" readonly 
                                        style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; background:#F1F5F9; font-weight:800; font-size:10px; color:#64748B; cursor:not-allowed;">
                             </div>
@@ -114,7 +114,7 @@
                         </div>
                         
                         <!-- Grid ajustado: Moneda más chica (0.5fr) y Monto PC más grande (1.7fr) -->
-                        <div style="display:grid; grid-template-columns:1.1fr 1.4fr 1.2fr 0.9fr 0.5fr 1.7fr; gap:4px; margin-bottom:3px;">
+                        <div style="display:grid; grid-template-columns:1.05fr 0.95fr 1.25fr 1.05fr 1.1fr 0.5fr 1.7fr; gap:4px; margin-bottom:3px;">
                             
                             <!-- Fecha recepción -->
                             <div class="form-field">
@@ -122,10 +122,16 @@
                                 <input id="pcFecha" type="datetime-local" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 4px; font-size:10px;">
                             </div>
                             
-                            <!-- N° PC Pedido Compra -->
+                            <!-- N° PC interno: lo pone el sistema (correlativo por empresa) -->
                             <div class="form-field">
-                                <label class="obligatorio-label" style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° PC Pedido Compra</label>
-                                <input id="pcNumero" placeholder="Ej. 2040349840" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px;">
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Lo pone el sistema al guardar: PC-KCF-000001, PC-AGD-000001...">N° PC interno</label>
+                                <input id="pcNumero" readonly placeholder="Automático" title="Lo pone el sistema al guardar (correlativo por empresa)" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px; font-weight:900; background:#ECFDF5; color:#047857; cursor:not-allowed;">
+                            </div>
+
+                            <!-- N° OC del cliente (opcional): Komatsu IT40..., vacío si el cliente no emite OC -->
+                            <div class="form-field">
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° OC del cliente <span style="font-weight:600; color:#64748B; text-transform:none;">(opcional)</span></label>
+                                <input id="pcOcCliente" maxlength="60" placeholder="Ej. IT40… (vacío si no emite OC)" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px; font-weight:800;">
                             </div>
                             
                             <!-- Comprador -->
@@ -137,8 +143,10 @@
                             <!-- Cond. pago (Reducida) -->
                             <div class="form-field" style="min-width:0;">
                                 <label class="obligatorio-label" style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cond. pago</label>
-                                <select id="pcCondicion" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 2px; font-size:9px; font-weight:800; overflow:hidden; text-overflow:ellipsis;" onchange="toggleCustomPcCondicion(); togglePagoCampos()">
+                                <select id="pcCondicion" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:2px solid #F59E0B; padding:0 2px; font-size:9px; font-weight:800; overflow:hidden; text-overflow:ellipsis;" onchange="toggleCustomPcCondicion(); togglePagoCampos(); pcAvisoCondicion()" title="Escríbela leyendo la orden de compra del cliente: no se copia de la cotización">
+                                    <option value="">— Elegir (leer OC) —</option>
                                     <option value="Contado">Contado</option>
+                                    <option value="Crédito 7 días">Crédito 7 días</option>
                                     <option value="Crédito 15 días">Crédito 15 días</option>
                                     <option value="Crédito 30 días">Crédito 30 días</option>
                                     <option value="Crédito 45 días">Crédito 45 días</option>
@@ -147,6 +155,7 @@
                                     <option value="Crédito 120 días">Crédito 120 días</option>
                                     <option value="Personalizado">✏️ Personalizado...</option>
                                 </select>
+                                <small id="pcCondicionAviso" style="display:block; font-size:8px; line-height:1.15; font-weight:800; color:#B45309; margin-top:1px;">Léela en la OC del cliente</small>
                                 <input id="pcCondicionCustom" placeholder="Ej: Crédito 75 días" 
                                        style="display:none; width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 4px; font-size:9px; margin-top:3px; background:#FFFFFF; color:#0F172A;"
                                        onfocus="this.select()">
@@ -228,12 +237,16 @@
                             <span style="margin-left:auto; font-size:8px; color:#475569; background:#F1F5F9; padding:2px 8px; border-radius:10px; font-weight:700;" id="pcResumenMoneda">S/</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
-                            <span style="font-size:10px; font-weight:600; color:#475569;">Subtotal</span>
+                            <span style="font-size:10px; font-weight:600; color:#475569;">Subtotal <small style="color:#94A3B8;">(precio de lista)</small></span>
                             <span style="font-size:12px; font-weight:800; color:#0F172A;" id="pcResumenSubtotal">S/ 0.00</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
-                            <span style="font-size:10px; font-weight:600; color:#475569;">Valor venta</span>
+                            <span style="font-size:10px; font-weight:600; color:#475569;">Valor venta <small style="color:#94A3B8;">(con descuento)</small></span>
                             <span style="font-size:12px; font-weight:800; color:#0F172A;" id="pcResumenValorVenta">S/ 0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;" id="pcResumenDescuentoFila">
+                            <span style="font-size:10px; font-weight:800; color:#B91C1C;" id="pcResumenDescuentoTxt">Descuento</span>
+                            <span style="font-size:12px; font-weight:900; color:#B91C1C;" id="pcResumenDescuento">S/ 0.00</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #F1F5F9;">
                             <span style="font-size:10px; font-weight:600; color:#475569;">IGV 18%</span>
@@ -243,6 +256,7 @@
                             <span style="font-size:13px; font-weight:900; color:#0F172A; text-transform:uppercase; letter-spacing:0.3px;">Total</span>
                             <span style="font-size:16px; font-weight:900; color:#EF233C; background:#FFF1F2; padding:4px 14px; border-radius:8px; border:1px solid #FECACA;" id="pcResumenTotal">S/ 0.00</span>
                         </div>
+                        <div id="pcResumenDescuentoNota" style="margin-top:8px; font-size:9.5px; line-height:1.35; font-weight:700; padding:6px 8px; border-radius:8px; background:#F1F5F9; color:#475569;">Subtotal − Descuento = Valor venta · Valor venta + IGV = Total</div>
                     </div>
                     <div style="background:#FFFFFF; border-radius:10px; padding:8px 12px; border:1px solid #E5E7EB; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:9px; font-weight:700; color:#475569;">📦 Productos</span>
@@ -275,7 +289,7 @@
     <thead>
         <tr>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:25px;">Item</th>
-            <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:70px;">Código</th>
+            <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:70px;">Código de producto</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center;">Descripción</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Modelo</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Marca</th>
@@ -472,7 +486,7 @@
                     <thead>
                         <tr>
                             <th style="width:40px;"><input type="checkbox" id="selectAllPcCheckbox" onchange="toggleAllProductCheckboxesPc(this.checked)"></th>
-                            <th style="width:70px;">Código</th>
+                            <th style="width:70px;">Código de producto</th>
                             <th>Producto</th>
                             <th style="width:80px;">Marca</th>
                             <th style="width:70px;">Modelo</th>
@@ -637,6 +651,101 @@
 // ============================================================
 // FUNCIONES PARA EL RESUMEN LATERAL DEL PC - VERSIÓN COMPLETA
 // ============================================================
+
+// ============================================================
+// DESCUENTO DE LA COTIZACIÓN EN EL RESUMEN DE LA PC (pedido de Erika 19/10/2026)
+// El precio de la PC ya viene con el descuento de la cotización. Aquí se muestra: Subtotal a precio de lista,
+// Descuento (S/ o %), Valor venta con descuento, IGV y Total. Funciona con cualquier función que pinte el
+// resumen: se recalcula cada vez que cambia "Valor venta" o la tabla de productos.
+// ============================================================
+let _pcDesc = { numero: null, data: null, cargando: false };
+
+function _pcNum(t) { return parseFloat(String(t || '').replace(/[^0-9.\-]/g, '')) || 0; }
+
+async function _pcCargarDescuento(numero) {
+    if (!numero || _pcDesc.cargando || _pcDesc.numero === numero) return;
+    _pcDesc.cargando = true;
+    try {
+        const r = await fetch('/ventas/api/cotizaciones/descuento?numero=' + encodeURIComponent(numero));
+        const j = await r.json();
+        _pcDesc = { numero, data: j && j.success ? j.data : null, cargando: false };
+    } catch (e) {
+        _pcDesc = { numero, data: null, cargando: false };
+    }
+    pcPintarDescuento();
+}
+
+function pcPintarDescuento() {
+    const fila = document.getElementById('pcResumenDescuento');
+    if (!fila) return;
+    const numero = (document.getElementById('pcCotNumero')?.value || '').trim();
+    if (numero && _pcDesc.numero !== numero) _pcCargarDescuento(numero);
+    const info = _pcDesc.numero === numero ? _pcDesc.data : null;
+    const simbolo = document.getElementById('pcResumenMoneda')?.textContent || 'S/';
+    let netoFilas = 0, descFilas = 0;
+    document.querySelectorAll('#pcItemsBody tr').forEach(row => {
+        const inp = row.querySelectorAll('input');
+        if (inp.length < 8) return;
+        const cant = parseFloat(inp[5]?.value) || 0, precio = parseFloat(inp[7]?.value) || 0;
+        const lista = Number(info?.productos?.[inp[0].value]?.lista) || 0;
+        netoFilas += cant * precio;
+        if (lista > precio + 0.0001) descFilas += cant * (lista - precio);
+    });
+    // Valor venta = lo que ya calculó el resumen (puede venir de "Monto PC" escrito a mano)
+    const neto = _pcNum(document.getElementById('pcResumenValorVenta')?.textContent);
+    const desc = netoFilas > 0 ? descFilas * (neto / netoFilas) : 0;
+    const f = n => `${simbolo} ${n.toFixed(2)}`;
+    const sub = document.getElementById('pcResumenSubtotal');
+    if (sub) sub.textContent = f(neto + desc);
+    fila.textContent = desc > 0.004 ? `− ${f(desc)}` : f(0);
+    const pct = info && info.descuento_tipo === '%' && info.descuento_porcentaje > 0 ? info.descuento_porcentaje : null;
+    const txt = document.getElementById('pcResumenDescuentoTxt');
+    if (txt) txt.textContent = pct ? `Descuento (${pct}%)` : (desc > 0.004 ? 'Descuento (S/)' : 'Descuento');
+    const nota = document.getElementById('pcResumenDescuentoNota');
+    if (!nota) return;
+    const descCot = Number(info?.descuento_total) || 0;
+    if (desc > 0.004) {
+        nota.style.background = '#ECFDF5'; nota.style.color = '#065F46';
+        nota.innerHTML = `✅ El precio de la PC <b>ya viene con el descuento</b> de la cotización ${numero}. Subtotal − Descuento = Valor venta; Valor venta + IGV = Total.`;
+    } else if (descCot > 0.004 && netoFilas > 0) {
+        nota.style.background = '#FFF7ED'; nota.style.color = '#9A3412';
+        nota.innerHTML = `⚠️ La cotización ${numero} tiene un descuento de ${f(descCot)}, pero los precios de esta PC están sin descuento. Revise el Precio PC.`;
+    } else {
+        nota.style.background = '#F1F5F9'; nota.style.color = '#475569';
+        nota.innerHTML = numero ? `La cotización ${numero} no tiene descuento (Descuento S/ 0.00). Valor venta + IGV = Total.` : 'Subtotal − Descuento = Valor venta · Valor venta + IGV = Total';
+    }
+}
+
+// Condición de pago de la PC: se elige leyendo la OC del cliente (nunca se copia de la cotización)
+function pcAvisoCondicion() {
+    const sel = document.getElementById('pcCondicion');
+    const aviso = document.getElementById('pcCondicionAviso');
+    if (!sel) return;
+    const vacio = !sel.value || sel.value === 'Seleccione';
+    sel.style.borderColor = vacio ? '#F59E0B' : '#16A34A';
+    sel.style.background = vacio ? '#FFFBEB' : '#F0FDF4';
+    if (aviso && vacio && !aviso.dataset.cotizada) aviso.textContent = 'Léela en la OC del cliente';
+    if (aviso && !vacio) aviso.textContent = '✔ Elegida: ' + sel.value;
+}
+
+(function _pcObservarResumen() {
+    const iniciar = () => {
+        const vv = document.getElementById('pcResumenValorVenta');
+        const body = document.getElementById('pcItemsBody');
+        if (!vv) return;
+        let t = null;
+        const pedir = () => { clearTimeout(t); t = setTimeout(pcPintarDescuento, 30); };
+        new MutationObserver(pedir).observe(vv, { childList: true, characterData: true, subtree: true });
+        if (body) {
+            new MutationObserver(pedir).observe(body, { childList: true });
+            body.addEventListener('input', pedir);
+            body.addEventListener('change', pedir);
+        }
+        document.getElementById('pcCotNumero')?.addEventListener('change', pedir);
+        pedir();
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();
 
 // Variable para evitar loops infinitos
 let _actualizandoResumen = false;

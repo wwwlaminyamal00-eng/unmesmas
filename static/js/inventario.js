@@ -23,7 +23,7 @@
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const soles = n => 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const cant = n => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
-    const num4 = n => n === null || n === undefined || n === '' ? '' : Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    const num4 = n => n === null || n === undefined || n === '' ? '' : Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // máximo 2 decimales (Erika 19/10)
     const fecha = v => {
         if (!v) return '—';
         const [d, h] = String(v).split(' ');
@@ -204,6 +204,12 @@
             if (data.perdidas_mes.length) {
                 item('danger', `🚨 Pérdidas y faltantes este mes: ${soles(data.valor_perdidas_mes)}`,
                     data.perdidas_mes.map(p => `${fecha(p.fecha)} · ${esc(p.descripcion)} · ${cant(p.cantidad)} und · ${esc(p.empresa)} / ${esc(p.sede)} · ${esc(p.observaciones || '')}`).join('<br>'));
+            }
+            const vs = data.vencimientos_semaforo || {};
+            if (vs.vencido || vs.rojo || vs.amarillo) {
+                item(vs.vencido || vs.rojo ? 'danger' : 'warn', `⏳ Por vencer: ${vs.vencido} vencido(s) · ${vs.rojo} en rojo (3 meses) · ${vs.amarillo} en amarillo (6 meses)`,
+                    'Planea campañas para venderlos antes de que se pierdan.',
+                    '<button class="btn-mini sec" data-ir="vencimientos">Ver vencimientos</button>');
             }
             if (data.vencimientos.length) {
                 item('warn', `⏳ ${data.vencimientos.length} lote(s) vencidos o por vencer`,
@@ -683,13 +689,49 @@
     }
 
     // ========================================================
+    // VENCIMIENTOS (amarillo 6 meses, rojo 3 meses, vencido)
+    // ========================================================
+    const NIVEL_VENC = { vencido: 'VENCIDO', rojo: 'ROJO · 3 meses o menos', amarillo: 'AMARILLO · 6 meses o menos', ok: 'Más de 6 meses' };
+    let vencFilas = [];
+    async function cargarVencimientos() {
+        const nivel = $('vencNivel').value;
+        const q = new URLSearchParams();
+        if (nivel === 'todo') q.set('dias', '36500'); else if (nivel) q.set('nivel', nivel);
+        try {
+            const r = await api('/inventario/api/vencimientos?' + q);
+            vencFilas = r.data;
+            const c = r.conteo;
+            $('vencKpis').innerHTML = `
+                <div class="inv-kpi venc-kpi venc-vencido"><small>Vencidos</small><b>${c.vencido}</b><span>Sacar de la venta</span></div>
+                <div class="inv-kpi venc-kpi venc-rojo"><small>Rojo</small><b>${c.rojo}</b><span>Vencen en 3 meses o menos</span></div>
+                <div class="inv-kpi venc-kpi venc-amarillo"><small>Amarillo</small><b>${c.amarillo}</b><span>Vencen en 6 meses o menos</span></div>`;
+            pintarVencimientos();
+        } catch (e) {
+            $('vencBody').innerHTML = `<tr><td colspan="10">${esc(e.message)}</td></tr>`;
+        }
+    }
+    function pintarVencimientos() {
+        const q = $('vencBuscar').value.trim().toLowerCase();
+        const filas = vencFilas.filter(v => !q || `${v.codigo} ${v.descripcion} ${v.lote_serie || ''}`.toLowerCase().includes(q));
+        $('vencBody').innerHTML = filas.map(v => `<tr>
+                <td><span class="venc-chip venc-${v.nivel}">${NIVEL_VENC[v.nivel] || v.nivel}</span></td>
+                <td><b>${fecha(v.fecha_vencimiento)}</b></td>
+                <td class="${v.dias < 0 ? 'neg' : ''}">${v.dias < 0 ? 'Venció hace ' + Math.abs(v.dias) + ' días' : v.dias + ' días'}</td>
+                <td>${esc(v.codigo || '')}</td><td class="left">${esc(v.descripcion || '')}</td><td>${esc(v.lote_serie || '-')}</td>
+                <td>${cant(v.cantidad)}</td><td>${esc(nombreEmpresa(v.empresa_id))}</td><td>${esc(nombreSede(v.almacen_id))}</td>
+                <td>${v.origen === 'Lote' ? 'Ingreso del lote' : 'Ficha del producto'}</td></tr>`).join('')
+            || '<tr><td colspan="10">Nada por vencer con este filtro. Para que aparezca un producto, anota su fecha de vencimiento en la ficha del producto o al registrar el ingreso.</td></tr>';
+    }
+
+    // ========================================================
     // TABS Y EVENTOS
     // ========================================================
     const cargadores = {
         resumen: cargarResumen, estado_stock: cargarConsolidado, donde: () => {},
         entradas_salidas: () => { cargarRecepciones(); cargarMovimientos(); },
         transferencias: () => { cargarTraslados(); cargarIntercompany(); },
-        separaciones: cargarSeparaciones, conteos: cargarConteos, kardex: () => {}, sedes: cargarSedes
+        separaciones: cargarSeparaciones, conteos: cargarConteos, kardex: () => {}, sedes: cargarSedes,
+        vencimientos: cargarVencimientos
     };
     let tabActual = 'resumen';
 
@@ -792,6 +834,8 @@
         $('btnRefrescarResumen').onclick = cargarResumen;
         let t;
         $('conBuscar').addEventListener('input', () => { clearTimeout(t); t = setTimeout(cargarConsolidado, 300); });
+        $('vencNivel').addEventListener('change', cargarVencimientos);
+        $('vencBuscar').addEventListener('input', pintarVencimientos);
         $('conRotacion').onchange = cargarConsolidado;
         $('conTodos').onchange = cargarConsolidado;
         $('btnUbicar').onclick = ubicar;

@@ -16,7 +16,7 @@ from flask import (
     Flask, render_template, request, redirect, url_for, 
     session, flash, jsonify
 )
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     from dotenv import load_dotenv  # carga variables desde .env en desarrollo local
@@ -74,6 +74,7 @@ from routes.finanzas import finanzas_bp
 from routes.reportes import reportes_bp
 from routes.herramientas import herramientas_bp
 from routes.papelera import papelera_bp
+from routes.exportar import exportar_bp
 from routes.configuracion import configuracion_bp
 from routes.maestros import maestros_bp  # ← Este ya tiene sus propios endpoints
 from routes.compras import compras_bp
@@ -182,6 +183,7 @@ app.register_blueprint(finanzas_bp)
 app.register_blueprint(reportes_bp)
 app.register_blueprint(herramientas_bp)
 app.register_blueprint(papelera_bp)
+app.register_blueprint(exportar_bp)
 app.register_blueprint(configuracion_bp)
 app.register_blueprint(maestros_bp)  
 app.register_blueprint(compras_bp)
@@ -282,6 +284,15 @@ def login():
                 flash("❌ Usuario o contraseña incorrectos.", "error")
                 return render_template("login.html")
 
+            guardada = user.get('password') or ''
+            if not guardada.startswith(('scrypt:', 'pbkdf2:', '$2a$', '$2b$', '$2y$')):
+                # Contraseña antigua sin cifrar: al entrar se guarda cifrada (sigue siendo la misma)
+                try:
+                    from database import db_execute
+                    db_execute("UPDATE usuarios SET password = %s WHERE id = %s",
+                               (generate_password_hash(password), user["id"]))
+                except Exception as e:
+                    app.logger.warning("No se pudo cifrar la contraseña antigua: %s", e)
             session.clear()
             session["usuario_id"] = user["id"]
             session["usuario"] = user["usuario_sistema"]

@@ -13,7 +13,7 @@ const MODULE_CONFIG = {
         subtitle: 'Base comercial de clientes y prospectos',
         table: 'clientes',
         fields: [
-            { key: 'codigo_cliente', label: 'Código / Cliente ', type: 'text' },
+            { key: 'codigo_cliente', label: 'Código de cliente', type: 'text' },
             { key: 'razon_social', label: 'Razón Social', type: 'text' },
             { key: 'numero_documento', label: 'RUC/DNI', type: 'text' },
             { key: 'nombre_comercial', label: 'Nombre Comercial', type: 'text' },
@@ -22,8 +22,8 @@ const MODULE_CONFIG = {
             { key: 'email_contacto', label: 'Email', type: 'text' },
             { key: 'estado', label: 'Estado', type: 'text' } // 🔧 CAMBIO: antes era { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
-        displayFields: ['codigo_cliente', 'razon_social', 'numero_documento', 'nombre_comercial', 'nombre_contacto', 'telefono_contacto', 'email_contacto', 'estado'], // 🔧 CAMBIO: antes era 'activo'
-        headers: ['Código / Clientes ', 'Razón Social', 'RUC/DNI', 'Nombre Comercial', 'Contacto', 'Teléfono', 'Email', 'Estado'],
+        displayFields: ['codigo_cliente', 'razon_social', 'numero_documento', 'nombre_comercial', 'nombre_contacto', 'telefono_contacto', 'email_contacto', 'estado', 'tiempos'], // 🔧 CAMBIO: antes era 'activo'
+        headers: ['Código de cliente', 'Razón Social', 'RUC/DNI', 'Nombre Comercial', 'Contacto', 'Teléfono', 'Email', 'Estado', 'Creado / modificado'],
         idField: 'id',
         codeField: 'codigo_cliente',
         apiBase: '/maestros/api',
@@ -34,7 +34,7 @@ const MODULE_CONFIG = {
         subtitle: 'Base de proveedores y servicios',
         table: 'proveedores',
         fields: [
-            { key: 'codigo_proveedor', label: 'Código / Proveedores ', type: 'text' },
+            { key: 'codigo_proveedor', label: 'Código de proveedor', type: 'text' },
             { key: 'razon_social', label: 'Razón Social', type: 'text' },
             { key: 'ruc', label: 'RUC', type: 'text' },
             { key: 'razon_comercial', label: 'Razón Comercial', type: 'text' },
@@ -43,8 +43,8 @@ const MODULE_CONFIG = {
             { key: 'email', label: 'Email', type: 'text' },
             { key: 'estado', label: 'Estado', type: 'text' } // 🔧 CAMBIO: antes era { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
-        displayFields: ['codigo_proveedor', 'razon_social', 'ruc', 'razon_comercial', 'contacto', 'telefono', 'email', 'estado'], // 🔧 CAMBIO: antes era 'activo'
-        headers: ['Código / Proveedores ', 'Razón Social', 'RUC', 'Razón Comercial', 'Contacto', 'Teléfono', 'Email', 'Estado'],
+        displayFields: ['codigo_proveedor', 'razon_social', 'ruc', 'razon_comercial', 'contacto', 'telefono', 'email', 'estado', 'tiempos'], // 🔧 CAMBIO: antes era 'activo'
+        headers: ['Código de proveedor', 'Razón Social', 'RUC', 'Razón Comercial', 'Contacto', 'Teléfono', 'Email', 'Estado', 'Creado / modificado'],
         idField: 'id',
         codeField: 'codigo_proveedor',
         apiBase: '/maestros/api',
@@ -55,7 +55,7 @@ const MODULE_CONFIG = {
         subtitle: 'Gestión de almacenes y ubicaciones',
         table: 'almacenes',
         fields: [
-            { key: 'codigo', label: 'Código', type: 'text' },
+            { key: 'codigo', label: 'Código de almacén', type: 'text' },
             { key: 'nombre', label: 'Nombre', type: 'text' },
             { key: 'tipo', label: 'Tipo', type: 'text' },
             { key: 'responsable', label: 'Responsable', type: 'text' },
@@ -64,7 +64,7 @@ const MODULE_CONFIG = {
             { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
         displayFields: ['codigo', 'nombre', 'tipo', 'responsable', 'telefono', 'activo'],
-        headers: ['Código', 'Nombre', 'Tipo', 'Responsable', 'Teléfono', 'Estado'],
+        headers: ['Código de almacén', 'Nombre', 'Tipo', 'Responsable', 'Teléfono', 'Estado'],
         idField: 'id',
         codeField: 'codigo',
         apiBase: '/maestros/api',
@@ -75,13 +75,13 @@ const MODULE_CONFIG = {
         subtitle: 'Clasificación de productos',
         table: 'categorias',
         fields: [
-            { key: 'codigo', label: 'Código', type: 'text' },
+            { key: 'codigo', label: 'Código de categoría', type: 'text' },
             { key: 'nombre', label: 'Nombre', type: 'text' },
             { key: 'tipo', label: 'Categoría Principal', type: 'text' },
             { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
         displayFields: ['codigo', 'nombre', 'tipo', 'activo'],
-        headers: ['Código', 'Nombre', 'Categoría Principal', 'Estado'],
+        headers: ['Código de categoría', 'Nombre', 'Categoría Principal', 'Estado'],
         idField: 'id',
         codeField: 'codigo',
         apiBase: '/maestros/api',
@@ -92,13 +92,13 @@ const MODULE_CONFIG = {
         subtitle: 'Gestión de marcas y fabricantes',
         table: 'marcas',
         fields: [
-            { key: 'codigo', label: 'Código', type: 'text' },
+            { key: 'codigo', label: 'Código de marca', type: 'text' },
             { key: 'nombre', label: 'Marca', type: 'text' },
             { key: 'tipo', label: 'Tipo', type: 'text' },
             { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
         displayFields: ['codigo', 'nombre', 'tipo', 'activo'],
-        headers: ['Código', 'Marca', 'Tipo', 'Estado'],
+        headers: ['Código de marca', 'Marca', 'Tipo', 'Estado'],
         idField: 'id',
         codeField: 'codigo',
         apiBase: '/maestros/api',
@@ -109,7 +109,7 @@ const MODULE_CONFIG = {
         subtitle: 'Define cómo compras, vendes e inventarias los productos',
         table: 'um',
         fields: [
-            { key: 'codigo', label: 'Código', type: 'text' },
+            { key: 'codigo', label: 'Código de unidad', type: 'text' },
             { key: 'nombre', label: 'Unidad', type: 'text' },
             { key: 'abreviatura', label: 'Abreviatura', type: 'text' },
             { key: 'tipo', label: 'Tipo', type: 'text' },
@@ -119,7 +119,7 @@ const MODULE_CONFIG = {
             { key: 'activo', label: 'Estado', type: 'boolean' }
         ],
         displayFields: ['codigo', 'nombre', 'abreviatura', 'tipo', 'decimales', 'ambito', 'uso', 'activo'],
-        headers: ['Código', 'Unidad', 'Abreviatura', 'Tipo', 'Decimales', 'Ámbito', 'Uso', 'Estado'],
+        headers: ['Código de unidad', 'Unidad', 'Abreviatura', 'Tipo', 'Decimales', 'Ámbito', 'Uso', 'Estado'],
         idField: 'id',
         codeField: 'codigo',
         apiBase: '/maestros/api',
@@ -648,6 +648,9 @@ function renderTable(m, list) {
                 cells += `<td>${email ? `<a href="mailto:${esc(email)}" style="color:#3B82F6;text-decoration:none;">${esc(email)}</a>` : '-'}</td>`;
             } else if (f === 'uso') {
                 cells += `<td style="text-align:center;">${r[f] || 0}</td>`;
+            } else if (f === 'tiempos') {
+                // Fecha y hora de creación y de la última modificación (pedido de Erika 19/10/2026)
+                cells += `<td>${window.tiemposHTML ? (window.tiemposHTML(r) || '-') : '-'}</td>`;
             } else {
                 // Ya no lleva badge aquí, es normal para todos los campos incluido el código
                 cells += `<td class="left">${sd(r[f])}</td>`;
@@ -983,7 +986,8 @@ function clearClientForm() {
   document.getElementById('cli_nombreComercial').value = '';
   document.getElementById('cli_direccionFiscal').value = '';
   document.getElementById('cli_condicion').value = 'Contado';
-  document.getElementById('cli_diasCredito').value = '0';
+  document.getElementById('cli_diasCredito').value = '';
+  cliSincronizarDias();
   document.getElementById('cli_limiteCredito').value = '';
   document.getElementById('cli_descuento').value = '';
   document.getElementById('cli_estado').value = 'Activo';
@@ -1022,9 +1026,16 @@ function fillClientForm(data) {
     Object.keys(campos).forEach(id => {
         const el = document.getElementById(id);
         if (el) {
+            if (id === 'cli_diasCredito' && el.tagName === 'SELECT') {
+                const d = String(parseInt(campos[id], 10) || '');
+                if (d && ![...el.options].some(o => o.value === d)) el.add(new Option(d + ' días', d));
+                el.value = d;
+                return;
+            }
             el.value = campos[id];
         }
     });
+    cliSincronizarDias();
     
     // 🔥 CARGAR CONTACTOS - USANDO DATOS DE LA API
     const cc = document.getElementById('cliContacts');
@@ -1088,6 +1099,7 @@ function fillClientForm(data) {
 
 async function openClientModal(editId = null) {
   clientEditId = editId;
+  limpiarAvisoRuc('cliente');
   contactCtr = 0;
   pointCtr = 0;
 
@@ -1213,6 +1225,7 @@ async function consultarSunat() {
       }
       
       showToast('✅ Datos SUNAT cargados correctamente', 'success');
+      avisoRucDuplicado('cliente');
     } else {
       showToast('❌ ' + (data.error || 'Error al consultar SUNAT'), 'error');
     }
@@ -1298,6 +1311,22 @@ function mostrarAlertaClienteCreado(info) {
 }
 window.mostrarAlertaClienteCreado = mostrarAlertaClienteCreado;
 
+// Condición comercial coherente (Erika 19/10/2026): con "Crédito aprobado" se eligen los días (7, 15, 30...);
+// con "Contado" o "Bloqueado" los días no se muestran.
+function cliSincronizarDias() {
+    const cond = document.getElementById('cli_condicion')?.value || 'Contado';
+    const campo = document.getElementById('cli_diasCreditoCampo');
+    const sel = document.getElementById('cli_diasCredito');
+    const esCredito = /cr[eé]dito/i.test(cond);
+    if (campo) campo.style.visibility = esCredito ? 'visible' : 'hidden';
+    if (sel) {
+        if (!esCredito) sel.value = '';
+        sel.style.borderColor = esCredito && !sel.value ? '#F59E0B' : '';
+    }
+}
+window.cliSincronizarDias = cliSincronizarDias;
+document.addEventListener('change', e => { if (e.target && e.target.id === 'cli_diasCredito') cliSincronizarDias(); });
+
 async function saveClient() {
     const contacts = getContacts();
     const points = getPoints();
@@ -1313,7 +1342,7 @@ async function saveClient() {
         telefono: p.telefono || '',
         email: p.email || '',
         condicion_pago: document.getElementById('cli_condicion')?.value || 'Contado',
-        dias_credito: document.getElementById('cli_diasCredito')?.value || '0',
+        dias_credito: /cr[eé]dito/i.test(document.getElementById('cli_condicion')?.value || '') ? (document.getElementById('cli_diasCredito')?.value || '') : '0',
         limite_credito: document.getElementById('cli_limiteCredito')?.value?.trim() || '',
         descuento: document.getElementById('cli_descuento')?.value?.trim() || '',
         estado: document.getElementById('cli_estado')?.value || 'Activo',
@@ -1325,6 +1354,13 @@ async function saveClient() {
 
     if (!data.razon_social) {
         showToast('⚠️ La razón social es obligatoria', 'warning');
+        return;
+    }
+
+    if (/cr[eé]dito/i.test(data.condicion_pago) && !(parseInt(data.dias_credito, 10) > 0)) {
+        showToast('⚠️ Con "Crédito aprobado" elige los días de crédito (7, 15, 30, 60, 90, 120...)', 'warning');
+        const sel = document.getElementById('cli_diasCredito');
+        if (sel) { sel.style.borderColor = '#DC2626'; sel.focus(); }
         return;
     }
 
@@ -1420,6 +1456,7 @@ async function saveClient() {
 // ============================================================
 function openProveedorModal(editId = null) {
     provEditId = editId;
+    limpiarAvisoRuc('proveedor');
     if (editId) {
         fetch(`/maestros/api/proveedores/${editId}`)
             .then(r => r.json())
@@ -1454,6 +1491,8 @@ function clearProveedorForm() {
     document.getElementById('prov_cuenta').value = '';
     document.getElementById('prov_cci').value = '';
     document.getElementById('prov_condicion').value = 'Contado';
+    document.getElementById('prov_diasCredito').value = '';
+    provCondicionCambio();
     document.getElementById('prov_lineaCredito').value = '';
     document.getElementById('prov_moneda').value = 'Soles';
     document.getElementById('prov_descuento').value = '';
@@ -1466,6 +1505,17 @@ function clearProveedorForm() {
     document.getElementById('prov_estado').value = 'Activo';
     document.getElementById('prov_obs').value = '';
     syncProvState();
+}
+
+// Condición de pago del proveedor: los días solo se piden cuando es Crédito
+function provCondicionCambio() {
+    const sel = document.getElementById('prov_condicion');
+    const wrap = document.getElementById('prov_diasWrap');
+    if (!sel || !wrap) return;
+    const credito = sel.value === 'Crédito';
+    wrap.style.display = credito ? '' : 'none';
+    const txt = document.getElementById('prov_condicionTexto');
+    if (txt) txt.textContent = credito ? condPagoTexto('Crédito', document.getElementById('prov_diasCredito').value) : '';
 }
 
 function fillProveedorForm(data) {
@@ -1483,7 +1533,11 @@ function fillProveedorForm(data) {
     document.getElementById('prov_tipoCuenta').value = data.tipoCuenta || 'Cuenta corriente';
     document.getElementById('prov_cuenta').value = data.cuenta || '';
     document.getElementById('prov_cci').value = data.cci || '';
-    document.getElementById('prov_condicion').value = data.condicion_pago || 'Contado';
+    // Antes se guardaba "Crédito 30 días", "Credito", "46"... se separa en tipo + número de días
+    const cp = condPagoPartes(data.condicion_pago || 'Contado');
+    document.getElementById('prov_condicion').value = cp.tipo === 'Crédito' ? 'Crédito' : 'Contado';
+    document.getElementById('prov_diasCredito').value = cp.dias || '';
+    provCondicionCambio();
     document.getElementById('prov_lineaCredito').value = data.lineaCredito || '';
     document.getElementById('prov_moneda').value = data.moneda || 'Soles';
     document.getElementById('prov_descuento').value = data.descuento || '';
@@ -1538,7 +1592,7 @@ async function saveProveedor() {
         tipoCuenta: document.getElementById('prov_tipoCuenta').value,
         cuenta: document.getElementById('prov_cuenta').value.trim(),
         cci: document.getElementById('prov_cci').value.trim(),
-        condicion_pago: document.getElementById('prov_condicion').value,
+        condicion_pago: condPagoTexto(document.getElementById('prov_condicion').value, document.getElementById('prov_diasCredito').value),
         lineaCredito: document.getElementById('prov_lineaCredito').value.trim(),
         moneda: document.getElementById('prov_moneda').value,
         descuento: document.getElementById('prov_descuento').value.trim(),
@@ -1554,6 +1608,7 @@ async function saveProveedor() {
 
     if (!data.razon_social) { showToast('⚠️ La razón social es obligatoria', 'warning'); return; }
     if (!data.ruc) { showToast('⚠️ El RUC es obligatorio', 'warning'); return; }
+    if (data.condicion_pago === 'Crédito') { showToast('⚠️ Escribe el número de días de crédito', 'warning'); document.getElementById('prov_diasCredito').focus(); return; }
 
     try {
         const url = provEditId ? `/maestros/api/proveedores/${provEditId}` : '/maestros/api/proveedores/guardar';
@@ -1601,6 +1656,7 @@ async function consultarSunatProveedor(ruc) {
                 }
             }
             showToast('✅ Datos SUNAT cargados correctamente', 'success');
+            avisoRucDuplicado('proveedor');
         } else {
             showToast('❌ ' + (data.error || 'Error al consultar SUNAT'), 'error');
         }
@@ -2838,10 +2894,10 @@ function renderClientesCompleta(list) {
     
     const allFields = [
         { key: 'id', label: 'ID', width: '50px' },
-        { key: 'codigo_cliente', label: 'Código / Cliente', width: '100px' },
+        { key: 'codigo_cliente', label: 'Código de cliente', width: '100px' },
         { key: 'ambito', label: 'Ámbito', width: '90px' },
         { key: 'tipo_documento', label: 'Tipo Doc.', width: '80px' },
-        { key: 'numero_documento', label: 'N° Documento', width: '120px' },
+        { key: 'numero_documento', label: 'Nr° de documento (RUC / DNI)', width: '120px' },
         { key: 'razon_social', label: 'Razón Social', width: '180px' },
         { key: 'nombre_comercial', label: 'Nombre Comercial', width: '150px' },
         { key: 'direccion_fiscal', label: 'Dirección Fiscal', width: '200px' },
@@ -2857,8 +2913,8 @@ function renderClientesCompleta(list) {
         { key: 'estado', label: 'Estado', width: '90px' },
         { key: 'activo', label: 'Activo', width: '70px' },
         { key: 'observaciones', label: 'Observaciones', width: '150px' },
-        { key: 'created_at', label: 'Creado', width: '110px' },
-        { key: 'updated_at', label: 'Actualizado', width: '110px' }
+        { key: 'created_at', label: 'Creado (fecha y hora)', width: '110px' },
+        { key: 'updated_at', label: 'Última modificación', width: '110px' }
     ];
     
     let headersHtml = '<th style="width:40px;">Item</th>';
@@ -2979,7 +3035,7 @@ function renderProveedoresCompleta(list) {
     
     const allFields = [
         { key: 'id', label: 'ID', width: '50px' },
-        { key: 'codigo_proveedor', label: 'Código / Proveedor', width: '100px' },
+        { key: 'codigo_proveedor', label: 'Código de proveedor', width: '100px' },
         { key: 'ambito', label: 'Ámbito', width: '90px' },
         { key: 'ruc', label: 'RUC', width: '120px' },
         { key: 'razon_social', label: 'Razón Social', width: '180px' },
@@ -2999,7 +3055,8 @@ function renderProveedoresCompleta(list) {
         { key: 'estado', label: 'Estado', width: '90px' },
         { key: 'activo', label: 'Activo', width: '70px' },
         { key: 'observaciones', label: 'Observaciones', width: '150px' },
-        { key: 'fecha_creacion', label: 'Creado', width: '110px' }
+        { key: 'fecha_creacion', label: 'Creado (fecha y hora)', width: '110px' },
+        { key: 'updated_at', label: 'Última modificación', width: '110px' }
     ];
     
     let headersHtml = '<th style="width:40px;">Item</th>';
@@ -3051,8 +3108,10 @@ function renderProveedoresCompleta(list) {
                 } else {
                     value = '-';
                 }
-            } else if (f.key === 'fecha_creacion') {
+            } else if (f.key === 'fecha_creacion' || f.key === 'updated_at') {
                 value = value ? window.fechaHoraLima(value) : '-';
+            } else if (f.key === 'condicion_pago') {
+                value = condPagoMostrar(value) || '-';
             }
             
             cells += `<td style="text-align:center;">${value}</td>`;
@@ -3092,6 +3151,45 @@ function renderProveedoresCompleta(list) {
 // ELIMINAR REGISTRO (DELETE REAL)
 // ============================================================
 
+// Proveedor con productos o historial: no se borra; se explica y se ofrece desactivarlo (pedido de Erika 19/10/2026)
+function dialogoProveedorEnUso(result, id, modulo) {
+    document.getElementById('dlgProvEnUso')?.remove();
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const d = document.createElement('div');
+    d.id = 'dlgProvEnUso';
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    d.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;">
+            <div style="background:#D50000;color:#fff;padding:14px 18px;font-weight:800;font-size:16px;">🚫 No se puede eliminar</div>
+            <div style="padding:18px;font-size:14px;line-height:1.5;color:#1F2937;">
+                <p style="margin:0 0 10px;font-weight:700;">${esc(result.error)}</p>
+                <p style="margin:0 0 10px;color:#475569;">Tiene: <b>${esc(result.detalle || '')}</b>.</p>
+                <p style="margin:0;color:#0F7A3A;font-weight:700;">${esc(result.sugerencia || '')}</p>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;background:#F8FAFC;border-top:1px solid #E5E7EB;">
+                <button type="button" class="btn btn-secondary" data-dlg="cerrar">Cerrar</button>
+                <button type="button" class="btn btn-primary" data-dlg="desactivar" style="background:#FF6D00;border-color:#E65100;">Desactivar proveedor</button>
+            </div>
+        </div>`;
+    d.addEventListener('click', async ev => {
+        const accion = ev.target.closest('[data-dlg]')?.dataset.dlg;
+        if (ev.target === d || accion === 'cerrar') { d.remove(); return; }
+        if (accion !== 'desactivar') return;
+        try {
+            const r = await fetch(`${getApiBase(modulo)}/${modulo}/${id}/desactivar`, { method: 'PUT' });
+            const j = await r.json();
+            if (!j.success) throw new Error(j.error || 'No se pudo desactivar');
+            d.remove();
+            showToast(`✅ ${j.message}`, 'success');
+            await loadModuleData(modulo, true);
+            renderModule(modulo);
+        } catch (err) {
+            showToast(`❌ ${err.message}`, 'error');
+        }
+    });
+    document.body.appendChild(d);
+}
+
 async function eliminarRegistro(modulo, id) {
     try {
         const apiBase = getApiBase(modulo);
@@ -3105,6 +3203,8 @@ async function eliminarRegistro(modulo, id) {
             showToast(`✅ Registro eliminado correctamente`, 'success');
             await loadModuleData(modulo, true);
             renderModule(modulo);
+        } else if (result.codigo === 'proveedor_en_uso') {
+            dialogoProveedorEnUso(result, id, modulo);
         } else {
             showToast(`❌ Error: ${result.error || 'No se pudo eliminar'}`, 'error');
         }
@@ -3113,3 +3213,72 @@ async function eliminarRegistro(modulo, id) {
         showToast(`❌ Error: ${error.message}`, 'error');
     }
 }
+
+// ============================================================
+// AVISO "RUC YA REGISTRADO" (pedido de Erika 20/10/2026)
+// Apenas se escribe o se carga el RUC (también con SUNAT), si ya existe otro cliente/proveedor con ese RUC
+// sale un aviso rojo grande debajo del campo. El servidor igual impide guardarlo duplicado.
+// ============================================================
+const _rucCampo = { cliente: 'cli_numero', proveedor: 'prov_ruc' };
+function _rucCaja(tipo) {
+    const inp = document.getElementById(_rucCampo[tipo]);
+    if (!inp) return null;
+    let caja = document.getElementById('rucAviso_' + tipo);
+    if (!caja) {
+        caja = document.createElement('div');
+        caja.id = 'rucAviso_' + tipo;
+        caja.className = 'ruc-aviso-duplicado';
+        caja.setAttribute('role', 'alert');
+        caja.style.cssText = 'display:none;grid-column:1 / -1;margin:4px 0 6px;padding:10px 14px;border-radius:10px;background:#DC2626;color:#fff;' +
+            'font-size:14px;font-weight:800;line-height:1.35;border:3px solid #7F1D1D;box-shadow:0 4px 14px rgba(220,38,38,.35)';
+        // Ocupa todo el ancho, en la fila siguiente al campo del RUC
+        const campo = inp.closest('.cm-field');
+        if (campo) campo.insertAdjacentElement('afterend', caja); else inp.parentElement.appendChild(caja);
+    }
+    return { inp, caja };
+}
+function limpiarAvisoRuc(tipo) {
+    const x = _rucCaja(tipo);
+    if (!x) return;
+    x.caja.style.display = 'none';
+    x.caja.innerHTML = '';
+    x.inp.style.borderColor = '';
+    x.inp.style.boxShadow = '';
+}
+async function avisoRucDuplicado(tipo) {
+    const x = _rucCaja(tipo);
+    if (!x) return false;
+    const ruc = (x.inp.value || '').replace(/[^0-9A-Za-z]/g, '');
+    if (ruc.length < 8) { limpiarAvisoRuc(tipo); return false; }
+    const excluir = tipo === 'proveedor' ? (provEditId || 0) : (clientEditId || 0);
+    try {
+        const r = await fetch(`/maestros/api/ruc-registrado?tipo=${tipo}&ruc=${encodeURIComponent(ruc)}&excluir=${excluir}`).then(res => res.json());
+        if ((x.inp.value || '').replace(/[^0-9A-Za-z]/g, '') !== ruc) return false;   // ya escribieron otro RUC
+        if (r && r.registrado) {
+            const quien = tipo === 'proveedor' ? 'proveedor' : 'cliente';
+            const esc = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            x.caja.innerHTML = `⛔ Este RUC ya está registrado como ${quien}: <b>${esc(r.codigo)}</b> · ${esc(r.razon_social)}` +
+                `${r.estado ? ` (${esc(r.estado)})` : ''}.<br><span style="font-weight:600">No lo vuelvas a crear: búscalo en la lista y edítalo.</span>`;
+            x.caja.style.display = 'block';
+            x.inp.style.borderColor = '#DC2626';
+            x.inp.style.boxShadow = '0 0 0 3px rgba(220,38,38,.3)';
+            if (typeof showToast === 'function') showToast(`⛔ El RUC ${ruc} ya está registrado (${r.codigo || r.razon_social})`, 'error');
+            return true;
+        }
+        limpiarAvisoRuc(tipo);
+    } catch (e) {
+        console.warn('No se pudo revisar si el RUC ya existe:', e);
+    }
+    return false;
+}
+window.avisoRucDuplicado = avisoRucDuplicado;
+window.limpiarAvisoRuc = limpiarAvisoRuc;
+(function () {
+    let t = null;
+    document.addEventListener('input', e => {
+        const tipo = e.target && e.target.id === 'cli_numero' ? 'cliente' : (e.target && e.target.id === 'prov_ruc' ? 'proveedor' : null);
+        if (!tipo) return;
+        clearTimeout(t);
+        t = setTimeout(() => avisoRucDuplicado(tipo), 400);
+    });
+})();
