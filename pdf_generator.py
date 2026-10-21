@@ -1629,28 +1629,28 @@ class PDFGenerator:
             font-style: italic;
         }
         
-        .footer {
+  .footer {
     margin-top: auto;
     display: flex;
     justify-content: center;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px 18px;
-    padding: 5px 4px 0;
-    font-size: 9.5px;
+    gap: 6px 22px;
+    padding: 6px 4px 0;
+    font-size: 12px;          /* 🔼 antes 9.5px */
     color: #1a1a1a;
-    font-weight: 600;
+    font-weight: 700;         /* 🔼 un poco más marcado */
 }
 .footer .item {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;                 /* 🔼 un poco más de aire entre ícono y texto */
     white-space: nowrap;
     line-height: 1;
 }
 .footer .item svg {
-    width: 13px;
-    height: 13px;
+    width: 17px;              /* 🔼 antes 13px */
+    height: 17px;
     fill: #1a1a1a;
     flex-shrink: 0;
 }
