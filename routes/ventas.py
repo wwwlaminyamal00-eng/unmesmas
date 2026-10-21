@@ -22,6 +22,7 @@ from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, 
                                  empresa_por_id, empresas, datos_empresa_documento, empresa_id_por_ruc,
                                  empresa_por_codigo, marca_pdf)
 from psycopg2.extras import RealDictCursor
+from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
 from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
                    totales_consistentes, bloquear_numeracion, normalizar_condicion, dias_de_condicion,
                    mayuscula_inicial)
@@ -1187,7 +1188,8 @@ def guardar_pc_db(data):
                 cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::bigint), 0) + 1 AS sig
                                FROM pedido_compra_pc WHERE numero ~ %s""",
                             (len(numero_pedido) + 1, '^' + numero_pedido + '[0-9]+$'))
-                params = (numero_pedido + str(cur.fetchone()['sig']).zfill(6),) + tuple(params[1:])
+                sig = con_piso(cur, 'PC', clave_pc(numero_pedido[3:-1]), cur.fetchone()['sig'])
+                params = (numero_pedido + str(sig).zfill(6),) + tuple(params[1:])
                 cur.execute(query, params)
                 result = cur.fetchall()
         else:
@@ -1646,7 +1648,7 @@ def api_cotizaciones_guardar():
                 bloquear_numeracion(cur, 'cotizaciones')
                 cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(correlativo::text, '\\D', '', 'g'), '')::bigint), 0) + 1
                                AS siguiente FROM cotizaciones""")
-                correlativo = cur.fetchone()['siguiente']
+                correlativo = con_piso(cur, 'COT', '', cur.fetchone()['siguiente'])
                 numero = f"COT-{str(correlativo).zfill(6)}"
                 codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(correlativo).zfill(4)}"
                 cur.execute("""
@@ -2578,6 +2580,8 @@ def api_guias_guardar():
             else:
                 numero = _siguiente_numero(cur, 'guias_remision', serie, extra_where='AND empresa_id IS NOT DISTINCT FROM %s',
                                            extra_params=(empresa_guia,))
+                # Configuración ▸ Correlativos: el administrador puede fijar desde qué número sigue
+                numero = str(con_piso(cur, 'GUIA', clave_guia(empresa_guia, serie), numero)).zfill(8)
             data['numero'] = numero
             # La guía se guarda dentro de la misma transacción del número: dos guías al mismo tiempo
             # ya no pueden recibir el mismo correlativo (antes el bloqueo se soltaba antes de guardar).
@@ -3193,7 +3197,10 @@ def api_comprobantes_guardar():
                     SELECT COALESCE(MAX(NULLIF(regexp_replace(numero::text, '\\D', '', 'g'), '')::bigint), 0) + 1 AS siguiente
                     FROM comprobantes WHERE tipo_comprobante = %s AND serie = %s AND empresa_id IS NOT DISTINCT FROM %s
                 """, (comprobante_data['tipo_comprobante'], comprobante_data['serie'], empresa_comp))
-                comprobante_data['numero'] = str(cur.fetchone()['siguiente']).zfill(8)
+                comprobante_data['numero'] = str(con_piso(
+                    cur, 'COMPROBANTE', clave_comprobante(comprobante_data['tipo_comprobante'], empresa_comp,
+                                                          comprobante_data['serie']),
+                    cur.fetchone()['siguiente'])).zfill(8)
             cur.execute(_SQL_INSERT_COMPROBANTE, _params_insert_comprobante(comprobante_data))
             fila = cur.fetchone()
             if fila:
@@ -4791,15 +4798,9 @@ def api_cotizaciones_duplicar(id):
         
         # 3. Generar nuevo número de cotización
         from datetime import datetime
-        count_data = db_query("SELECT COUNT(*) as total FROM cotizaciones")
-        count = count_data[0]['total'] + 1 if count_data else 1
-        nuevo_numero = f"COT-{str(count).zfill(6)}"
-        codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
-        
         usuario_id = session.get('usuario_id')
         cliente_id = cabecera[0].get('cliente_id')
         
-        print(f"📋 Nuevo número: {nuevo_numero}")
         print(f"👤 Usuario: {usuario_id}")
         print(f"🏢 Cliente ID: {cliente_id}")
         
@@ -4807,6 +4808,14 @@ def api_cotizaciones_duplicar(id):
         with db_tx() as conn:
             from psycopg2.extras import RealDictCursor
             cur = conn.cursor(cursor_factory=RealDictCursor)
+            # Mismo número que una cotización nueva (antes contaba filas y podía repetir un N°)
+            bloquear_numeracion(cur, 'cotizaciones')
+            cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(correlativo::text, '\\D', '', 'g'), '')::bigint), 0) + 1
+                           AS siguiente FROM cotizaciones""")
+            count = con_piso(cur, 'COT', '', cur.fetchone()['siguiente'])
+            nuevo_numero = f"COT-{str(count).zfill(6)}"
+            codigo = f"COT-{datetime.now().strftime('%Y%m%d')}-{str(count).zfill(4)}"
+            print(f"📋 Nuevo número: {nuevo_numero}")
             
             # Insertar cabecera
             cur.execute("""

@@ -133,7 +133,7 @@ def test_anular_comprobante_anula_sus_cobros_en_caja(vendedor, admin):
     cid = factura(vendedor, total=236, subtotal=200, igv=36).get_json()['data']['id']
     vendedor.put(f'/ventas/api/comprobantes/{cid}/toggle', json={'estado': 'Emitido'})
     r = admin.post('/finanzas/api/movimientos', json={'tipo': 'COBRO', 'documento_id': cid, 'monto': 100,
-                                                      'metodo': 'Transferencia'})
+                                                      'metodo': 'Transferencia', 'fecha_aviso': '2026-10-21'})
     assert r.status_code == 200, r.get_json()
     r = vendedor.put(f'/ventas/api/comprobantes/{cid}/toggle', json={'estado': 'Anulado'})
     assert r.status_code == 200 and '1 cobro(s)' in r.get_json()['message']

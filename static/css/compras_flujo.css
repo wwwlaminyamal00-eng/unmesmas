@@ -176,3 +176,6 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 
 /* A qué PC pertenece la OC (pedido de Erika 20/10/2026 22:54) */
 .com-relacion-pc{margin:0 0 8px;padding:8px 12px;border:2px solid #1D4ED8;border-radius:10px;background:#EFF6FF;color:#0F172A;font-size:14px;font-weight:700}
+.com-cubierto{display:block;font-size:11px;font-weight:800;color:#047857;white-space:nowrap}
+.com-ocultos{margin:6px 10px 10px}
+.com-oc-generada{display:block;margin-top:2px;font-size:11px;font-weight:900;color:#047857}

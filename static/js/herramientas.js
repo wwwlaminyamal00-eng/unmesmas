@@ -41,11 +41,15 @@
         document.querySelectorAll('#herrCards .hr-card').forEach(b => b.classList.toggle('activa', b.dataset.sec === sec));
         document.querySelectorAll('.hr-section').forEach(s => s.classList.toggle('active', s.id === 'hsec-' + sec));
         try { localStorage.setItem('herr_sec', sec); } catch (e) { /* sin almacenamiento */ }
+        try { history.replaceState(null, '', '/herramientas?sec=' + encodeURIComponent(sec)); } catch (e) { /* nada */ }
+        if (window.abrirMenuModulo) window.abrirMenuModulo();   // el menú lateral marca la sección abierta
     }
     document.querySelectorAll('#herrCards .hr-card').forEach(b => b.addEventListener('click', () => abrir(b.dataset.sec)));
     try { const s = localStorage.getItem('herr_sec'); if (s && $('hsec-' + s)) abrir(s); } catch (e) { /* nada */ }
     const hash = (location.hash || '').replace('#', '');
     if (hash && $('hsec-' + hash)) abrir(hash);
+    const secUrl = new URLSearchParams(location.search).get('sec');   // enlaces del menú lateral
+    if (secUrl && $('hsec-' + secUrl)) abrir(secUrl);
 
     // ---------- 1. Importar ----------
     let ultimaRevision = null;

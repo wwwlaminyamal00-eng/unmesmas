@@ -88,7 +88,7 @@
             return `<span class="sem-chip sem-atencion">POR VENCER · ${n === 0 ? 'vence hoy' : `faltan ${n} día${n === 1 ? '' : 's'}`}</span>`;
         }
         if (x.semaforo === 'Al día') {
-            return `<span class="sem-chip sem-ok">AL DÍA${n !== null && n !== undefined ? ` · faltan ${n} días` : ''}</span>`;
+            return `<span class="sem-chip sem-aldia">AL DÍA${n !== null && n !== undefined ? ` · faltan ${n} días` : ''}</span>`;
         }
         return `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}</span>`;
     }
@@ -103,7 +103,7 @@
             body.innerHTML = lista.map(x => {
                 const accion = x.saldo > 0
                     ? `<button class="btn-mini" ${PUEDE_OPERAR ? '' : 'disabled title="Sin permiso"'} data-pagar="${tipo}:${x.id}">${esCxc ? 'Registrar cobro' : 'Registrar pago'}</button>`
-                    : '<span class="sem sem-pagado">Pagado</span>';
+                    : `<span class="sem sem-terminado">✔ ${esCxc ? 'Cobrado' : 'Pagado'}</span>`;
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
                 const chip = esCxc
                     ? `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}${x.dias_vencido ? ' · ' + x.dias_vencido + ' d' : ''}</span>`
@@ -132,15 +132,19 @@
         const body = document.getElementById('movBody');
         const tipo = document.getElementById('movTipo').value;
         try {
-            const { data } = await api('/finanzas/api/movimientos' + (tipo ? `?tipo=${tipo}` : ''));
-            body.innerHTML = data.length ? data.map(m => `<tr>
+            const q = (document.getElementById('movBuscar')?.value || '').trim();
+            const params = new URLSearchParams();
+            if (tipo) params.set('tipo', tipo);
+            if (q) params.set('q', q);
+            const { data } = await api('/finanzas/api/movimientos' + (params.toString() ? '?' + params : ''));
+            body.innerHTML = data.length ? data.map(m => `<tr class="${m.tipo === 'COBRO' ? 'fila-cobro' : 'fila-pago'}">
                 <td>${fecha(m.fecha)}</td>
-                <td><span class="badge ${m.tipo === 'COBRO' ? 'badge-ok' : 'badge-danger'}">${m.tipo === 'COBRO' ? 'Cobro' : 'Pago'}</span></td>
+                <td><span class="fin-tipo ${m.tipo === 'COBRO' ? 'fin-tipo-cobro' : 'fin-tipo-pago'}">${m.tipo === 'COBRO' ? '⬇ Cobro' : '⬆ Pago'}</span></td>
                 <td>${esc(m.documento_numero)}</td>
                 <td class="left">${esc(m.tercero_nombre)}</td>
                 <td class="num">${soles(m.monto)}</td>
                 <td>${esc(m.metodo)}</td>
-                <td>${esc([m.banco, m.numero_operacion].filter(Boolean).join(' · ')) || '—'}</td>
+                <td>${esc([m.banco, m.numero_operacion ? 'Op. ' + m.numero_operacion : '', m.fecha_aviso ? 'Avisó ' + fecha(m.fecha_aviso) : ''].filter(Boolean).join(' · ')) || '—'}</td>
                 <td>${esc(m.usuario_nombre || '')}</td>
                 <td>${m.estado === 'Anulado' ? `<span class="badge badge-gray" title="${esc(m.motivo_anulacion)}">Anulado</span>` : '<span class="badge badge-info">Registrado</span>'}</td>
                 <td>${m.estado !== 'Anulado' && PUEDE_OPERAR ? `<button class="btn-mini danger" data-anular="${m.id}">Anular</button>` : ''}</td>
@@ -176,6 +180,12 @@
     const abrir = id => document.getElementById(id).classList.add('show');
     const cerrar = id => document.getElementById(id).classList.remove('show');
 
+    // Cuentas escritas "de relleno" al registrar al proveedor (1111..., 5555444488889999, 123123...)
+    function cuentaDeRelleno(...nums) {
+        return nums.some(n => { const d = String(n || '').replace(/\D/g, '');
+            return d && (/(\d)\1{5,}/.test(d) || /(\d{2,4})\1{3,}/.test(d) || d === '5555444488889999'); });
+    }
+
     function abrirPago(tipo, id) {
         const doc = datos[tipo].find(x => String(x.id) === String(id));
         if (!doc) return;
@@ -183,13 +193,41 @@
         document.getElementById('pagoTitulo').textContent = esCxc ? 'Registrar cobro' : 'Registrar pago';
         document.getElementById('pagoTipo').value = esCxc ? 'COBRO' : 'PAGO';
         document.getElementById('pagoDocId').value = doc.id;
-        document.getElementById('pagoDoc').innerHTML =
-            `${esc(doc.tipo_comprobante || '')} <b>${esc(doc.documento)}</b> · ${esc(doc.tercero)}<br>` +
-            `Total ${soles(doc.total)} · Saldo pendiente <b>${soles(doc.saldo)}</b>`;
+        // Un dato por línea y siempre en el mismo orden (pedido de Erika 21/10 17:22)
+        const fila = (et, val, cls = '') => `<div class="fd-et">${et}</div><div class="fd-val ${cls}">${val}</div>`;
+        let ficha = `<div class="fd-titulo">${esCxc ? 'Cobrar a' : 'Pagar a'}</div>` +
+            fila(esCxc ? 'Cliente' : 'Proveedor', esc(doc.tercero || '—')) +
+            fila('RUC / DNI', esc(doc.ruc || '—'), 'fd-num');
+        if (!esCxc) {
+            ficha += fila('Banco', esc(doc.banco || '—')) +
+                fila('N° de cuenta', esc(doc.numero_cuenta || '—'), 'fd-num') +
+                fila('CCI', esc(doc.cci || '—'), 'fd-num');
+        }
+        ficha += fila(`N° ${esc((doc.tipo_comprobante || 'documento').toLowerCase())}`, esc(doc.documento || '—'), 'fd-num') +
+            fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', soles(doc.total), 'fd-monto');
+        if (esCxc && doc.retencion) ficha += fila('Retención', soles(doc.retencion));
+        if (doc.notas_credito) ficha += fila('Nota de crédito', soles(doc.notas_credito));
+        ficha += fila(esCxc ? 'Falta cobrar' : 'Falta pagar', soles(doc.saldo), 'fd-monto ' + (doc.saldo > 0 ? 'fd-falta' : 'fd-ok'));
+        if (!esCxc) {
+            if (cuentaDeRelleno(doc.numero_cuenta, doc.cci)) {
+                ficha += '<div class="fd-nota fd-alerta">⚠️ La cuenta o el CCI parecen de relleno (números repetidos). Confírmalos con el proveedor y corrígelos en Maestros ▸ Proveedores antes de pagar.</div>';
+            }
+            ficha += (doc.numero_cuenta || doc.cci)
+                ? '<div class="fd-nota">Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</div>'
+                : '<div class="fd-nota fd-alerta">⚠️ El proveedor no tiene cuenta registrada. Regístrala en Maestros ▸ Proveedores antes de pagar.</div>';
+        }
+        const cajaDoc = document.getElementById('pagoDoc');
+        cajaDoc.className = 'ficha-datos ' + (esCxc ? 'fd-cobro' : 'fd-pago');
+        cajaDoc.innerHTML = ficha;
         document.getElementById('pagoMonto').value = doc.saldo.toFixed(2);
         document.getElementById('pagoMonto').max = doc.saldo.toFixed(2);
         document.getElementById('pagoFecha').value = hoyISO();
-        ['pagoBanco', 'pagoOperacion', 'pagoObs'].forEach(i => { document.getElementById(i).value = ''; });
+        ['pagoBanco', 'pagoOperacion', 'pagoAviso', 'pagoObs'].forEach(i => { document.getElementById(i).value = ''; });
+        document.getElementById('pagoAvisoTip').style.display = esCxc ? '' : 'none';
+        // La fecha de aviso es solo de cobros (el cliente avisa); en un pago basta el N.º de operación
+        document.getElementById('pagoAviso').closest('label').style.display = esCxc ? '' : 'none';
+        document.getElementById('pagoOperacion').placeholder = esCxc ? 'Si el cliente lo envió' : 'Está en la constancia del banco';
+        document.getElementById('pagoBanco').placeholder = esCxc ? 'Banco donde entró el dinero (Ej. BCP)' : 'Banco desde el que se pagó (Ej. BCP)';
         abrir('pagoModal');
     }
 
@@ -199,6 +237,12 @@
         const max = parseFloat(document.getElementById('pagoMonto').max);
         if (!(monto > 0)) { aviso('Ingresa un monto mayor a 0', 'warning'); return; }
         if (monto > max + 0.001) { aviso('El monto no puede superar el saldo pendiente', 'warning'); return; }
+        const conBanco = ['Transferencia', 'Depósito', 'Yape/Plin'].includes(document.getElementById('pagoMetodo').value);
+        if (document.getElementById('pagoTipo').value === 'COBRO' && conBanco &&
+            !document.getElementById('pagoOperacion').value.trim() && !document.getElementById('pagoAviso').value) {
+            aviso('Escribe el N.º de operación o la fecha de aviso de pago (lo que haya mandado el cliente).', 'warning');
+            return;
+        }
         btn.disabled = true;
         try {
             const r = await api('/finanzas/api/movimientos', {
@@ -211,6 +255,7 @@
                     metodo: document.getElementById('pagoMetodo').value,
                     banco: document.getElementById('pagoBanco').value,
                     numero_operacion: document.getElementById('pagoOperacion').value,
+                    fecha_aviso: document.getElementById('pagoAviso').value,
                     observaciones: document.getElementById('pagoObs').value
                 })
             });
@@ -265,6 +310,8 @@
     function activarTab(tab) {
         document.querySelectorAll('#finTabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
         document.querySelectorAll('#finanzasApp > .section').forEach(s => s.classList.toggle('active', s.id === 'sec-' + tab));
+        try { history.replaceState(null, '', '/finanzas?tab=' + tab); } catch (e) { /* nada */ }
+        if (window.abrirMenuModulo) window.abrirMenuModulo();   // el menú lateral marca la pestaña abierta
     }
 
     // ---------- eventos ----------
@@ -279,6 +326,8 @@
     });
     document.getElementById('cxcBorradores').addEventListener('change', () => cargarCuentas('cxc'));
     document.getElementById('movTipo').addEventListener('change', cargarMovimientos);
+    let esperaMov;
+    document.getElementById('movBuscar').addEventListener('input', () => { clearTimeout(esperaMov); esperaMov = setTimeout(cargarMovimientos, 300); });
     document.getElementById('flujoSemanas').addEventListener('change', cargarFlujo);
     document.getElementById('pagoGuardar').addEventListener('click', guardarPago);
     document.getElementById('vencGuardar').addEventListener('click', guardarVencimiento);
@@ -297,6 +346,12 @@
     });
 
     const tabInicial = new URLSearchParams(location.search).get('tab');
-    if (['cxc', 'cxp', 'movimientos', 'flujo'].includes(tabInicial)) activarTab(tabInicial);
+    const tabArranque = ['cxc', 'cxp', 'movimientos', 'flujo'].includes(tabInicial) ? tabInicial : 'cxc';
+    activarTab(tabArranque);
+    // El menú general quita el resaltado de las pestañas al cargar: se vuelve a marcar la pestaña abierta
+    window.addEventListener('load', () => setTimeout(() => {
+        const abierta = document.querySelector('#finanzasApp > .section.active');
+        activarTab(abierta ? abierta.id.replace('sec-', '') : tabArranque);
+    }, 50));
     refrescarTodo();
 })();

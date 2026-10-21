@@ -31,6 +31,9 @@ def rol_actual():
 
 
 def es_admin():
+    # Usuario configurado en el ERP: manda su rol ERP (GERENCIA_TOTAL), no usuarios.rol (21/10/2026)
+    if 'admin_erp' in session:
+        return bool(session.get('admin_erp'))
     return rol_actual() in ROLES_ADMIN
 
 

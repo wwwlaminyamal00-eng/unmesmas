@@ -11,10 +11,8 @@ correlativos_bp = Blueprint('correlativos', __name__)
 # ============================================================
 # RUTA PARA LA PÁGINA HTML
 # ============================================================
-@correlativos_bp.route('/correlativos')
-def correlativos_page():
-    """Página de correlativos"""
-    return render_template('correlativos.html')
+# La página /correlativos ahora la sirve routes/numeracion.py (Configuración ▸ Correlativos, 21/10/2026).
+# Estas APIs antiguas sobre erp_correlativos se conservan por compatibilidad.
 
 # ============================================================
 # ENDPOINTS API PARA CORRELATIVOS

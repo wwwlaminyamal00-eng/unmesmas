@@ -344,7 +344,7 @@ class TestFinanzas:
         assert doc['saldo'] == 590.0
         # el vendedor no tiene rol de finanzas
         assert vendedor.post('/finanzas/api/movimientos', json={'tipo': 'COBRO', 'documento_id': cid, 'monto': 10}).status_code == 403
-        mov = {'tipo': 'COBRO', 'documento_id': cid, 'metodo': 'Transferencia', 'banco': 'BCP'}
+        mov = {'tipo': 'COBRO', 'documento_id': cid, 'metodo': 'Transferencia', 'banco': 'BCP', 'numero_operacion': '0001'}
         assert admin.post('/finanzas/api/movimientos', json={**mov, 'monto': 600}).status_code == 400
         r1 = admin.post('/finanzas/api/movimientos', json={**mov, 'monto': 290})
         assert r1.status_code == 200 and r1.json['data']['saldo'] == 300.0

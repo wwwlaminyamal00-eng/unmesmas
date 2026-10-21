@@ -22,6 +22,9 @@ ROLES_FINANZAS = {r.strip().lower() for r in os.environ.get(
     'ROLES_FINANZAS', 'finanzas,contabilidad,tesoreria,gerencia').split(',') if r.strip()}
 
 METODOS_PAGO = ('Transferencia', 'Depósito', 'Efectivo', 'Cheque', 'Yape/Plin', 'Detracción', 'Otro')
+# Cobros por banco: el cliente manda el N.º de operación o solo avisa con una fecha (pedido de Erika 21/10/2026).
+# Se exige al menos uno de los dos, no los dos.
+METODOS_CON_COMPROBANTE = ('Transferencia', 'Depósito', 'Yape/Plin')
 
 _tablas_listas = False
 _lock_tablas = threading.Lock()
@@ -52,6 +55,7 @@ SQL_DDL_FINANZAS = """
     );
     CREATE INDEX IF NOT EXISTS idx_finanzas_pagos_doc ON finanzas_pagos (documento_tabla, documento_id);
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
+    ALTER TABLE finanzas_pagos ADD COLUMN IF NOT EXISTS fecha_aviso DATE;
 """
 
 
@@ -154,10 +158,18 @@ SQL_CXP = """
            COALESCE(pg.pagado, 0) AS cobrado,
            0 AS notas_credito,
            COALESCE(cp.estado, 'Pendiente') AS estado_documento,
-           COALESCE(cp.orden_compra_numero, oc.numero_orden) AS orden_compra
+           COALESCE(cp.orden_compra_numero, oc.numero_orden) AS orden_compra,
+           pr.banco, pr.numero_cuenta, pr.cci
     FROM comprobantes_proveedor cp
     LEFT JOIN pagos pg ON pg.documento_id = cp.id
     LEFT JOIN ordenes_compra oc ON oc.id = cp.orden_compra_id
+    -- Cuenta del proveedor para el recuadro "Pagar a" (por la OC; si no hay OC, por el RUC)
+    LEFT JOIN LATERAL (
+        SELECT p.banco, p.numero_cuenta, p.cci FROM proveedores p
+        WHERE p.id = oc.proveedor_id OR (oc.proveedor_id IS NULL AND p.ruc = cp.ruc_proveedor)
+        ORDER BY (p.id = oc.proveedor_id) DESC NULLS LAST, p.activo DESC NULLS LAST, p.id
+        LIMIT 1
+    ) pr ON TRUE
     WHERE COALESCE(UPPER(cp.estado), '') NOT IN ('ANULADO', 'ANULADA')
 """
 
@@ -312,12 +324,18 @@ def api_movimientos():
     try:
         asegurar_tablas_finanzas()
         tipo = (request.args.get('tipo') or '').upper()
+        q = (request.args.get('q') or '').strip()
         sql_emp, par_emp = filtro_sql('empresa_id')
         sql = "SELECT * FROM finanzas_pagos WHERE TRUE" + sql_emp
         params = list(par_emp)
         if tipo in ('COBRO', 'PAGO'):
             sql += " AND tipo = %s"
             params.append(tipo)
+        if q:
+            # Buscador: documento, cliente / proveedor, RUC, N.º de operación o banco
+            sql += (" AND (documento_numero ILIKE %s OR tercero_nombre ILIKE %s OR tercero_documento ILIKE %s"
+                    " OR numero_operacion ILIKE %s OR banco ILIKE %s)")
+            params += [f'%{q}%'] * 5
         sql += " ORDER BY fecha DESC, id DESC LIMIT 500"
         filas = db_query(sql, params)
         data = []
@@ -358,6 +376,16 @@ def api_registrar_movimiento():
         metodo = data.get('metodo') or 'Transferencia'
         if metodo not in METODOS_PAGO:
             return jsonify({'success': False, 'error': 'Método de pago inválido'}), 400
+        numero_operacion = (data.get('numero_operacion') or '').strip() or None
+        fecha_aviso = None
+        if (data.get('fecha_aviso') or '').strip():
+            try:
+                fecha_aviso = datetime.strptime(data['fecha_aviso'].strip()[:10], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Fecha de aviso de pago inválida'}), 400
+        if tipo == 'COBRO' and metodo in METODOS_CON_COMPROBANTE and not numero_operacion and not fecha_aviso:
+            return jsonify({'success': False, 'error': 'Escribe el N.º de operación o la fecha de aviso de pago '
+                                                       '(lo que haya mandado el cliente).'}), 400
 
         tabla = 'comprobantes' if tipo == 'COBRO' else 'comprobantes_proveedor'
         with db_tx() as conn:
@@ -381,12 +409,12 @@ def api_registrar_movimiento():
                                 'error': f'El monto (S/ {monto:.2f}) supera el saldo pendiente (S/ {saldo:.2f})'}), 400
             cur.execute("""
                 INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre,
-                    tercero_documento, fecha, monto, metodo, banco, numero_operacion, observaciones,
+                    tercero_documento, fecha, monto, metodo, banco, numero_operacion, fecha_aviso, observaciones,
                     usuario_id, usuario_nombre)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (tipo, tabla, documento_id, doc['documento'], doc['tercero'], doc['ruc'], fecha, monto, metodo,
-                  (data.get('banco') or '').strip() or None, (data.get('numero_operacion') or '').strip() or None,
+                  (data.get('banco') or '').strip() or None, numero_operacion, fecha_aviso,
                   (data.get('observaciones') or '').strip() or None,
                   session.get('usuario_id'), session.get('nombre_completo')))
             nuevo_id = cur.fetchone()['id']

@@ -184,6 +184,23 @@
             :is(.table-scroll,.table-wrap)>table td :is(.ts-reg,.abast-badge,.com-paso,.badge-sin-pedido),:is(.table-scroll,.table-wrap)>table td>div{white-space:normal!important}
             #cotizacionModal .product-wide table{min-width:1220px!important}
 /* Tarjetas de resumen en UNA sola fila, todas del mismo tamaño (pedido de Erika 20/10/2026 22:56) */
+/* Todas las tablas del ERP centradas: cabeceras y celdas (pedido de Erika 21/10/2026) */
+table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:center!important;vertical-align:middle!important}
+/* Ficha de datos: un dato por línea con su etiqueta (pedido de Erika 21/10 17:22). Se usa en Registrar pago y Registrar cobro. */
+.ficha-datos{display:grid;grid-template-columns:minmax(150px,auto) 1fr;border:2px solid #CBD5E1;border-radius:12px;overflow:hidden;background:#fff;font-size:14px}
+.ficha-datos .fd-titulo{grid-column:1/-1;padding:7px 12px;font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:#334155}
+.ficha-datos.fd-pago .fd-titulo{background:#7C3AED}
+.ficha-datos.fd-cobro .fd-titulo{background:#0D9488}
+.ficha-datos .fd-et,.ficha-datos .fd-val{display:flex;align-items:center;padding:6px 12px;border-top:1px solid #E2E8F0;line-height:1.3}
+.ficha-datos .fd-et{background:#F8FAFC;color:#475569;font-weight:800;font-size:12.5px;white-space:nowrap}
+.ficha-datos .fd-val{color:#0F172A;font-weight:800;word-break:break-all}
+.ficha-datos .fd-val.fd-num{font-family:ui-monospace,Consolas,monospace;font-size:15px;letter-spacing:.03em}
+.ficha-datos .fd-monto{font-size:17px;font-weight:950}
+.ficha-datos .fd-falta{color:#FF0033}
+.ficha-datos .fd-ok{color:#15803D}
+.ficha-datos .fd-nota{grid-column:1/-1;padding:7px 12px;border-top:1px solid #E2E8F0;font-size:12px;font-weight:700;color:#475569;background:#FFFBEB}
+.ficha-datos .fd-nota.fd-alerta{background:#FEF2F2;color:#B91C1C}
+@media (max-width:520px){.ficha-datos{grid-template-columns:1fr}.ficha-datos .fd-val{border-top:0;padding-top:0}}
 @media (min-width:1100px){
 :is(.status-board,.inv-kpis,.fin-kpis,.master-status-board){display:grid!important;grid-auto-flow:column!important;grid-auto-columns:minmax(0,1fr)!important;grid-template-columns:none!important;flex-wrap:nowrap!important}
 :is(.status-board,.inv-kpis,.fin-kpis,.master-status-board)>*{min-width:0!important;width:auto!important;max-width:none!important;grid-column:auto!important}
@@ -194,6 +211,12 @@
             <!-- Bootstrap Icons -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
         {% block extra_css %}{% endblock %}
+        {% if acceso_menu and acceso_menu.configurado and not acceso_menu.admin %}
+        <style id="menuPermisosServidor">
+        /* Menú según Usuarios y permisos (lo calcula el servidor; 21/10/2026) */
+        .menu-group[data-modulo]:not([data-modulo="dashboard"]){% for m in acceso_menu.modulos %}:not([data-modulo="{{ m }}"]){% endfor %}{display:none!important}
+        </style>
+        {% endif %}
         </head>
         <body data-empresa="{{ emp_ctx.codigo if emp_ctx else 'KCF' }}">
 
@@ -345,10 +368,10 @@
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/finanzas?tab=cxc" class="child-btn" style="text-decoration:none;">Cuentas por cobrar</a>
-                        <a href="/finanzas?tab=cxp" class="child-btn" style="text-decoration:none;">Cuentas por pagar</a>
-                        <a href="/finanzas?tab=movimientos" class="child-btn" style="text-decoration:none;">Cobros y pagos</a>
-                        <a href="/finanzas?tab=flujo" class="child-btn" style="text-decoration:none;">Flujo de caja</a>
+                        <a href="/finanzas?tab=cxc" class="child-btn" data-screen="cxc" style="text-decoration:none;">⬇ Cuentas por cobrar</a>
+                        <a href="/finanzas?tab=cxp" class="child-btn" data-screen="cxp" style="text-decoration:none;">⬆ Cuentas por pagar</a>
+                        <a href="/finanzas?tab=movimientos" class="child-btn" data-screen="movimientos" style="text-decoration:none;">📒 Cobros y pagos</a>
+                        <a href="/finanzas?tab=flujo" class="child-btn" data-screen="flujo" style="text-decoration:none;">📈 Flujo de caja</a>
                     </div>
                 </div>
 
@@ -361,11 +384,12 @@
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/reportes?tab=ventas" class="child-btn" style="text-decoration:none;">Reporte de ventas</a>
-                        <a href="/reportes?tab=compras" class="child-btn" style="text-decoration:none;">Reporte de compras</a>
-                        <a href="/reportes?tab=inventario" class="child-btn" style="text-decoration:none;">Reporte de inventario</a>
-                        <a href="/reportes?tab=cxc" class="child-btn" style="text-decoration:none;">Reporte de finanzas</a>
-                        <a href="/reportes" class="child-btn" style="text-decoration:none;">SUNAT</a>
+                        <a href="/reportes?tab=tablero" class="child-btn" style="text-decoration:none;">📊 Tablero</a>
+                        <a href="/reportes?tab=ventas" class="child-btn" style="text-decoration:none;">💰 Reporte de ventas</a>
+                        <a href="/reportes?tab=compras" class="child-btn" style="text-decoration:none;">🛒 Reporte de compras</a>
+                        <a href="/reportes?tab=inventario" class="child-btn" style="text-decoration:none;">📦 Reporte de inventario</a>
+                        <a href="/reportes?tab=cxc" class="child-btn" style="text-decoration:none;">🧾 Por cobrar (finanzas)</a>
+                        <a href="/reportes?tab=cxp" class="child-btn" style="text-decoration:none;">📑 Por pagar (finanzas)</a>
                     </div>
                 </div>
 
@@ -378,7 +402,14 @@
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/herramientas" class="child-btn" style="text-decoration:none;">Carga masiva</a>
+                        <a href="/herramientas?sec=importar" class="child-btn" style="text-decoration:none;">📥 Importar desde Excel</a>
+                        <a href="/herramientas?sec=exportar" class="child-btn" style="text-decoration:none;">📤 Exportar / respaldo</a>
+                        <a href="/herramientas?sec=correlativos" class="child-btn" style="text-decoration:none;">🔢 Revisar numeraciones</a>
+                        <a href="/herramientas?sec=integridad" class="child-btn" style="text-decoration:none;">🩺 Verificar integridad</a>
+                        <a href="/herramientas?sec=stock" class="child-btn" style="text-decoration:none;">📦 Recalcular stock</a>
+                        <a href="/herramientas?sec=cache" class="child-btn" style="text-decoration:none;">🧹 Limpiar caché</a>
+                        <a href="/herramientas?sec=logs" class="child-btn" style="text-decoration:none;">📜 Registro de errores</a>
+                        <a href="/herramientas?sec=salud" class="child-btn" style="text-decoration:none;">🔌 Conexión a la base</a>
                     </div>
                 </div>
                 <!-- PAPELERA -->
@@ -390,9 +421,8 @@
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/papelera" class="child-btn" style="text-decoration:none;">Documentos anulados</a>
-                        <a href="/papelera" class="child-btn" style="text-decoration:none;">Registros eliminados</a>
-                        <a href="/papelera" class="child-btn" style="text-decoration:none;">Historial de cambios</a>
+                        <a href="/papelera?tab=papelera" class="child-btn" style="text-decoration:none;">🗑️ Anulados y eliminados</a>
+                        {% if usuario_es_admin %}<a href="/papelera?tab=auditoria" class="child-btn" style="text-decoration:none;">📜 Historial de cambios</a>{% endif %}
                     </div>
                 </div>
 
@@ -620,6 +650,8 @@
     </div>
 </div>
 <input type="hidden" id="usuarioRol" value="{{ session.get('rol', 'vendedor') }}">
+<input type="hidden" id="usuarioEsAdmin" value="{{ '1' if usuario_es_admin else '0' }}">
+<script>window.MODULOS_SERVIDOR = {{ (acceso_menu.modulos|list if acceso_menu and acceso_menu.configurado and not acceso_menu.admin else none)|tojson }};</script>
 
 
      
@@ -652,6 +684,9 @@
             {# No mostrar tabs en dashboard #}
         {% endif %}
                     <!-- CONTENIDO -->
+                    {% with avisos = get_flashed_messages(with_categories=true) %}{% for cat, msg in avisos if cat in ('error', 'warning') %}
+                    <div class="aviso-servidor" role="alert" style="background:#FF0033;color:#fff;font-weight:800;border-radius:10px;padding:10px 14px;margin:0 0 12px;text-align:center">⛔ {{ msg }}</div>
+                    {% endfor %}{% endwith %}
                     {% block content %}{% endblock %}
                 </div>
             </main>
@@ -1058,7 +1093,39 @@
         // ============================================================
         // RESALTAR MÓDULO ACTIVO EN EL SIDEBAR - VERSIÓN COMPLETA
         // ============================================================
+        // Finanzas, Reportes, Herramientas y Papelera: el menú lateral se despliega y marca la pestaña abierta,
+        // igual que Compras (pedido de Erika 21/10/2026 17:12). Se mantiene al recargar porque la pestaña va en la URL.
+        const MENU_MODULO_PARAM = {
+            '/finanzas': ['finanzas', 'tab', 'cxc'], '/reportes': ['reportes', 'tab', 'tablero'],
+            '/herramientas': ['herramientas', 'sec', 'importar'], '/papelera': ['papelera', 'tab', 'papelera']
+        };
+        function abrirMenuModulo() {
+            const ruta = window.location.pathname;
+            const conf = Object.entries(MENU_MODULO_PARAM).find(([p]) => ruta === p || ruta.startsWith(p + '/'));
+            if (!conf) return;
+            const [modulo, param, defecto] = conf[1];
+            const group = document.querySelector(`.menu-group[data-modulo="${modulo}"]`);
+            if (!group) return;
+            group.classList.add('open');
+            const header = group.querySelector('.menu-header');
+            if (header) header.classList.add('active');
+            const valor = new URLSearchParams(window.location.search).get(param) || defecto;
+            group.querySelectorAll('.child-btn').forEach(c => {
+                const v = new URL(c.getAttribute('href'), window.location.origin).searchParams.get(param) || defecto;
+                c.classList.toggle('active', v === valor);
+            });
+        }
+        window.abrirMenuModulo = abrirMenuModulo;
+
         function highlightActiveModule() {
+            // Las pestañas propias de estos módulos no se apagan (antes quedaban todas sin marcar)
+            const propias = [...document.querySelectorAll('#finTabs .tab-btn.active, #repTabs .tab-btn.active, #papTabs .tab-btn.active')];
+            _highlightActiveModuleBase();
+            propias.forEach(b => b.classList.add('active'));
+            abrirMenuModulo();
+        }
+
+        function _highlightActiveModuleBase() {
             // Obtener la URL actual
             const currentPath = window.location.pathname;
             const currentSearch = window.location.search;
@@ -2096,6 +2163,9 @@ function _esc(v) {
 }
 
 function _esAdminSistema() {
+    // El servidor decide (rol ERP GERENCIA_TOTAL o, sin configuración ERP, el rol del usuario)
+    const flag = document.getElementById('usuarioEsAdmin')?.value;
+    if (flag === '1' || flag === '0') return flag === '1';
     const rol = (document.getElementById('usuarioRol')?.value || FLASK_SESSION.rol || '').trim().toLowerCase();
     return ROLES_ADMIN_SISTEMA.includes(rol);
 }
@@ -3592,7 +3662,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const codigos = MENU_CODIGOS[modulo] || [];
                 const conPermiso = codigos.some(c => efectivos[c]?.puede_ver);
                 const configurado = codigos.some(c => efectivos[c]);   // tiene algún permiso explícito (sí o no)
-                const mostrar = conPermiso || (MENU_POR_DEFECTO.includes(modulo) && !configurado);
+                const mostrar = Array.isArray(window.MODULOS_SERVIDOR)
+                    ? window.MODULOS_SERVIDOR.includes(modulo)      // usuario configurado: solo lo permitido
+                    : (conPermiso || (MENU_POR_DEFECTO.includes(modulo) && !configurado));
                 group.style.display = mostrar ? '' : 'none';
                 if (mostrar) {
                     visibles.add(modulo);

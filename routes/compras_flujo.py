@@ -467,7 +467,7 @@ def _comprado_por_pedido(cur=None, excluir_oc=None):
     return {(f['pedido_id'], f['producto_id']): a_decimal(f['c']) for f in filas}
 
 
-def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtro=False):
+def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtro=False, solo_por_comprar=False):
     col_emp = 'empresa_id' if _tiene_columna('pedido_compra_pc', 'empresa_id') else 'NULL AS empresa_id'
     filas = db_query("""
         SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero, """ + col_emp + """
@@ -478,12 +478,20 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
     if pedido_id is None and not sin_filtro:
         filas = filtrar_filas('pedido_compra_pc', filas)   # solo los pedidos de la empresa elegida arriba
     comprado = _comprado_por_pedido(excluir_oc=excluir_oc)
+    # N° de las OC activas de cada línea, para mostrar "OC ya generada: OC-..." (pedido de Erika 21/10/2026)
+    ocs_linea = {}
+    for f in db_query("""SELECT oci.pedido_id, oci.producto_id, string_agg(DISTINCT oc.numero_orden, ', ') AS ocs
+                          FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+                          WHERE oci.pedido_id IS NOT NULL AND COALESCE(oc.estado, '') <> 'Anulada' AND oc.id <> COALESCE(%s, -1)
+                          GROUP BY oci.pedido_id, oci.producto_id""", (excluir_oc,)):
+        ocs_linea[(f['pedido_id'], f['producto_id'])] = f['ocs']
     pedidos, ids = [], set()
     for pc in filas:
         items = _resolver_productos(_items_pedido(pc))
         for it in items:
             ya = comprado.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
             it['comprado'] = ya
+            it['ocs'] = ocs_linea.get((pc['id'], it['producto_id'])) if it['producto_id'] else None
             it['falta'] = max(it['cantidad'] - ya, Decimal('0'))
             if it['producto_id']:
                 ids.add(it['producto_id'])
@@ -513,6 +521,10 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
         p['empresa_id'] = str(p['empresa_id']) if p['empresa_id'] is not None else None
         p['fecha'] = p['fecha'].strftime('%Y-%m-%d') if isinstance(p['fecha'], (date, datetime)) else p['fecha']
         p['pendientes'] = sum(1 for i in p['items'] if i['falta'] > 0)
+        # Lo que de verdad falta comprar: ni en órdenes ni en stock (pedido de Erika 21/10/2026)
+        p['por_comprar'] = sum(1 for i in p['items'] if i['falta'] > 0 and (i['comprar_pedido'] > 0 or not i['producto_id']))
+    if solo_por_comprar:
+        pedidos = [p for p in pedidos if p['por_comprar'] > 0]
     return pedidos
 
 
@@ -716,7 +728,7 @@ def api_resumen():
     try:
         ocs = _listar_ocs("oc.flujo = 'v2'")
         hoy = date.today()
-        pedidos = _pedidos_por_comprar()
+        pedidos = _pedidos_por_comprar(solo_por_comprar=True)
         por = lambda c: [o for o in ocs if o['paso']['codigo'] == c]
         alertas = []
 
@@ -724,8 +736,8 @@ def api_resumen():
             alertas.append({'nivel': nivel, 'texto': texto, 'ir': ir, 'cuantos': cuantos})
 
         if pedidos:
-            n = sum(p['pendientes'] for p in pedidos)
-            alerta('info', f'<b>{len(pedidos)} pedido(s) de clientes</b> tienen {n} producto(s) sin orden de compra. '
+            n = sum(p['por_comprar'] for p in pedidos)
+            alerta('info', f'<b>{len(pedidos)} pedido(s) de clientes</b> tienen {n} producto(s) por comprar (sin orden ni stock). '
                            'Antes de comprar, mira la columna "Stock libre en el grupo".', 'pedidos', len(pedidos))
         if por('aprobar'):
             alerta('warn', f'<b>{len(por("aprobar"))} orden(es) esperan aprobación.</b> Sin aprobación no se paga ni se recibe.',
@@ -806,7 +818,9 @@ def api_resumen():
 @compras_flujo_bp.route('/compras/api/flujo/pedidos')
 def api_pedidos():
     try:
-        return jsonify({'success': True, 'data': _pedidos_por_comprar(todos=request.args.get('todos') == '1')})
+        todos = request.args.get('todos') == '1'
+        # Por defecto solo lo pendiente de comprar; con "Ver también..." sale todo (para consultar)
+        return jsonify({'success': True, 'data': _pedidos_por_comprar(todos=todos, solo_por_comprar=not todos)})
     except Exception as e:
         return _respuesta_error(e)
 

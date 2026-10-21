@@ -63,6 +63,7 @@ from database import (
 from routes.empresas import empresas_bp
 from routes.usuarios import usuarios_bp
 from routes.correlativos import correlativos_bp
+from routes.numeracion import numeracion_bp
 from routes.parametros import parametros_bp
 from routes.integracion import integracion_bp
 from routes.configuracion_seguridad import config_seguridad_bp
@@ -131,6 +132,23 @@ def control_de_acceso():
         return redirect(url_for('login'))
 
     ruta = request.path
+    # Permisos reales del ERP (pedido de Erika 21/10/2026): administrador = GERENCIA_TOTAL y cada
+    # módulo solo para quien tiene "Ver" en Usuarios y permisos. Ver routes/acceso.py.
+    from routes.acceso import acceso_usuario, modulo_de_ruta, NOMBRE_MODULO
+    acceso = acceso_usuario()
+    if acceso['configurado']:
+        if session.get('admin_erp') != acceso['admin']:
+            session['admin_erp'] = acceso['admin']
+        modulo = None if acceso['admin'] else modulo_de_ruta(ruta, request.method)
+        if modulo and modulo not in acceso['modulos']:
+            mensaje = (f"No tienes permiso para entrar a {NOMBRE_MODULO.get(modulo, modulo)}. "
+                       f"Pídeselo al administrador en Configuración ▸ Usuarios y permisos.")
+            if es_api:
+                return jsonify({'success': False, 'error': mensaje, 'codigo': 'sin_permiso'}), 403
+            flash(mensaje, 'error')
+            return redirect(url_for('index'))
+    elif 'admin_erp' in session:
+        session.pop('admin_erp', None)
     requiere_admin = ruta.startswith(PREFIJOS_SOLO_ADMIN)
     if ruta.startswith('/api/config/') and request.method != 'GET' and ruta != '/api/config/correlativos/tomar':
         requiere_admin = True
@@ -151,6 +169,9 @@ def control_de_acceso():
 
 @app.after_request
 def cabeceras_seguridad(resp):
+    if request.method != 'GET' and request.path.startswith(('/api/config/', '/usuarios')):
+        from routes.acceso import limpiar_cache
+        limpiar_cache()   # un cambio de permisos se nota en el siguiente clic
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
     resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     resp.headers.setdefault('Referrer-Policy', 'same-origin')
@@ -164,7 +185,14 @@ def cabeceras_seguridad(resp):
 def inject_request():
     """Inyecta la variable 'request' en todos los templates"""
     from flask import request
-    return dict(request=request)
+    acceso_menu = None
+    if 'usuario_id' in session:
+        try:
+            from routes.acceso import acceso_usuario
+            acceso_menu = acceso_usuario()
+        except Exception:
+            acceso_menu = None
+    return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin())
 
 # ==========================================
 # REGISTRO DE BLUEPRINTS
@@ -172,6 +200,7 @@ def inject_request():
 app.register_blueprint(empresas_bp)
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(correlativos_bp)
+app.register_blueprint(numeracion_bp)
 app.register_blueprint(parametros_bp)
 app.register_blueprint(integracion_bp)
 app.register_blueprint(config_seguridad_bp)

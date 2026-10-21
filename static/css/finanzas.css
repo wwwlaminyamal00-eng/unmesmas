@@ -34,6 +34,7 @@
 .fin-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
 .fin-form input,.fin-form select,.fin-form textarea{border:1px solid var(--line,#E2E8F0);border-radius:9px;padding:8px 10px;font-weight:700;font-family:inherit}
 .fin-full{grid-column:1/-1}
+#pagoDoc.ficha-datos{grid-column:1/-1}
 .fin-doc{grid-column:1/-1;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;border-radius:9px;padding:10px;font-size:13px;font-weight:800;line-height:1.5}
 .fin-tip{font-size:12px;color:#64748B;font-weight:700}
 .bar-wrap{display:flex;flex-direction:column;gap:3px;min-width:180px}
@@ -54,3 +55,75 @@
 .sem-chip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;white-space:nowrap}
 .cxp-fila-vencida td{background:#FFF1F2}
 @media(max-width:800px){.cxp-totales{grid-template-columns:1fr 1fr}}
+
+/* ============================================================
+   Colores de Finanzas (pedido de Erika 21/10/2026):
+   COBROS = verde azulado (teal), dinero que ENTRA · PAGOS = morado, dinero que SALE
+   ROJO solo para lo VENCIDO · VERDE FLUORESCENTE solo para lo TERMINADO (cobrado / pagado)
+   ============================================================ */
+:root{--cobro:#0D9488;--cobro-dark:#115E59;--cobro-soft:#CCFBF1;--cobro-bg:#F0FDFA;
+      --pago:#7C3AED;--pago-dark:#4C1D95;--pago-soft:#EDE9FE;--pago-bg:#F5F3FF;
+      --vencido:#FF0033;--terminado:#39FF14}
+.fin-kpi.fin-kpi-cobro{border-left:6px solid var(--cobro)!important;border-top-color:var(--cobro)!important;background:var(--cobro-bg)}
+.fin-kpi.fin-kpi-cobro small,.fin-kpi.fin-kpi-cobro b{color:var(--cobro-dark)}
+.fin-kpi.fin-kpi-pago{border-left:6px solid var(--pago)!important;border-top-color:var(--pago)!important;background:var(--pago-bg)}
+.fin-kpi.fin-kpi-pago small,.fin-kpi.fin-kpi-pago b{color:var(--pago-dark)}
+.fin-kpi.fin-kpi-vencido{border-left:6px solid var(--vencido)!important;border-top-color:var(--vencido)!important;background:#FFF1F2}
+.fin-kpi.fin-kpi-vencido small,.fin-kpi.fin-kpi-vencido b{color:#C80028}
+.fin-kpi.fin-kpi-ok{border-left:6px solid var(--terminado)!important;border-top-color:#1FB800!important;background:#F0FFF0}
+.fin-kpi.fin-kpi-ok small,.fin-kpi.fin-kpi-ok b{color:#14532D}
+.fin-kpi.fin-kpi-neta{border-left:6px solid #334155!important;border-top-color:#334155!important}
+.fin-leyenda{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:-4px 0 12px}
+.fin-leyenda .ley{font-size:12px;font-weight:800;border-radius:999px;padding:4px 12px;border:1px solid}
+.ley-cobro{background:var(--cobro-soft);color:var(--cobro-dark);border-color:var(--cobro)}
+.ley-pago{background:var(--pago-soft);color:var(--pago-dark);border-color:var(--pago)}
+.ley-vencido{background:var(--vencido);color:#fff;border-color:#C80028}
+.ley-terminado{background:var(--terminado);color:#052E00;border-color:#1FB800}
+/* Pestañas: cada una con su color */
+.tab-btn.tab-cobro{border-color:var(--cobro)!important;color:var(--cobro-dark)!important}
+.tab-btn.tab-pago{border-color:var(--pago)!important;color:var(--pago-dark)!important}
+html[data-empresa] .tab-btn.tab-cobro.active,.tab-btn.tab-cobro.active{background:var(--cobro)!important;border-color:var(--cobro)!important;color:#fff!important}
+html[data-empresa] .tab-btn.tab-pago.active,.tab-btn.tab-pago.active{background:var(--pago)!important;border-color:var(--pago)!important;color:#fff!important}
+/* Tablas: cabecera del color de la familia */
+.fin-cobros .fin-panel{border-top:4px solid var(--cobro)}
+.fin-pagos .fin-panel{border-top:4px solid var(--pago)}
+.fin-cobros .fin-title{color:var(--cobro-dark)}
+.fin-pagos .fin-title{color:var(--pago-dark)}
+html[data-empresa] .fin-cobros .fin-table thead th,.fin-cobros .fin-table thead th{background:var(--cobro-soft)!important;color:var(--cobro-dark)!important;border-color:#99F6E4!important;border-bottom:2px solid var(--cobro)!important}
+html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th{background:var(--pago-soft)!important;color:var(--pago-dark)!important;border-color:#DDD6FE!important;border-bottom:2px solid var(--pago)!important}
+.fin-cobros .fin-table tbody tr:nth-child(even){background:var(--cobro-bg)}
+.fin-pagos .fin-table tbody tr:nth-child(even){background:var(--pago-bg)}
+.fin-cobros .btn-mini:not(.sec):not(.danger){background:var(--cobro)}
+.fin-pagos .btn-mini:not(.sec):not(.danger){background:var(--pago)}
+/* Semáforo: solo lo vencido en rojo; "al día" suave; terminado fluorescente */
+.sem-vencido{background:var(--vencido)!important;color:#fff!important}
+.sem-por-vencer{background:#FFD600!important;color:#3D2B00!important}
+.sem-al-dia,.sem-aldia{background:#E2E8F0!important;color:#1E293B!important;border:1px solid #CBD5E1!important;font-weight:800!important}
+.sem-terminado,.sem-pagado{background:var(--terminado)!important;color:#052E00!important;border:1px solid #1FB800!important}
+.cxp-fila-vencida td{background:#FFF1F2!important}
+/* Cobros y pagos */
+.fin-tipo{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:900;white-space:nowrap}
+.fin-tipo-cobro{background:var(--cobro);color:#fff}
+.fin-tipo-pago{background:var(--pago);color:#fff}
+.fila-cobro td:first-child{box-shadow:inset 4px 0 0 var(--cobro)}
+.fila-pago td:first-child{box-shadow:inset 4px 0 0 var(--pago)}
+/* Flujo de caja: ingresos = cobros, egresos = pagos */
+.bar-in{background:var(--cobro)!important}
+.bar-out{background:var(--pago)!important}
+.neg{color:var(--pago-dark)!important;font-weight:900}
+/* Montos y botones en una sola línea */
+#finanzasApp .fin-table td.num,#finanzasApp .fin-table td .btn-mini,#finanzasApp .fin-table td .sem-chip,#finanzasApp .fin-table td .fin-tipo{white-space:nowrap!important}
+/* Cuentas por pagar: tarjetas del semáforo del mismo tamaño y estilo que las de resumen (21/10/2026 17:12) */
+#finanzasApp .cxp-totales{gap:10px;margin:10px 14px 6px}
+#finanzasApp .cxp-tot{background:#fff!important;color:#0F172A!important;border:1px solid var(--line,#E2E8F0)!important;border-left:6px solid #94A3B8!important;border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(15,23,42,.05);font-weight:700!important}
+#finanzasApp .cxp-tot small{font-size:11px;color:#64748B;font-weight:800}
+#finanzasApp .cxp-tot b{font-size:19px;color:#0F172A}
+#finanzasApp .cxp-tot span{font-size:11px;color:#64748B;opacity:1}
+#finanzasApp .cxp-tot.sem-peligro{border-left-color:var(--vencido)!important;background:#FFF5F6!important}
+#finanzasApp .cxp-tot.sem-peligro :is(small,b){color:#C80028}
+#finanzasApp .cxp-tot.sem-atencion{border-left-color:#F59E0B!important;background:#FFFBEB!important}
+#finanzasApp .cxp-tot.sem-atencion :is(small,b){color:#92400E}
+#finanzasApp .cxp-tot.sem-aldia{border-left-color:#64748B!important}
+#finanzasApp .cxp-tot.cxp-tot-total{border-left-color:var(--pago)!important;background:var(--pago-bg)!important}
+#finanzasApp .cxp-tot.cxp-tot-total :is(small,b){color:var(--pago-dark)}
+#finanzasApp .cxp-orden{padding:0 14px}

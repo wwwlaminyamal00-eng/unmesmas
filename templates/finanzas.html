@@ -21,18 +21,24 @@
 
     <!-- KPIs -->
     <div class="fin-kpis" id="finKpis">
-        <div class="fin-kpi"><small>Por cobrar</small><b id="kpiPorCobrar">S/ 0.00</b><span id="kpiPorCobrarDocs">0 documentos</span></div>
-        <div class="fin-kpi fin-kpi-danger"><small>Cobranza vencida</small><b id="kpiCobrarVencido">S/ 0.00</b><span>Llamar al cliente hoy</span></div>
-        <div class="fin-kpi"><small>Por pagar</small><b id="kpiPorPagar">S/ 0.00</b><span id="kpiPorPagarDocs">0 documentos</span></div>
-        <div class="fin-kpi fin-kpi-warn"><small>Pagos vencidos</small><b id="kpiPagarVencido">S/ 0.00</b><span>Coordinar con proveedor</span></div>
-        <div class="fin-kpi fin-kpi-ok"><small>Cobrado este mes</small><b id="kpiCobradoMes">S/ 0.00</b><span id="kpiPagadoMes">Pagado: S/ 0.00</span></div>
-        <div class="fin-kpi"><small>Posición neta</small><b id="kpiNeta">S/ 0.00</b><span>Por cobrar − por pagar</span></div>
+        <div class="fin-kpi fin-kpi-cobro"><small>⬇ Por cobrar</small><b id="kpiPorCobrar">S/ 0.00</b><span id="kpiPorCobrarDocs">0 documentos</span></div>
+        <div class="fin-kpi fin-kpi-vencido"><small>🔴 Cobranza vencida</small><b id="kpiCobrarVencido">S/ 0.00</b><span>Llamar al cliente hoy</span></div>
+        <div class="fin-kpi fin-kpi-pago"><small>⬆ Por pagar</small><b id="kpiPorPagar">S/ 0.00</b><span id="kpiPorPagarDocs">0 documentos</span></div>
+        <div class="fin-kpi fin-kpi-vencido"><small>🔴 Pagos vencidos</small><b id="kpiPagarVencido">S/ 0.00</b><span>Coordinar con proveedor</span></div>
+        <div class="fin-kpi fin-kpi-ok"><small>✔ Cobrado este mes</small><b id="kpiCobradoMes">S/ 0.00</b><span id="kpiPagadoMes">Pagado: S/ 0.00</span></div>
+        <div class="fin-kpi fin-kpi-neta"><small>Posición neta</small><b id="kpiNeta">S/ 0.00</b><span>Por cobrar − por pagar</span></div>
+    </div>
+    <div class="fin-leyenda">
+        <span class="ley ley-cobro">⬇ Cobros: dinero que entra (clientes)</span>
+        <span class="ley ley-pago">⬆ Pagos: dinero que sale (proveedores)</span>
+        <span class="ley ley-vencido">🔴 Vencido</span>
+        <span class="ley ley-terminado">✔ Cobrado / pagado</span>
     </div>
 
     <!-- TABS -->
     <div class="tabs" id="finTabs">
-        <button class="tab-btn active" data-tab="cxc">💰 Cuentas por cobrar</button>
-        <button class="tab-btn" data-tab="cxp">🧾 Cuentas por pagar</button>
+        <button class="tab-btn tab-cobro active" data-tab="cxc">⬇ Cuentas por cobrar</button>
+        <button class="tab-btn tab-pago" data-tab="cxp">⬆ Cuentas por pagar</button>
         <button class="tab-btn" data-tab="movimientos">📒 Cobros y pagos</button>
         <button class="tab-btn" data-tab="flujo">📈 Flujo de caja</button>
     </div>
@@ -40,7 +46,7 @@
     <!-- CXC / CXP comparten estructura -->
     {% for t in [('cxc', 'Cuentas por cobrar', 'Facturas y boletas de venta emitidas con saldo pendiente.', 'Cliente'),
                  ('cxp', 'Cuentas por pagar', 'Comprobantes de proveedores registrados en Compras.', 'Proveedor')] %}
-    <section class="section {{ 'active' if t[0] == 'cxc' else '' }}" id="sec-{{ t[0] }}">
+    <section class="section {{ 'fin-cobros' if t[0] == 'cxc' else 'fin-pagos' }} {{ 'active' if t[0] == 'cxc' else '' }}" id="sec-{{ t[0] }}">
         <div class="fin-panel">
             <div class="fin-head">
                 <div>
@@ -67,7 +73,7 @@
             <div class="cxp-totales" id="cxpTotales">
                 <div class="cxp-tot sem-peligro"><small>🔴 Vencido</small><b id="cxpTotVencido">S/ 0.00</b><span id="cxpDocsVencido"></span></div>
                 <div class="cxp-tot sem-atencion"><small>🟡 Por vencer (7 días)</small><b id="cxpTotPorVencer">S/ 0.00</b><span id="cxpDocsPorVencer"></span></div>
-                <div class="cxp-tot sem-ok"><small>🟢 Al día</small><b id="cxpTotAlDia">S/ 0.00</b></div>
+                <div class="cxp-tot sem-aldia"><small>Al día</small><b id="cxpTotAlDia">S/ 0.00</b></div>
                 <div class="cxp-tot cxp-tot-total"><small>Total por pagar</small><b id="cxpTotTotal">S/ 0.00</b></div>
             </div>
             <div class="fin-help cxp-orden">Orden: primero lo <b>vencido</b> (más días de atraso arriba), luego lo <b>por vencer</b> (menos días que faltan arriba) y al final lo <b>al día</b>.</div>
@@ -78,7 +84,7 @@
                         <tr>
                             <th>Semáforo</th><th>Documento (tipo y N°)</th><th class="left">{{ t[3] }}</th><th>RUC</th>
                             <th>Emisión</th><th>Vence</th><th>Total</th>
-                            {% if t[0] == 'cxc' %}<th>Retención</th><th>N. crédito</th>{% endif %}
+                            {% if t[0] == 'cxc' %}<th>Retención (S/)</th><th title="Notas de crédito emitidas a esta factura (rebajan el saldo)">Nota de crédito (S/)</th>{% endif %}
                             <th>{{ 'Cobrado' if t[0] == 'cxc' else 'Pagado' }}</th><th>Saldo</th><th>Acción</th>
                         </tr>
                     </thead>
@@ -98,6 +104,7 @@
                     <div class="fin-help">Historial con usuario responsable. Un movimiento anulado deja el documento nuevamente pendiente.</div>
                 </div>
                 <div class="fin-filters">
+                    <input type="search" id="movBuscar" placeholder="Buscar documento, cliente/proveedor, RUC u operación...">
                     <select id="movTipo">
                         <option value="">Todos</option>
                         <option value="COBRO">Cobros</option>
@@ -109,7 +116,7 @@
                 <table class="fin-table">
                     <thead>
                         <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th class="left">Cliente / proveedor</th>
-                            <th>Monto</th><th>Método</th><th>Banco / operación</th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
+                            <th>Monto</th><th>Método</th><th>Banco / N° operación / aviso</th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
                     </thead>
                     <tbody id="movBody"><tr><td colspan="10">Cargando...</td></tr></tbody>
                 </table>
@@ -161,7 +168,9 @@
                 </select>
             </label>
             <label>Banco<input type="text" id="pagoBanco" maxlength="80" placeholder="Ej. BCP, BBVA, Interbank"></label>
-            <label>N.º de operación<input type="text" id="pagoOperacion" maxlength="80"></label>
+            <label>N.º de operación<input type="text" id="pagoOperacion" maxlength="80" placeholder="Si el cliente lo envió"></label>
+            <label>Fecha de aviso de pago<input type="date" id="pagoAviso" title="Día en que el cliente avisó que pagó"></label>
+            <div class="fin-tip fin-full" id="pagoAvisoTip">📌 Depende del cliente: escribe el <b>N.º de operación</b> o la <b>fecha en que avisó el pago</b>. Basta con uno.</div>
             <label class="fin-full">Observaciones<textarea id="pagoObs" rows="2" maxlength="500"></textarea></label>
             <div class="fin-tip fin-full">💡 Puedes registrar pagos parciales. El sistema no permite registrar más que el saldo pendiente.</div>
         </div>

@@ -48,8 +48,15 @@
         document.querySelectorAll('#papTabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
         document.querySelectorAll('#papApp > .section').forEach(s => s.classList.toggle('active', s.id === 'ptab-' + tab));
         if (tab === 'auditoria' && !abrirTab.audCargada) { abrirTab.audCargada = true; opcionesAuditoria(); cargarAuditoria(1); }
+        try { history.replaceState(null, '', '/papelera?tab=' + encodeURIComponent(tab)); } catch (e) { /* nada */ }
+        if (window.abrirMenuModulo) window.abrirMenuModulo();
     }
     document.querySelectorAll('#papTabs .tab-btn').forEach(b => b.addEventListener('click', () => abrirTab(b.dataset.tab)));
+    // Enlaces del menú lateral (?tab=auditoria) y recarga en la misma pestaña
+    setTimeout(() => {
+        const t = new URLSearchParams(location.search).get('tab');
+        if (t && document.querySelector(`#papTabs .tab-btn[data-tab="${t}"]`)) abrirTab(t);
+    }, 0);
 
     // ---------- PAPELERA ----------
     let filas = [];

@@ -111,7 +111,7 @@ def test_pantallas_ordenadas_y_ayudas_en_compras():
     vi = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     assert '<th>RUC</th>\r\n                        <th>Cliente</th>' not in vi and '<th>RUC</th>\n                        <th>Cliente</th>' not in vi
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
-    assert '🏷️ Generar rótulo' in js and "['falta_stock', 'duplicado'].includes(errorData.codigo)" in js
+    assert '>Generar rótulo</button>' in js and "['falta_stock', 'duplicado'].includes(errorData.codigo)" in js
     base = (RAIZ / 'templates/base.html').read_text(encoding='utf-8')
     assert 'grid-auto-flow:column!important' in base
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
@@ -129,3 +129,31 @@ def test_despacho_duplicado_del_mismo_pc(vendedor):
     assert vendedor.post('/ventas/api/despachos/guardar', json=base).status_code == 200
     r = vendedor.post('/ventas/api/despachos/guardar', json=base)
     assert r.status_code == 409 and r.json['codigo'] == 'duplicado' and 'PC-ZZD-D ya tiene despacho' in r.json['error']
+
+
+def test_pedidos_por_comprar_por_defecto_solo_lo_pendiente(admin):
+    """21/10/2026: un pedido ya cubierto por una orden de compra no sale por defecto (confundía al comprador)."""
+    _sql("""INSERT INTO productos (familia, codigo, descripcion, unidad, costo_unitario, precio_unitario, stock, activo)
+            VALUES ('GENERAL', 'ZZD-CUB', 'PRODUCTO SIN STOCK ZZD', 'UND', 0, 10, 0, true)""", fetch=False)
+    pc = _sql("""INSERT INTO pedido_compra_pc (numero, cliente, ruc, estado, items_json, fecha)
+                 VALUES ('PC-ZZD-CUB', 'CLIENTE', '20100070970', 'Pendiente', %s, NOW()) RETURNING id""",
+              (json.dumps([{'codigo': 'ZZD-CUB', 'producto': 'PRODUCTO SIN STOCK ZZD', 'cantidad_pc': 5}]),))[0][0]
+
+    def numeros(q=''):
+        return {p['numero']: p for p in admin.get('/compras/api/flujo/pedidos' + q).json['data']}
+    assert numeros()['PC-ZZD-CUB']['por_comprar'] == 1          # falta comprar: sale
+    prov = _sql("SELECT id FROM proveedores WHERE ruc = '20999999102'")[0][0]
+    prod = _sql("SELECT id FROM productos WHERE codigo = 'ZZD-CUB'")[0][0]
+    emp = _sql("SELECT id FROM erp_empresas ORDER BY id LIMIT 1")[0][0]
+    sede = _sql("SELECT id FROM almacenes WHERE COALESCE(activo, true) ORDER BY id LIMIT 1")[0][0]
+    r = admin.post('/compras/api/flujo/ordenes', json={
+        'empresa_id': emp, 'proveedor_id': prov, 'almacen_entrega_id': sede, 'condicion_pago': 'Contado',
+        'modalidad_entrega': 'Proveedor entrega', 'fecha_compromiso': '2026-10-30',
+        'items': [{'producto_id': prod, 'cantidad': 5, 'precio_unitario': 5, 'pedido_id': pc}]})
+    assert r.status_code == 200, r.json
+    assert 'PC-ZZD-CUB' not in numeros()                          # ya tiene orden: por defecto no sale
+    assert numeros('?todos=1')['PC-ZZD-CUB']['items'][0]['comprado'] == 5   # con el check sí, para consultar
+    fl = (RAIZ / 'templates/compras/flujo.html').read_text(encoding='utf-8')
+    assert 'id="pedTodos" autocomplete="off"' in fl and 'Ver también lo ya cubierto' in fl
+    cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
+    assert "if (cubierto && !$('pedTodos').checked) return '';" in cjs

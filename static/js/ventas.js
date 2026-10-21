@@ -1603,13 +1603,13 @@ function renderDespachos() {
             <td>${citaDespachoHTML(r, despachado || anulado)}</td>
             <td><div class="acc-col">
                 ${!despachado && !anulado ? `
-                    ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Abre Compras con este pedido ya cargado para hacer la orden de compra">🛒 Generar compra</button>` : ''}
-                    <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">🚚 Confirmar despacho</button>
-                    ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">🧾 Generar factura</button>` : ''}` :
-                  despachado ? `<span class="desp-hecho">✔ ${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
-                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>` : ''
+                    ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Abre Compras con este pedido ya cargado para hacer la orden de compra">Generar compra</button>` : ''}
+                    <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">Confirmar despacho</button>
+                    ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">Generar factura</button>` : ''}` :
+                  despachado ? `<span class="desp-hecho">${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
+                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">Anular</button>` : ''
                 }
-                <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">🏷️ Generar rótulo</button>
+                <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">Generar rótulo</button>
             </div></td>
         </tr>`;
     }).join('');

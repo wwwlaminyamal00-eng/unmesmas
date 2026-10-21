@@ -213,12 +213,17 @@
                         <th>Comprar para pedido</th><th>Comprar para stock</th><th>Total a comprar</th><th>Saldo después de entregar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
-                        const marcable = PUEDE.comprar && it.falta > 0 && !sinProducto;
+                        // Por defecto solo lo que falta comprar: lo cubierto por una orden o por stock no se muestra (21/10/2026)
+                        const cubierto = !sinProducto && (Number(it.falta) <= 0 || Number(it.comprar_pedido) <= 0);
+                        if (cubierto && !$('pedTodos').checked) return '';
+                        // Con OC activa que ya cubre la línea (o stock) la casilla no se puede marcar (21/10/2026)
+                        const cubiertaYa = !sinProducto && (Number(it.falta) <= 0 || Number(it.comprar_pedido) <= 0);
+                        const marcable = PUEDE.comprar && it.falta > 0 && !sinProducto && !cubiertaYa;
                         const r = calcResumen(p, i);
                         const clave = `${p.id}_${i}`;
-                        return `<tr class="${it.falta <= 0 ? 'com-ok' : ''}" data-res="${clave}">
-                            <td>${marcable ? `<input type="checkbox" class="ped-check" data-ped="${p.id}" data-i="${i}">` : (it.falta <= 0 ? '✔' : '')}</td>
-                            <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}
+                        return `<tr class="${cubierto ? 'com-ok' : ''}" data-res="${clave}">
+                            <td>${marcable ? `<input type="checkbox" class="ped-check" data-ped="${p.id}" data-i="${i}">` : (cubierto ? '<input type="checkbox" disabled title="Ya cubierto: no hace falta comprar">' : '')}${cubierto ? `<small class="com-cubierto">${it.ocs ? '✅ OC ya generada' : '✔ Cubierto con stock'}</small>` : ''}</td>
+                            <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${it.ocs ? `<small class="com-oc-generada">✅ OC ya generada: ${esc(it.ocs)}${cubierto ? '' : ` · falta comprar ${cant(it.comprar_pedido)}`}</small>` : ''}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}
                                 ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
                             <td class="num">${cant(it.comprado)}</td>
@@ -229,6 +234,7 @@
                             <td class="num"><span data-res-saldo class="${r.saldo > 0 ? 'com-saldo' : ''}">${cant(r.saldo)}</span></td></tr>`;
                     }).join('')}</tbody>
                 </table></div>
+                ${!$('pedTodos').checked && p.items.length > p.por_comprar ? `<div class="inv-tip com-ocultos">✔ ${p.items.length - p.por_comprar} producto(s) de este pedido ya están cubiertos (con orden de compra o stock) y no se muestran.</div>` : ''}
             </div>`).join('') : '<div class="inv-vacio">No hay pedidos de clientes pendientes de compra. 👍</div>';
         contarMarcados();
     }
@@ -846,17 +852,33 @@
     // ========================================================
     // PAGO
     // ========================================================
+    // Cuentas escritas "de relleno" al registrar al proveedor (1111..., 5555444488889999, 123123...)
+    function cuentaDeRelleno(...nums) {
+        return nums.some(n => { const d = String(n || '').replace(/\D/g, '');
+            return d && (/(\d)\1{5,}/.test(d) || /(\d{2,4})\1{3,}/.test(d) || d === '5555444488889999'); });
+    }
+
     function abrirPago(o) {
         $('pagoOc').value = o.id;
         $('pagoTitulo').textContent = `Registrar pago · ${o.numero}`;
         const p = cat.proveedores.find(x => x.id === o.proveedor_id) || o.proveedor_datos || {};
         const falta = Math.max(Number(o.total) - Number(o.pagado), 0);
-        $('pagoCuenta').innerHTML = `<div class="com-cuenta">
-            <small>Pagar a</small><b>${esc(o.proveedor)}</b><span>RUC ${esc(o.ruc || '—')}</span>
-            ${p.numero_cuenta || p.cci ? `<div class="com-cuenta-num">🏦 ${esc(p.banco || '')} · Cuenta ${esc(p.numero_cuenta || '—')}${p.cci ? ' · CCI ' + esc(p.cci) : ''}</div>
-                <span>Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</span>`
-                : '<div class="inv-aviso">⚠️ El proveedor no tiene cuenta registrada. Regístrala en Maestros ▸ Proveedores antes de pagar.</div>'}
-            <div class="com-cuenta-falta">Falta pagar: <b>${soles(falta)}</b> de ${soles(o.total)}</div></div>`;
+        // Un dato por línea y siempre en el mismo orden (pedido de Erika 21/10 17:22)
+        const fila = (et, val, cls = '') => `<div class="fd-et">${et}</div><div class="fd-val ${cls}">${val}</div>`;
+        const tieneCuenta = p.numero_cuenta || p.cci;
+        $('pagoCuenta').innerHTML = `<div class="ficha-datos fd-pago">
+            <div class="fd-titulo">Pagar a</div>
+            ${fila('Proveedor', esc(o.proveedor || '—'))}
+            ${fila('RUC / DNI', esc(o.ruc || '—'), 'fd-num')}
+            ${fila('Banco', esc(p.banco || '—'))}
+            ${fila('N° de cuenta', esc(p.numero_cuenta || '—'), 'fd-num')}
+            ${fila('CCI', esc(p.cci || '—'), 'fd-num')}
+            ${fila('Monto a pagar (incluye IGV)', soles(o.total), 'fd-monto')}
+            ${fila('Falta pagar', soles(falta), 'fd-monto ' + (falta > 0 ? 'fd-falta' : 'fd-ok'))}
+            ${cuentaDeRelleno(p.numero_cuenta, p.cci) ? '<div class="fd-nota fd-alerta">⚠️ La cuenta o el CCI parecen de relleno (números repetidos). Confírmalos con el proveedor y corrígelos en Maestros ▸ Proveedores antes de pagar.</div>' : ''}
+            ${tieneCuenta ? '<div class="fd-nota">Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</div>'
+                : '<div class="fd-nota fd-alerta">⚠️ El proveedor no tiene cuenta registrada. Regístrala en Maestros ▸ Proveedores antes de pagar.</div>'}
+        </div>`;
         $('pagoMonto').value = falta.toFixed(2);
         $('pagoFecha').value = hoyISO();
         $('pagoMetodo').value = 'Transferencia';

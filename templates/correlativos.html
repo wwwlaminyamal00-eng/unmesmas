@@ -4,149 +4,132 @@
 
 {% block breadcrumb %}<a href="/" class="crumb-btn" style="text-decoration:none;">Inicio</a> <span>/</span> <span class="crumb-btn active-crumb">Correlativos</span>{% endblock %}
 {% block page_title %}Configuración y seguridad{% endblock %}
-{% block subtitle %}Control de numeración por empresa y documento. Evita duplicados y mezcla entre KCF y AGD.{% endblock %}
+{% block subtitle %}Correlativos: desde qué número salen los documentos nuevos de cada empresa. Los ya emitidos nunca cambian.{% endblock %}
 
 {% block content %}
+<style>
+.nc-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.nc-kpis>div{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;text-align:center}
+.nc-kpis small{display:block;color:#475569;font-weight:700;font-size:12px}
+.nc-kpis b{font-size:22px;color:#0f172a}
+.nc-regla{background:#ecfeff;border:1px solid #67e8f9;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#0f172a}
+.nc-tabla{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:13px}
+.nc-tabla th{background:#0f172a;color:#fff;padding:8px 6px;font-size:12px}
+.nc-tabla td{border-bottom:1px solid #e5e7eb;padding:7px 6px}
+.nc-tabla :is(th,td){text-align:center;vertical-align:middle}
+.nc-tabla tr.nc-oc td{background:#f8fafc;color:#475569}
+.nc-sig{font-weight:800;color:#065f46}
+.nc-fijado{display:inline-block;margin-top:2px;font-size:11px;background:#39ff14;color:#052e16;border-radius:6px;padding:1px 6px;font-weight:800}
+.nc-btn{padding:4px 10px;border-radius:6px;border:1px solid #0f172a;background:#fff;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
+.nc-btn:hover{background:#0f172a;color:#fff}
+.nc-nota{font-size:11px;color:#64748b}
+.nc-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:3000}
+.nc-modal.abierto{display:flex}
+.nc-caja{background:#fff;border-radius:12px;padding:18px 20px;width:min(460px,92vw);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.nc-caja h3{margin:0 0 8px;font-size:17px}
+.nc-caja input{width:100%;font-size:18px;padding:8px;border:2px solid #0f172a;border-radius:8px;text-align:center;margin:8px 0}
+.nc-err{color:#dc2626;font-weight:700;font-size:13px;min-height:18px}
+.nc-acciones{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.nc-ok{background:#16a34a;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer}
+.nc-cancel{background:#e5e7eb;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+.nc-aviso{background:#fef9c3;border:1px solid #facc15;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:6px}
+</style>
 <section id="correlativos" class="section active">
-    <div class="cards corr-cards">
-        <div class="card"><div class="card-icon">#</div><div><div class="card-title">Activos</div><div class="card-value" id="totalCorrelativos">0</div></div></div>
-        <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value">2</div></div></div>
-        <div class="card"><div class="card-icon">🧾</div><div><div class="card-title">Documentos</div><div class="card-value" id="totalDocumentos">0</div></div></div>
-        <div class="card"><div class="card-icon">✓</div><div><div class="card-title">Validación</div><div class="card-value">OK</div></div></div>
+    <div class="nc-kpis status-board">
+        <div><small>Documentos con numeración</small><b id="ncTotal">0</b></div>
+        <div><small>Empresas</small><b id="ncEmpresas">0</b></div>
+        <div><small>Fijados a mano</small><b id="ncFijados">0</b></div>
+        <div><small>Último cambio</small><b id="ncUltimo" style="font-size:14px">—</b></div>
     </div>
-
-    <div class="panel corr-panel">
-        <div class="panel-head corr-head">
-            <div>
-                <div class="panel-title">1.3 Correlativos</div>
-                <div class="panel-help">Control de numeración por empresa y documento.</div>
-            </div>
-            <div class="filters">
-                <button type="button" class="btn btn-secondary" id="btnNuevoCorrelativo">Nuevo correlativo</button>
-            </div>
-        </div>
-
-        <div class="corr-rule">
-            <b>Regla:</b> cada empresa maneja sus propios correlativos. Ejemplo: <b>COT-KCF-2026-0001</b>
-        </div>
-
-        <div class="corr-workspace">
-            <div class="corr-form-card">
-                <div class="corr-block-title">Datos principales</div>
-                <div class="corr-grid">
-                    <div class="form-field">
-                        <label>Empresa</label>
-                        <select id="corrEmpresa" class="table-select">
-                            <option value="KCF">KCF</option>
-                            <option value="AGD">AGD</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Documento</label>
-                        <select id="corrDocumento" class="table-select">
-                            <option value="Cotización">Cotización</option>
-                            <option value="Orden compra">Orden compra</option>
-                            <option value="Pedido Compra">Pedido Compra</option>
-                            <option value="Factura cliente">Factura cliente</option>
-                            <option value="Guía remisión">Guía remisión</option>
-                            <option value="Solicitud compra">Solicitud compra</option>
-                            <option value="Otro">Otro</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Estado</label>
-                        <select id="corrEstado" class="table-select">
-                            <option value="Activo">Activo</option>
-                            <option value="Inactivo">Inactivo</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="corr-block-title second">Numeración</div>
-                <div class="corr-grid">
-                    <div class="form-field">
-                        <label>Prefijo</label>
-                        <input id="corrPrefijo" class="table-input" value="COT-KCF">
-                    </div>
-                    <div class="form-field">
-                        <label>Año</label>
-                        <input id="corrAnio" type="number" class="table-input" value="2026">
-                    </div>
-                    <div class="form-field">
-                        <label>Último número usado</label>
-                        <input id="corrUltimo" type="number" class="table-input" value="0">
-                    </div>
-                </div>
-
-                <div class="corr-form-actions">
-                    <span id="corrFormMode">Modo: creando nuevo correlativo</span>
-                    <div class="filters">
-                        <button type="button" class="btn btn-secondary" id="btnLimpiarCorrelativo">Limpiar</button>
-                        <button type="button" class="btn btn-primary" id="btnGuardarCorrelativoForm2">Guardar correlativo</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="corr-preview-card">
-                <div class="preview-label">Siguiente correlativo automático</div>
-                <div class="preview-code" id="corrPreview">COT-KCF-2026-0001</div>
-                <div class="corr-mini-guide">
-                    <div><b>1</b><span>Selecciona empresa</span></div>
-                    <div><b>2</b><span>Elige documento</span></div>
-                    <div><b>3</b><span>Define prefijo y año</span></div>
-                    <div><b>4</b><span>Guarda el correlativo</span></div>
-                </div>
-            </div>
-        </div>
+    <div class="nc-regla">
+        <b>Cómo funciona:</b> el ERP toma el número más alto ya emitido y le suma 1. Aquí puedes decir que el
+        siguiente documento salga desde un número mayor (por ejemplo, para continuar la numeración de tu sistema anterior).
+        <b>No se puede poner un número igual o menor al último emitido</b> y los documentos ya emitidos no se renumeran.
+        Solo el administrador entra a esta pantalla.
     </div>
-
-    <div class="panel corr-list-panel">
-        <div class="panel-head">
-            <div>
-                <div class="panel-title">Listado de correlativos registrados</div>
-                <div class="panel-help">Separado por empresa para revisar rápido y evitar confusiones.</div>
-            </div>
-            <div class="filters">
-                <input type="text" id="searchCorrelativos" placeholder="Buscar por empresa, documento o prefijo">
-            </div>
-        </div>
-
-        <div class="company-split">
-            <div class="company-block">
-                <div class="company-block-head kcf-head">
-                    <div class="company-badge-title">
-                        <span class="badge badge-kcf">KCF</span>
-                        <strong class="company-title-kcf">Correlativos KCF</strong>
-                    </div>
-                    <div class="company-counter" id="countKCF">0 registros</div>
-                </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Documento</th><th>Prefijo</th><th>Año</th><th>Último</th><th>Siguiente</th><th>Estado</th><th>Editar</th><th>Eliminar</th></tr></thead>
-                        <tbody id="tbodyCorrelativosKCF"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="company-block">
-                <div class="company-block-head agd-head">
-                    <div class="company-badge-title">
-                        <span class="badge badge-agd">AGD</span>
-                        <strong class="company-title-agd">Correlativos AGD</strong>
-                    </div>
-                    <div class="company-counter" id="countAGD">0 registros</div>
-                </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Documento</th><th>Prefijo</th><th>Año</th><th>Último</th><th>Siguiente</th><th>Estado</th><th>Editar</th><th>Eliminar</th></tr></thead>
-                        <tbody id="tbodyCorrelativosAGD"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
+    <table class="nc-tabla">
+        <thead><tr><th>Documento</th><th>Empresa</th><th>Serie</th><th>N° último emitido</th><th>N° siguiente</th><th>Modificado</th><th>Acción</th></tr></thead>
+        <tbody id="ncFilas"><tr><td colspan="7">Cargando…</td></tr></tbody>
+    </table>
 </section>
+
+<div class="nc-modal" id="ncModal">
+    <div class="nc-caja">
+        <h3 id="ncTitulo">Cambiar correlativo</h3>
+        <div id="ncInfo" style="font-size:13px"></div>
+        <label for="ncValor" style="font-weight:700;font-size:13px;display:block;margin-top:8px">El próximo documento saldrá con el N°:</label>
+        <input type="number" id="ncValor" min="1" step="1">
+        <div class="nc-aviso" id="ncAviso"></div>
+        <div class="nc-err" id="ncErr"></div>
+        <div class="nc-acciones">
+            <button type="button" class="nc-cancel" id="ncCancelar">Cancelar</button>
+            <button type="button" class="nc-ok" id="ncGuardar">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    let filas = [], actual = null;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function cargar() {
+        const r = await fetch('/correlativos/api/lista');
+        const j = await r.json();
+        if (!j.success) { document.getElementById('ncFilas').innerHTML = `<tr><td colspan="7">${esc(j.error)}</td></tr>`; return; }
+        filas = j.data;
+        document.getElementById('ncTotal').textContent = filas.length;
+        document.getElementById('ncEmpresas').textContent = new Set(filas.map(f => f.empresa).filter(e => e !== 'Todas' && e !== 'Sin empresa')).size;
+        document.getElementById('ncFijados').textContent = filas.filter(f => f.fijado).length;
+        const ult = filas.filter(f => f.actualizado).sort((a, b) => (b.actualizado > a.actualizado ? 1 : -1))[0];
+        document.getElementById('ncUltimo').textContent = ult ? `${ult.actualizado} (${ult.actualizado_por || ''})` : '—';
+        document.getElementById('ncFilas').innerHTML = filas.map((f, i) => `
+            <tr class="${f.editable ? '' : 'nc-oc'}">
+                <td><b>${esc(f.nombre)}</b>${f.nota ? `<div class="nc-nota">${esc(f.nota)}</div>` : ''}</td>
+                <td>${esc(f.empresa)}</td>
+                <td>${esc(f.serie)}</td>
+                <td>${esc(f.ultimo_txt)}</td>
+                <td><span class="nc-sig">${esc(f.siguiente_txt)}</span>${f.fijado ? '<br><span class="nc-fijado">Fijado por el administrador</span>' : ''}</td>
+                <td>${f.actualizado ? `${esc(f.actualizado)}<div class="nc-nota">${esc(f.actualizado_por || '')}</div>` : '—'}</td>
+                <td>${f.editable ? `<button type="button" class="nc-btn" data-i="${i}">Cambiar</button>` : '<span class="nc-nota">Solo lectura</span>'}</td>
+            </tr>`).join('');
+    }
+    function abrir(i) {
+        actual = filas[i];
+        document.getElementById('ncTitulo').textContent = `Cambiar correlativo: ${actual.nombre}`;
+        document.getElementById('ncInfo').innerHTML = `Empresa <b>${esc(actual.empresa)}</b> · Serie <b>${esc(actual.serie)}</b><br>N° último emitido: <b>${esc(actual.ultimo_txt)}</b> · N° siguiente hoy: <b>${esc(actual.siguiente_txt)}</b>`;
+        const v = document.getElementById('ncValor');
+        v.value = actual.siguiente; v.min = actual.ultimo + 1;
+        document.getElementById('ncErr').textContent = '';
+        avisar();
+        document.getElementById('ncModal').classList.add('abierto');
+        v.focus();
+    }
+    function avisar() {
+        const n = parseInt(document.getElementById('ncValor').value, 10);
+        const aviso = document.getElementById('ncAviso');
+        if (!actual || !n) { aviso.textContent = ''; return; }
+        aviso.innerHTML = n <= actual.ultimo
+            ? `<b style="color:#dc2626">No se puede:</b> debe ser mayor que ${actual.ultimo}.`
+            : `Solo afecta a los documentos <b>nuevos</b>. El próximo saldrá como <b>${esc(actual.formato.replace('{n}', String(n).padStart(actual.documento === 'COT' || actual.documento === 'PC' ? 6 : 8, '0')))}</b>.`;
+    }
+    async function guardar() {
+        const n = parseInt(document.getElementById('ncValor').value, 10);
+        const err = document.getElementById('ncErr');
+        if (!n || n <= actual.ultimo) { err.textContent = `Escribe un número mayor que ${actual.ultimo}.`; return; }
+        if (!confirm(`¿Confirmas que el próximo ${actual.nombre} (${actual.empresa} ${actual.serie}) salga con el N° ${n}?\n\nLos documentos ya emitidos no cambian.`)) return;
+        const r = await fetch('/correlativos/api/fijar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({documento: actual.documento, clave: actual.clave, siguiente: n})});
+        const j = await r.json();
+        if (!j.success) { err.textContent = j.error; return; }
+        document.getElementById('ncModal').classList.remove('abierto');
+        if (window.showNotification) showNotification(j.message, 'success'); else alert(j.message);
+        cargar();
+    }
+    document.getElementById('ncFilas').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) abrir(+b.dataset.i); });
+    document.getElementById('ncValor').addEventListener('input', avisar);
+    document.getElementById('ncCancelar').addEventListener('click', () => document.getElementById('ncModal').classList.remove('abierto'));
+    document.getElementById('ncGuardar').addEventListener('click', guardar);
+    cargar();
+})();
+</script>
 {% endblock %}
-
-
-

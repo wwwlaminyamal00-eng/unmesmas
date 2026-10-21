@@ -52,6 +52,8 @@
     function irA(tab, rep) {
         tabActual = tab;
         $$('#repTabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        try { history.replaceState(null, '', '/reportes?tab=' + encodeURIComponent(tab)); } catch (e) { /* nada */ }
+        if (window.abrirMenuModulo) window.abrirMenuModulo();   // el menú lateral marca el reporte abierto
         $('#rep-sec-tablero').classList.toggle('active', tab === 'tablero');
         $('#rep-sec-visor').classList.toggle('active', tab !== 'tablero');
         if (tab === 'tablero') return cargarTablero();

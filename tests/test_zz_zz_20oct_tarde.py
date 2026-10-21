@@ -53,7 +53,7 @@ def test_pc_conforme_sin_validar_transporte(vendedor):
 def test_nombres_de_columnas_y_entregas_en_colores():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     assert '<th>Producto</th>' not in js and '<th>Lugar de Entrega</th>' not in js
-    assert "'<span class=\"desp-por\">⏳ Por despachar</span>'" in js and '🚚 Confirmar despacho' in js
+    assert "'<span class=\"desp-por\">⏳ Por despachar</span>'" in js and '>Confirmar despacho</button>' in js
     assert "irAPestanaYResaltar('despachar', 'despachoSearch', [nuevoDesp.numero, pc.numero]" in js
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     assert '.desp-hecho{' in html and 'background:#00E676' in html and '.desp-por{' in html
@@ -96,8 +96,8 @@ def test_fecha_de_cita_del_despacho(vendedor):
 
 def test_pantalla_de_entregas_18h():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
-    for t in ('ent-pendiente', 'ent-despachado', 'function estadoCompraHTML', '🛒 Pendiente de compra', '🛒 Generar compra',
-              "'/compras?tab=pedidos&pc='", '🧾 Generar factura', 'function ponerCitaDespacho', 'N° guía / N° factura' if False else 'guiaFacturaDespachoHTML'):
+    for t in ('ent-pendiente', 'ent-despachado', 'function estadoCompraHTML', '🛒 Pendiente de compra', '>Generar compra</button>',
+              "'/compras?tab=pedidos&pc='", '>Generar factura</button>', 'function ponerCitaDespacho', 'N° guía / N° factura' if False else 'guiaFacturaDespachoHTML'):
         assert t in js, t
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     tabla = html[html.index('<div id="despachar"'):]
