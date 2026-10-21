@@ -183,6 +183,12 @@
             :is(.table-scroll,.table-wrap,#repTabla)>table th,table.master-table th{hyphens:manual}
             :is(.table-scroll,.table-wrap)>table td :is(.ts-reg,.abast-badge,.com-paso,.badge-sin-pedido),:is(.table-scroll,.table-wrap)>table td>div{white-space:normal!important}
             #cotizacionModal .product-wide table{min-width:1220px!important}
+/* Tarjetas de resumen en UNA sola fila, todas del mismo tamaño (pedido de Erika 20/10/2026 22:56) */
+@media (min-width:1100px){
+:is(.status-board,.inv-kpis,.fin-kpis,.master-status-board){display:grid!important;grid-auto-flow:column!important;grid-auto-columns:minmax(0,1fr)!important;grid-template-columns:none!important;flex-wrap:nowrap!important}
+:is(.status-board,.inv-kpis,.fin-kpis,.master-status-board)>*{min-width:0!important;width:auto!important;max-width:none!important;grid-column:auto!important}
+:is(.status-board,.inv-kpis,.fin-kpis,.master-status-board)>* :is(small,b,span,div){overflow-wrap:anywhere}
+}
             </style>
 
             <!-- Bootstrap Icons -->

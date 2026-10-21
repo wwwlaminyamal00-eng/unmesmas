@@ -32,7 +32,7 @@ def _slug(texto):
     return re.sub(r'[^a-z0-9]+', '_', t).strip('_')[:60] or 'datos'
 
 
-# Columnas que son códigos o documentos: se quedan como texto (RUC, DNI, Nr°, teléfono...), nunca como número
+# Columnas que son códigos o documentos: se quedan como texto (RUC, DNI, N°, teléfono...), nunca como número
 RE_COLUMNA_TEXTO = re.compile(r'c[óo]d|nr°|n°|nro|ruc|dni|documento|tel[ée]fono|celular|serie|lote|cuenta|operaci', re.I)
 
 

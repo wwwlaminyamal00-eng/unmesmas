@@ -1,0 +1,18 @@
+# Dependencias del ERP (Python 3.11 recomendado)
+Flask>=3.0
+psycopg2-binary>=2.9      # conector PostgreSQL/Supabase (en Linux/Render también sirve "psycopg2")
+python-dotenv>=1.0        # carga el archivo .env en desarrollo local
+requests>=2.31            # consulta RUC (SUNAT)
+weasyprint>=60            # PDF de cotizaciones, guías y comprobantes
+qrcode>=7.4               # QR en los PDF
+pillow>=10.0
+pytz                      # zona horaria de Lima (antes faltaba y podía fallar)
+bcrypt>=4.0               # verificación de contraseñas antiguas con hash bcrypt
+gunicorn>=21.2            # servidor de producción (Render)
+# Dependencias que ya estaban en el proyecto y se conservan por compatibilidad
+pandas
+openpyxl
+reportlab
+beautifulsoup4
+supabase==2.5.0
+# Se retiraron Flask-SQLAlchemy y flask_login: el código no los usa.

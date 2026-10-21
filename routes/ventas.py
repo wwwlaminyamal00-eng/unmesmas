@@ -414,7 +414,7 @@ def obtener_guias_db():
                           WHERE c.guia_vinculada = guias_remision.serie || '-' || guias_remision.numero
                             AND COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
                           ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada,
-                -- Nr° PC (19/10/2026): la PC de la misma cotización
+                -- N° PC (19/10/2026): la PC de la misma cotización
                 (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
                   WHERE p.cotizacion_numero = guias_remision.documento_asociado
                     AND NULLIF(p.numero, '') IS NOT NULL
@@ -606,7 +606,7 @@ def obtener_comprobantes_db():
                 obs_retencion,
                 sunat_response, cdr_response, creado_por,
                 created_at, updated_at,
-                -- Nr° PC y Nr° guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
+                -- N° PC y N° guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
                 COALESCE(NULLIF(pc_vinculado, ''),
                          (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
                            WHERE p.cotizacion_numero = comprobantes.documento_asociado
@@ -2291,6 +2291,165 @@ def api_guias_listar():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============================================================
+# PREVENCIÓN DE DUPLICADOS (pedido de Erika 20/10/2026 22:54): el servidor es el "policía".
+# Lo anulado no cuenta. Las entregas y facturas parciales de un PC siguen permitidas:
+# solo se bloquea cuando lo nuevo pasaría lo que pidió el PC y ya hay otro documento con ese producto.
+# ============================================================
+ANULADOS = ('ANULADO', 'ANULADA')
+
+
+def _cantidades_por_producto(items_json):
+    from routes.compras_flujo import _items_pedido, _resolver_productos
+    items = _resolver_productos(_items_pedido({'items_json': items_json}))
+    out, nombres = {}, {}
+    for it in items:
+        clave = it['producto_id'] or (it['codigo'] or '').strip().upper() or (it['descripcion'] or '').strip().upper()
+        if clave and it['cantidad'] > 0:
+            out[clave] = out.get(clave, a_decimal(0)) + it['cantidad']
+            nombres.setdefault(clave, it['descripcion'] or it['codigo'])
+    return out, nombres
+
+
+def _pasa_lo_pedido(pc_items_json, docs, items_nuevos):
+    """Primer producto en que lo ya documentado + lo nuevo pasa lo que pidió el PC (solo si ya había algo)."""
+    pide, _ = _cantidades_por_producto(pc_items_json)
+    ya = {}
+    for d in docs:
+        for k, c in _cantidades_por_producto(d.get('items_json'))[0].items():
+            ya[k] = ya.get(k, a_decimal(0)) + c
+    nuevo, nombres = _cantidades_por_producto(items_nuevos)
+    for k, c in nuevo.items():
+        if k in pide and ya.get(k, 0) > 0 and ya[k] + c > pide[k] + a_decimal('0.001'):
+            return {'producto': nombres.get(k), 'pide': float(pide[k]), 'ya': float(ya[k]), 'nuevo': float(c)}
+    return None
+
+
+def _pc_activo(*numeros):
+    numeros = [str(n).strip() for n in numeros if n and str(n).strip()]
+    if not numeros:
+        return None
+    filas = db_query("""SELECT numero, cotizacion_numero, items_json FROM pedido_compra_pc
+                        WHERE numero = ANY(%s) AND UPPER(COALESCE(estado, '')) NOT IN ('ANULADO', 'ANULADA')
+                        ORDER BY id DESC LIMIT 1""", (numeros,))
+    return filas[0] if filas else None
+
+
+def _guia_duplicada(data):
+    """Mensaje de bloqueo si la guía nueva repite una guía activa del mismo despacho o PC."""
+    desp = str(data.get('despacho_numero') or '').strip()
+    if desp:
+        f = db_query("""SELECT g.serie || '-' || g.numero::text AS num FROM despachos d
+                        JOIN guias_remision g ON d.guia IN (g.serie || '-' || g.numero::text, g.numero::text)
+                        WHERE d.numero = %s AND UPPER(COALESCE(g.estado_sunat, '')) NOT IN ('ANULADO', 'ANULADA')
+                        LIMIT 1""", (desp,))
+        if f:
+            return (f"⛔ ERROR: El despacho {desp} ya tiene la guía {f[0]['num']}. No se puede duplicar. "
+                    "Si esa guía está mal, anúlala primero.")
+    pc = _pc_activo(data.get('pc_numero'), data.get('documento_asociado'))
+    if not pc:
+        pc = db_query("""SELECT p.numero, p.cotizacion_numero, p.items_json FROM despachos d JOIN pedido_compra_pc p ON p.numero = d.pc_numero
+                         WHERE d.numero = %s LIMIT 1""", (desp,)) if desp else None
+        pc = pc[0] if pc else None
+    if not pc:
+        return None
+    cot = pc.get('cotizacion_numero') or ''
+    guias = db_query("""SELECT g.serie || '-' || g.numero::text AS num, g.items_json FROM guias_remision g
+                        WHERE UPPER(COALESCE(g.estado_sunat, '')) NOT IN ('ANULADO', 'ANULADA')
+                          AND (g.documento_asociado = %s OR (%s <> '' AND g.documento_asociado = %s)
+                               OR g.serie || '-' || g.numero::text IN (SELECT guia FROM despachos WHERE pc_numero = %s AND guia IS NOT NULL)
+                               OR g.numero::text IN (SELECT guia FROM despachos WHERE pc_numero = %s AND guia IS NOT NULL))""",
+                     (pc['numero'], cot, cot, pc['numero'], pc['numero']))
+    pasa = _pasa_lo_pedido(pc['items_json'], guias, data.get('items') or [])
+    if pasa:
+        nums = ', '.join(sorted({g['num'] for g in guias}))
+        return (f"⛔ ERROR: El PC {pc['numero']} ya tiene guía ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+                f"ya hay {pasa['ya']:g} en guías y esta guía agrega {pasa['nuevo']:g}. No se puede duplicar.")
+    return None
+
+
+def _despacho_duplicado(data):
+    """Mensaje de bloqueo si el despacho nuevo repite lo que otro despacho activo del mismo PC ya cubre."""
+    pc = _pc_activo(data.get('pc_numero'))
+    if not pc:
+        return None
+    desps = db_query("""SELECT numero AS num, items_json FROM despachos
+                         WHERE pc_numero = %s AND COALESCE(estado, '') NOT ILIKE 'anulad%%'""", (pc['numero'],))
+    pasa = _pasa_lo_pedido(pc['items_json'], desps, data.get('items') or [])
+    if pasa:
+        nums = ', '.join(sorted({d['num'] for d in desps}))
+        return (f"⛔ ERROR: El PC {pc['numero']} ya tiene despacho ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+                f"ya hay {pasa['ya']:g} en despachos y este agrega {pasa['nuevo']:g}. No se puede duplicar. "
+                "Búscalo en Ventas ▸ Entregas.")
+    return None
+
+
+def _factura_duplicada(data, pc_origen):
+    """Mensaje de bloqueo si la factura nueva repite una factura activa de la misma guía o PC."""
+    guia = str(data.get('guia') or '').strip()
+    if guia:
+        f = db_query("""SELECT serie || '-' || LPAD(numero::text, 8, '0') AS num FROM comprobantes
+                        WHERE guia_vinculada = %s AND UPPER(COALESCE(estado_sunat, '')) NOT IN ('ANULADO', 'ANULADA')
+                        LIMIT 1""", (guia,))
+        if f:
+            return (f"⛔ ERROR: La guía {guia} ya fue facturada ({f[0]['num']}). No se puede duplicar. "
+                    "Si esa factura está mal, emite una nota de crédito o anúlala primero.")
+    pc = _pc_activo(pc_origen.get('numero')) if pc_origen else None
+    if not pc:
+        return None
+    cot = pc.get('cotizacion_numero') or ''
+    facs = db_query("""SELECT serie || '-' || LPAD(numero::text, 8, '0') AS num, items_json FROM comprobantes
+                       WHERE UPPER(COALESCE(estado_sunat, '')) NOT IN ('ANULADO', 'ANULADA')
+                         AND (pc_vinculado = %s OR (COALESCE(pc_vinculado, '') = '' AND %s <> '' AND documento_asociado = %s))""",
+                    (pc['numero'], cot, cot))
+    pasa = _pasa_lo_pedido(pc['items_json'], facs, data.get('items') or [])
+    if pasa:
+        nums = ', '.join(sorted({f['num'] for f in facs}))
+        return (f"⛔ ERROR: El PC {pc['numero']} ya fue facturado ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+                f"ya hay {pasa['ya']:g} facturado y esta factura agrega {pasa['nuevo']:g}. No se puede duplicar.")
+    return None
+
+
+def _faltantes_stock_guia(data, empresa_id):
+    """Productos de una guía de venta nueva que no tienen stock en la empresa (todas sus sedes).
+    Si su despacho ya salió (Despachado/Entregado), el stock ya se descontó: no se revisa."""
+    motivo = str(data.get('motivo_traslado') or '01').strip().upper()
+    if motivo not in ('01', 'VENTA'):
+        return []
+    claves = [str(data.get(k) or '').strip() for k in ('despacho_numero', 'pc_numero', 'documento_asociado', 'cotizacion_numero')]
+    claves = [c for c in claves if c]
+    if claves and db_query("""SELECT 1 FROM despachos WHERE COALESCE(estado, '') IN ('Despachado', 'Entregado')
+                               AND (numero = ANY(%s) OR pc_numero = ANY(%s) OR cotizacion_numero = ANY(%s)) LIMIT 1""",
+                            (claves, claves, claves)):
+        return []
+    from routes.compras_flujo import _resolver_productos
+    items = _resolver_productos([{'producto_id': it.get('producto_id'), 'codigo': str(it.get('codigo') or '').strip(),
+                                  'descripcion': it.get('producto') or it.get('descripcion') or '',
+                                  'cantidad': a_decimal(it.get('cantidad') or 0)}
+                                 for it in (data.get('items') or []) if isinstance(it, dict)])
+    pide = {}
+    for it in items:
+        if it['producto_id'] and it['cantidad'] > 0:  # producto escrito a mano: no se puede saber su stock
+            p = pide.setdefault(it['producto_id'], {'producto': it['descripcion'] or it['codigo'], 'cantidad': a_decimal(0)})
+            p['cantidad'] += it['cantidad']
+    if not pide:
+        return []
+    ids = list(pide)
+    if empresa_id is not None:
+        filas = db_query("""SELECT producto_id, COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
+                             WHERE producto_id = ANY(%s) AND empresa_id = %s GROUP BY producto_id""", (ids, empresa_id))
+        emp = empresa_por_id(empresa_id) or {}
+        nombre_emp = emp.get('nombre_corto') or emp.get('codigo') or emp.get('razon_social') or 'la empresa'
+    else:
+        filas = db_query("""SELECT producto_id, COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
+                             WHERE producto_id = ANY(%s) GROUP BY producto_id""", (ids,))
+        nombre_emp = 'el grupo'
+    hay = {f['producto_id']: a_decimal(f['hay']) for f in filas}
+    return [{'producto': p['producto'], 'empresa': nombre_emp, 'sede': 'todas las sedes',
+             'pide': float(p['cantidad']), 'hay': float(max(hay.get(pid, a_decimal(0)), a_decimal(0)))}
+            for pid, p in pide.items() if hay.get(pid, a_decimal(0)) < p['cantidad']]
+
+
 @ventas_bp.route('/ventas/api/guias/guardar', methods=['POST'])
 @login_required
 def api_guias_guardar():
@@ -2395,6 +2554,18 @@ def api_guias_guardar():
                 data['remitente_direccion'] = emp.get('direccion_fiscal') or ''
                 if emp.get('ubigeo'):
                     data['remitente_ubigeo'] = emp['ubigeo']
+        # No se repite una guía del mismo despacho o PC (pedido de Erika 20/10/2026 22:54)
+        duplicada = _guia_duplicada(data)
+        if duplicada:
+            return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'GUÍA DUPLICADA: NO SE CREÓ', 'error': duplicada}), 409
+        # Pedido de Erika 20/10/2026: la guía es para entregar, así que sin stock no se crea (la factura sí).
+        faltan_guia = _faltantes_stock_guia(data, empresa_guia)
+        if faltan_guia:
+            nombres = ', '.join(f"{f['producto']} (pide {f['pide']:g}, hay {f['hay']:g})" for f in faltan_guia[:5])
+            return jsonify({'success': False, 'codigo': 'falta_stock', 'faltan': faltan_guia,
+                            'titulo': 'NO SE PUEDE CREAR LA GUÍA: FALTA STOCK',
+                            'error': f'No se puede crear la guía: falta stock de {nombres}. '
+                                     'Primero compra o recibe la mercadería. La factura sí se puede hacer sin stock.'}), 409
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             if numero:
@@ -2993,6 +3164,10 @@ def api_comprobantes_guardar():
         # CREAR NUEVO COMPROBANTE
         # ============================================================
         numero_enviado = str(comprobante_data['numero'] or '').strip()
+        # No se repite una factura de la misma guía o PC (pedido de Erika 20/10/2026 22:54)
+        duplicada = _factura_duplicada(data, pc_origen)
+        if duplicada:
+            return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'FACTURA DUPLICADA: NO SE CREÓ', 'error': duplicada}), 409
         # La factura queda en la empresa de su guía / PC / cotización (o la elegida arriba).
         # La numeración es por empresa: cada RUC tiene su propia serie F001.
         empresa_comp = empresa_para_crear(
@@ -3514,11 +3689,53 @@ def api_pedido_compra_guardar():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+_cita_lista = False
+
+
+def _asegurar_fecha_cita():
+    """Columna "Fecha de cita del cliente" en despachos (migración 013; en la base de pruebas se crea aquí)."""
+    global _cita_lista
+    if _cita_lista:
+        return
+    if not db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'despachos' AND column_name = 'fecha_cita'"):
+        with db_tx() as conn:
+            conn.cursor().execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS fecha_cita TIMESTAMP")
+    _cita_lista = True
+
+
+@ventas_bp.route('/ventas/api/despachos/<int:did>/cita', methods=['POST'])
+@login_required
+def api_despacho_cita(did):
+    """Pone o cambia la fecha (y hora) de la cita con el cliente para la entrega. Vacío la quita."""
+    try:
+        _asegurar_fecha_cita()
+        texto = str((request.get_json(silent=True) or {}).get('fecha_cita') or '').strip()
+        nueva = None
+        if texto:
+            try:
+                nueva = datetime.fromisoformat(texto.replace('Z', ''))
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Fecha de cita no válida'}), 400
+        antes = db_query("SELECT id, numero, fecha_cita FROM despachos WHERE id = %s", (did,))
+        if not antes:
+            return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+        db_execute("UPDATE despachos SET fecha_cita = %s, updated_at = NOW() WHERE id = %s", (nueva, did))
+        from routes.auditoria import registrar_auditoria
+        registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
+                            antes={'fecha_cita': antes[0].get('fecha_cita')}, despues={'fecha_cita': nueva},
+                            detalle=f"Fecha de cita del despacho {antes[0].get('numero') or did}: "
+                                    f"{nueva.strftime('%d/%m/%Y %H:%M') if nueva else 'sin cita'}")
+        return jsonify({'success': True, 'data': {'id': did, 'fecha_cita': nueva.strftime('%Y-%m-%dT%H:%M') if nueva else None}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @ventas_bp.route('/ventas/api/despachos/listar', methods=['GET'])
 @login_required
 def api_despachos_listar():
     try:
         print("🚚 API DESPACHOS LISTAR - INICIO")
+        _asegurar_fecha_cita()
         
         query = """
             SELECT 
@@ -3526,7 +3743,7 @@ def api_despachos_listar():
                 d.pc_id, d.pc_numero, d.cotizacion_id, d.cotizacion_numero,
                 d.cliente, d.ruc, d.comprobante, d.guia, d.origen, d.destino,
                 d.transportista, d.observaciones, d.responsable,
-                d.items_json, d.created_at, d.updated_at
+                d.items_json, d.created_at, d.updated_at, d.fecha_cita
             FROM despachos d
             ORDER BY d.id DESC
         """
@@ -3668,7 +3885,9 @@ def api_despachos_listar():
                     'responsable': row.get('responsable'),
                     'items': items,  # ← Agregar items al objeto
                     'created_at': created_at_formateada,
-                    'updated_at': row.get('updated_at')
+                    'updated_at': row.get('updated_at'),
+                    # Fecha de cita con el cliente (Entregas, 20/10/2026); texto ISO sin zona para la pantalla
+                    'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%dT%H:%M') if row.get('fecha_cita') else None
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")
@@ -3833,6 +4052,11 @@ def api_despachos_guardar():
 
         if data.get('id'):
             return _actualizar_despacho(data, fecha_despacho)
+
+        # No se repite un despacho del mismo PC (20/10/2026: PC-KCF-000002 quedó con dos despachos de 10 por 10 pedidos)
+        duplicado = _despacho_duplicado(data)
+        if duplicado:
+            return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'DESPACHO DUPLICADO: NO SE CREÓ', 'error': duplicado}), 409
 
         items_json = json.dumps(data.get('items', []))
         # El despacho queda en la empresa de su PC (o de la cotización, o la elegida arriba)

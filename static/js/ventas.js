@@ -394,6 +394,11 @@ async function apiFetch(url, options = {}) {
         
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            // Guía sin stock (20/10/2026): ventana roja grande con qué producto falta
+            // Documento duplicado (20/10/2026 22:54): misma ventana roja con el documento que ya existe
+            if (['falta_stock', 'duplicado'].includes(errorData.codigo) && errorData.titulo && typeof mostrarErrorStockDespacho === 'function') {
+                mostrarErrorStockDespacho(errorData.faltan, errorData.error, errorData.titulo);
+            }
             throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
         }
         
@@ -752,11 +757,11 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>Nr° PC (pedido de compra)</th>
-                        <th>Nr° cotización</th>
+                        <th>N° PC (pedido de compra)</th>
+                        <th>N° cotización</th>
                         <th>Cliente</th>
-                        <th>Lugar entrega</th>
                         <th>RUC</th>
+                        <th>Lugar entrega</th>
                         <th>Descripción</th>
                         <th>Monto (Sin IGV)</th>
                         <th>Monto (Con IGV)</th>
@@ -769,8 +774,8 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>Nr° PC (pedido de compra)</th>
-                        <th>Nr° cotización</th>
+                        <th>N° PC (pedido de compra)</th>
+                        <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>Lugar entrega</th>
@@ -918,11 +923,11 @@ function renderPedidos() {
                 <th>Item</th>
                 <th>Fecha / Hora</th>
                 <th>Estado</th>
-                <th>Nr° PC (pedido de compra)</th>
-                <th>Nr° cotización</th>
+                <th>N° PC (pedido de compra)</th>
+                <th>N° cotización</th>
                 <th>Cliente</th>
-                <th>Lugar entrega</th>
                 <th>RUC</th>
+                <th>Lugar entrega</th>
                 <th>Descripción</th>
                 <th>Monto (Sin IGV)</th>
                 <th>Monto (Con IGV)</th>
@@ -959,8 +964,8 @@ function renderPedidos() {
                 <td><b>${r.numero || '-'}</b>${r.oc_cliente ? `<div style="font-size:10px;font-weight:800;color:#1D4ED8;white-space:nowrap" title="N° OC del cliente">OC cliente: ${esc(r.oc_cliente)}</div>` : ''}${badgeNuevo(r, 'created_at')}</td>
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
-                <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
                 <td>${r.ruc || '-'}</td>
+                <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
                 <td class="left">${r.descripcion || r.observaciones || '-'}</td>
                 <td><b>${money(montoSinIgv)}</b></td>
                 <td><b>${money(montoConIgv)}</b></td>
@@ -980,8 +985,8 @@ function renderPedidos() {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>Nr° PC (pedido de compra)</th>
-            <th>Nr° cotización</th>
+            <th>N° PC (pedido de compra)</th>
+            <th>N° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
             <th>Lugar entrega</th>
@@ -1226,10 +1231,10 @@ if (cotizacionViewMode === 'principal') {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>Nr° cotización</th>
-            <th>RUC</th>
+            <th>N° cotización</th>
             <th>Código de cliente</th>
             <th>Razón social (Cliente)</th>
+            <th>RUC</th>
             <th>Descripción principal</th>
             <th>Monto total<br><small>(Sin IGV)</small></th>
             <th>Monto total<br><small>(Incluido IGV)</small></th>
@@ -1253,9 +1258,9 @@ if (cotizacionViewMode === 'principal') {
             <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
             <td class="left"><b>${sd(r.razon)}</b></td>
+            <td>${sd(r.ruc)}</td>
             <td class="left">${sd(getDescripcionPrincipal(r))}</td>
             <td><b>${money(totalSinIgv)}</b></td>
             <td><b>${money(totalConIgv)}</b></td>
@@ -1276,10 +1281,10 @@ if (cotizacionViewMode === 'principal') {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>Nr° cotización</th>
-            <th>RUC</th>
+            <th>N° cotización</th>
             <th>Código de cliente</th>
-            <th>Razón social (Cliente) </th>
+            <th>Razón social (Cliente)</th>
+            <th>RUC</th>
             <th>Contacto</th>
             <th>Teléfono</th>
             <th>Email</th>
@@ -1316,9 +1321,9 @@ if (cotizacionViewMode === 'principal') {
             <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b></td>
-            <td>${sd(r.ruc)}</td>
             <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
             <td class="left"><b>${sd(r.razon)}</b></td>
+            <td>${sd(r.ruc)}</td>
             <td>${sd(r.contacto || r.cliente_contacto || r.contacto_cliente)}</td>
             <td>${sd(r.telefono || r.cliente_telefono || r.telefono_cliente)}</td>
             <td>${sd(r.email || r.cliente_email || r.email_cliente)}</td>
@@ -1386,6 +1391,104 @@ function setPedidoView(mode) {
     // Renderizar la tabla con la vista seleccionada
     renderPedidos();
 }
+
+// Entregas (18:09): estado de la compra, guía/factura juntas, fecha de cita, "Generar compra" y factura sin stock
+function estadoCompraHTML(r, despachado, anulado) {
+    if (anulado) return '-';
+    if (despachado) return '<span class="compra-est compra-ok">✔ Comprado</span>';
+    const info = (abastData.despachos || {})[r.id];
+    if (!info || !info.estado) return '<small title="Sus productos no están en el catálogo o aún se está calculando">-</small>';
+    const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
+    const t = {
+        'Con stock': ['compra-ok', '✔ Comprado / en stock'],
+        'Por llegar': ['compra-camino', '📦 Comprado, por llegar'],
+        'Pendiente por recojo': ['compra-camino', '🚚 Comprado, por recoger'],
+        'Pendiente por compra': ['compra-falta', '🛒 Pendiente de compra']
+    }[info.estado] || ['compra-camino', info.estado];
+    return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>`;
+}
+function guiaFacturaDespachoHTML(r) {
+    const g = r.guia ? `<div><small>Guía</small><br><b>${sd(r.guia)}</b></div>` : '';
+    const f = r.comprobante ? `<div style="margin-top:3px"><small>Factura</small><br><b>${sd(r.comprobante)}</b></div>` : '';
+    return g || f ? g + f : '-';
+}
+function citaDespachoHTML(r, cerrado) {
+    let txt = '';
+    if (r.fecha_cita) {
+        const d = new Date(String(r.fecha_cita).replace(' ', 'T'));
+        txt = isNaN(d) ? String(r.fecha_cita) : d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    if (cerrado) return txt ? `<b>${txt}</b>` : '-';
+    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha y hora acordadas con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
+}
+function ponerCitaDespacho(id) {
+    const r = (despachosData || []).find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('citaDespachoModal')?.remove();
+    const actual = r.fecha_cita ? String(r.fecha_cita).replace(' ', 'T').slice(0, 16) : '';
+    const d = document.createElement('div');
+    d.id = 'citaDespachoModal';
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000002;display:flex;align-items:center;justify-content:center;padding:16px';
+    d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+        <div style="font-size:18px;font-weight:900;margin-bottom:4px">📅 Fecha de cita con el cliente</div>
+        <div style="font-size:13px;color:#475569;margin-bottom:12px">${sd(r.numero)} · ${sd(r.cliente)}</div>
+        <input type="datetime-local" id="citaDespachoValor" value="${actual}" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+          ${actual ? '<button type="button" data-acc="quitar" style="padding:9px 14px;border-radius:10px;border:1px solid #FCA5A5;background:#fff;color:#B91C1C;font-weight:800;cursor:pointer">Quitar cita</button>' : ''}
+          <button type="button" data-acc="cancelar" style="padding:9px 14px;border-radius:10px;border:1px solid #CBD5E1;background:#fff;font-weight:800;cursor:pointer">Cancelar</button>
+          <button type="button" data-acc="guardar" style="padding:9px 16px;border-radius:10px;border:0;background:#16A34A;color:#fff;font-weight:900;cursor:pointer">💾 Guardar</button>
+        </div></div>`;
+    document.body.appendChild(d);
+    const guardar = async valor => {
+        try {
+            const res = await apiFetch(`/ventas/api/despachos/${id}/cita`, { method: 'POST', body: JSON.stringify({ fecha_cita: valor }) });
+            r.fecha_cita = res.data ? res.data.fecha_cita : valor;
+            d.remove();
+            showToast(valor ? '✅ Cita guardada' : '✅ Cita quitada', 'success');
+            renderDespachos();
+        } catch (e) { showToast('❌ ' + e.message, 'error'); }
+    };
+    d.addEventListener('click', e => {
+        const acc = e.target.dataset && e.target.dataset.acc;
+        if (e.target === d || acc === 'cancelar') d.remove();
+        else if (acc === 'quitar') guardar('');
+        else if (acc === 'guardar') {
+            const v = document.getElementById('citaDespachoValor').value;
+            if (!v) { showToast('⚠️ Elige la fecha y la hora de la cita', 'warning'); return; }
+            guardar(v);
+        }
+    });
+}
+function generarCompraDesdeDespacho(id) {
+    const r = (despachosData || []).find(x => x.id === id);
+    if (!r || !r.pc_numero) return;
+    window.location.href = '/compras?tab=pedidos&pc=' + encodeURIComponent(r.pc_numero);
+}
+async function facturaDesdeDespacho(id) {
+    const r = (despachosData || []).find(x => x.id === id);
+    if (!r) return;
+    switchTab('comprobantes');
+    await openComprobanteModal();
+    setTimeout(() => {
+        const pcSel = document.getElementById('compPC');
+        const cotSel = document.getElementById('compCotizacion');
+        if (r.pc_numero && pcSel && [...pcSel.options].some(o => o.value === r.pc_numero)) {
+            pcSel.value = r.pc_numero;
+            window.loadComprobanteFromPC(r.pc_numero);
+        } else if (r.cotizacion_numero && cotSel && [...cotSel.options].some(o => o.value === r.cotizacion_numero)) {
+            cotSel.value = r.cotizacion_numero;
+            window.cargarProductosComprobanteDesdeCotizacion(r.cotizacion_numero);
+        } else {
+            const ruc = document.getElementById('compRuc'), cli = document.getElementById('compCliente');
+            if (ruc && !ruc.value) { ruc.value = r.ruc || ''; ruc.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (cli && !cli.value) cli.value = r.cliente || '';
+        }
+        showToast('🧾 Factura del despacho ' + (r.numero || '') + ': se puede emitir aunque todavía no haya stock', 'info');
+    }, 400);
+}
+window.ponerCitaDespacho = ponerCitaDespacho;
+window.generarCompraDesdeDespacho = generarCompraDesdeDespacho;
+window.facturaDesdeDespacho = facturaDesdeDespacho;
 
 // Entregas (pedido de Erika 20/10/2026): lo pendiente en rojo encendido, lo terminado en verde fluorescente.
 // Solo cambia lo que se ve; en la base el estado sigue siendo "Pendiente despacho" / "Despachado".
@@ -1482,25 +1585,32 @@ function renderDespachos() {
         }
         
         const despachado = r.estado === 'Despachado' || r.estado === 'Entregado';
+        const anulado = /anulad/i.test(r.estado || '');
+        const compra = ((abastData.despachos || {})[r.id] || {}).estado;
+        // Fila entera: rosado bajito si falta despachar, verde bajito si ya salió (Erika 20/10/2026 18:09)
         return `
-        <tr class="${despachado ? 'fila-despachada' : ''}">
+        <tr class="${despachado ? 'ent-despachado' : (anulado ? 'ent-anulado' : 'ent-pendiente')}">
             <td>${i + 1}</td>
             <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
-            <td>${estadoDespachoHTML(r.estado)}${despachado ? '' : abastBadge('despachos', r.id)}</td>
+            <td>${estadoDespachoHTML(r.estado)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
             <td>${sd(r.pc_numero)}</td>
+            <td>${sd(r.cotizacion_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
-            <td>${sd(r.comprobante)}</td>
-            <td>${sd(r.guia)}</td>
+            <td>${guiaFacturaDespachoHTML(r)}</td>
             <td>${sd(r.destino)}</td>
-            <td>
-                ${r.estado !== 'Despachado' && r.estado !== 'Entregado' ? 
-                    `<button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">🚚 Confirmar despacho</button>` : 
-                    `<span class="desp-hecho">✔ ${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
-                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>`
+            <td>${estadoCompraHTML(r, despachado, anulado)}</td>
+            <td>${citaDespachoHTML(r, despachado || anulado)}</td>
+            <td><div class="acc-col">
+                ${!despachado && !anulado ? `
+                    ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Abre Compras con este pedido ya cargado para hacer la orden de compra">🛒 Generar compra</button>` : ''}
+                    <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">🚚 Confirmar despacho</button>
+                    ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">🧾 Generar factura</button>` : ''}` :
+                  despachado ? `<span class="desp-hecho">✔ ${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
+                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">↩️ Anular</button>` : ''
                 }
-                <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">🏷️ Rótulo</button>
-            </td>
+                <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">🏷️ Generar rótulo</button>
+            </div></td>
         </tr>`;
     }).join('');
 }
@@ -1770,8 +1880,8 @@ function renderGuias() {
             <td class="date-cell">${formatearFechaGuia(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
+            <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
             <td>${sd(r.comprobante)}</td>
@@ -1886,8 +1996,8 @@ function renderComprobantes() {
             <td class="date-cell">${formatearFechaComprobante(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td>${r.tipo || '-'}</td>
-            <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
+            <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
             <td>${sd(r.guia_numero)}</td>
@@ -1981,8 +2091,8 @@ function renderNotas() {
             <td>${badgeStatus(r.estado)}</td>
             <td>${sd(r.tipo)}</td>
             <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
+            <td>${sd(r.ruc)}</td>
             <td>${sd(r.comprobante)}</td>
             <td>${sd(r.motivo)}</td>
             <td><b>${money(r.monto)}</b></td>
@@ -2018,8 +2128,8 @@ function renderDevoluciones() {
             <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.ruc)}</td>
             <td class="left">${sd(r.cliente)}</td>
+            <td>${sd(r.ruc)}</td>
             <td>${sd(r.comprobante_numero)}</td>
             <td>${sd(r.guia)}</td>
             <td>${sd(r.motivo)}</td>
@@ -4856,6 +4966,7 @@ async function marcarDespachado(id) {
                     });
                     
                 } else {
+                    if (['falta_stock', 'duplicado'].includes(guiaResult.codigo) && guiaResult.titulo) mostrarErrorStockDespacho(guiaResult.faltan || [], guiaResult.error, guiaResult.titulo);
                     showToast('⚠️ Despacho marcado, pero error al crear guía: ' + (guiaResult.error || 'Desconocido'), 'warning');
                 }
                 
@@ -13045,8 +13156,8 @@ function renderRevision() {
             <td class="date-cell" style="font-size:9px;">${fechaDisplay}</td>
             <td>${badgeEstado}</td>
             <td style="font-weight:1000;font-size:12px;color:#0F172A;">${sd(r.numero)}${badgeNuevo(r, 'fecha')}</td>
-            <td style="font-weight:800;">${sd(r.ruc)}</td>
             <td class="left" style="font-weight:900;font-size:11px;">${sd(r.cliente)}</td>
+            <td style="font-weight:800;">${sd(r.ruc)}</td>
             <td style="font-size:10px;">${sd(r.vendedor || '--')}</td>
             <td style="font-weight:900;color:#EF233C;font-size:12px;">${money(r.total || r.monto || 0)}</td>
             <td style="font-size:9px;font-weight:800;color:#2563EB;">${sd(validador)}</td>
@@ -17127,7 +17238,7 @@ async function prepararUbicacionDespacho(id) {
 }
 
 // Error de stock al despachar: rojo, grande y diciendo qué producto falta y en qué sede (pedido de Erika 20/10/2026)
-function mostrarErrorStockDespacho(faltan, mensaje) {
+function mostrarErrorStockDespacho(faltan, mensaje, titulo) {
     document.getElementById('errorStockDespacho')?.remove();
     const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const num = n => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
@@ -17142,19 +17253,19 @@ function mostrarErrorStockDespacho(faltan, mensaje) {
     d.setAttribute('role', 'alertdialog');
     d.style.cssText = 'position:fixed;inset:0;background:rgba(127,29,29,.55);z-index:10000003;display:flex;align-items:center;justify-content:center;padding:16px';
     d.innerHTML = `<div style="background:#FEF2F2;border:5px solid #DC2626;border-radius:16px;max-width:720px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.45)">
-        <div style="background:#DC2626;color:#fff;padding:16px 20px;font-size:24px;font-weight:950;letter-spacing:.3px">⛔ NO SE PUEDE DESPACHAR: FALTA STOCK</div>
+        <div style="background:#DC2626;color:#fff;padding:16px 20px;font-size:24px;font-weight:950;letter-spacing:.3px">⛔ ${esc(titulo || 'NO SE PUEDE DESPACHAR: FALTA STOCK')}</div>
         <div style="padding:16px 20px;color:#7F1D1D">
           <div style="font-size:16px;font-weight:800;margin-bottom:10px">${filas ? 'Estos productos no alcanzan en la empresa y sede elegidas:' : esc(mensaje || 'No hay stock suficiente.')}</div>
           ${filas ? `<table style="width:100%;border-collapse:collapse;font-size:15px;background:#fff;border:2px solid #FCA5A5;border-radius:10px">
             <thead><tr style="background:#FEE2E2"><th style="padding:8px;text-align:left">Nombre producto</th><th style="padding:8px">Empresa · Sede</th>
               <th style="padding:8px;text-align:right">Pide</th><th style="padding:8px;text-align:right">Hay</th><th style="padding:8px;text-align:right">Falta</th></tr></thead>
             <tbody>${filas}</tbody></table>` : ''}
-          <div style="font-size:14px;font-weight:700;margin-top:12px">Qué hacer: elige otra empresa o sede que diga ✅ "hay todo", o pide la compra / la transferencia de esos productos. Nada se descontó.</div>
+          <div style="font-size:14px;font-weight:700;margin-top:12px">${titulo ? (filas ? esc(mensaje || '') : '') : 'Qué hacer: elige otra empresa o sede que diga ✅ "hay todo", o pide la compra / la transferencia de esos productos. Nada se descontó.'}</div>
           <div style="text-align:right;margin-top:14px"><button type="button" style="padding:12px 22px;border:0;border-radius:10px;background:#DC2626;color:#fff;font-size:16px;font-weight:900;cursor:pointer">Entendido</button></div>
         </div></div>`;
     document.body.appendChild(d);
     d.querySelector('button').onclick = () => d.remove();
-    if (typeof showToast === 'function') showToast('⛔ No se puede despachar: falta stock', 'error');
+    if (typeof showToast === 'function') showToast(titulo ? '⛔ ' + titulo.charAt(0) + titulo.slice(1).toLowerCase() : '⛔ No se puede despachar: falta stock', 'error');
 }
 window.mostrarErrorStockDespacho = mostrarErrorStockDespacho;
 

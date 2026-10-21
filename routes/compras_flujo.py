@@ -1031,6 +1031,39 @@ def _validar_items(cur, items_in, oc_id=None):
     return items
 
 
+# Estados en que una OC sigue "activa" (no anulada ni terminada)
+ESTADOS_OC_ACTIVA = ('Borrador', 'Por aprobar', 'Aprobada', 'Recibida parcial')
+
+
+def _oc_duplicada(cur, proveedor_id, items, oc_id):
+    """Pedido de Erika 20/10/2026 22:54: no se repite una OC. Bloquea si ya hay una OC activa del mismo
+    proveedor para el mismo PC, o con los mismos productos y cantidades. A otro proveedor sí se puede."""
+    cur.execute("SELECT id FROM proveedores WHERE id = %s FOR UPDATE", (proveedor_id,))  # dos personas a la vez: una espera
+    pedidos = sorted({i['pedido_id'] for i in items if i['pedido_id']})
+    if pedidos:
+        cur.execute("""SELECT oc.numero_orden, string_agg(DISTINCT it.pedido_numero, ', ') AS pcs
+                       FROM ordenes_compra oc JOIN ordenes_compra_items it ON it.orden_compra_id = oc.id
+                       WHERE oc.proveedor_id = %s AND oc.flujo = 'v2' AND oc.estado = ANY(%s) AND oc.id <> %s
+                         AND it.pedido_id = ANY(%s)
+                       GROUP BY oc.id, oc.numero_orden ORDER BY oc.id LIMIT 1""",
+                    (proveedor_id, list(ESTADOS_OC_ACTIVA), oc_id or 0, pedidos))
+        f = cur.fetchone()
+        if f:
+            raise ErrorCompras(f"⛔ ERROR: Ya existe una Orden de Compra activa para este pedido ({f['numero_orden']}, "
+                               f"PC {f['pcs']}) con este mismo proveedor. No se puede duplicar. "
+                               "Si falta algo, corrige esa orden; si está mal, anúlala primero.")
+    firma = sorted((i['producto_id'], str(a_decimal(i['cantidad']).normalize())) for i in items)
+    cur.execute("""SELECT oc.id, oc.numero_orden, array_agg(it.producto_id) AS prods, array_agg(it.cantidad) AS cants
+                   FROM ordenes_compra oc JOIN ordenes_compra_items it ON it.orden_compra_id = oc.id
+                   WHERE oc.proveedor_id = %s AND oc.flujo = 'v2' AND oc.estado = ANY(%s) AND oc.id <> %s
+                   GROUP BY oc.id, oc.numero_orden""", (proveedor_id, list(ESTADOS_OC_ACTIVA), oc_id or 0))
+    for f in cur.fetchall():
+        otra = sorted((p, str(a_decimal(c).normalize())) for p, c in zip(f['prods'], f['cants']))
+        if otra == firma:
+            raise ErrorCompras(f"⛔ ERROR: Ya existe una Orden de Compra activa idéntica ({f['numero_orden']}): mismo proveedor, "
+                               "mismos productos y mismas cantidades. No se puede duplicar.")
+
+
 @compras_flujo_bp.route('/compras/api/flujo/ordenes', methods=['POST'])
 def api_orden_guardar():
     """Crea o corrige una OC en Borrador. Con enviar=true la manda a aprobación."""
@@ -1080,6 +1113,7 @@ def api_orden_guardar():
                 if actual['estado'] != 'Borrador':
                     raise ErrorCompras(f'La orden está "{actual["estado"]}" y ya no se puede cambiar. Si hay un error, anúlala y haz otra.')
             items = _validar_items(cur, d.get('items'), oc_id)
+            _oc_duplicada(cur, proveedor_id, items, oc_id)
             sin_pedido = [i for i in items if not i['pedido_id']]
             tipo = 'Para stock' if sin_pedido else 'Bajo pedido'
             motivo_compra = None
@@ -1725,9 +1759,11 @@ def orden_imprimir(oc_id):
         prov = db_query("SELECT * FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o['proveedor_id'] else []
         items = db_query("""SELECT id, producto, unidad, cantidad, precio_unitario, total FROM ordenes_compra_items
                             WHERE orden_compra_id = %s ORDER BY id""", (oc_id,))
-        # Documento para el PROVEEDOR: nunca lleva cliente, PC, cotización del cliente ni motivo interno
+        # Pedido de Erika 20/10/2026 22:54: la OC dice a qué PC pertenece (solo el número; el cliente nunca sale)
+        relacion_pc = o.get('pc_numeros')
+        # Documento para el PROVEEDOR: nunca lleva cliente, cotización del cliente ni motivo interno
         o = {k: v for k, v in dict(o).items() if k not in CAMPOS_CONFIDENCIALES}
-        return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},
+        return render_template('compras/imprimir_oc.html', o=o, relacion_pc=relacion_pc, empresa=empresa[0] if empresa else {},
                                sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
                                hoja=request.args.get('hoja') or 'oc', hoy=date.today(),
                                declarada=_sede_declarada(o['empresa_id'], o['almacen_entrega_id']) if o['empresa_id'] and o['almacen_entrega_id'] else None)

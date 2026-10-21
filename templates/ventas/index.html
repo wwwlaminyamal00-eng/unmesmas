@@ -173,6 +173,20 @@
 .desp-hecho{display:inline-block;padding:5px 12px;border-radius:999px;background:#00E676;color:#003D1A;font-weight:900;font-size:11px;white-space:nowrap;box-shadow:0 0 0 2px #B9F6CA}
 .btn-confirmar-despacho{padding:6px 10px;font-size:11px;border-radius:8px;border:none;background:#E30613;color:#fff;font-weight:900;cursor:pointer;box-shadow:0 2px 0 #9B0010}
 .btn-confirmar-despacho:hover{background:#B8000F}
+/* Entregas (18:09): fila entera rosado bajito si falta despachar, verde bajito si ya salió */
+#despachoRows tr.ent-pendiente>td{background:#FFF0F3!important}
+#despachoRows tr.ent-despachado>td{background:#E9FBEF!important}
+#despachoRows tr.ent-anulado>td{background:#F1F5F9!important;color:#64748B}
+#despachoRows td .acc-col{display:flex;flex-direction:column;align-items:center;gap:4px}
+.btn-generar-compra{padding:6px 10px;font-size:11px;border-radius:8px;border:2px solid #CA8A04;background:#FFD600;color:#3D2E00;font-weight:900;cursor:pointer}
+.btn-generar-compra:hover{background:#FFC400}
+.btn-factura-desp{padding:4px 9px;font-size:10px;border-radius:8px;border:1px solid #2563EB;background:#fff;color:#1D4ED8;font-weight:800;cursor:pointer}
+.compra-est{display:inline-block;padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:900;line-height:1.25}
+.compra-ok{background:#00E676;color:#003D1A}
+.compra-camino{background:#FFE58F;color:#5C4300}
+.compra-falta{background:#FFD6DB;color:#9B0010;border:1px solid #E30613}
+.cita-btn{padding:4px 8px;border-radius:8px;border:1px dashed #94A3B8;background:#fff;color:#334155;font-size:10.5px;font-weight:800;cursor:pointer}
+.cita-btn.tiene{border:1px solid #2563EB;color:#1D4ED8;background:#EFF6FF}
 
 /* 🚚 Crear despacho - Naranja fluorescente NEON */
 .menu-pop .menu-despacho {
@@ -3010,7 +3024,7 @@
     <table class="master-table val-table">
         <thead>
             <tr>
-                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nr° PC</th>
+                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">N° PC</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Cliente</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nombre producto</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Precio</th>
@@ -3071,12 +3085,14 @@
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>Nr° despacho</th>
-                        <th>Nr° PC</th>
+                        <th>N° despacho</th>
+                        <th>N° PC</th>
+                        <th>N° cotización</th>
                         <th>Cliente</th>
-                        <th>Nr° factura</th>
-                        <th>Nr° guía</th>
-                        <th>Destino</th>
+                        <th>N° guía / N° factura</th>
+                        <th>Lugar entrega</th>
+                        <th>Estado compra</th>
+                        <th>Fecha de cita</th>
                         <th>Acción</th>
                     </tr>
                 </thead>
@@ -3127,12 +3143,12 @@
                         <th>Item</th>
                         <th>Fecha</th>
                         <th>Estado</th>
-                        <th>Nr° guía</th>
-                        <th>RUC</th>
+                        <th>N° guía</th>
                         <th>Cliente</th>
-                        <th>Nr° cotización</th>
-                        <th>Nr° PC</th>
-                        <th>Nr° Facturas</th>
+                        <th>RUC</th>
+                        <th>N° cotización</th>
+                        <th>N° PC</th>
+                        <th>N° Facturas</th>
                         <th>Origen</th>
                         <th>Destino</th>
                         <th>Acciones</th>
@@ -3186,12 +3202,12 @@
                         <th>Fecha</th>
                         <th>Estado</th>
                         <th>Tipo</th>
-                        <th>RUC</th>
                         <th>Cliente</th>
-                        <th>Nr° cotización</th>
-                        <th>Nr° PC</th>
-                        <th>Nr° guía</th>
-                        <th>Nr° factura</th>
+                        <th>RUC</th>
+                        <th>N° cotización</th>
+                        <th>N° PC</th>
+                        <th>N° guía</th>
+                        <th>N° factura</th>
                         <th>Monto</th>
                         <th>Cond. Pago</th>
                         <th>Acciones</th>
@@ -3237,10 +3253,10 @@
                         <th>Fecha</th>
                         <th>Estado</th>
                         <th>Tipo</th>
-                        <th>Nr° nota de crédito</th>
-                        <th>RUC</th>
+                        <th>N° nota de crédito</th>
                         <th>Cliente</th>
-                        <th>Nr° factura o boleta</th>
+                        <th>RUC</th>
+                        <th>N° factura o boleta</th>
                         <th>Motivo</th>
                         <th>Monto</th>
                         <th>Acciones</th>
@@ -3285,11 +3301,11 @@
                         <th>Item</th>
                         <th>Fecha</th>
                         <th>Estado</th>
-                        <th>Nr° devolución</th>
-                        <th>RUC</th>
+                        <th>N° devolución</th>
                         <th>Cliente</th>
-                        <th>Nr° factura</th>
-                        <th>Nr° guía</th>
+                        <th>RUC</th>
+                        <th>N° factura</th>
+                        <th>N° guía</th>
                         <th>Motivo</th>
                         <th>Acciones</th>
                     </tr>
@@ -3324,7 +3340,7 @@
                     <tr>
                         <th style="width:5%;">Item</th>
                         <th style="width:15%;">Fecha Eliminación</th>
-                        <th style="width:12%;">Nr° cotización</th>
+                        <th style="width:12%;">N° cotización</th>
                         <th style="width:15%;">Cliente</th>
                         <th style="width:10%;">RUC</th>
                         <th style="width:10%;">Total</th>
@@ -3376,9 +3392,9 @@
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>Nr° cotización</th>
-                        <th>RUC</th>
+                        <th>N° cotización</th>
                         <th>Cliente</th>
+                        <th>RUC</th>
                         <th>Vendedor</th>
                         <th>Monto</th>
                         <th>Validado por</th>

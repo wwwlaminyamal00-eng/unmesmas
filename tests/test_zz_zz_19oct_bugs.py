@@ -79,7 +79,7 @@ def test_proveedor_sin_uso_si_se_borra(admin):
 def test_exportar_tabla_a_excel(admin, anonimo):
     from openpyxl import load_workbook
     r = admin.post('/api/exportar/tabla', json={
-        'titulo': 'Ventas - Cotizaciones', 'columnas': ['Nr° cotización', 'Cliente', 'Monto'],
+        'titulo': 'Ventas - Cotizaciones', 'columnas': ['N° cotización', 'Cliente', 'Monto'],
         'filas': [['COT-1', 'CLIENTE A', 'S/ 1,250.50'], ['COT-2', '=HACK()', '0012']],
         'filtros': [['Estado', 'Aceptada'], ['Buscar', 'cliente']]})
     assert r.status_code == 200
@@ -93,7 +93,7 @@ def test_exportar_tabla_a_excel(admin, anonimo):
     assert 'hora de Lima' in textos[1]
     assert 'Estado: Aceptada' in textos[2]
     enc = [c.value for c in ws[6]]
-    assert enc == ['Nr° cotización', 'Cliente', 'Monto']
+    assert enc == ['N° cotización', 'Cliente', 'Monto']
     assert [c.value for c in ws[7]] == ['COT-1', 'CLIENTE A', 1250.5]     # el monto queda como número
     assert ws['B8'].value == '=HACK()' and ws['B8'].data_type == 's'      # se guarda como texto, nunca como fórmula
     assert ws['C8'].value == '0012'                                         # los códigos con 0 adelante se respetan
@@ -211,7 +211,7 @@ def test_listas_traen_fecha_de_creacion_y_modificacion(admin):
         assert data, url
         assert 'creado_en' in data[0] and 'modificado_en' in data[0], url
     html = admin.get('/ventas').get_data(as_text=True)
-    assert '<th>Nr° cotización</th>' in html and '<th>Nr° despacho</th>' in html and '<th>Comprobante</th>' not in html
+    assert '<th>N° cotización</th>' in html and '<th>N° despacho</th>' in html and '<th>Comprobante</th>' not in html
     base = admin.get('/inventario', follow_redirects=True).get_data(as_text=True)
     assert 'window.tiemposHTML' in base and 'window.condPagoTexto' in base
 
@@ -234,14 +234,14 @@ def test_dos_ordenes_a_la_vez_no_repiten_numero(app, base19):
     numeros, errores = [], []
     barrera = threading.Barrier(len(clientes))
 
-    def crear(c):
+    def crear(c, n):
         try:
             barrera.wait()
             r = c.post('/compras/api/flujo/ordenes', json={
                 'empresa_id': base19['emp'], 'proveedor_id': prov, 'almacen_entrega_id': base19['sede'],
                 'condicion_pago': 'Crédito', 'dias_credito': 30, 'modalidad_entrega': 'Proveedor entrega',
                 'fecha_compromiso': '2026-10-30', 'motivo_compra': 'Stock estratégico',
-                'items': [{'producto_id': prod, 'cantidad': 1, 'precio_unitario': 5}]})
+                'items': [{'producto_id': prod, 'cantidad': n, 'precio_unitario': 5}]})   # cantidades distintas: no son duplicadas
             if r.status_code == 200:
                 numeros.append(r.json['numero'] if 'numero' in r.json else r.json['id'])
             else:
@@ -249,7 +249,7 @@ def test_dos_ordenes_a_la_vez_no_repiten_numero(app, base19):
         except Exception as e:      # pragma: no cover
             errores.append(str(e))
 
-    hilos = [threading.Thread(target=crear, args=(c,)) for c in clientes]
+    hilos = [threading.Thread(target=crear, args=(c, i + 1)) for i, c in enumerate(clientes)]
     [h.start() for h in hilos]
     [h.join() for h in hilos]
     assert not errores, errores

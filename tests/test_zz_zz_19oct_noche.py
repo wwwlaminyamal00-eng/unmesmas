@@ -183,7 +183,8 @@ def test_contrasena_sin_cifrar_se_cifra_al_entrar(app):
 
 # ---------------------------------------------------------------- Guía ↔ despacho
 def test_guia_creada_desde_despacho_queda_vinculada(vendedor):
-    _sql("INSERT INTO despachos (numero, cliente, ruc, estado) VALUES ('DSP-ZZN-1', 'CLIENTE', '20100070970', 'Pendiente despacho')", fetch=False)
+    # La guía se hace cuando el despacho ya salió (desde el 20/10/2026 sin stock no hay guía de venta)
+    _sql("INSERT INTO despachos (numero, cliente, ruc, estado) VALUES ('DSP-ZZN-1', 'CLIENTE', '20100070970', 'Despachado')", fetch=False)
     r = vendedor.post('/ventas/api/guias/guardar', json={
         'serie': 'T001', 'destinatario_nombre': 'CLIENTE', 'ruc_destinatario': '20100070970',
         'items': [{'codigo': 'PRD-0001', 'cantidad': 1}], 'estado': 'Borrador', 'despacho_numero': 'DSP-ZZN-1'})

@@ -61,3 +61,49 @@ def test_nombres_de_columnas_y_entregas_en_colores():
     assert 'Tablas de las pantallas sin scroll lateral' in base
     for rel in ('templates/compras/index.html', 'templates/inventario/index.html', 'static/js/compras_flujo.js'):
         assert '>Producto</th>' not in (RAIZ / rel).read_text(encoding='utf-8'), rel
+
+
+# ---------------------------------------------------------------- Entregas (18:09)
+def test_guia_de_venta_sin_stock_no_se_crea_pero_la_factura_si(vendedor):
+    base = {'serie': 'T001', 'destinatario_nombre': 'CLIENTE', 'ruc_destinatario': '20100070970', 'motivo_traslado': 'VENTA',
+            'items': [{'codigo': 'PRD-0001', 'producto': 'GUANTE', 'cantidad': 999999}], 'estado': 'Borrador',
+            'documento_asociado': 'COT-ZZT-SIN'}
+    r = vendedor.post('/ventas/api/guias/guardar', json=base)
+    assert r.status_code == 409 and r.json['codigo'] == 'falta_stock' and r.json['faltan'][0]['pide'] == 999999
+    assert 'La factura sí se puede hacer sin stock' in r.json['error']
+    # La factura del mismo pedido sí se guarda sin stock
+    f = vendedor.post('/ventas/api/comprobantes/guardar', json={
+        'tipo': 'FACTURA', 'serie': 'F001', 'cliente': 'CLIENTE INDUSTRIAL S.A.C.', 'ruc': '20100070970', 'total': 118,
+        'subtotal': 100, 'igv': 18, 'condicion': 'Contado', 'cotizacion': 'COT-ZZT-SIN', 'estado': 'Borrador',
+        'items': [{'codigo': 'PRD-0001', 'cantidad': 999999}]})
+    assert f.status_code == 200, f.json
+    # Si su despacho ya salió (stock ya descontado), la guía sí se crea
+    _sql("INSERT INTO despachos (numero, cliente, ruc, estado, cotizacion_numero) VALUES ('DSP-ZZT-OK', 'CLIENTE', '20100070970', 'Despachado', 'COT-ZZT-SIN')", fetch=False)
+    assert vendedor.post('/ventas/api/guias/guardar', json=base).status_code == 200
+
+
+def test_fecha_de_cita_del_despacho(vendedor):
+    _sql("INSERT INTO despachos (numero, cliente, ruc, estado) VALUES ('DSP-ZZT-CITA', 'CLIENTE', '20100070970', 'Pendiente despacho')", fetch=False)
+    did = _sql("SELECT id FROM despachos WHERE numero = 'DSP-ZZT-CITA'")[0][0]
+    r = vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-22T10:30'})
+    assert r.status_code == 200, r.json
+    fila = next(d for d in vendedor.get('/ventas/api/despachos/listar').json['data'] if d['id'] == did)
+    assert str(fila['fecha_cita']).startswith('2026-10-22') and '10:30' in str(fila['fecha_cita'])
+    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': 'mañana'}).status_code == 400
+    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': ''}).status_code == 200
+    assert _sql("SELECT fecha_cita FROM despachos WHERE id = %s", (did,))[0][0] is None
+
+
+def test_pantalla_de_entregas_18h():
+    js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
+    for t in ('ent-pendiente', 'ent-despachado', 'function estadoCompraHTML', '🛒 Pendiente de compra', '🛒 Generar compra',
+              "'/compras?tab=pedidos&pc='", '🧾 Generar factura', 'function ponerCitaDespacho', 'N° guía / N° factura' if False else 'guiaFacturaDespachoHTML'):
+        assert t in js, t
+    html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
+    tabla = html[html.index('<div id="despachar"'):]
+    tabla = tabla[:tabla.index('</thead>')]
+    orden = [tabla.index(f'<th>{t}</th>') for t in ('N° PC', 'N° cotización', 'Cliente', 'N° guía / N° factura', 'Lugar entrega',
+                                                   'Estado compra', 'Fecha de cita', 'Acción')]
+    assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
+    cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
+    assert "qs.get('pc')" in cjs and 'async function abrirCompraDePedido' in cjs

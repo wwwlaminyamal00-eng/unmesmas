@@ -133,14 +133,16 @@ def test_impresion_para_proveedor_sin_cliente(zz, admin):
     assert r.status_code == 200
     html = r.data.decode('utf-8')
     assert 'BOTA DE SEGURIDAD ZZ' in html and 'DISTRIBUIDORA ZZ' in html
-    for secreto in (CLIENTE, PC_NUM, COT_NUM, 'Stock estratégico'):
+    # 20/10/2026 22:54 Erika pidió que la OC diga a qué PC pertenece: el N° de PC sí sale, el cliente nunca
+    assert f'Relacionado al PC: <b>{PC_NUM}</b>' in html
+    for secreto in (CLIENTE, COT_NUM, 'Stock estratégico'):
         assert secreto not in html, secreto
     # vista previa de una OC de la pantalla anterior con pedido
     oc = _oc_legacy(admin, pedido_id=zz['pc']).json['data']
     r = admin.get(f"/compras/orden/{oc['id']}/preview")
     assert r.status_code == 200
     html = r.data.decode('utf-8')
-    assert 'LENTE DE SEGURIDAD ZZ' in html and CLIENTE not in html and PC_NUM not in html
+    assert 'LENTE DE SEGURIDAD ZZ' in html and CLIENTE not in html and f'Relacionado al PC: <b>{PC_NUM}</b>' in html
 
 
 # ---------- Cuentas por pagar ordenadas y con totales ----------
@@ -189,7 +191,9 @@ def test_anular_y_eliminar_oc_solo_admin(zz, admin, vendedor):
     assert admin.delete(f"/compras/api/ordenes/{oc['id']}", json={'motivo': 'limpieza de prueba'}).status_code == 200
     assert _sql("SELECT COUNT(*) FROM com_anulaciones WHERE tabla = 'ordenes_compra' AND registro_id = %s", (oc['id'],))[0][0] == 2
     # pantalla nueva: Compras (no supervisora/admin) no puede anular
-    oc2 = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico')).json['id']
+    # cantidad distinta: una OC idéntica a otra activa ya no se puede crear (20/10/2026 22:54)
+    oc2 = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico',
+                     items=[{'producto_id': zz['LENTE'], 'cantidad': 13, 'precio_unitario': 9}])).json['id']
     assert zz['compra'].post(f'/compras/api/flujo/ordenes/{oc2}/anular', json={'motivo': 'ya no va'}).status_code == 403
     assert admin.post(f'/compras/api/flujo/ordenes/{oc2}/anular', json={'motivo': 'ya no va'}).status_code == 200
     assert _sql("SELECT COUNT(*) FROM com_anulaciones WHERE tabla = 'ordenes_compra' AND registro_id = %s", (oc2,))[0][0] == 1

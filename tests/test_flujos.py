@@ -280,8 +280,9 @@ class TestFacturacion:
 
 class TestGuias:
     def test_editar_no_duplica_y_anular_conserva_datos(self, vendedor):
+        # Traslado (no venta): la regla "sin stock no hay guía de venta" (20/10/2026) no aplica aquí
         payload = {'serie': 'T001', 'destinatario_nombre': 'CLIENTE', 'ruc_destinatario': '20100070970',
-                   'items': [{'codigo': 'PRD-0001', 'cantidad': 2}], 'estado': 'Borrador'}
+                   'items': [{'codigo': 'PRD-0001', 'cantidad': 2}], 'estado': 'Borrador', 'motivo_traslado': '04'}
         r = vendedor.post('/ventas/api/guias/guardar', json=payload)
         assert r.status_code == 200, r.json
         gid, numero = r.json['data']['id'], r.json['data']['numero']

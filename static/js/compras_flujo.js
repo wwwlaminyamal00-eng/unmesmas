@@ -91,6 +91,65 @@
         setTimeout(() => $('motivoTextoCom').focus(), 50);
     }
 
+    // ========================================================
+    // CARTEL "¿AHORA QUÉ?" (pedido de Erika 20/10/2026 22:54): después de cada acción
+    // se dice en grande a dónde ir y qué buscar, con un botón que lleva ahí.
+    // ========================================================
+    const SIGUIENTE = {
+        enviar: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Revisa la orden y pulsa <b>"Enviar a aprobar"</b>. Está en <b>Compras ▸ Órdenes de compra</b>.' },
+        aprobar: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Ahora la <b>supervisora</b> debe aprobarla en <b>Compras ▸ Órdenes de compra</b> (búscala con el estado "Por aprobar").' },
+        pagar: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Es al contado: ve a <b>Compras ▸ Pagos y facturas</b> y pulsa <b>"💸 Pagar"</b> en esta orden.' },
+        recibir: { tab: 'recibir', ir: 'Recibir mercadería', txt: 'Cuando llegue la mercadería, ve a <b>Compras ▸ Recibir mercadería</b> y pulsa <b>"📦 Recibir"</b> en esta orden.' },
+        factura: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Ve a <b>Compras ▸ Pagos y facturas</b> para registrar la <b>factura del proveedor</b> (botón "🧾 Registrar factura").' },
+        pagar_credito: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Es a crédito: ve a <b>Compras ▸ Pagos y facturas</b> y paga la factura antes de que venza.' },
+        incidencia: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Hay <b>diferencias</b> (faltó o sobró algo): la supervisora las revisa en <b>Compras ▸ Órdenes de compra</b>.' },
+        listo: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'La compra está <b>completa</b>. No falta nada. 🎉' },
+        anulada: { tab: 'pedidos', ir: 'Pedidos por comprar', txt: 'Los pedidos de los clientes de esta orden vuelven a <b>Compras ▸ Pedidos por comprar</b>.' }
+    };
+
+    function cartel(titulo, texto, botones) {
+        if (!document.getElementById('comCartelCss')) {
+            const st = document.createElement('style');
+            st.id = 'comCartelCss';
+            st.textContent = `#comCartel{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px}
+                #comCartel .cc-caja{background:#fff;border:4px solid #00C853;border-radius:16px;max-width:560px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden}
+                #comCartel .cc-tit{background:#00E676;color:#003D1A;font-size:22px;font-weight:900;padding:16px 20px}
+                #comCartel .cc-txt{padding:16px 20px;font-size:16px;line-height:1.5;color:#0F172A}
+                #comCartel .cc-txt .cc-ahora{display:block;font-size:18px;font-weight:900;margin-bottom:6px}
+                #comCartel .cc-pie{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;padding:0 20px 18px}
+                #comCartel .cc-pie button{font-size:15px;font-weight:800;padding:10px 16px;border-radius:10px;cursor:pointer;border:2px solid #0F172A;background:#fff}
+                #comCartel .cc-pie button.cc-ir{background:#0F172A;color:#fff}`;
+            document.head.appendChild(st);
+        }
+        document.getElementById('comCartel')?.remove();
+        const div = document.createElement('div');
+        div.id = 'comCartel';
+        div.innerHTML = `<div class="cc-caja" role="dialog" aria-modal="true"><div class="cc-tit">${titulo}</div>
+            <div class="cc-txt"><span class="cc-ahora">👉 ¿Ahora qué?</span>${texto}</div>
+            <div class="cc-pie">${(botones || []).map((b, i) => `<button type="button" class="${b.ir ? 'cc-ir' : ''}" data-i="${i}">${b.t}</button>`).join('')}
+                <button type="button" data-i="x">Seguir aquí</button></div></div>`;
+        div.addEventListener('click', e => {
+            const b = e.target.closest('button[data-i]');
+            if (!b && e.target !== div) return;
+            div.remove();
+            const accion = b && b.dataset.i !== 'x' ? botones[Number(b.dataset.i)] : null;
+            if (accion && accion.tab) { document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show')); cambiarTab(accion.tab); }
+            if (accion && accion.href) window.location.href = accion.href;
+        });
+        document.body.appendChild(div);
+        div.querySelector('.cc-ir')?.focus();
+    }
+
+    // Cartel según el siguiente paso real de la orden (se pregunta al servidor)
+    async function cartelSiguiente(ocId, titulo, extra) {
+        try {
+            const { data: o } = await api('/compras/api/flujo/ordenes/' + ocId);
+            const s = SIGUIENTE[o.paso.codigo] || SIGUIENTE.listo;
+            const botones = [{ t: `Ir a ${s.ir} ➜`, tab: s.tab, ir: true }, ...(extra && extra.botones || [])];
+            cartel(titulo, s.txt + (extra && extra.texto ? `<br><br>${extra.texto}` : ''), botones);
+        } catch (e) { /* si falla la consulta queda el aviso normal */ }
+    }
+
     // ---------- catálogos ----------
     async function cargarCatalogos() {
         const r = await api('/compras/api/flujo/catalogos');
@@ -145,7 +204,7 @@
         $('pedLista').innerHTML = lista.length ? lista.map(p => `
             <div class="com-pedido">
                 <div class="com-pedido-head">
-                    <div><b>${esc(p.numero)}</b> · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
+                    <div><b>${esc(p.numero)}</b>${p.cotizacion ? ` · N° cotización <b>${esc(p.cotizacion)}</b>` : ''} · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
                     <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(p.estado || 'Pendiente')}</span>
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
@@ -206,6 +265,27 @@
         $('btnCrearDesdePedidos').disabled = n === 0;
     }
 
+    async function abrirCompraDePedido(numero) {
+        const url = new URL(window.location); url.searchParams.delete('pc'); window.history.replaceState({}, '', url);
+        if (tabActual !== 'pedidos') cambiarTab('pedidos');
+        await cargarPedidos();
+        const p = pedidosCache.find(x => String(x.numero || '').trim() === String(numero).trim());
+        if (!p) {
+            aviso(`El pedido ${numero} ya no tiene nada pendiente de compra (o es de otra empresa: revisa la empresa activa arriba).`, 'warning');
+            return;
+        }
+        $('pedBuscar').value = numero;
+        pintarPedidos();
+        const marcas = [...document.querySelectorAll(`.ped-check[data-ped="${p.id}"]`)];
+        if (!marcas.length) {
+            aviso(`El pedido ${numero} no tiene productos por comprar (ya está cubierto o sus productos no están en el catálogo).`, 'warning');
+            return;
+        }
+        marcas.forEach(c => { c.checked = true; });
+        contarMarcados();
+        crearDesdePedidos();
+    }
+
     function crearDesdePedidos() {
         const elegidos = [...document.querySelectorAll('.ped-check:checked')].map(c => {
             const p = pedidosCache.find(x => String(x.id) === c.dataset.ped);
@@ -258,6 +338,8 @@
                 <td><b>${esc(o.empresa || '—')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}<small>${esc(o.ruc || '')}</small></td>
                 <td class="left">${paraHtml(o)}</td>
+                <td>${o.sin_pedido ? '<span class="badge-sin-pedido">Sin PC</span>' : esc(o.pc_numeros || o.pedidos || '—')}</td>
+                <td>${esc(o.cotizaciones_cliente || o.cotizaciones || '—')}</td>
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
@@ -265,10 +347,10 @@
                 <td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span>${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
-                : '<tr><td colspan="12">No hay órdenes con este filtro.</td></tr>';
+                : '<tr><td colspan="14">No hay órdenes con este filtro.</td></tr>';
             const total = data.filter(o => o.estado !== 'Anulada').reduce((s, o) => s + Number(o.total), 0);
             $('ocFoot').textContent = `${data.length} orden(es) · Total ${soles(total)}`;
-        } catch (e) { $('ocBody').innerHTML = `<tr><td colspan="12">${esc(e.message)}</td></tr>`; }
+        } catch (e) { $('ocBody').innerHTML = `<tr><td colspan="14">${esc(e.message)}</td></tr>`; }
     }
 
     // ========================================================
@@ -626,7 +708,8 @@
             cerrar('ocModal');
             document.querySelectorAll('.ped-check:checked').forEach(c => { c.checked = false; });
             refrescar();
-            verOrden(r.id);
+            await verOrden(r.id);
+            cartelSiguiente(r.id, `✅ ¡Orden ${esc(r.numero || '')} ${enviar ? 'enviada' : 'guardada'}!`);
         });
     }
 
@@ -661,6 +744,7 @@
             const pd = o.proveedor_datos || {};
             $('detCuerpo').innerHTML = `
                 ${o.flujo === 'v2' ? `<div class="com-stepper">${PASOS.map((p, i) => `<div class="com-step ${o.estado === 'Anulada' ? 'anulada' : ep[p.k]}"><span>${ep[p.k] === 'hecho' ? '✓' : i + 1}</span><b>${p.t}</b></div>`).join('')}</div>` : ''}
+                <div class="com-relacion-pc">${o.pc_numeros ? `🔗 Relacionado al PC: <b>${esc(o.pc_numeros)}</b>${o.cotizaciones_cliente ? ` · N° cotización <b>${esc(o.cotizaciones_cliente)}</b>` : ''}` : '📦 Compra directa a stock (Sin PC)'}</div>
                 <div class="com-siguiente com-paso-${o.paso.codigo}">👉 <b>Siguiente paso:</b> ${esc(o.paso.texto)} <small>(${esc(o.paso.quien)})</small></div>
                 ${(o.avisos || []).map(a => `<div class="inv-aviso">⚠️ ${esc(a)}</div>`).join('')}
                 ${o.motivo_anulacion ? `<div class="inv-alerta danger">Anulada: ${esc(o.motivo_anulacion)}</div>` : ''}
@@ -690,7 +774,7 @@
                     <tfoot><tr><td colspan="6" class="num">Subtotal ${soles(o.subtotal)} · IGV ${soles(o.igv)} · <b>Total</b></td><td class="num"><b>${soles(o.total)}</b></td></tr></tfoot>
                 </table></div>
                 ${o.incidencias.length ? `<div class="inv-subtitulo">Diferencias</div><div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>Nr° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
+                    <thead><tr><th>N° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
                     <tbody>${o.incidencias.map(i => `<tr><td>${esc(i.numero)}</td><td><b>${esc(i.tipo)}</b></td><td class="left">${esc(i.detalle)}<small>Reportó ${esc(i.reportado_por || '')} · ${fecha(i.fecha)}</small></td>
                         <td class="num">${i.monto ? soles(i.monto) : ''}</td><td><span class="${claseEstado(i.estado === 'Abierta' ? 'pendiente' : 'registrado')}">${esc(i.estado)}</span></td>
                         <td class="left">${esc(i.resolucion || '')}${i.resuelto_por ? `<small>${esc(i.resuelto_por)}</small>` : ''}</td>
@@ -739,20 +823,20 @@
         if (!o) return;
         if (accion === 'editar') { cerrar('detModal'); abrirNuevaOC([], o); }
         else if (accion === 'enviar') {
-            await guardarCon(btn, async () => { const r = await post(`/compras/api/flujo/ordenes/${o.id}/enviar`); aviso(r.message, 'success'); refrescar(); verOrden(o.id); });
+            await guardarCon(btn, async () => { const r = await post(`/compras/api/flujo/ordenes/${o.id}/enviar`); aviso(r.message, 'success'); refrescar(); await verOrden(o.id); cartelSiguiente(o.id, `✅ ¡Orden ${esc(o.numero)} enviada a aprobar!`); });
         } else if (accion === 'aprobar') {
-            await guardarCon(btn, async () => { const r = await post(`/compras/api/flujo/ordenes/${o.id}/aprobar`, { aprobar: true }); aviso(r.message, 'success'); refrescar(); verOrden(o.id); });
+            await guardarCon(btn, async () => { const r = await post(`/compras/api/flujo/ordenes/${o.id}/aprobar`, { aprobar: true }); aviso(r.message, 'success'); refrescar(); await verOrden(o.id); cartelSiguiente(o.id, `✅ ¡Orden ${esc(o.numero)} aprobada!`); });
         } else if (accion === 'devolver') {
             pedirMotivo('Devolver para corregir', 'Escribe qué hay que corregir. La orden vuelve a Borrador.', async m => {
-                const r = await post(`/compras/api/flujo/ordenes/${o.id}/aprobar`, { aprobar: false, motivo: m }); aviso(r.message, 'success'); refrescar(); verOrden(o.id);
+                const r = await post(`/compras/api/flujo/ordenes/${o.id}/aprobar`, { aprobar: false, motivo: m }); aviso(r.message, 'success'); refrescar(); await verOrden(o.id); cartelSiguiente(o.id, `↩ Orden ${esc(o.numero)} devuelta para corregir`, { texto: 'Quien la hizo debe pulsar <b>"✏️ Corregir"</b> en la orden y volver a enviarla.' });
             });
         } else if (accion === 'anular') {
             pedirMotivo('Anular orden', 'La orden queda anulada (no se borra) y los pedidos de sus clientes vuelven a "por comprar".', async m => {
-                const r = await post(`/compras/api/flujo/ordenes/${o.id}/anular`, { motivo: m }); aviso(r.message, 'success'); refrescar(); verOrden(o.id);
+                const r = await post(`/compras/api/flujo/ordenes/${o.id}/anular`, { motivo: m }); aviso(r.message, 'success'); refrescar(); await verOrden(o.id); cartelSiguiente(o.id, `✔ Orden ${esc(o.numero)} anulada`);
             });
         } else if (accion === 'faltante') {
             pedirMotivo('Cerrar con faltante', 'Lo que falta quedará como diferencia por resolver (nota de crédito o devolución del dinero). Explica qué dijo el proveedor.', async m => {
-                const r = await post(`/compras/api/flujo/ordenes/${o.id}/cerrar_faltante`, { motivo: m }); aviso(r.message, 'success'); refrescar(); verOrden(o.id);
+                const r = await post(`/compras/api/flujo/ordenes/${o.id}/cerrar_faltante`, { motivo: m }); aviso(r.message, 'success'); refrescar(); await verOrden(o.id); cartelSiguiente(o.id, `✔ Orden ${esc(o.numero)} cerrada con faltante`);
             });
         } else if (accion === 'pagar') { cerrar('detModal'); abrirPago(o); }
         else if (accion === 'recibir') { cerrar('detModal'); abrirRecepcion(o.id); }
@@ -862,6 +946,9 @@
                 <div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>`;
             $('recPie').innerHTML = `<a class="btn btn-secondary" href="/inventario?tab=entradas_salidas">Ir a Inventario ➜</a><button class="btn btn-primary" data-close="recModal">Listo</button>`;
             refrescar();
+            cartelSiguiente($('recOc').value, '✅ ¡Mercadería recibida!', {
+                texto: 'También: en <b>Inventario ▸ Entradas y salidas</b> pulsa <b>"Ingresar"</b> en esta recepción para que entre al stock.',
+                botones: [{ t: 'Ir a Inventario ➜', href: '/inventario?tab=entradas_salidas' }] });
         });
     }
 
@@ -937,6 +1024,7 @@
             if (!resp.ok || r.success === false) throw new Error(r.error || `Error ${resp.status}`);
             aviso(r.message, r.cuadra ? 'success' : 'warning');
             cerrar('facModal');
+            cartelSiguiente($('facOc').value, `✅ ¡Factura ${esc(body.numero.trim().toUpperCase())} registrada!`);
             ultimaFacturaId = r.id || null;
             const b = $('btnVerUltimaFactura');
             if (b && r.id) { b.classList.add('com-recien'); b.textContent = `👁 Ver la factura registrada recientemente (${body.numero.trim().toUpperCase()})`; }
@@ -959,8 +1047,8 @@
         $('facVerCuerpo').innerHTML = `
             <div class="com-fac-estado ${cuadra ? 'ok' : 'mal'}">${cuadra ? '✔ Cuadra con lo recibido' : `⚠️ Registrada con diferencia: debía ser ${soles(f.monto_esperado)}`}</div>
             <div class="com-fac-ver">
-                <div><small>Nr° factura</small><b>${esc(f.numero)}</b></div>
-                <div><small>Nr° OC</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
+                <div><small>N° factura</small><b>${esc(f.numero)}</b></div>
+                <div><small>N° OC</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
                 <div><small>Proveedor</small><b>${esc(f.proveedor_nombre || '')}</b><br><span>RUC ${esc(f.ruc_proveedor || '—')}</span></div>
                 <div><small>Total con IGV</small><b>${soles(f.monto)}</b></div>
                 <div><small>Fecha de emisión</small><b>${fecha(String(f.fecha || '').slice(0, 10), false)}</b></div>
@@ -1091,6 +1179,7 @@
                 monto: $('pagoMonto').value, fecha: $('pagoFecha').value, metodo: $('pagoMetodo').value, banco: $('pagoBanco').value,
                 numero_operacion: $('pagoOperacion').value, observaciones: $('pagoObs').value });
             aviso(r.message, 'success'); cerrar('pagoModal'); refrescar();
+            cartelSiguiente($('pagoOc').value, '✅ ¡Pago registrado!');
         });
         $('facGuardar').onclick = () => guardarFactura($('facGuardar'));
         $('facMonto').addEventListener('input', () => $('facMonto').classList.remove('com-fac-mal'));
@@ -1111,6 +1200,8 @@
                 abrirNuevaOC();
                 const url = new URL(window.location); url.searchParams.delete('nueva'); window.history.replaceState({}, '', url);
             }
+            // Botón "Generar compra" de Ventas ▸ Entregas: /compras?tab=pedidos&pc=PC-... abre la orden con ese pedido
+            if (qs.get('pc')) await abrirCompraDePedido(qs.get('pc'));
         } catch (e) { aviso('No se pudo cargar Compras: ' + e.message, 'error'); }
     })();
 })();

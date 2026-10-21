@@ -441,8 +441,8 @@ function renderComprobantesProveedor() {
             <td><span class="badge ${getEstadoClass(c.estado)}">${c.estado || 'Pendiente'}</span></td>
             <td>${c.tipo || 'Factura'}</td>
             <td><span class="code-pill">${c.numero || '-'}</span></td>
-            <td>${c.ruc || '-'}</td>
             <td class="left">${c.proveedor || '-'}</td>
+            <td>${c.ruc || '-'}</td>
             <td><b>S/${(c.monto || 0).toFixed(2)}</b></td>
             <td>
                 <button class="kebab" onclick="toggleMenu(event, 'comp-prov-${c.id}')">⋯</button>
