@@ -9,6 +9,8 @@
             <link rel="stylesheet" href="/static/css/style.css">
             <!-- Colores de la empresa elegida arriba (salen de Configuración ▸ Empresas) -->
             <link rel="stylesheet" href="/static/css/tema_empresa.css">
+            <!-- Ningún guardado falla en silencio: errores claros, "Guardando..." y registro de fallos (22/10/2026) -->
+            <script src="/static/js/errores_guardado.js?v=20261022"></script>
             <!-- Letra distinta por empresa (KCF: Montserrat, AGD: Roboto Slab) para no confundirse de empresa -->
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Roboto+Slab:wght@400;600;700;800&display=swap">
@@ -1217,7 +1219,8 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
 
         function highlightActiveModule() {
             // Las pestañas propias de estos módulos no se apagan (antes quedaban todas sin marcar)
-            const propias = [...document.querySelectorAll('#finTabs .tab-btn.active, #repTabs .tab-btn.active, #papTabs .tab-btn.active, #sunTabs .tab-btn.active')];
+            // 22/10/2026: también Compras, Inventario, Bancos, Intercompany, Planilla y Seguimiento (Erika: "que se sombree")
+            const propias = [...document.querySelectorAll('[id$="Tabs"] .tab-btn.active, #tabsRowCom .tab-btn.active, #tabsRowInv .tab-btn.active')];
             _highlightActiveModuleBase();
             propias.forEach(b => b.classList.add('active'));
             abrirMenuModulo();
@@ -2404,12 +2407,12 @@ function _asegurarSelectorEmpresaPermisos() {
         nota.id = 'permNotaReglas';
         nota.className = 'note';
         nota.style.marginTop = '6px';
-        nota.innerHTML = '<b>Cómo funcionan los checks:</b> elige arriba la empresa (KCF o AGD). ' +
-            'Marcar un módulo le da <b>Ver + Crear + Editar</b>; desmarcarlo le quita todo en ese módulo. ' +
-            'Para <b>Aprobar, Anular o Eliminar</b> usa el ojo 👁. Se guarda al instante en la base de datos. ' +
-            'Un check a medias (▣) significa que tiene solo parte del módulo. ' +
-            'Los usuarios con rol <b>GERENCIA_TOTAL</b> ven todo y no se pueden recortar aquí (cambia su rol). ' +
-            'Si no hay permiso propio, se usa el del rol (se ve en gris).';
+        nota.innerHTML = '<b>Cómo se asignan:</b> elige arriba la empresa (KCF o AGD) y pulsa <b>🛡 Permisos</b> en el usuario. ' +
+            'Cada módulo tiene 3 niveles: <b>Sin acceso</b> (no lo ve), <b>Solo lectura</b> (mira y exporta, no graba) y ' +
+            '<b>Acceso total</b> (crea, edita, aprueba y anula). Con ▸ ajustas cada función del módulo. ' +
+            'En la tabla: <span class="pm-chip pm-total">verde</span> acceso total, <span class="pm-chip pm-lectura">azul</span> solo lectura, ' +
+            '<span class="pm-chip pm-mixto">amarillo</span> parte del módulo. ' +
+            'Los usuarios con rol <b>GERENCIA_TOTAL</b> ven todo y no se pueden recortar aquí (cambia su rol).';
         notaBase.insertAdjacentElement('afterend', nota);
     }
 }
@@ -2549,7 +2552,7 @@ async function renderUsuarios(filter = "", forceRefresh = false) {
     try {
         await cargarUUIDsPorCodigo();   // sin esto todos los checks saldrían vacíos
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center;color:#DC2626;padding:20px;">❌ ${_esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#DC2626;padding:20px;">❌ ${_esc(e.message)}</td></tr>`;
         return;
     }
     _asegurarSelectorEmpresaPermisos();
@@ -2598,7 +2601,11 @@ function _dibujarTablaUsuarios() {
         const empresasHtml = empresas.map(e => badge(e.empresa_codigo || '')).join('');
         const rolesHtml = empresas.map(e => `<span class="badge ${e.rol_codigo === 'GERENCIA_TOTAL' ? 'badge-info' : 'badge-gray'}" title="${_esc(e.empresa_codigo)}">${_esc(e.rol_codigo || '')}</span>`).join(' ');
         const empresaId = estado?.empresaId || '';
-        const celdas = PERM_COLUMNAS.map(c => `<td>${checkEye(_estadoColumna(estado, c.col), u.usuario_sistema, c.col, u.id, empresaId)}</td>`).join('');
+        // 22/10/2026: en vez de 17 columnas de checks, un resumen y el botón que abre la matriz de permisos
+        const resumen = typeof resumenPermisosHtml === 'function' ? resumenPermisosHtml(estado) : '';
+        const puedeAbrir = estado && estado.empresaId && !estado.error;
+        const celdas = `<td class="left pm-resumen">${resumen}</td>
+            <td><button type="button" class="btn-mini pm-btn" data-matriz="${_esc(u.id)}" ${puedeAbrir ? '' : 'disabled'}>🛡 Permisos</button></td>`;
         const aviso = estado?.gerencia ? ' <span class="badge badge-info" title="Ve todos los módulos">👑 Todo</span>' : '';
         const btnClave = _esAdminSistema()
             ? `<br><button type="button" class="btn-clave-usuario" onclick="abrirNuevaPassword(${Number(u.id)}, '${_esc(u.usuario_sistema)}')" title="Asignar una contraseña nueva (no pide la anterior)">🔑 Nueva contraseña</button>`
@@ -2613,7 +2620,7 @@ function _dibujarTablaUsuarios() {
         </tr>`;
     });
     tbody.innerHTML = htmlRows.length ? htmlRows.join('') :
-        `<tr><td colspan="17" style="text-align:center;color:#94A3B8;padding:20px;">📭 No hay usuarios</td></tr>`;
+        `<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:20px;">📭 No hay usuarios</td></tr>`;
     usuariosCacheHTML = tbody.innerHTML;
 
     tbody.querySelectorAll('.perm-checkbox').forEach(cb => {

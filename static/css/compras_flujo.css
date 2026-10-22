@@ -181,7 +181,17 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-oc-generada{display:block;margin-top:2px;font-size:11px;font-weight:900;color:#047857}
 /* 22/10/2026 Erika: "Recogemos" en azul y resaltado para que nadie olvide ir a recoger */
 .com-recojo{display:inline-block;color:#1D4ED8;font-weight:800;background:#DBEAFE;border:1px solid #93C5FD;border-radius:6px;padding:2px 8px}
-.com-resp{margin-top:4px;max-width:180px;font-size:12px;padding:3px 6px;border:1px solid #93C5FD;border-radius:6px;color:#1D4ED8;font-weight:700}
+.com-resp{display:block;margin:3px auto 0;max-width:140px;height:24px;font-size:11px;padding:1px 4px;border:1px solid #CBD5E1;border-radius:5px;color:#1D4ED8;font-weight:600;background:#fff}  /* 22/10: más chico */
 .com-resp-falta{border-color:#DC2626;color:#DC2626;background:#FEF2F2}
 .com-resp-info,.com-resp-nombre{color:#1D4ED8}
 .btn-transporte{background:#1D4ED8;color:#fff!important;text-decoration:none;margin-right:6px}
+/* 22/10/2026 (Erika): estados de la OC con nombres y colores que no se confunden; amarillo claro, no naranja */
+.est-borrador{background:#F1F5F9!important;color:#475569!important;border:1px solid #CBD5E1!important}
+.est-por-aprobar{background:#FEF9C3!important;color:#713F12!important;border:1px solid #FDE047!important;font-weight:900}
+.est-aprobada{background:#DBEAFE!important;color:#1D4ED8!important;border:1px solid #93C5FD!important;font-weight:900;text-shadow:none!important}
+.est-recibida-parcial{background:#EDE9FE!important;color:#5B21B6!important;border:1px solid #C4B5FD!important}
+.est-recibida{background:#CCFBF1!important;color:#115E59!important;border:1px solid #5EEAD4!important}
+.est-cerrada{background:#39FF14!important;color:#0B3D0B!important;border:1px solid #1FB800!important;font-weight:900}
+.com-paso-warn{background:#FEF9C3!important;color:#713F12!important;border:1px solid #FDE047}
+/* 22/10/2026: nota pequeña bajo la acción de Recibir mercadería */
+.com-pago-nota{display:block;margin-top:3px;font-size:11px;font-weight:700;color:#B45309}

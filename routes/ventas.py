@@ -21,6 +21,7 @@ from database import db_query, db_execute, db_tx, get_connection, buscar_cliente
 from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, empresa_de, marcar_empresa,
                                  empresa_por_id, empresas, datos_empresa_documento, empresa_id_por_ruc,
                                  empresa_por_codigo, marca_pdf)
+import psycopg2
 from psycopg2.extras import RealDictCursor
 from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
 from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
@@ -1712,11 +1713,17 @@ def api_cotizaciones_guardar():
             }
         })
 
+    except psycopg2.Error as e:
+        # 22/10/2026: error de la base explicado en español + texto exacto en "detalle" + registro de fallos
+        print(f"❌ Error de BD en api_cotizaciones_guardar: {e}")
+        from routes.diagnostico import respuesta_error_bd
+        return respuesta_error_bd(e, 'la cotización')
     except Exception as e:
         print(f"❌ Error general en api_cotizaciones_guardar: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': 'No se pudo guardar la cotización: ' + str(e)}), 500
+        return jsonify({'success': False, 'error': 'No se pudo guardar la cotización: ' + str(e),
+                        'detalle': e.__class__.__name__ + ': ' + str(e)}), 500
 
 
 @ventas_bp.route('/ventas/api/cotizaciones/<int:id>', methods=['GET'])

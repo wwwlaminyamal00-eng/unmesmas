@@ -951,10 +951,19 @@ def api_logs():
     minimo = getattr(logging, nivel, logging.WARNING) if nivel != 'TODOS' else 0
     filas = [f for f in REGISTRO.filas if getattr(logging, f['nivel'], 0) >= minimo] if REGISTRO else []
     filas = list(reversed(filas))[:n]
+    # Fallos al guardar (22/10/2026): quedan en la base (erp_log_errores) aunque Render se reinicie
+    fallos = []
+    try:
+        from routes.diagnostico import ultimos_fallos
+        fallos = ultimos_fallos(n)
+    except Exception as e:
+        fallos = [{'fecha': '', 'nivel': 'WARNING', 'origen': 'erp.diagnostico', 'mensaje': f'No se pudo leer erp_log_errores: {e}'}]
+    filas = fallos + filas
     registrar_auditoria('herramienta', MODULO, detalle=f'Vio el registro de errores (últimos {n}, nivel {nivel})')
     return jsonify({'success': True, 'data': filas, 'total_memoria': len(REGISTRO.filas) if REGISTRO else 0,
                     'anterior': len(REGISTRO.anterior) if REGISTRO else 0,
-                    'archivo': bool(ARCHIVO_LOG), 'nota': 'Algunos módulos antiguos escriben sus errores con print(): esos '
+                    'fallos_guardados': len(fallos),
+                    'archivo': bool(ARCHIVO_LOG), 'nota': 'Arriba, en rojo, los guardados que fallaron (quedan en la base). Algunos módulos antiguos escriben sus errores con print(): esos '
                     'solo se ven en la consola del servidor (Render ▸ Logs).'})
 
 

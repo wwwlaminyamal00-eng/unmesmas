@@ -196,6 +196,10 @@ def api_fijar():
             return jsonify({'success': False, 'error':
                             f"El número debe ser mayor que el último emitido ({fila['ultimo_txt']}). "
                             f"Los documentos ya emitidos no se renumeran."}), 400
+        # Doble confirmación (22/10/2026): la pantalla pide escribir el número otra vez y el servidor lo exige
+        if str(data.get('confirmacion') or '').strip() != str(siguiente):
+            return jsonify({'success': False, 'codigo': 'falta_confirmar',
+                            'error': 'Para confirmar, escribe otra vez el mismo número. No se cambió nada.'}), 400
         antes = fila['siguiente']
         cur.execute("""INSERT INTO erp_numeracion (documento, clave, siguiente, actualizado_por, updated_at)
                        VALUES (%s, %s, %s, %s, NOW())

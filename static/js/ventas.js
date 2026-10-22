@@ -399,7 +399,10 @@ async function apiFetch(url, options = {}) {
             if (['falta_stock', 'duplicado'].includes(errorData.codigo) && errorData.titulo && typeof mostrarErrorStockDespacho === 'function') {
                 mostrarErrorStockDespacho(errorData.faltan, errorData.error, errorData.titulo);
             }
-            throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            const err = new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            err.data = errorData;            // 22/10/2026: para marcar el campo y mostrar el detalle exacto
+            err.status = response.status;
+            throw err;
         }
         
         return await response.json();
@@ -2323,12 +2326,12 @@ async function guardarCotizacion(estado) {
                     await cargarClientesMaestros();
                 } else {
                     console.error('❌ Error creando cliente:', result.error);
-                    showToast('Error al crear el cliente: ' + (result.error || 'Desconocido'), 'error');
+                    errorGuardarCotizacion('No se pudo crear el cliente de la cotización', result.error || 'Desconocido', result.detalle);
                     return null;
                 }
             } catch (e) {
                 console.error('❌ Error en creación de cliente:', e);
-                showToast('Error al crear el cliente', 'error');
+                errorGuardarCotizacion('No se pudo crear el cliente de la cotización', e.message, e.detalle);
                 return null;
             }
         }
@@ -2406,10 +2409,19 @@ async function guardarCotizacion(estado) {
         // 4. ENVIAR A LA API
         // ============================================================
 
-        const response = await apiFetch('/ventas/api/cotizaciones/guardar', {
-            method: 'POST',
-            body: JSON.stringify(data)
-        });
+        // 22/10/2026: "Guardar borrador" también dice "Guardando..." mientras espera (los otros botones ya lo hacían)
+        const restaurarBtns = estado === 'Borrador' && window.botonCargando
+            ? [...document.querySelectorAll('#cotizacionModal button[onclick*="saveCotizacionDraft"]')].map(b => window.botonCargando(b, 'Guardando...'))
+            : [];
+        let response;
+        try {
+            response = await apiFetch('/ventas/api/cotizaciones/guardar', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+        } finally {
+            restaurarBtns.forEach(f => f());
+        }
 
         console.log('📦 Respuesta API:', response);
 
@@ -2427,14 +2439,30 @@ async function guardarCotizacion(estado) {
             await cargarClientesMaestros();
             return response;
         } else {
-            showToast('❌ Error: ' + (response.error || 'No se pudo guardar'), 'error');
+            errorGuardarCotizacion('No se pudo guardar la cotización', response.error || 'No se pudo guardar', response.detalle);
             return null;
         }
     } catch (error) {
         console.error('❌ Error guardando cotización:', error);
-        showToast('❌ Error al guardar la cotización: ' + error.message, 'error');
+        const d = error.data || {};
+        if (d.codigo === 'faltan_campos' && Array.isArray(d.faltan)) {
+            // El servidor dice qué falta: se marca en rojo cada campo
+            const ids = { 'Condición de pago': 'fCondicion', 'Tiempo de entrega': 'fTiempo', 'Transporte': 'fTransporte',
+                          'Parihuela (si incluye o no)': 'fParihuela', 'Seguimiento': 'fSeguimiento', 'Motivo': 'fMotivo' };
+            d.faltan.forEach(n => ids[n] && _cotMarcarFalta(ids[n]));
+            showToast('⛔ ' + error.message, 'error');
+            if (typeof showValidationWarningModal === 'function') showValidationWarningModal(d.faltan);
+            return null;
+        }
+        errorGuardarCotizacion('No se pudo guardar la cotización', error.message, d.detalle || error.detalle);
         return null;
     }
+}
+
+// Ventana roja con el motivo exacto (22/10/2026: antes solo salía un aviso pequeño que se iba solo)
+function errorGuardarCotizacion(titulo, mensaje, detalle) {
+    showToast(mensaje, 'error');
+    if (window.mostrarErrorGuardado) window.mostrarErrorGuardado(titulo, mensaje, detalle);
 }
 
 function saveCotizacionDraft() {
@@ -10020,12 +10048,12 @@ email_contacto: document.getElementById('fCorreo')?.value?.trim() || '',
             };
             
         } else {
-            showToast('❌ Error: ' + (result.error || 'No se pudo guardar el cliente'), 'error');
+            errorGuardarCotizacion('No se pudo guardar el cliente', result.error || 'No se pudo guardar el cliente', result.detalle);
         }
         
     } catch (error) {
         console.error('❌ Error guardando cliente:', error);
-        showToast('❌ Error al guardar el cliente: ' + error.message, 'error');
+        errorGuardarCotizacion('No se pudo guardar el cliente', error.message, error.detalle);
     } finally {
         // Restaurar botón
         if (btn) {

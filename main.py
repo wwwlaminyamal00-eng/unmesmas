@@ -14,7 +14,7 @@ import requests
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for, 
-    session, flash, jsonify
+    session, flash, jsonify, g
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -87,6 +87,7 @@ from routes.bancos import bancos_bp
 from routes.intercompany import intercompany_bp
 from routes.planilla import planilla_bp
 from routes.seguimiento import seguimiento_bp
+from routes.diagnostico import diagnostico_bp
 
 
 # ==========================================
@@ -139,7 +140,7 @@ def control_de_acceso():
     ruta = request.path
     # Permisos reales del ERP (pedido de Erika 21/10/2026): administrador = GERENCIA_TOTAL y cada
     # módulo solo para quien tiene "Ver" en Usuarios y permisos. Ver routes/acceso.py.
-    from routes.acceso import acceso_usuario, modulo_de_ruta, NOMBRE_MODULO
+    from routes.acceso import acceso_usuario, modulo_de_ruta, bloqueo_solo_lectura, NOMBRE_MODULO
     acceso = acceso_usuario()
     if acceso['configurado']:
         if session.get('admin_erp') != acceso['admin']:
@@ -152,6 +153,15 @@ def control_de_acceso():
                 return jsonify({'success': False, 'error': mensaje, 'codigo': 'sin_permiso'}), 403
             flash(mensaje, 'error')
             return redirect(url_for('index'))
+        # "Solo lectura": puede mirar el módulo pero el servidor no le deja grabar nada (22/10/2026)
+        lectura = bloqueo_solo_lectura(ruta, request.method, acceso)
+        if lectura:
+            mensaje = (f"Tienes {NOMBRE_MODULO.get(lectura, lectura)} en «Solo lectura»: puedes mirar pero no grabar. "
+                       f"Pide «Acceso total» al administrador en Configuración ▸ Usuarios y permisos.")
+            if es_api or request.is_json:
+                return jsonify({'success': False, 'error': mensaje, 'codigo': 'solo_lectura'}), 403
+            flash(mensaje, 'error')
+            return redirect(request.referrer or url_for('index'))
     elif 'admin_erp' in session:
         session.pop('admin_erp', None)
     requiere_admin = ruta.startswith(PREFIJOS_SOLO_ADMIN)
@@ -177,10 +187,44 @@ def cabeceras_seguridad(resp):
     if request.method != 'GET' and request.path.startswith(('/api/config/', '/usuarios')):
         from routes.acceso import limpiar_cache
         limpiar_cache()   # un cambio de permisos se nota en el siguiente clic
+    # Todo guardado que falla con error del servidor queda en Herramientas ▸ Registro de errores (22/10/2026)
+    if (resp.status_code >= 500 and request.method != 'GET' and '/api/' in request.path
+            and not getattr(g, 'fallo_registrado', False)):
+        try:
+            from routes.diagnostico import registrar_fallo
+            cuerpo = resp.get_json(silent=True) or {}
+            registrar_fallo(cuerpo.get('error') or f'Error {resp.status_code}', cuerpo.get('detalle') or '',
+                            estado=resp.status_code)
+        except Exception:
+            pass
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
     resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     resp.headers.setdefault('Referrer-Policy', 'same-origin')
     return resp
+
+
+@app.errorhandler(Exception)
+def error_no_controlado(e):
+    # Antes un error inesperado en una ruta /api/ devolvía una página HTML y la pantalla no mostraba nada
+    # (el navegador no podía leerla). Ahora siempre llega un mensaje claro con el detalle exacto (22/10/2026).
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        if '/api/' not in request.path:
+            return e
+        return jsonify({'success': False, 'error': e.description or e.name, 'codigo': f'http_{e.code}'}), e.code
+    app.logger.exception('Error no controlado en %s %s', request.method, request.path)
+    if '/api/' not in request.path:
+        return ('<h2>Ocurrió un error en el sistema</h2><p>' + str(e).replace('<', '&lt;') +
+                '</p><p><a href="/index">Volver al inicio</a></p>'), 500
+    try:
+        import psycopg2
+        if isinstance(e, psycopg2.Error):
+            from routes.diagnostico import respuesta_error_bd
+            return respuesta_error_bd(e)
+    except Exception:
+        pass
+    return jsonify({'success': False, 'error': 'Error inesperado en el servidor: ' + str(e),
+                    'detalle': e.__class__.__name__ + ': ' + str(e), 'codigo': 'error_servidor'}), 500
 
 
 # ==========================================
@@ -229,6 +273,7 @@ app.register_blueprint(bancos_bp)  # Conciliación bancaria (21/10/2026): gerenc
 app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026): gerencia y permiso propio
 app.register_blueprint(planilla_bp)  # Planilla y RRHH (22/10/2026): gerencia y permiso propio
 app.register_blueprint(seguimiento_bp)  # Seguimiento comercial (22/10/2026): permiso propio
+app.register_blueprint(diagnostico_bp)  # Errores claros y registro de fallos al guardar (22/10/2026)
 # Empresa activa (KCF / AGD / Todas), filtros y colores por empresa
 from routes import multiempresa
 multiempresa.registrar(app)

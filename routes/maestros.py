@@ -180,19 +180,20 @@ def api_clientes_test():
 @login_required
 def api_clientes_guardar():
     """Guardar cliente (CREAR)"""
+    conn = None
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         current_app.logger.info(f"📝 Datos recibidos para guardar cliente: {data}")
         error_cond = _ordenar_condicion_cliente(data)
         if error_cond:
             return jsonify({"success": False, "codigo": "dias_credito", "error": error_cond}), 400
 
         if not data.get('razon_social'):
-            return jsonify({"success": False, "error": "Razón social obligatoria"})
+            return jsonify({"success": False, "campo": "razon_social", "error": "Falta la razón social del cliente."}), 400
 
         numero_documento = data.get('numero_documento') or data.get('ruc')
         if not numero_documento:
-            return jsonify({"success": False, "error": "Número de documento/RUC obligatorio"})
+            return jsonify({"success": False, "campo": "numero_documento", "error": "Falta el RUC/DNI del cliente."}), 400
 
         from database import DATABASE_URL
         
@@ -220,7 +221,7 @@ def api_clientes_guardar():
             numero_documento,
             data.get('razon_social'),
             data.get('nombre_comercial', data.get('razon_social')),
-            data.get('direccion_fiscal'),
+            data.get('direccion_fiscal') or '',   # en la base real es obligatoria (NOT NULL)
             data.get('telefono_contacto') or data.get('telefono'),
             data.get('nombre_contacto') or data.get('contacto'),
             data.get('email_contacto') or data.get('email'),
@@ -317,34 +318,25 @@ def api_clientes_guardar():
         return jsonify({"success": False, "error": "No se pudo crear el cliente"})
 
     except psycopg2.Error as e:
-        # 🔥 CAPTURA ESPECÍFICA PARA ERROR DE DUPLICADO
-        if e.pgcode == '23505':  # Código de error de PostgreSQL para violación de UNIQUE
-            error_msg = str(e).lower()
-            if 'numero_documento' in error_msg:
-                return jsonify({
-                    "success": False, 
-                    "error": "Este RUC ya está registrado en nuestra base de datos. No se puede volver a cargar."
-                })
-            return jsonify({
-                "success": False, 
-                "error": "Ya existe un registro con estos datos."
-            })
-        
-        # Otros errores de PostgreSQL
+        # 22/10/2026: el error de la base llega explicado (RUC repetido, dato vacío, permiso/RLS, contador
+        # atrasado...) con el texto exacto en "detalle", y queda en Herramientas ▸ Registro de errores.
+        if conn:
+            conn.rollback()
         current_app.logger.error(f"❌ Error de BD guardando cliente: {e}")
-        traceback.print_exc()
-        return jsonify({
-            "success": False, 
-            "error": f"Error en la base de datos: {str(e)}"
-        }), 500
-        
+        from routes.diagnostico import respuesta_error_bd
+        return respuesta_error_bd(e, 'el cliente')
+
     except Exception as e:
         current_app.logger.error(f"❌ Error guardando cliente: {e}")
         traceback.print_exc()
         return jsonify({
-            "success": False, 
-            "error": str(e)
+            "success": False,
+            "error": "No se pudo guardar el cliente: " + str(e),
+            "detalle": e.__class__.__name__ + ": " + str(e)
         }), 500
+    finally:
+        if conn:
+            conn.close()   # antes quedaba abierta cuando fallaba y Supabase se quedaba sin conexiones
 
 @maestros_bp.route('/api/clientes/<int:id>', methods=['GET'])
 @login_required
@@ -424,6 +416,7 @@ def api_clientes_obtener(id):
 @login_required
 def api_clientes_actualizar(id):
     """Actualizar cliente"""
+    conn = None
     try:
         data = request.get_json() or {}
         current_app.logger.info(f"📝 Datos recibidos para actualizar cliente {id}: {data}")
@@ -448,11 +441,11 @@ def api_clientes_actualizar(id):
             return jsonify({"success": False, "codigo": "dias_credito", "error": error_cond}), 400
 
         if not data.get('razon_social'):
-            return jsonify({"success": False, "error": "Razón social obligatoria"})
+            return jsonify({"success": False, "campo": "razon_social", "error": "Falta la razón social del cliente."}), 400
 
         numero_documento = data.get('numero_documento') or data.get('ruc')
         if not numero_documento:
-            return jsonify({"success": False, "error": "Número de documento/RUC obligatorio"})
+            return jsonify({"success": False, "campo": "numero_documento", "error": "Falta el RUC/DNI del cliente."}), 400
 
         from database import DATABASE_URL
         
@@ -467,11 +460,10 @@ def api_clientes_actualizar(id):
         
         if cur.fetchone():
             cur.close()
-            conn.close()
             return jsonify({
-                "success": False, 
+                "success": False, "campo": "numero_documento",
                 "error": "Este RUC ya está registrado en nuestra base de datos. No se puede volver a cargar."
-            })
+            }), 409
 
         # 1. Actualizar datos principales del cliente
         query = """
@@ -502,7 +494,7 @@ def api_clientes_actualizar(id):
             numero_documento,
             data.get('razon_social'),
             data.get('nombre_comercial', data.get('razon_social')),
-            data.get('direccion_fiscal'),
+            data.get('direccion_fiscal') or '',
             data.get('telefono_contacto') or data.get('telefono'),
             data.get('nombre_contacto') or data.get('contacto'),
             data.get('email_contacto') or data.get('email'),
@@ -583,10 +575,20 @@ def api_clientes_actualizar(id):
 
         return jsonify({"success": False, "error": "No se pudo actualizar el cliente"})
 
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        current_app.logger.error(f"❌ Error de BD actualizando cliente: {e}")
+        from routes.diagnostico import respuesta_error_bd
+        return respuesta_error_bd(e, 'el cliente')
     except Exception as e:
         current_app.logger.error(f"❌ Error actualizando cliente: {e}")
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "No se pudo actualizar el cliente: " + str(e),
+                        "detalle": e.__class__.__name__ + ": " + str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 @maestros_bp.route('/api/clientes/<int:id>', methods=['DELETE'])

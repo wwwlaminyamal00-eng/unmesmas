@@ -116,9 +116,13 @@
         const n = parseInt(document.getElementById('ncValor').value, 10);
         const err = document.getElementById('ncErr');
         if (!n || n <= actual.ultimo) { err.textContent = `Escribe un número mayor que ${actual.ultimo}.`; return; }
-        if (!confirm(`¿Confirmas que el próximo ${actual.nombre} (${actual.empresa} ${actual.serie}) salga con el N° ${n}?\n\nLos documentos ya emitidos no cambian.`)) return;
+        // Doble confirmación (22/10/2026): 1) ¿estás segura? 2) escribir el número otra vez
+        if (!confirm(`Paso 1 de 2: ¿Confirmas que el próximo ${actual.nombre} (${actual.empresa} ${actual.serie}) salga con el N° ${n}?\n\nLos documentos ya emitidos no cambian.`)) return;
+        const otraVez = prompt(`Paso 2 de 2: para confirmar, escribe otra vez el número ${n}`);
+        if (otraVez === null) return;
+        if (String(otraVez).trim() !== String(n)) { err.textContent = 'El número no coincide. No se cambió nada.'; return; }
         const r = await fetch('/correlativos/api/fijar', {method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({documento: actual.documento, clave: actual.clave, siguiente: n})});
+            body: JSON.stringify({documento: actual.documento, clave: actual.clave, siguiente: n, confirmacion: String(otraVez).trim()})});
         const j = await r.json();
         if (!j.success) { err.textContent = j.error; return; }
         document.getElementById('ncModal').classList.remove('abierto');

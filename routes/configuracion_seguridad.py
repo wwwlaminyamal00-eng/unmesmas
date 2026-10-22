@@ -1023,8 +1023,6 @@ def get_modulos():
                 m.nombre,
                 m.descripcion,
                 m.estado,
-                m.created_at,
-                m.updated_at,
                 (
                     SELECT json_agg(
                         json_build_object(

@@ -34,7 +34,7 @@ from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, tasa
 from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, _siguiente_numero, _fila, _empresas, _sedes, \
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
 from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
-from routes.multiempresa import filtrar_filas, filtro_sql, empresa_para_crear, empresa_filtro
+from routes.multiempresa import filtrar_filas, filtro_sql, empresa_para_crear, empresa_filtro, empresa_id_por_ruc
 
 compras_flujo_bp = Blueprint('compras_flujo', __name__)
 
@@ -635,12 +635,23 @@ SQL_OC_LISTA = """
 """
 
 
+def _es_intercompany(ruc):
+    try:
+        return bool(empresa_id_por_ruc(ruc))
+    except Exception:
+        return False
+
+
 def _paso(o):
     """Qué toca hacer con esta OC y quién lo hace. Es lo que ve el personal en la lista."""
     estado = o['estado'] or 'Borrador'
     total = a_decimal(o['total'])
     pagado = a_decimal(o['pagado'])
     contado = (o.get('condicion_pago') or '').startswith('Contado')
+    # Compra intercompany (el proveedor es otra empresa del grupo, ej. AGD → KCF): la mercadería se puede
+    # recibir antes del pago; el pago queda pendiente como aviso (Erika, 22/10/2026)
+    if contado and _es_intercompany(o.get('ruc')):
+        contado = False
     if o.get('flujo') != 'v2':
         return {'codigo': 'antigua', 'texto': 'OC del sistema anterior', 'quien': '—'}
     if estado == 'Anulada':
@@ -668,6 +679,9 @@ def _oc_dict(o):
     d = _fila(o)
     d['paso'] = _paso(o)
     d['saldo_pago'] = float(max(a_decimal(o['total']) - a_decimal(o['pagado']), 0))
+    d['intercompany'] = _es_intercompany(o.get('ruc'))
+    d['falta_pago_intercompany'] = bool(d['intercompany'] and (o.get('condicion_pago') or '').startswith('Contado')
+                                        and d['saldo_pago'] > 0)
     pedida = a_decimal(o['pedida'])
     d['avance_recepcion'] = float(min(a_decimal(o['recibida']) / pedida * 100, 100)) if pedida > 0 else 0
     hoy = date.today()
@@ -1380,7 +1394,7 @@ def api_por_recibir():
                                           'modalidad_entrega', 'direccion_recojo', 'fecha_compromiso', 'estado',
                                           'atrasada', 'paso', 'clientes', 'lineas', 'usuario_id',
                                           'responsable_recojo_id', 'responsable_recojo', 'responsable_recojo_por',
-                                          'responsable_recojo_en')})
+                                          'responsable_recojo_en', 'falta_pago_intercompany')})
         return jsonify({'success': True, 'data': res})
     except Exception as e:
         return _respuesta_error(e)
@@ -1528,7 +1542,8 @@ def api_orden_recibir(oc_id):
         items_in = d.get('items') or []
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("""SELECT oc.*, p.razon_social FROM ordenes_compra oc LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+            cur.execute("""SELECT oc.*, p.razon_social, p.ruc AS proveedor_ruc FROM ordenes_compra oc
+                           LEFT JOIN proveedores p ON p.id = oc.proveedor_id
                            WHERE oc.id = %s FOR UPDATE OF oc""", (oc_id,))
             oc = cur.fetchone()
             if not oc or oc['flujo'] != 'v2':
@@ -1538,7 +1553,8 @@ def api_orden_recibir(oc_id):
                                    'Si llegó algo sin orden aprobada, no lo recibas y avisa a tu supervisora.')
             if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
                 raise PermissionError('Tú hiciste esta orden de compra: la mercadería la recibe otra persona.')
-            if (oc['condicion_pago'] or '').startswith('Contado') and _pagado_oc(oc_id) < a_decimal(oc['total']):
+            if ((oc['condicion_pago'] or '').startswith('Contado') and not _es_intercompany(oc.get('proveedor_ruc'))
+                    and _pagado_oc(oc_id) < a_decimal(oc['total'])):
                 raise ErrorCompras('Esta orden es al contado y Finanzas todavía no registra el pago completo. '
                                    'Si el proveedor entregó sin pago, avisa a tu supervisora.')
             cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s AND guia_proveedor = %s", (oc_id, guia))

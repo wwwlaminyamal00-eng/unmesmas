@@ -37,6 +37,12 @@
     const $ = id => document.getElementById(id);
     const IGV = 0.18;
     const claseEstado = e => 'est est-' + String(e || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-');
+    // 22/10/2026 (Erika): "Aprobada" y "Recibida" se confundían. Solo cambia lo que se ve; en la base sigue igual.
+    const NOMBRE_ESTADO_OC = {
+        'Borrador': 'Borrador', 'Por aprobar': 'Por aprobar', 'Aprobada': 'Aprobada · falta llegar',
+        'Recibida parcial': 'Llegó una parte', 'Recibida': 'Mercadería recibida', 'Cerrada': '✔ Completa', 'Anulada': 'Anulada'
+    };
+    const estadoOC = e => `<span class="${claseEstado(e)}">${esc(NOMBRE_ESTADO_OC[e] || e || '')}</span>`;
 
     function aviso(msg, tipo) {
         let caja = document.getElementById('comAviso');
@@ -349,7 +355,7 @@
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
-                <td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span>${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
+                <td>${estadoOC(o.estado)}${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
                 <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
@@ -563,6 +569,31 @@
         </div>`;
     }
 
+    // 22/10/2026 (buscador "no hace nada"): la lista de resultados se abría DEBAJO de la casilla y la
+    // ventana la cortaba (quedaba escondida detrás del pie "Cancelar / Guardar borrador"). Ahora flota
+    // sobre todo y, si abajo no hay espacio, se abre hacia arriba.
+    function mostrarLista(input, lista) {
+        const r = input.getBoundingClientRect();
+        const abajo = window.innerHeight - r.bottom, alto = Math.min(260, Math.max(abajo, r.top) - 16);
+        lista.style.position = 'fixed';
+        lista.style.left = r.left + 'px';
+        lista.style.width = Math.max(r.width, 320) + 'px';
+        lista.style.right = 'auto';
+        lista.style.maxHeight = alto + 'px';
+        lista.style.zIndex = '100000';
+        if (abajo >= Math.min(260, lista.scrollHeight + 8) || abajo >= r.top) {
+            lista.style.top = (r.bottom + 2) + 'px'; lista.style.bottom = 'auto';
+        } else {
+            lista.style.top = 'auto'; lista.style.bottom = (window.innerHeight - r.top + 2) + 'px';
+        }
+        lista.style.display = 'block';
+    }
+    document.addEventListener('scroll', e => {
+        if (e.target && e.target.closest && e.target.closest('#ocModal')) {
+            document.querySelectorAll('#ocModal .pp-lista').forEach(l => { l.style.display = 'none'; });
+        }
+    }, true);
+
     function crearPickerProveedor() {
         const el = $('ocProv');
         const input = el.querySelector('.pp-input');
@@ -576,7 +607,7 @@
             const res = cat.proveedores.filter(p => [p.ruc, p.razon_social, p.razon_comercial].join(' ').toLowerCase().includes(q)).slice(0, 20);
             lista.innerHTML = res.length ? res.map(p => `<div class="pp-op" data-id="${p.id}"><b>${esc(p.ruc || '')}</b> ${esc(p.razon_social)}</div>`).join('')
                 : '<div class="pp-nada">No está registrado. Créalo en Maestros ▸ Proveedores.</div>';
-            lista.style.display = 'block';
+            mostrarLista(input, lista);
         });
         lista.addEventListener('click', e => {
             const op = e.target.closest('.pp-op');
@@ -630,13 +661,20 @@
             t = setTimeout(async () => {
                 const q = input.value.trim();
                 if (q.length < 2) { lista.style.display = 'none'; return; }
+                lista.innerHTML = '<div class="pp-nada">⏳ Buscando...</div>';
+                mostrarLista(input, lista);
                 try {
                     const { data } = await api('/inventario/api/productos?q=' + encodeURIComponent(q));
-                    lista.innerHTML = data.length ? data.map(x => `<div class="pp-op" data-id="${x.id}" data-txt="${esc((x.codigo || '') + ' · ' + x.descripcion)}">
+                    if (input.value.trim() !== q) return;   // ya escribió otra cosa
+                    lista.innerHTML = (data || []).length ? data.map(x => `<div class="pp-op" data-id="${x.id}" data-txt="${esc((x.codigo || '') + ' · ' + x.descripcion)}">
                         <b>${esc(x.codigo || '')}</b> ${esc(x.descripcion)} <small>${esc([x.marca, x.modelo, x.unidad].filter(Boolean).join(' · '))}</small></div>`).join('')
                         : '<div class="pp-nada">No se encontró. Créalo en Productos.</div>';
-                    lista.style.display = 'block';
-                } catch (e) { lista.style.display = 'none'; }
+                    mostrarLista(input, lista);
+                } catch (e) {
+                    // Antes el error se escondía y parecía que el buscador "no hacía nada"
+                    lista.innerHTML = `<div class="pp-nada" style="color:#B91C1C;font-weight:700">⛔ No se pudo buscar: ${esc(e.message)}</div>`;
+                    mostrarLista(input, lista);
+                }
             }, 250);
         });
         lista.addEventListener('click', e => {
@@ -746,7 +784,7 @@
             const { data: o } = await api('/compras/api/flujo/ordenes/' + id);
             detalleActual = o;
             const ep = estadoPasos(o);
-            $('detTitulo').innerHTML = `${esc(o.numero)} <span class="${claseEstado(o.estado)}">${esc(o.estado)}</span>`;
+            $('detTitulo').innerHTML = `${esc(o.numero)} ${estadoOC(o.estado)}`;
             const pd = o.proveedor_datos || {};
             $('detCuerpo').innerHTML = `
                 ${o.flujo === 'v2' ? `<div class="com-stepper">${PASOS.map((p, i) => `<div class="com-step ${o.estado === 'Anulada' ? 'anulada' : ep[p.k]}"><span>${ep[p.k] === 'hecho' ? '✓' : i + 1}</span><b>${p.t}</b></div>`).join('')}</div>` : ''}
@@ -891,7 +929,8 @@
     // ========================================================
     // 22/10/2026 (Erika): cada recojo tiene responsable, para que no se olvide; se guarda con fecha y hora
     function celdaResponsable(o) {
-        const quien = o.responsable_recojo_id ? `<small class="com-resp-info">Asignado por ${esc(o.responsable_recojo_por || '')} · ${fecha(o.responsable_recojo_en)}</small>` : '';
+        // 22/10/2026 (Erika): quién asignó y cuándo se guarda en la base, pero no se muestra (no sobrecargar)
+        const quien = '';
         if (!(PUEDE.comprar || PUEDE.recibir || PUEDE.admin)) {
             return o.responsable_recojo ? `<small class="com-resp-nombre">Recoge: ${esc(o.responsable_recojo)}</small>` : '<small class="neg">Sin responsable</small>';
         }
@@ -914,14 +953,16 @@
             $('recBodyCom').innerHTML = data.length ? data.map(o => {
                 let accion;
                 if (o.estado === 'Por aprobar') accion = '<span class="inv-tip">Falta aprobar</span>';
-                else if (o.paso.codigo === 'pagar') accion = '<span class="inv-tip">🔒 Falta el pago</span>';
+                else if (o.paso.codigo === 'pagar') accion = '<span class="inv-tip">🔒 Falta el pago</span><small class="com-pago-nota">Es al contado: Finanzas paga primero y luego se recoge</small>';
                 else if (!PUEDE.recibir) accion = '—';
                 else if (o.usuario_id === cat.usuarioId && !PUEDE.admin) accion = '<span class="inv-tip">Tú hiciste la orden: la recibe otra persona</span>';
                 else accion = `<button class="btn-mini" data-recibir="${o.id}">📦 Recibir</button>`;
+                // Intercompany (el proveedor es otra empresa del grupo): se recibe aunque falte el pago (22/10/2026)
+                if (o.falta_pago_intercompany && o.paso.codigo === 'recibir') accion += '<small class="com-pago-nota">Intercompany: falta el pago</small>';
                 return `<tr><td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td><td class="left">${esc(o.proveedor || '')}</td>
                     <td>${o.modalidad_entrega === 'Nosotros recogemos' ? `<span class="com-recojo">🚚 Recogemos</span><small>${esc(o.direccion_recojo || '')}</small>${celdaResponsable(o)}` : 'Proveedor entrega'}</td>
                     <td>${esc(o.sede || '')}</td><td>${fecha(o.fecha_compromiso)}${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
-                    <td class="left">${esc(o.clientes || 'Stock')}</td><td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span></td><td>${accion}</td></tr>`;
+                    <td class="left">${esc(o.clientes || 'Stock')}</td><td>${estadoOC(o.estado)}</td><td>${accion}</td></tr>`;
             }).join('') : '<tr><td colspan="9">No hay mercadería por llegar.</td></tr>';
         } catch (e) { $('recBodyCom').innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`; }
     }
@@ -1011,7 +1052,7 @@
                 && (o.facturas === 0 || o.cuadra === false || Number(o.facturado) + 0.5 < Number(o.valor_recibido) * 1.18));
             $('facBody').innerHTML = sinFactura.length ? sinFactura.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
-                <td class="left">${esc(o.proveedor || '')}</td><td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span></td>
+                <td class="left">${esc(o.proveedor || '')}</td><td>${estadoOC(o.estado)}</td>
                 <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td>${o.facturas ? `${o.facturas} · ${soles(o.facturado)}${o.cuadra === false ? '<small class="neg">no cuadra</small>' : ''}` : '<span class="inv-tip">Ninguna</span>'}</td>
                 <td>${PUEDE.facturar ? `<button class="btn-mini" data-factura="${o.id}">🧾 Registrar factura</button>` : '—'}</td></tr>`).join('')

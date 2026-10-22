@@ -1404,6 +1404,9 @@ async function saveClient() {
         }
     }
 
+    // 22/10/2026: el botón dice "Guardando..." mientras espera y, si falla, sale una ventana roja con el
+    // motivo exacto y el campo en rojo (antes podía fallar sin que se viera nada).
+    const restaurar = (window.botonCargando || (() => () => {}))(document.getElementById('cmSave'), 'Guardando...');
     try {
         const url = clientEditId
             ? `/maestros/api/clientes/${clientEditId}`
@@ -1419,7 +1422,7 @@ async function saveClient() {
             body: JSON.stringify(data)
         });
 
-        const result = await response.json();
+        const result = await response.json().catch(() => ({ success: false, error: 'El servidor respondió algo que no se pudo leer (HTTP ' + response.status + ').' }));
 
         if (result.success) {
             showToast(result.message || '✅ Cliente guardado correctamente', 'success');
@@ -1442,13 +1445,23 @@ async function saveClient() {
             }
         } else {
             // ✅ Mostrar el mensaje de error del backend (ya sea duplicado o cualquier otro)
-            showToast('❌ ' + (result.error || 'Error al guardar'), 'error');
+            errorGuardarCliente(result.error || 'Error al guardar', result.detalle, result.campo || result.codigo);
         }
 
     } catch (error) {
         console.error('Error al guardar cliente:', error);
-        showToast('❌ Error de conexión al guardar el cliente', 'error');
+        errorGuardarCliente(error.message || 'Error de conexión al guardar el cliente', error.detalle);
+    } finally {
+        restaurar();
     }
+}
+
+const CAMPO_CLIENTE = { razon_social: 'cli_nombre', numero_documento: 'cli_numero', tipo_documento: 'cli_tipoDoc',
+    direccion_fiscal: 'cli_direccionFiscal', dias_credito: 'cli_diasCredito', condicion_pago: 'cli_condicion' };
+function errorGuardarCliente(mensaje, detalle, campo) {
+    showToast(mensaje, 'error');
+    if (campo && window.marcarCampoError) window.marcarCampoError(CAMPO_CLIENTE[campo]);
+    if (window.mostrarErrorGuardado) window.mostrarErrorGuardado('No se pudo guardar el cliente', mensaje, detalle);
 }
 
 // ============================================================

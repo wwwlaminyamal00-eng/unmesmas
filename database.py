@@ -17,6 +17,8 @@ except ImportError:
     pass
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+# Si Supabase no contesta, mejor un error claro a los 15 s que una pantalla colgada (22/10/2026)
+os.environ.setdefault('PGCONNECT_TIMEOUT', '15')
 
 if not DATABASE_URL:
     raise RuntimeError(

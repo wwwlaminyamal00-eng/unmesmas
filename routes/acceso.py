@@ -90,11 +90,45 @@ def acceso_usuario():
         efectivos = _permisos_efectivos(auth, ids)[0] if ids else {}
         modulos = {m for m, codigos in MENU_CODIGOS.items()
                    if any((efectivos.get(c) or {}).get('puede_ver') for c in codigos)}
+        # "Acceso total" = Ver + Crear/Editar. Con "Solo lectura" (solo Ver) el servidor no deja grabar (22/10/2026)
+        escritura = {m for m, codigos in MENU_CODIGOS.items()
+                     if any(nivel_permiso(efectivos.get(c)) == 'total' for c in codigos)}
         if not admin:
             modulos.discard('configuracion')   # empresas, usuarios, correlativos...: solo administrador
-        info = {'configurado': True, 'admin': admin, 'modulos': modulos}
+        info = {'configurado': True, 'admin': admin, 'modulos': modulos, 'escritura': escritura & modulos}
     _cache[llave] = (time.time(), info)
     return info
+
+
+def nivel_permiso(p):
+    """'sin' | 'lectura' | 'total' de un permiso de submódulo (pantalla de matriz, 22/10/2026)."""
+    p = p or {}
+    if not p.get('puede_ver'):
+        return 'sin'
+    return 'total' if (p.get('puede_crear') or p.get('puede_editar')) else 'lectura'
+
+
+# Grabar en Maestros y Productos también lo hacen Ventas y Compras (crear el cliente desde la cotización,
+# el proveedor desde la OC...): basta con Acceso total en cualquiera de ellos.
+ESCRITURA_TAMBIEN_DESDE = {'maestros': ('ventas', 'compras'), 'productos': ('ventas', 'compras')}
+# POST que solo consultan (no graban nada)
+POST_DE_CONSULTA = ('/sunat/api/importar/vista',)
+METODOS_DE_LECTURA = ('GET', 'HEAD', 'OPTIONS')
+
+
+def bloqueo_solo_lectura(ruta, metodo, acceso):
+    """Nombre del módulo si el usuario lo tiene en "Solo lectura" y esta petición quiere grabar; si no, None."""
+    if metodo in METODOS_DE_LECTURA or acceso.get('admin') or not acceso.get('configurado') or ruta in POST_DE_CONSULTA:
+        return None
+    for prefijo, modulo, _todo in RUTAS_MODULO:
+        if ruta == prefijo or ruta.startswith(prefijo + '/'):
+            if modulo not in acceso['modulos']:
+                return None          # sin acceso al módulo: lo resuelve el control de "Ver"
+            escritura = acceso.get('escritura', set())
+            if modulo in escritura or any(m in escritura for m in ESCRITURA_TAMBIEN_DESDE.get(modulo, ())):
+                return None
+            return modulo
+    return None
 
 
 def modulo_de_ruta(ruta, metodo):

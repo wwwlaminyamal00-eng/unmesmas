@@ -30,13 +30,19 @@ def test_correlativo_no_acepta_numero_menor_o_igual(admin):
     assert r.status_code == 400 and 'mayor que el último emitido' in r.json['error']
     r = admin.post('/correlativos/api/fijar', json={'documento': 'OC', 'clave': '', 'siguiente': 99})
     assert r.status_code == 400
+    # 22/10/2026: doble confirmación, sin escribir otra vez el número no se cambia nada
+    r = admin.post('/correlativos/api/fijar', json={'documento': 'COT', 'clave': '', 'siguiente': cot['ultimo'] + 10})
+    assert r.status_code == 400 and r.json['codigo'] == 'falta_confirmar'
+    r = admin.post('/correlativos/api/fijar', json={'documento': 'COT', 'clave': '', 'siguiente': cot['ultimo'] + 10,
+                                                    'confirmacion': str(cot['ultimo'] + 11)})
+    assert r.status_code == 400 and r.json['codigo'] == 'falta_confirmar'
 
 
 def test_correlativo_fijado_se_usa_en_guia_y_factura_nuevas(admin, vendedor):
     _guia(vendedor)   # asegura que exista la serie T001
     g = _fila(admin, 'GUIA', 'T001')
     nuevo = g['ultimo'] + 500
-    r = admin.post('/correlativos/api/fijar', json={'documento': 'GUIA', 'clave': g['clave'], 'siguiente': nuevo})
+    r = admin.post('/correlativos/api/fijar', json={'documento': 'GUIA', 'clave': g['clave'], 'siguiente': nuevo, 'confirmacion': str(nuevo)})
     assert r.status_code == 200 and r.json['success'], r.json
     r = _guia(vendedor, numero='')
     assert r.status_code == 200, r.json
@@ -49,7 +55,7 @@ def test_correlativo_fijado_se_usa_en_guia_y_factura_nuevas(admin, vendedor):
     f = _fila(admin, 'COMPROBANTE', 'Factura F001')
     nuevo = f['ultimo'] + 50
     assert admin.post('/correlativos/api/fijar', json={'documento': 'COMPROBANTE', 'clave': f['clave'],
-                                                       'siguiente': nuevo}).json['success']
+                                                       'siguiente': nuevo, 'confirmacion': str(nuevo)}).json['success']
     r = _factura(vendedor, ruc='20999999991', cliente='OTRO CLIENTE S.A.C.')
     assert r.status_code == 200, r.json
     assert _fila(admin, 'COMPROBANTE', 'Factura F001')['ultimo'] == nuevo
@@ -269,3 +275,31 @@ def test_resumen_compacto_cxc_y_cxp(admin):
         t = r.json['totales']
         assert {'vencido', 'por_vencer', 'al_dia', 'total', 'docs_vencidos', 'docs_por_vencer', 'docs_al_dia', 'docs_total'} <= set(t)
         assert round(t['vencido'] + t['por_vencer'] + t['al_dia'], 2) <= round(t['total'], 2) + 0.01
+
+
+def test_solo_lectura_mira_pero_no_graba(app, admin, base):
+    """22/10/2026: matriz de permisos. "Solo lectura" (solo Ver) entra al módulo pero el servidor no deja grabar."""
+    uid = _usuaria_finanzas(base, 'perm_lectura')
+    sql("UPDATE usuarios SET password = %s WHERE id = %s", (generate_password_hash('Lectu#2026!'), uid))
+    _guardar(admin, uid, base['emp']['KCF'], [{'submodulo_codigo': c, 'puede_ver': True, 'puede_crear': False,
+                                               'puede_editar': False, 'puede_exportar': True}
+                                              for c in ('CUENTAS_COBRAR', 'CAJA_BANCOS')])
+    from routes.acceso import limpiar_cache
+    limpiar_cache()
+    h = _login(app, 'perm_lectura', 'Lectu#2026!')
+    assert h.get('/finanzas').status_code == 200
+    assert h.get('/finanzas/api/cxc').status_code == 200
+    r = h.post('/finanzas/api/comentario', json={'tipo': 'cxp', 'documento_id': 1, 'comentario': 'x'})
+    assert r.status_code == 403 and r.json['codigo'] == 'solo_lectura' and 'Solo lectura' in r.json['error']
+    # Acceso total: ya no lo bloquea el control de permisos
+    _guardar(admin, uid, base['emp']['KCF'], [{'submodulo_codigo': 'CAJA_BANCOS', 'puede_ver': True, 'puede_crear': True,
+                                               'puede_editar': True}])
+    r = h.post('/finanzas/api/comentario', json={'tipo': 'cxp', 'documento_id': 1, 'comentario': 'x'})
+    assert r.json.get('codigo') != 'solo_lectura'
+
+
+def test_matriz_de_permisos_en_la_pantalla(admin):
+    html = admin.get('/usuarios').get_data(as_text=True)
+    assert 'id="pmModal"' in html and 'permisos_matriz.js' in html and 'Solo lectura' in html and 'Acceso total' in html
+    r = admin.get('/api/config/modulos')
+    assert r.status_code == 200 and r.json['success'] and r.json['data']
