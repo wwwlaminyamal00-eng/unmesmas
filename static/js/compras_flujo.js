@@ -11,7 +11,8 @@
     };
     const cat = { empresas: [], sedes: [], proveedores: [], usuarios: [], registro: [], empresaDefecto: null, usuarioId: null, metodos: [] };
     let tabActual = 'hoy';
-    let pedidosCache = [];
+    let pedidosCache = [];
+    let pedidoResaltado = null;   // PC que llegó desde Ventas ▸ Entregas ▸ Generar compra (se sombrea)
     let ordenesCache = [];
     let lineas = [];           // líneas del formulario de OC
     let provElegido = null;    // proveedor elegido en el formulario
@@ -67,7 +68,12 @@
         });
         const json = await resp.json().catch(() => ({}));
         if (resp.status === 401) { window.location.href = '/login'; throw new Error('Sesión expirada'); }
-        if (!resp.ok || json.success === false) throw new Error(json.error || `Error ${resp.status}`);
+        if (!resp.ok || json.success === false) {
+            const err = new Error(json.error || `Error ${resp.status}`);
+            err.data = json;
+            err.status = resp.status;
+            throw err;
+        }
         return json;
     }
     const post = (url, body) => api(url, { method: 'POST', body: JSON.stringify(body || {}) });
@@ -208,14 +214,15 @@
         const lista = pedidosCache.filter(p => !q || [p.numero, p.cliente, p.ruc, ...p.items.map(i => i.descripcion + ' ' + i.codigo)]
             .join(' ').toLowerCase().includes(q));
         $('pedLista').innerHTML = lista.length ? lista.map(p => `
-            <div class="com-pedido">
+            <div class="com-pedido${pedidoResaltado && pedidoResaltado.id === p.id ? ' com-pedido-resaltado' : ''}" data-pedido="${p.id}">
+                ${pedidoResaltado && pedidoResaltado.id === p.id ? `<div class="com-resaltado-nota">👉 Este es el pedido ${esc(p.numero)}${pedidoResaltado.desp ? ` del despacho ${esc(pedidoResaltado.desp)}` : ''}: sus líneas por comprar ya están marcadas. Revisa y pulsa <b>Crear orden de compra</b>.</div>` : ''}
                 <div class="com-pedido-head">
                     <div><b>${esc(p.numero)}</b>${p.cotizacion ? ` · N° cotización <b>${esc(p.cotizacion)}</b>` : ''} · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
                     <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(p.estado || 'Pendiente')}</span>
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
                 <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
-                    <thead><tr><th></th><th class="left">Nombre producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>En stock (empresa)</th>
+                    <thead><tr><th></th><th class="left">Nombre producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>Stock que le toca</th>
                         <th>Comprar para pedido</th><th>Comprar para stock</th><th>Total a comprar</th><th>Saldo después de entregar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
@@ -227,13 +234,14 @@
                         const marcable = PUEDE.comprar && it.falta > 0 && !sinProducto && !cubiertaYa;
                         const r = calcResumen(p, i);
                         const clave = `${p.id}_${i}`;
-                        return `<tr class="${cubierto ? 'com-ok' : ''}" data-res="${clave}">
+                        const resaltar = marcable && pedidoResaltado && pedidoResaltado.id === p.id;
+                        return `<tr class="${cubierto ? 'com-ok' : ''}${resaltar ? ' com-fila-resaltada' : ''}" data-res="${clave}">
                             <td>${marcable ? `<input type="checkbox" class="ped-check" data-ped="${p.id}" data-i="${i}">` : (cubierto ? '<input type="checkbox" disabled title="Ya cubierto: no hace falta comprar">' : '')}${cubierto ? `<small class="com-cubierto">${it.ocs ? '✅ OC ya generada' : '✔ Cubierto con stock'}</small>` : ''}</td>
                             <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${it.ocs ? `<small class="com-oc-generada">✅ OC ya generada: ${esc(it.ocs)}${cubierto ? '' : ` · falta comprar ${cant(it.comprar_pedido)}`}</small>` : ''}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}
                                 ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
                             <td class="num">${cant(it.comprado)}</td>
-                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}</td>
+                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El resto del stock ya le toca a pedidos más antiguos">de ${cant(it.stock_empresa)} en la empresa</small>` : ''}</td>
                             <td class="num"><b>${cant(r.pedido)}</b></td>
                             <td>${marcable ? `<input type="number" class="inp-num ped-extra" min="0" step="any" value="${r.extra}" data-ped="${p.id}" data-i="${i}" title="0 por defecto: comprar de más es una decisión y pide motivo">` : ''}</td>
                             <td class="num"><b data-res-total>${cant(r.total)}</b></td>
@@ -249,7 +257,8 @@
     function calcResumen(p, i) {
         const it = p.items[i];
         const falta = Math.max(Number(it.falta) || 0, 0);
-        const stock = Math.max(Number(it.stock_empresa) || 0, 0);
+        // Stock que le toca a ESTE pedido: el stock se reparte entre pedidos, el más antiguo primero (22/10/2026)
+        const stock = Math.max(Number(it.stock_asignado ?? it.stock_empresa) || 0, 0);
         const pedido = it.comprar_pedido !== undefined && it.comprar_pedido !== null ? Number(it.comprar_pedido) : Math.max(falta - stock, 0);
         const extra = Math.max(Number(extrasStock[`${p.id}_${i}`]) || 0, 0);
         const total = pedido + extra;
@@ -277,8 +286,11 @@
         $('btnCrearDesdePedidos').disabled = n === 0;
     }
 
-    async function abrirCompraDePedido(numero) {
-        const url = new URL(window.location); url.searchParams.delete('pc'); window.history.replaceState({}, '', url);
+    // "Generar compra" de Ventas ▸ Entregas (Erika 22/10/2026): ya no abre la orden de golpe. Lleva a Pedidos por comprar,
+    // sombrea el pedido y SUS líneas (por línea del PC, no por producto: el mismo producto puede ir a Lima y a Arequipa),
+    // las deja marcadas y se desplaza hasta ellas. La persona revisa y pulsa "Crear orden de compra".
+    async function abrirCompraDePedido(numero, despacho) {
+        const url = new URL(window.location); url.searchParams.delete('pc'); url.searchParams.delete('desp'); window.history.replaceState({}, '', url);
         if (tabActual !== 'pedidos') cambiarTab('pedidos');
         await cargarPedidos();
         const p = pedidosCache.find(x => String(x.numero || '').trim() === String(numero).trim());
@@ -286,16 +298,20 @@
             aviso(`El pedido ${numero} ya no tiene nada pendiente de compra (o es de otra empresa: revisa la empresa activa arriba).`, 'warning');
             return;
         }
-        $('pedBuscar').value = numero;
+        pedidoResaltado = { id: p.id, numero: p.numero, desp: despacho || '' };
+        $('pedBuscar').value = '';
         pintarPedidos();
+        document.querySelectorAll('.ped-check:checked').forEach(c => { c.checked = false; });
         const marcas = [...document.querySelectorAll(`.ped-check[data-ped="${p.id}"]`)];
+        const tarjeta = document.querySelector(`.com-pedido[data-pedido="${p.id}"]`);
+        if (tarjeta) tarjeta.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (!marcas.length) {
             aviso(`El pedido ${numero} no tiene productos por comprar (ya está cubierto o sus productos no están en el catálogo).`, 'warning');
             return;
         }
         marcas.forEach(c => { c.checked = true; });
         contarMarcados();
-        crearDesdePedidos();
+        aviso(`Pedido ${numero}: ${marcas.length} línea(s) marcadas y sombreadas. Revisa y pulsa "Crear orden de compra".`, 'success');
     }
 
     function crearDesdePedidos() {
@@ -464,48 +480,93 @@
         }, 150);
     }
 
+    // 22/10/2026 (Erika: "que sea una ayuda, no una confusión"): primero lo de ESTA orden, pedido por pedido.
+    // Antes se sumaban todos los pedidos abiertos del producto (40 + 18 = 58) en una sola cifra y no se sabía
+    // de dónde salía "Faltan 18". Ahora: una fila por pedido (PC) con lo que pide, lo que ya está en otras OC,
+    // el stock que le toca (el stock se reparte, el pedido más antiguo primero) y lo que falta comprar.
+    // Los pedidos de esta orden van arriba y sombreados; los demás salen aparte como "otro pedido sin comprar".
     function pintarAbastecimiento() {
         const caja = $('ocAbast');
         if (!caja) return;
         const ids = [...new Set(lineas.filter(l => l.producto_id).map(l => l.producto_id))];
         const emp = (cat.empresas.find(e => String(e.id) === String($('ocEmp').value)) || {});
+        const nomEmp = emp.codigo || emp.nombre || 'la empresa';
         if (!ids.length) {
-            caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento</div><div class="com-abast-vacio">Elige un producto y aquí verás el stock, lo que pide el cliente y cuánto comprar.</div>`;
+            caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento</div><div class="com-abast-vacio">Elige un producto y aquí verás el stock, lo que pide cada cliente y cuánto comprar.</div>`;
             return;
         }
-        const filas = ids.map(pid => {
+        const bloques = ids.map(pid => {
             const d = abastDatos[pid];
-            const comprar = lineas.filter(l => l.producto_id === pid).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
-            if (!d) return `<tr><td class="left">${esc((lineas.find(l => l.producto_id === pid) || {}).texto || '')}</td><td colspan="6">Calculando...</td></tr>`;
-            const saldo = d.stock + comprar - d.pedido_cliente;
-            const usar = d.sugerido > 0 && Math.abs(comprar - d.sugerido) > 1e-9
-                ? `<button type="button" class="btn-mini sec" data-sugerido="${pid}" title="Poner esta cantidad en la línea del producto">Usar</button>` : '';
-            const estado = saldo < 0
-                ? `<span class="com-abast-sem rojo">✖ Faltan ${cant(-saldo)}</span>`
-                : (d.pedido_cliente > 0
-                    ? `<span class="com-abast-sem verde">✔ Cubre el pedido${saldo > 0 ? ` · quedan ${cant(saldo)} en stock` : ''}</span>`
-                    : `<span class="com-abast-sem ambar">Para stock · quedarán ${cant(saldo)}</span>`);
-            const pcs = d.pedidos.map(p => `${p.numero} (${cant(p.falta)})`).join(', ');
-            const extra = lineas.filter(l => l.producto_id === pid && !l.pedido_id).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
-            return `<tr>
-                <td class="left"><b>${esc(d.codigo || '')}</b> ${esc(d.descripcion || '')}</td>
-                <td class="num"><span class="com-abast-num ${d.stock > 0 ? 'hay' : 'cero'}">${cant(d.stock)}</span>
-                    ${d.stock_grupo > d.stock ? `<small title="Stock libre en todo el grupo (otras empresas o sedes)">Grupo: ${cant(d.stock_grupo)}</small>` : ''}</td>
-                <td class="num"><span class="com-abast-num ped">${cant(d.pedido_cliente)}</span>
-                    ${pcs ? `<small title="${esc(pcs)}">${d.pedidos.length} pedido(s)${d.ya_en_ordenes > 0 ? ` · ya hay ${cant(d.ya_en_ordenes)} en otras OC` : ''}</small>` : '<small>Sin pedidos pendientes</small>'}</td>
-                <td class="num"><span class="com-abast-num sug">${cant(d.sugerido)}</span>${usar}</td>
-                <td class="num"><input type="number" class="inp-num com-abast-extra" min="0" step="any" value="${extra || ''}" placeholder="0"
-                    data-extra-pid="${pid}" title="Si quieres comprar más de lo que pide el cliente, escribe aquí cuánto más (queda en stock y pide motivo)"></td>
-                <td class="num"><span class="com-abast-num comp">${cant(comprar)}</span></td>
-                <td>${estado}</td></tr>`;
+            const mias = lineas.filter(l => l.producto_id === pid);
+            const nombre = esc((mias[0] || {}).texto || '');
+            if (!d) return `<div class="com-ab-prod"><div class="com-ab-head">${nombre} · Calculando...</div></div>`;
+            const enOrden = idp => mias.filter(l => String(l.pedido_id || '') === String(idp || '')).reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
+            const pedidosOrden = new Set(mias.filter(l => l.pedido_id).map(l => String(l.pedido_id)));
+            const pcs = d.pedidos || [];
+            const deEsta = pcs.filter(p => pedidosOrden.has(String(p.pedido_id)));
+            const otros = pcs.filter(p => !pedidosOrden.has(String(p.pedido_id)));
+            const paraStock = enOrden(null);
+            const filaPc = (p, esta) => {
+                const va = esta ? enOrden(p.pedido_id) : 0;
+                let res;
+                if (!esta) res = p.por_comprar > 0
+                    ? `<span class="com-abast-sem gris">Otro pedido sin comprar: ${cant(p.por_comprar)}</span>
+                       <button type="button" class="btn-mini sec" data-sumar-pc="${pid}|${p.pedido_id}" title="Agrega a esta orden lo que le falta a ese pedido">Sumarlo aquí</button>`
+                    : '<span class="com-abast-sem gris">Cubierto con stock</span>';
+                else if (Math.abs(va - p.por_comprar) < 1e-9) res = `<span class="com-abast-sem verde">✔ Cubre lo que falta</span>`;
+                else if (va < p.por_comprar) res = `<span class="com-abast-sem rojo">✖ Faltan ${cant(p.por_comprar - va)}</span>
+                       <button type="button" class="btn-mini sec" data-usar-pc="${pid}|${p.pedido_id}" title="Poner ${cant(p.por_comprar)} en la línea de este pedido">Usar ${cant(p.por_comprar)}</button>`;
+                else res = `<span class="com-abast-sem ambar">Compra de más: ${cant(va - p.por_comprar)}</span>`;
+                return `<tr class="${esta ? 'com-ab-esta' : 'com-ab-otro'}">
+                    <td class="left"><b>${esc(p.numero)}</b><small>${esc(p.cliente || '')}</small></td>
+                    <td class="num">${cant(p.pide)}</td>
+                    <td class="num">${p.en_oc > 0 ? `${cant(p.en_oc)}<small title="${esc(p.ocs || '')}">${esc(p.ocs || '')}</small>` : '0'}</td>
+                    <td class="num">${cant(p.stock_asignado)}</td>
+                    <td class="num"><b>${cant(p.por_comprar)}</b></td>
+                    <td class="num">${esta ? `<span class="com-abast-num comp">${cant(va)}</span>` : '—'}</td>
+                    <td class="left">${res}</td></tr>`;
+            };
+            // Frase de arriba: lo que hace ESTA orden, en simple
+            const frases = deEsta.map(p => {
+                const va = enOrden(p.pedido_id);
+                return va >= p.por_comprar - 1e-9
+                    ? `<span class="com-ab-ok">✔ Esta orden cubre ${cant(va)} de ${esc(p.numero)}${va > p.por_comprar + 1e-9 ? ` (${cant(va - p.por_comprar)} de más)` : ''}</span>`
+                    : `<span class="com-ab-mal">✖ A ${esc(p.numero)} le faltan ${cant(p.por_comprar - va)}: pide ${cant(p.pide)}, ya en otras OC ${cant(p.en_oc)}, stock que le toca ${cant(p.stock_asignado)}</span>`;
+            });
+            if (paraStock > 0) frases.push(`<span class="com-ab-stock">Para stock (sin pedido): ${cant(paraStock)}</span>`);
+            if (!deEsta.length && !paraStock) frases.push('<span class="com-ab-stock">Esta línea no está unida a un pedido.</span>');
+            const otrosTxt = otros.filter(p => p.por_comprar > 0);
+            return `<div class="com-ab-prod">
+                <div class="com-ab-head"><b>${esc(d.codigo || '')}</b> ${esc(d.descripcion || '')}
+                    <span class="com-ab-stocktot">Stock libre en ${esc(nomEmp)}: <b>${cant(d.stock)}</b>${d.stock_grupo > d.stock ? ` · grupo ${cant(d.stock_grupo)}` : ''}</span></div>
+                <div class="com-ab-frases">${frases.join('')}</div>
+                ${pcs.length ? `<div class="table-wrap"><table class="inv-table com-abast-tabla">
+                    <thead><tr><th class="left">N° PC · cliente</th><th>Pide</th><th>Ya en otras OC</th><th>Stock que le toca<small>se reparte, el pedido más antiguo primero</small></th>
+                        <th>Falta comprar</th><th>En esta orden</th><th class="left">Resultado</th></tr></thead>
+                    <tbody>${deEsta.map(p => filaPc(p, true)).join('')}${otros.map(p => filaPc(p, false)).join('')}</tbody></table></div>` : ''}
+                ${otrosTxt.length ? `<div class="com-ab-nota">Hay ${otrosTxt.length} pedido(s) más de este producto sin comprar (${otrosTxt.map(p => `${esc(p.numero)}: ${cant(p.por_comprar)}`).join(', ')}). Haz otra orden o pulsa "Sumarlo aquí".</div>` : ''}
+                <div class="com-ab-extra">Extra para stock (opcional, pide motivo):
+                    <input type="number" class="inp-num com-abast-extra" min="0" step="any" value="${paraStock || ''}" placeholder="0" data-extra-pid="${pid}"
+                        title="Si quieres comprar más de lo que piden los clientes, escribe aquí cuánto más (queda en stock y pide motivo)"></div>
+            </div>`;
         }).join('');
-        caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento <small>${esc(emp.nombre || 'Empresa')} · se recalcula solo</small></div>
-            <div class="table-wrap"><table class="inv-table com-abast-tabla">
-                <thead><tr><th class="left">Nombre producto</th><th>Stock actual<small>disponible en ${esc(emp.codigo || emp.nombre || 'la empresa')}</small></th>
-                    <th>Pedido del cliente<small>lo que falta cubrir</small></th><th>Sugerido<small>pedido − stock</small></th>
-                    <th>Extra para stock<small>opcional: pedir de más</small></th>
-                    <th>Total a comprar<small>en esta orden</small></th><th class="left">Resultado</th></tr></thead>
-                <tbody>${filas}</tbody></table></div>`;
+        caja.innerHTML = `<div class="com-abast-tit">📊 Resumen de abastecimiento <small>${esc(emp.nombre || 'Empresa')} · se recalcula solo</small></div>${bloques}`;
+    }
+
+    // Botones del resumen: "Usar N" (pone lo que falta en la línea de ese pedido) y "Sumarlo aquí" (agrega otro pedido)
+    function usarPedidoAbast(pid, pedidoId, agregar) {
+        const d = abastDatos[pid];
+        const p = d && (d.pedidos || []).find(x => String(x.pedido_id) === String(pedidoId));
+        if (!p) return;
+        const i = lineas.findIndex(l => l.producto_id === pid && String(l.pedido_id || '') === String(pedidoId));
+        if (i >= 0) lineas[i].cantidad = p.por_comprar;
+        else if (agregar) {
+            const base = lineas.find(l => l.producto_id === pid) || {};
+            lineas.push({ producto_id: pid, texto: base.texto || `${d.codigo} · ${d.descripcion}`, cantidad: p.por_comprar,
+                          precio_unitario: base.precio_unitario || '', pedido_id: p.pedido_id, para: `${p.numero} · ${p.cliente || ''}`, max: p.falta });
+        }
+        pintarLineas();
+        ajustarForm();
     }
 
     // "Extra para stock" del panel (pedido de Erika 20/10/2026): una línea aparte "Para stock · sin pedido"
@@ -1001,6 +1062,34 @@
         $('recCourierWrap').style.display = $('recTraidoTipo').value === 'courier' ? '' : 'none';
     }
 
+    // Pedido de Erika 22/10/2026 12:21: lo contado no coincide con la OC → ventana clara ANTES de grabar
+    function ventanaDiferencias(difs) {
+        return new Promise(resolve => {
+            document.getElementById('ventanaDifRec')?.remove();
+            const f = document.createElement('div');
+            f.id = 'ventanaDifRec';
+            f.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+            const color = { Sobra: '#B45309', Falta: '#B91C1C', 'Dañado': '#B91C1C' };
+            f.innerHTML = `<div role="alertdialog" style="background:#FFFBEB;border:4px solid #F59E0B;border-radius:14px;max-width:620px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#422006">
+                <div style="font-size:20px;font-weight:900;margin-bottom:6px">⚠️ Lo que contaste no coincide con la orden de compra</div>
+                <div style="font-size:14px;font-weight:700;margin-bottom:10px">Todavía NO se grabó nada. Revisa: puede ser un error al escribir.</div>
+                <ul style="margin:0 0 12px 18px;padding:0;font-size:15px;font-weight:700;line-height:1.5">
+                    ${difs.map(x => `<li style="color:${color[x.tipo] || '#422006'}">${esc(x.texto)}</li>`).join('')}</ul>
+                <label style="display:block;font-size:13px;font-weight:700;margin-bottom:12px">Si de verdad llegó así, explica por qué (opcional)
+                    <input type="text" data-motivo maxlength="300" placeholder="Ej. el proveedor mandó de más; devolvemos 45" style="width:100%;margin-top:4px;padding:8px;border:1px solid #D97706;border-radius:8px"></label>
+                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+                    <button type="button" data-r="0" style="padding:10px 18px;border-radius:10px;border:0;background:#16A34A;color:#fff;font-weight:900;cursor:pointer">🔁 Volver a contar</button>
+                    <button type="button" data-r="1" style="padding:10px 18px;border-radius:10px;border:2px solid #B45309;background:#fff;color:#92400E;font-weight:800;cursor:pointer">Confirmar con diferencia</button></div></div>`;
+            document.body.appendChild(f);
+            f.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => {
+                const motivo = f.querySelector('[data-motivo]').value.trim();
+                f.remove();
+                resolve(b.dataset.r === '1' ? { motivo } : null);
+            });
+            f.querySelector('button[data-r="0"]').focus();
+        });
+    }
+
     async function guardarRecepcion(btn) {
         const items = [...document.querySelectorAll('#recItems tr')].map(tr => ({
             oc_item_id: Number(tr.dataset.item),
@@ -1015,7 +1104,16 @@
         const body = { almacen_id: $('recSede').value, guia_proveedor: $('recGuia').value, traido_por_tipo: $('recTraidoTipo').value,
             traido_por_id: $('recUsuario').value || null, traido_por: $('recCourier').value, observaciones: $('recObs').value, items };
         await guardarCon(btn, async () => {
-            const r = await post(`/compras/api/flujo/ordenes/${$('recOc').value}/recibir`, body);
+            let r;
+            try {
+                r = await post(`/compras/api/flujo/ordenes/${$('recOc').value}/recibir`, body);
+            } catch (e) {
+                if (!(e.data && e.data.codigo === 'diferencias')) throw e;
+                const ok = await ventanaDiferencias(e.data.diferencias || []);
+                if (!ok) { aviso('No se grabó. Vuelve a contar y corrige las cantidades.', 'info'); return; }
+                r = await post(`/compras/api/flujo/ordenes/${$('recOc').value}/recibir`,
+                               { ...body, confirmar_diferencias: true, motivo_diferencias: ok.motivo });
+            }
             $('recCuerpo').style.display = 'none';
             const res = $('recResultado');
             res.style.display = '';
@@ -1025,12 +1123,12 @@
                 <table class="inv-table"><thead><tr><th class="left">Nombre producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
                 <tbody>${r.resultado.map(x => `<tr><td class="left">${esc(x.producto)}</td><td class="num">${cant(x.esperado)}</td><td class="num">${cant(x.buena)}</td>
                     <td class="num">${cant(x.danada)}</td><td><span class="com-paso com-paso-${color[x.estado] || 'info'}">${esc(x.estado)}</span></td></tr>`).join('')}</tbody></table>
-                <div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>`;
+                ${(r.pendientes_inventario || []).length ? '<div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>' : ''}`;
             $('recPie').innerHTML = `<a class="btn btn-secondary" href="/inventario?tab=entradas_salidas">Ir a Inventario ➜</a><button class="btn btn-primary" data-close="recModal">Listo</button>`;
             refrescar();
-            cartelSiguiente($('recOc').value, '✅ ¡Mercadería recibida!', {
+            cartelSiguiente($('recOc').value, '✅ ¡Mercadería recibida!', (r.pendientes_inventario || []).length ? {
                 texto: 'También: en <b>Inventario ▸ Entradas y salidas</b> pulsa <b>"Ingresar"</b> en esta recepción para que entre al stock.',
-                botones: [{ t: 'Ir a Inventario ➜', href: '/inventario?tab=entradas_salidas' }] });
+                botones: [{ t: 'Ir a Inventario ➜', href: '/inventario?tab=entradas_salidas' }] } : undefined);
         });
     }
 
@@ -1232,6 +1330,11 @@
     document.addEventListener('click', e => {
         const b = e.target.closest('[data-sugerido]');
         if (b) usarSugerido(Number(b.dataset.sugerido));
+        const u = e.target.closest('[data-usar-pc], [data-sumar-pc]');
+        if (u) {
+            const [pid, ped] = (u.dataset.usarPc || u.dataset.sumarPc).split('|');
+            usarPedidoAbast(Number(pid), ped, !!u.dataset.sumarPc);
+        }
     });
     document.addEventListener('change', e => {
         if (e.target.dataset && e.target.dataset.extraPid) ponerExtraStock(Number(e.target.dataset.extraPid), e.target.value);
@@ -1284,7 +1387,7 @@
                 const url = new URL(window.location); url.searchParams.delete('nueva'); window.history.replaceState({}, '', url);
             }
             // Botón "Generar compra" de Ventas ▸ Entregas: /compras?tab=pedidos&pc=PC-... abre la orden con ese pedido
-            if (qs.get('pc')) await abrirCompraDePedido(qs.get('pc'));
+            if (qs.get('pc')) await abrirCompraDePedido(qs.get('pc'), qs.get('desp'));
         } catch (e) { aviso('No se pudo cargar Compras: ' + e.message, 'error'); }
     })();
 })();

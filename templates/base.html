@@ -11,6 +11,7 @@
             <link rel="stylesheet" href="/static/css/tema_empresa.css">
             <!-- Ningún guardado falla en silencio: errores claros, "Guardando..." y registro de fallos (22/10/2026) -->
             <script src="/static/js/errores_guardado.js?v=20261022"></script>
+            <script src="/static/js/lista_bancos.js?v=20261022"></script>
             <!-- Letra distinta por empresa (KCF: Montserrat, AGD: Roboto Slab) para no confundirse de empresa -->
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Roboto+Slab:wght@400;600;700;800&display=swap">
@@ -417,7 +418,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
-                        <a href="/intercompany?tab=resumen" class="child-btn" style="text-decoration:none;">📊 Ventas y deudas</a>
+                        <a href="/intercompany?tab=resumen" class="child-btn" style="text-decoration:none;">🔁 Operaciones</a>
                         <a href="/intercompany?tab=igv" class="child-btn" style="text-decoration:none;">🧮 IGV: desde dónde facturar</a>
                         <a href="/intercompany?tab=stock" class="child-btn" style="text-decoration:none;">📦 Stock del grupo</a>
                     </div>

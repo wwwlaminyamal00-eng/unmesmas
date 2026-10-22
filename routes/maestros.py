@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
-from utils import login_required, normalizar_condicion
+from utils import login_required, normalizar_condicion, normalizar_banco
 from database import db_query
 from routes.multiempresa import visible_por_ambito
 from psycopg2.extras import RealDictCursor
@@ -831,7 +831,7 @@ def api_proveedores_guardar():
             data.get('condicion_pago', 'Contado'),     # condicion_pago
             data.get('lineaCredito'),                  # tiempo_credito
             data.get('puntoRecojo'),                   # lugar_recojo
-            data.get('banco'),                         # banco
+            normalizar_banco(data.get('banco')),       # banco
             data.get('cuenta'),                        # numero_cuenta
             data.get('cci'),                           # cci
             data.get('estado', 'Activo'),              # estado
@@ -1219,7 +1219,7 @@ def api_proveedores_actualizar(id):
             data.get('condicion_pago', 'Contado'),
             data.get('lineaCredito'),
             data.get('puntoRecojo'),
-            data.get('banco'),
+            normalizar_banco(data.get('banco')),
             data.get('cuenta'),
             data.get('cci'),
             data.get('estado', 'Activo'),

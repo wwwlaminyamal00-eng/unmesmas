@@ -195,3 +195,20 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-paso-warn{background:#FEF9C3!important;color:#713F12!important;border:1px solid #FDE047}
 /* 22/10/2026: nota pequeña bajo la acción de Recibir mercadería */
 .com-pago-nota{display:block;margin-top:3px;font-size:11px;font-weight:700;color:#B45309}
+/* Pedido que llega desde Ventas ▸ Entregas ▸ Generar compra (22/10/2026): sombreado para no equivocarse de línea */
+.com-pedido.com-pedido-resaltado{outline:4px solid #FACC15;box-shadow:0 0 0 8px rgba(250,204,21,.25);background:#FFFBEB}
+.com-resaltado-nota{background:#FACC15;color:#422006;font-weight:900;font-size:13px;padding:8px 12px;border-radius:8px 8px 0 0}
+.com-fila-resaltada td{background:#FEF08A!important;font-weight:800}
+/* Resumen de abastecimiento por pedido (22/10/2026): primero esta orden, luego los otros pedidos */
+.com-ab-prod{border-top:1px solid #C7D2FE;padding:8px 10px 10px}
+.com-ab-head{font-size:14px;font-weight:800;color:#0F172A;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.com-ab-stocktot{font-size:12.5px;color:#14532D;background:#DCFCE7;border-radius:999px;padding:2px 10px;font-weight:800}
+.com-ab-frases{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.com-ab-ok{color:#047857;font-weight:900;font-size:13.5px}
+.com-ab-mal{color:#E60023;font-weight:900;font-size:13.5px}
+.com-ab-stock{color:#5C4300;font-weight:800;font-size:12.5px}
+.com-ab-esta td{background:#EEF2FF;font-weight:800}
+.com-ab-otro td{background:#F8FAFC;color:#64748B}
+.com-abast-sem.gris{background:#E2E8F0;color:#334155;border:2px solid #CBD5E1}
+.com-ab-nota{margin-top:6px;font-size:12px;font-weight:800;color:#475569}
+.com-ab-extra{margin-top:6px;font-size:12.5px;font-weight:800;color:#5C4300;display:flex;align-items:center;gap:8px}

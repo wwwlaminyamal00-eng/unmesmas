@@ -12,6 +12,7 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from datetime import datetime
 import json
+import re
 
 # Importar el generador de PDF desde la raíz del proyecto
 from pdf_generator import pdf_generator
@@ -2029,6 +2030,7 @@ def generar_rotulo_guia(guia_id):
             'items': items
         }
         # 5. Generar el PDF del rótulo
+        datos_rotulo.update(_numeros_rotulo(guia=guia))
         pdf_path = pdf_generator._generar_rotulo_guia(datos_rotulo)
         
         if not pdf_path:
@@ -2160,6 +2162,7 @@ def preview_rotulo_guia(guia_id):
             'items': items
         }
         
+        datos_rotulo.update(_numeros_rotulo(guia=guia))
         pdf_path = pdf_generator._generar_rotulo_guia(datos_rotulo)
         
         if not pdf_path:
@@ -2177,6 +2180,46 @@ def preview_rotulo_guia(guia_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+def _numeros_rotulo(guia=None, despacho=None, pc=None):
+    """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PC, N° guía y N° factura. '—' si falta."""
+    def unir(*vals):
+        vistos = []
+        for v in vals:
+            for x in re.split(r'\s*,\s*', str(v or '').strip()):
+                if x and x not in vistos:
+                    vistos.append(x)
+        return ', '.join(vistos)
+    desp, pcs, guias, facts = [], [], [], []
+    if guia:
+        num = f"{guia.get('serie') or ''}-{guia.get('numero') or ''}".strip('-')
+        guias.append(num)
+        facts.append(guia.get('factura'))
+        n = str(guia.get('numero') or '').strip()
+        if n:
+            for d in db_query("""SELECT numero, pc_numero, comprobante FROM despachos
+                                 WHERE COALESCE(guia, '') ~ %s ORDER BY id DESC LIMIT 3""", (r'(^|[^0-9])0*' + re.escape(n.lstrip('0') or '0') + r'([^0-9]|$)',)):
+                desp.append(d['numero'])
+                pcs.append(d['pc_numero'])
+        asociado = str(guia.get('documento_asociado') or '')
+        if asociado.upper().startswith('PC'):
+            pcs.append(asociado)
+    if despacho:
+        desp.append(despacho.get('numero'))
+        pcs.append(despacho.get('pc_numero'))
+        guias.append(despacho.get('guia'))
+        facts.append(despacho.get('comprobante') or despacho.get('factura'))
+    if pc:
+        pcs.append(pc.get('numero'))
+        guias.append(pc.get('guia'))
+        facts.append(pc.get('factura'))
+        for d in db_query("SELECT numero, guia, comprobante FROM despachos WHERE pc_numero = %s ORDER BY id", (pc.get('numero'),)):
+            desp.append(d['numero'])
+            guias.append(d['guia'])
+            facts.append(d['comprobante'])
+    return {'nro_despacho': unir(*desp) or '—', 'nro_pc': unir(*pcs) or '—',
+            'nro_guia': unir(*guias) or '—', 'nro_factura': unir(*facts) or '—'}
 
 # ============================================================
 # RÓTULO DE PC Y DE DESPACHO (pedido de Erika, 15/10/2026)
@@ -2222,6 +2265,7 @@ def rotulo_documento(tipo, doc_id):
             'observaciones': d.get('observaciones') or '',
             'items': items,
         }
+        datos.update(_numeros_rotulo(despacho=d if tipo == 'despacho' else None, pc=d if tipo == 'pc' else None))
         pdf_path = pdf_generator._generar_rotulo_guia(datos)
         if not pdf_path:
             return jsonify({'success': False, 'error': 'No se pudo generar el rótulo'}), 500
@@ -2454,7 +2498,7 @@ def _faltantes_stock_guia(data, empresa_id):
                              WHERE producto_id = ANY(%s) GROUP BY producto_id""", (ids,))
         nombre_emp = 'el grupo'
     hay = {f['producto_id']: a_decimal(f['hay']) for f in filas}
-    return [{'producto': p['producto'], 'empresa': nombre_emp, 'sede': 'todas las sedes',
+    return [{'producto': p['producto'], 'producto_id': pid, 'empresa': nombre_emp, 'sede': 'todas las sedes',
              'pide': float(p['cantidad']), 'hay': float(max(hay.get(pid, a_decimal(0)), a_decimal(0)))}
             for pid, p in pide.items() if hay.get(pid, a_decimal(0)) < p['cantidad']]
 
@@ -2569,12 +2613,14 @@ def api_guias_guardar():
             return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'GUÍA DUPLICADA: NO SE CREÓ', 'error': duplicada}), 409
         # Pedido de Erika 20/10/2026: la guía es para entregar, así que sin stock no se crea (la factura sí).
         faltan_guia = _faltantes_stock_guia(data, empresa_guia)
+        from routes.stock_automatico import texto_en_transito
         if faltan_guia:
             nombres = ', '.join(f"{f['producto']} (pide {f['pide']:g}, hay {f['hay']:g})" for f in faltan_guia[:5])
             return jsonify({'success': False, 'codigo': 'falta_stock', 'faltan': faltan_guia,
                             'titulo': 'NO SE PUEDE CREAR LA GUÍA: FALTA STOCK',
-                            'error': f'No se puede crear la guía: falta stock de {nombres}. '
-                                     'Primero compra o recibe la mercadería. La factura sí se puede hacer sin stock.'}), 409
+                            'error': f'No se puede crear la guía: falta stock de {nombres}.'
+                                     + (texto_en_transito(faltan_guia) or ' Primero compra o recibe la mercadería.')
+                                     + ' La factura sí se puede hacer sin stock.'}), 409
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             if numero:
@@ -3720,14 +3766,14 @@ def _asegurar_fecha_cita():
 @ventas_bp.route('/ventas/api/despachos/<int:did>/cita', methods=['POST'])
 @login_required
 def api_despacho_cita(did):
-    """Pone o cambia la fecha (y hora) de la cita con el cliente para la entrega. Vacío la quita."""
+    """Pone o cambia la fecha de la cita con el cliente para la entrega (solo fecha, sin hora). Vacío la quita."""
     try:
         _asegurar_fecha_cita()
         texto = str((request.get_json(silent=True) or {}).get('fecha_cita') or '').strip()
         nueva = None
         if texto:
             try:
-                nueva = datetime.fromisoformat(texto.replace('Z', ''))
+                nueva = datetime.fromisoformat(texto.replace('Z', '')[:10])
             except ValueError:
                 return jsonify({'success': False, 'error': 'Fecha de cita no válida'}), 400
         antes = db_query("SELECT id, numero, fecha_cita FROM despachos WHERE id = %s", (did,))
@@ -3738,8 +3784,8 @@ def api_despacho_cita(did):
         registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
                             antes={'fecha_cita': antes[0].get('fecha_cita')}, despues={'fecha_cita': nueva},
                             detalle=f"Fecha de cita del despacho {antes[0].get('numero') or did}: "
-                                    f"{nueva.strftime('%d/%m/%Y %H:%M') if nueva else 'sin cita'}")
-        return jsonify({'success': True, 'data': {'id': did, 'fecha_cita': nueva.strftime('%Y-%m-%dT%H:%M') if nueva else None}})
+                                    f"{nueva.strftime('%d/%m/%Y') if nueva else 'sin cita'}")
+        return jsonify({'success': True, 'data': {'id': did, 'fecha_cita': nueva.strftime('%Y-%m-%d') if nueva else None}})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -3901,7 +3947,7 @@ def api_despachos_listar():
                     'created_at': created_at_formateada,
                     'updated_at': row.get('updated_at'),
                     # Fecha de cita con el cliente (Entregas, 20/10/2026); texto ISO sin zona para la pantalla
-                    'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%dT%H:%M') if row.get('fecha_cita') else None
+                    'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%d') if row.get('fecha_cita') else None
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")

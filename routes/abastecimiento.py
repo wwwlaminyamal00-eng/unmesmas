@@ -7,6 +7,12 @@
 #     - "Por llegar": ya se compró y el proveedor lo trae a la sede.
 #   Stock que cuenta = stock de todo el grupo (todas las empresas y sedes) menos lo separado para otros clientes.
 #   Para un PC solo cuentan las OC hechas para ese PC; para cotizaciones y productos cuentan todas las OC abiertas.
+# 22/10/2026 (Erika, urgente "sigue diciendo que falta stock después de generar la OC"):
+#   - Una OC cuenta como "comprado, por llegar" desde que se genera (Borrador, Por aprobar o Aprobada), no solo
+#     aprobada. Antes solo contaban las aprobadas, por eso seguía saliendo "Pendiente de compra".
+#   - El stock libre se reparte entre los pedidos (el más antiguo primero) y no se cuenta dos veces: con 32 en stock,
+#     un PC de 18 y otro de 40, al primero le tocan 18 y al segundo 14 (faltan 26), no 32 a cada uno.
+#   - Cada estado trae el N° de la OC que lo cubre.
 # No crea tablas ni columnas: solo lee lo que ya registran Inventario y Compras.
 from collections import defaultdict
 from decimal import Decimal
@@ -26,7 +32,8 @@ POR_LLEGAR = 'Por llegar'
 # Del más urgente al menos urgente: un documento muestra el estado de su producto más atrasado
 PRIORIDAD = (POR_COMPRA, POR_RECOJO, POR_LLEGAR, CON_STOCK)
 RECOGEMOS = 'Nosotros recogemos'
-OC_ABIERTAS = ('Aprobada', 'Recibida parcial')
+OC_ABIERTAS = ('Aprobada', 'Recibida parcial')     # (antes) solo estas contaban como compradas
+OC_FUERA = ('Anulada', 'Anulado', 'Cancelada', 'Rechazada')   # el resto, con algo por recibir, cuenta como "por llegar"
 
 
 def _preparar():
@@ -37,30 +44,45 @@ def _preparar():
 
 
 def _en_camino(producto_ids, pedido_id=None):
-    """Lo comprado (OC aprobada) que aún no se recibe, separado en 'recojo' y 'llega'.
-    Devuelve {(pedido_id o None, producto_id): {'recojo': x, 'llega': y}}."""
+    """Lo comprado (OC generada, no anulada) que aún no se recibe, separado en 'recojo' y 'llega', con sus N° de OC.
+    Devuelve {(pedido_id o None, producto_id): {'recojo': x, 'llega': y, 'ocs': [...]}}."""
     if not producto_ids:
         return {}
     filas = db_query("""
-        SELECT oci.pedido_id, oci.producto_id, oc.modalidad_entrega,
+        SELECT oci.pedido_id, oci.producto_id, oc.modalidad_entrega, oc.numero_orden,
                SUM(GREATEST(oci.cantidad - COALESCE(oci.cantidad_recibida, 0), 0)) AS pendiente
         FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
-        WHERE oc.estado = ANY(%s) AND oci.producto_id = ANY(%s)
+        WHERE COALESCE(oc.estado, '') <> ALL(%s) AND oci.producto_id = ANY(%s)
           AND (%s::int IS NULL OR oci.pedido_id = %s::int)
-        GROUP BY oci.pedido_id, oci.producto_id, oc.modalidad_entrega
-    """, (list(OC_ABIERTAS), list(producto_ids), pedido_id, pedido_id))
-    res = defaultdict(lambda: {'recojo': Decimal('0'), 'llega': Decimal('0')})
+        GROUP BY oci.pedido_id, oci.producto_id, oc.modalidad_entrega, oc.numero_orden
+        HAVING SUM(GREATEST(oci.cantidad - COALESCE(oci.cantidad_recibida, 0), 0)) > 0
+    """, (list(OC_FUERA), list(producto_ids), pedido_id, pedido_id))
+    res = defaultdict(lambda: {'recojo': Decimal('0'), 'llega': Decimal('0'), 'ocs': []})
     for f in filas:
         clave = 'recojo' if f['modalidad_entrega'] == RECOGEMOS else 'llega'
-        res[(f['pedido_id'], f['producto_id'])][clave] += a_decimal(f['pendiente'])
+        r = res[(f['pedido_id'], f['producto_id'])]
+        r[clave] += a_decimal(f['pendiente'])
+        if f['numero_orden'] and f['numero_orden'] not in r['ocs']:
+            r['ocs'].append(f['numero_orden'])
     return res
 
 
+def ocs_en_transito(producto_ids):
+    """{producto_id: ['OC-...', ...]} de las OC generadas (no anuladas) que aún no se reciben."""
+    salida = defaultdict(list)
+    for (_, pid), v in _en_camino(list(producto_ids)).items():
+        for n in v['ocs']:
+            if n not in salida[pid]:
+                salida[pid].append(n)
+    return dict(salida)
+
+
 def _sumar_global(en_camino):
-    total = defaultdict(lambda: {'recojo': Decimal('0'), 'llega': Decimal('0')})
+    total = defaultdict(lambda: {'recojo': Decimal('0'), 'llega': Decimal('0'), 'ocs': []})
     for (_, prod), v in en_camino.items():
         total[prod]['recojo'] += v['recojo']
         total[prod]['llega'] += v['llega']
+        total[prod]['ocs'] += [n for n in v.get('ocs', []) if n not in total[prod]['ocs']]
     return total
 
 
@@ -83,9 +105,14 @@ def _peor(estados):
 
 def _resumen(items_estado):
     faltan = [i for i in items_estado if i['estado'] != CON_STOCK]
+    ocs = []
+    for i in items_estado:
+        ocs += [n for n in i.get('ocs', []) if n not in ocs]
     return {'estado': _peor({i['estado'] for i in items_estado}) if items_estado else None,
-            'faltan': len(faltan),
-            'detalle': [f"{i['descripcion'] or i['codigo']}: {i['estado'].lower()}" for i in faltan][:6]}
+            'faltan': len(faltan), 'ocs': ocs[:5],
+            'detalle': [f"{i['descripcion'] or i['codigo']}: {i['estado'].lower()}"
+                        + (f" ({', '.join(i['ocs'])})" if i.get('ocs') and i['estado'] != CON_STOCK else '')
+                        for i in faltan][:6]}
 
 
 def evaluar_documentos(docs, por_pedido=False):
@@ -98,10 +125,28 @@ def evaluar_documentos(docs, por_pedido=False):
     libre = _stock_libre_grupo(ids)
     camino = _en_camino(ids)
     camino_global = _sumar_global(camino)
-    vacio = {'recojo': Decimal('0'), 'llega': Decimal('0')}
+    vacio = {'recojo': Decimal('0'), 'llega': Decimal('0'), 'ocs': []}
+    # Pedidos: el stock libre se reparte, el pedido más antiguo primero, y no se cuenta dos veces.
+    # Lo que ya está en una OC de ese pedido no necesita stock. Varios despachos del mismo PC comparten su parte.
+    restante = dict(libre)
+    asignado = {}
+    if por_pedido:
+        for doc_id in sorted(docs, key=lambda k: (docs[k].get('pedido_id') or 10 ** 12, k)):
+            d = docs[doc_id]
+            llave_doc = ('pc', d['pedido_id']) if d.get('pedido_id') else ('doc', doc_id)
+            for it in d['items']:
+                pid = it['producto_id']
+                if not pid or (llave_doc, pid) in asignado:
+                    continue
+                c = camino.get((d.get('pedido_id'), pid), vacio) if d.get('pedido_id') else vacio
+                necesita = max(a_decimal(it['cantidad']) - c['recojo'] - c['llega'], Decimal('0'))
+                toca = min(max(restante.get(pid, Decimal('0')), Decimal('0')), necesita)
+                restante[pid] = restante.get(pid, Decimal('0')) - toca
+                asignado[(llave_doc, pid)] = toca
     salida = {}
     for doc_id, d in docs.items():
         evaluados = []
+        llave_doc = ('pc', d['pedido_id']) if d.get('pedido_id') else ('doc', doc_id)
         for it in d['items']:
             if not it['producto_id']:
                 continue  # producto escrito a mano (sin código del catálogo): no se puede saber su stock
@@ -109,9 +154,10 @@ def evaluar_documentos(docs, por_pedido=False):
                 c = camino.get((d['pedido_id'], it['producto_id']), vacio)
             else:
                 c = camino_global.get(it['producto_id'], vacio)
-            evaluados.append({'codigo': it['codigo'], 'descripcion': it.get('descripcion'),
-                              'estado': estado_item(it['cantidad'], libre.get(it['producto_id'], 0),
-                                                    c['recojo'], c['llega'])})
+            stock_doc = asignado.get((llave_doc, it['producto_id']), Decimal('0')) if por_pedido \
+                else libre.get(it['producto_id'], 0)
+            evaluados.append({'codigo': it['codigo'], 'descripcion': it.get('descripcion'), 'ocs': c.get('ocs', []),
+                              'estado': estado_item(it['cantidad'], stock_doc, c['recojo'], c['llega'])})
         if evaluados:
             salida[doc_id] = _resumen(evaluados)
     return salida

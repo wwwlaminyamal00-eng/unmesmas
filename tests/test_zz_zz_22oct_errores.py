@@ -94,13 +94,189 @@ def test_oc_intercompany_se_recibe_antes_del_pago(zz, admin):
     fila = next(o for o in admin.get('/compras/api/flujo/por_recibir').json['data'] if o['id'] == oc_id)
     assert fila['paso']['codigo'] == 'recibir' and fila['falta_pago_intercompany'] is True
     items = admin.get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').json['items']
-    rec = {'almacen_id': zz['sede'], 'guia_proveedor': 'T001-ZZ-22', 'traido_por_tipo': 'externo', 'traido_por_nombre': 'Chofer AGD',
+    rec = {'almacen_id': zz['sede'], 'guia_proveedor': 'T001-ZZ-22', 'traido_por_tipo': 'courier', 'traido_por': 'Chofer AGD',
            'items': [{'oc_item_id': items[0]['id'], 'cantidad_buena': 23, 'cantidad_danada': 0}]}
-    r = zz['compra'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
-    assert 'pago' not in (r.json.get('error') or ''), r.json
+    r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    assert r.status_code == 200 and r.json['success'], r.json
     # Una OC al contado de un proveedor de afuera sigue bloqueada hasta el pago
     otra = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico',
                                                                     items=[{'producto_id': zz['LENTE'], 'cantidad': 29, 'precio_unitario': 7}])).json['id']
     _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (otra,), fetch=False)
     fila = next(o for o in admin.get('/compras/api/flujo/por_recibir').json['data'] if o['id'] == otra)
     assert fila['paso']['codigo'] == 'pagar' and fila['falta_pago_intercompany'] is False
+
+
+def test_recibir_con_diferencia_avisa_antes_de_grabar(zz, admin):
+    # Pedido de Erika 22/10/2026 12:21: la OC pide 5 y se escribe 50 → ventana antes de grabar
+    ruc = _sql("SELECT ruc FROM erp_empresas WHERE codigo = 'KCF'")[0][0]
+    prov = _sql("SELECT id FROM proveedores WHERE ruc = %s ORDER BY id LIMIT 1", (ruc,))[0][0]
+    oc_id = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, proveedor_id=prov, motivo_compra='Stock estratégico',
+                                                                    items=[{'producto_id': zz['LENTE'], 'cantidad': 5, 'precio_unitario': 3}])).json['id']
+    _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (oc_id,), fetch=False)
+    items = admin.get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').json['items']
+    rec = {'almacen_id': zz['sede'], 'guia_proveedor': 'T001-ZZ-50', 'traido_por_tipo': 'proveedor',
+           'items': [{'oc_item_id': items[0]['id'], 'cantidad_buena': 50, 'cantidad_danada': 0}]}
+    r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    assert r.status_code == 409 and r.json['codigo'] == 'diferencias', r.json
+    assert 'la OC pide 5' in r.json['diferencias'][0]['texto'] and 'sobran 45' in r.json['diferencias'][0]['texto']
+    assert _sql("SELECT COUNT(*) FROM com_recepciones WHERE orden_compra_id = %s", (oc_id,))[0][0] == 0   # no se grabó
+    rec.update(confirmar_diferencias=True, motivo_diferencias='El proveedor mandó de más')
+    r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    assert r.status_code == 200 and r.json['success'], r.json
+    hist = [h[0] for h in _sql("SELECT detalle FROM com_historial WHERE orden_compra_id = %s AND accion = 'Recibió confirmando diferencias'", (oc_id,))]
+    assert hist and 'sobran 45' in hist[0] and 'mandó de más' in hist[0]
+    assert _sql("SELECT COUNT(*) FROM com_incidencias WHERE orden_compra_id = %s AND tipo = 'Sobrante'", (oc_id,))[0][0] == 1
+
+
+def test_cobros_y_pagos_muestran_oc_y_pc(admin):
+    # Erika 22/10/2026 12:26: cada pago con su N° OC y N° PC (trazabilidad), y se puede buscar por ellos
+    pagos = admin.get('/finanzas/api/movimientos?tipo=PAGO').json['data']
+    con_oc = [m for m in pagos if m.get('oc_numero')]
+    assert con_oc, 'los pagos de las pruebas de Compras deberían tener su OC'
+    m = con_oc[0]
+    assert m['pc_numero']           # N° PC, o "Compra a stock" / "Sin PC vinculado"
+    r = admin.get('/finanzas/api/movimientos', query_string={'q': m['oc_numero']}).json['data']
+    assert any(x['id'] == m['id'] for x in r)
+    for c in admin.get('/finanzas/api/movimientos?tipo=COBRO').json['data']:
+        assert 'pc_numero' in c and 'oc_cliente' in c
+    assert 'N° OC / N° PC' in admin.get('/finanzas').get_data(as_text=True)
+
+
+def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):
+    # Erika 22/10/2026 12:34: en 7.2 una tabla integral por OC entre empresas (OC, PC, cotización, cliente,
+    # pago, recepción, despacho, facturas). Antes solo veía facturas de venta y la OC no aparecía.
+    agd = _sql("SELECT id, ruc FROM erp_empresas WHERE codigo = 'AGD'")
+    if not agd:
+        pytest.skip('Falta la empresa AGD en la base de pruebas')
+    agd_id, agd_ruc = agd[0]
+    kcf_ruc = _sql("SELECT ruc FROM erp_empresas WHERE codigo = 'KCF'")[0][0]
+    prov = _sql("""INSERT INTO proveedores (razon_social, ruc, direccion, condicion_pago, activo)
+                   VALUES ('AGD GROUP ZZ S.A.C.', %s, 'Breña', 'Crédito 30 días', true) RETURNING id""", (agd_ruc,))[0][0]
+    r = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, proveedor_id=prov, motivo_compra='Stock estratégico',
+                                                                  condicion_pago='Crédito', dias_credito=30,
+                                                                  items=[{'producto_id': zz['LENTE'], 'cantidad': 4, 'precio_unitario': 10}]))
+    assert r.status_code == 200, r.json
+    oc_id = r.json['id']
+    numero = _sql("SELECT numero_orden FROM ordenes_compra WHERE id = %s", (oc_id,))[0][0]
+    _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (oc_id,), fetch=False)
+
+    def fila():
+        d = admin.get('/intercompany/api/resumen').json['data']
+        return next(o for o in d['operaciones'] if o['oc_id'] == oc_id)
+    o = fila()
+    assert o['vende'] == 'AGD' and o['compra'] == 'KCF' and o['para_stock'] is True and o['completa'] is False
+    assert o['saldo'] > 0 and any('Pagar' in f and 'crédito' in f for f in o['falta'])
+    assert any('Recibir la mercadería en KCF' == f for f in o['falta'])
+    assert any(f.startswith('Despacho en AGD') for f in o['falta']) and 'Factura de venta de AGD' in o['falta']
+    # KCF recibe; AGD hace su PC con "N° OC del cliente" = la OC, despacha y factura
+    items = admin.get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').json['items']
+    r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json={
+        'almacen_id': zz['sede'], 'guia_proveedor': 'T001-IC-1', 'traido_por_tipo': 'proveedor',
+        'items': [{'oc_item_id': items[0]['id'], 'cantidad_buena': 4, 'cantidad_danada': 0}]})
+    assert r.status_code == 200, r.json
+    _sql("""INSERT INTO pedido_compra_pc (numero, estado, cliente, ruc, empresa_id, oc_cliente)
+            VALUES ('PC-AGD-ZZ1', 'Aprobado', 'KCF ZZ', %s, %s, %s)""", (kcf_ruc, agd_id, numero), fetch=False)
+    _sql("""INSERT INTO despachos (numero, estado, pc_numero, cliente, ruc, empresa_id)
+            VALUES ('DESP-AGD-ZZ1', 'Despachado', 'PC-AGD-ZZ1', 'KCF ZZ', %s, %s)""", (kcf_ruc, agd_id), fetch=False)
+    _sql("""INSERT INTO comprobantes (tipo_comprobante, serie, numero, fecha_emision, cliente_tipo_doc, cliente_numero_doc,
+                                      cliente_nombre, subtotal, igv, total, items_json, estado_sunat, empresa_id,
+                                      orden_compra_cliente)
+            VALUES ('01', 'F001', 777, CURRENT_DATE, '6', %s, 'KCF ZZ', 40, 7.2, 47.2, '[]', 'ACEPTADO', %s, %s)""", (kcf_ruc, agd_id, numero), fetch=False)
+    o = fila()
+    assert o['recibida'] == 4 and o['pc_vende'] == 'PC-AGD-ZZ1' and o['despachos'] == 'DESP-AGD-ZZ1'
+    assert o['factura_venta'].startswith('F001-') and o['factura_venta'].endswith('777')
+    assert o['falta'] == [f"Pagar {o['saldo']:,.2f} a AGD (crédito)", 'Registrar la factura en compras de KCF']
+    # La pantalla tiene la tabla
+    html = admin.get('/intercompany').get_data(as_text=True)
+    assert 'icOperaciones' in html and 'AGD le vende a KCF' in html
+
+
+def test_banco_siempre_de_la_lista(admin):
+    # Erika 22/10/2026 12:48: el banco con desplegable, para que no se escriba de formas distintas
+    from utils import normalizar_banco
+    assert normalizar_banco('bcp ') == 'BCP' and normalizar_banco('Banco de Crédito del Perú') == 'BCP'
+    assert normalizar_banco('BBVA Continental') == 'BBVA' and normalizar_banco('banco de la nacion') == 'Banco de la Nación'
+    assert normalizar_banco('') is None and normalizar_banco('Caja Raíz') == 'Caja Raíz'
+    for url in ('/finanzas', '/compras'):
+        html = admin.get(url).get_data(as_text=True)
+        assert 'id="pagoBanco" data-lista="bancos"' in html and 'lista_bancos.js' in html, url
+    js = open('static/js/lista_bancos.js', encoding='utf-8').read()
+    assert "'Banco de la Nación'" in js and 'Otro (escribir)' in js
+
+
+def test_rotulo_con_los_4_numeros_y_nombre_en_una_linea(app, admin):
+    # Erika 22/10/2026 12:57: N° despacho, N° PC, N° guía y N° factura ("—" si falta); sin URL ni redes; nombre sin E.I.R.L.
+    from routes.ventas import _numeros_rotulo
+    from pdf_generator import pdf_generator
+    _sql("""INSERT INTO despachos (numero, cliente, ruc, estado, pc_numero, guia)
+            VALUES ('DSP-ZZ-ROT', 'CLIENTE ROT', '20100070970', 'Pendiente despacho', 'PC-ZZ-ROT', 'T001-000123')""", fetch=False)
+    did = _sql("SELECT id FROM despachos WHERE numero = 'DSP-ZZ-ROT'")[0][0]
+    with app.app_context():
+        n = _numeros_rotulo(despacho={'numero': 'DSP-ZZ-ROT', 'pc_numero': 'PC-ZZ-ROT', 'guia': 'T001-000123', 'comprobante': None})
+        assert n == {'nro_despacho': 'DSP-ZZ-ROT', 'nro_pc': 'PC-ZZ-ROT', 'nro_guia': 'T001-000123', 'nro_factura': '—'}
+        g = _numeros_rotulo(guia={'serie': 'T001', 'numero': '123', 'factura': 'F001-9'})
+        assert g['nro_despacho'] == 'DSP-ZZ-ROT' and g['nro_pc'] == 'PC-ZZ-ROT' and g['nro_factura'] == 'F001-9'
+    assert pdf_generator._nombre_rotulo('KCF CORPORACION E.I.R.L.') == 'KCF CORPORACIÓN'
+    assert pdf_generator._nombre_rotulo('AGD GROUP S.A.C.') == 'AGD GROUP'
+    plantilla = pdf_generator._obtener_template_rotulo_guia()
+    assert 'social-icon">' not in plantilla and 'empresa_web' not in plantilla and 'N° Pedido de compra' in plantilla
+    r = admin.get(f'/ventas/api/rotulo/despacho/{did}')
+    assert r.status_code == 200 and r.data[:4] == b'%PDF'
+
+
+def test_intercompany_reconoce_proveedor_con_ruc_mal_escrito(zz, admin):
+    # Erika 22/10/2026 13:17 "no se actualiza": si el proveedor del grupo tiene el RUC mal escrito, igual aparece y avisa
+    agd = _sql("SELECT razon_social, ruc FROM erp_empresas WHERE codigo = 'AGD'")
+    if not agd or not agd[0][0]:
+        pytest.skip('AGD sin razón social en la base de pruebas')
+    prov = _sql("""INSERT INTO proveedores (razon_social, ruc, direccion, condicion_pago, activo)
+                   VALUES (%s, '20999999990', 'Breña', 'Contado', true) RETURNING id""", (agd[0][0],))[0][0]
+    r = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, proveedor_id=prov, motivo_compra='Stock estratégico',
+                                                                  items=[{'producto_id': zz['LENTE'], 'cantidad': 2, 'precio_unitario': 5}]))
+    oc_id = r.json['id']
+    o = next(x for x in admin.get('/intercompany/api/resumen').json['data']['operaciones'] if x['oc_id'] == oc_id)
+    assert o['vende'] == 'AGD' and o['falta'][0].startswith('Corregir el RUC')
+    assert any(f.startswith('Aprobar la OC') for f in o['falta']) or o['estado_oc'] not in ('Borrador', 'Por aprobar')
+
+
+def test_stock_se_reparte_y_oc_generada_cuenta_como_por_llegar(zz, admin):
+    # Erika 22/10/2026 13:21: stock 32, un PC de 18 (más antiguo) y otro de 40 → faltan 26, no 8 ni 58.
+    # 13:21 urgente: con la OC ya generada (aunque esté en borrador) debe decir "Comprado, por llegar" con su N° de OC.
+    import json
+    _sql("""INSERT INTO productos (familia, codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo)
+            VALUES ('GENERAL', 'ZZ-EST', 'ESTABILIZADOR ZZ 120W', 'ZZ', 'UND', 0, 120, 0, true)""", fetch=False)
+    prod = _sql("SELECT id FROM productos WHERE codigo = 'ZZ-EST'")[0][0]
+    _sql("INSERT INTO inv_stock (empresa_id, almacen_id, producto_id, cantidad) VALUES (%s, %s, %s, 32)",
+         (zz['emp'], zz['sede'], prod), fetch=False)
+    ids = []
+    for num, cant, dias in (('PC-ZZ-EST-A', 18, 2), ('PC-ZZ-EST-B', 40, 0)):
+        items = [{'codigo': 'ZZ-EST', 'producto': 'ESTABILIZADOR ZZ 120W', 'cantidad_pc': cant, 'precio_pc': 120}]
+        ids.append(_sql("""INSERT INTO pedido_compra_pc (numero, cliente, ruc, estado, items_json, fecha, empresa_id)
+                           VALUES (%s, 'CLIENTE EST', '20100070970', 'Pendiente', %s, NOW() - %s * INTERVAL '1 day', %s) RETURNING id""",
+                        (num, json.dumps(items), dias, zz['emp']))[0][0])
+    peds = {p['id']: p for p in admin.get('/compras/api/flujo/pedidos', query_string={'todos': '1'}).json['data']}
+    a, b = peds[ids[0]]['items'][0], peds[ids[1]]['items'][0]
+    assert (a['stock_asignado'], a['comprar_pedido']) == (18, 0)          # el más antiguo usa 18 del stock
+    assert (b['stock_asignado'], b['comprar_pedido']) == (14, 26)         # al otro le tocan 14: faltan 26
+    d = admin.get('/compras/api/flujo/abastecimiento', query_string={'empresa_id': zz['emp'], 'productos': prod}).json['data'][0]
+    assert d['stock'] == 32 and d['por_comprar'] == 26
+    assert {p['numero']: p['por_comprar'] for p in d['pedidos']} == {'PC-ZZ-EST-A': 0, 'PC-ZZ-EST-B': 26}
+    # Sin OC: pendiente de compra
+    assert admin.get('/api/abastecimiento/pc').json['data'][str(ids[1])]['estado'] == 'Pendiente por compra'
+    # OC en borrador para el pedido B → "Por llegar" con su N° de OC
+    r = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, items=[{'producto_id': prod, 'cantidad': 26, 'precio_unitario': 100,
+                                                                              'pedido_id': ids[1]}]))
+    assert r.status_code == 200, r.json
+    numero = _sql("SELECT numero_orden FROM ordenes_compra WHERE id = %s", (r.json['id'],))[0][0]
+    est = admin.get('/api/abastecimiento/pc').json['data']
+    assert est[str(ids[1])]['estado'] == 'Por llegar' and numero in est[str(ids[1])]['ocs']
+    assert est[str(ids[0])]['estado'] == 'Con stock'
+    # Pedidos por comprar ya no lo pide otra vez
+    b = next(p for p in admin.get('/compras/api/flujo/pedidos', query_string={'todos': '1'}).json['data'] if p['id'] == ids[1])['items'][0]
+    assert b['comprado'] == 26 and b['comprar_pedido'] == 0
+    # Despachar sin stock físico con la OC en camino: mensaje claro con el N° de OC
+    from routes.stock_automatico import texto_en_transito
+    from main import app as aplicacion
+    with aplicacion.app_context():
+        t = texto_en_transito([{'producto': 'ESTABILIZADOR ZZ 120W', 'producto_id': prod}])
+    assert numero in t and 'Recíbela en Compras' in t

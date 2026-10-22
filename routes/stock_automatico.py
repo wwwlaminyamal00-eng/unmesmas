@@ -99,6 +99,25 @@ def _separaciones_cliente(cur, desp, empresa_id, almacen_id, producto_id):
     return cur.fetchall()
 
 
+def texto_en_transito(faltan):
+    """Si lo que falta ya está comprado (OC generada, aún no recibida), lo dice con el N° de OC (Erika 22/10/2026)."""
+    try:
+        from routes.abastecimiento import ocs_en_transito
+        ocs = ocs_en_transito({f['producto_id'] for f in faltan if f.get('producto_id')})
+    except Exception:
+        return ''
+    partes = []
+    for f in faltan:
+        n = ocs.get(f.get('producto_id'))
+        if n:
+            f['ocs'] = n
+            partes.append(f"{f['producto']}: {', '.join(n)}")
+    if not partes:
+        return ''
+    return (' No hay stock físico, pero la mercadería ya está comprada y en tránsito (' + '; '.join(partes) +
+            '). Recíbela en Compras ▸ Recibir mercadería para poder despachar.')
+
+
 class ErrorFaltaStock(ErrorInventario):
     """No alcanza el stock para despachar. `faltan` dice qué producto, en qué empresa y sede, cuánto pide y cuánto hay."""
     def __init__(self, mensaje, faltan):
@@ -141,7 +160,7 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
             cur.execute("""SELECT COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
                            WHERE empresa_id = %s AND almacen_id = %s AND producto_id = %s""", (empresa_id, almacen_id, pid))
             hay = a_decimal((cur.fetchone() or {}).get('hay'))
-            faltan.append({'producto': nombre, 'codigo': it.get('codigo') or '', 'empresa': nom_empresa, 'sede': nom_sede,
+            faltan.append({'producto': nombre, 'codigo': it.get('codigo') or '', 'producto_id': pid, 'empresa': nom_empresa, 'sede': nom_sede,
                            'pide': float(cantidad), 'hay': float(hay), 'detalle': str(e)})
             continue
         cur.execute("RELEASE SAVEPOINT desp_item")
@@ -164,7 +183,7 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
                         'producto': nombre, 'cantidad': float(cantidad), 'separaciones': usadas})
     if faltan:
         lista = '; '.join(f'"{f["producto"]}" (pide {f["pide"]:g}, hay {f["hay"]:g})' for f in faltan)
-        raise ErrorFaltaStock(f'No hay stock suficiente en {nom_empresa} · {nom_sede}: {lista}.', faltan)
+        raise ErrorFaltaStock(f'No hay stock suficiente en {nom_empresa} · {nom_sede}: {lista}.' + texto_en_transito(faltan), faltan)
     cur.execute("""UPDATE despachos SET stock_empresa_id = %s, stock_almacen_id = %s, stock_estado = 'Descontado',
                    stock_detalle = %s, stock_fecha = NOW() WHERE id = %s""",
                 (empresa_id, almacen_id, json.dumps(detalle), desp['id']))

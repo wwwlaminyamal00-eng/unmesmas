@@ -113,3 +113,32 @@
 /* Seguimiento comercial */
 .ge-tabla td.ge-ultima{min-width:190px;max-width:280px;font-size:12px;text-align:left}
 .ge-tabla a.ge-nw,.ge-tabla span.ge-nw{white-space:nowrap}
+/* 7.2 Operaciones intercompany (22/10/2026): una fila por OC entre empresas */
+.ic-ops td{vertical-align:middle;font-size:12.5px;line-height:1.45}
+.ic-ops td small{display:block;color:#64748B;font-weight:700}
+.ic-ops .ic-linea{display:block}
+.ic-ops .ic-ok{color:#15803D;font-weight:900}
+.ic-ops .ic-mal{color:#E60023;font-weight:900}
+.ic-ops ul.ic-falta{margin:0;padding:0;list-style:none;text-align:left}
+.ic-ops ul.ic-falta li{color:#E60023;font-weight:850}
+.ic-ops ul.ic-falta li::before{content:"⏳ "}
+.ic-sentido{display:inline-block;padding:1px 8px;border-radius:999px;background:#EEF2FF;color:#3730A3;font-weight:900;font-size:11px;white-space:nowrap}
+.ge-buscar select{height:32px;border:1px solid #CBD5E1;border-radius:9px;padding:0 8px;font-weight:800;font-family:inherit;background:#fff}
+/* Intercompany simple (22/10/2026): fila de estado delgada como Finanzas, avisos en una línea */
+.ic-estado{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
+.ic-estado .res-item{display:inline-flex;align-items:baseline;gap:5px;background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:#475569;line-height:1.4}
+.ic-estado button.res-item{cursor:pointer;font-family:inherit}
+.ic-estado .res-item b{font-size:13px;font-weight:900;color:#0F172A}
+.ic-estado .res-mal{border-color:#FCA5A5;color:#C80028}
+.ic-estado .res-mal b{color:#E60023}
+.ic-estado .res-ok{border-color:#86EFAC}
+.ic-estado .res-ok b{color:#15803D}
+.ic-aviso{font-size:12px;font-weight:700;color:#9F1239;margin:0 2px 8px}
+.ic-mes{margin-left:auto}
+.ic-mes input{min-width:0;width:170px}
+details.ic-plegable>summary{cursor:pointer;list-style:none}
+details.ic-plegable>summary::-webkit-details-marker{display:none}
+details.ic-plegable>summary .inv-title::before{content:'▸ ';color:#64748B}
+details.ic-plegable[open]>summary .inv-title::before{content:'▾ '}
+details.ic-plegable .inv-title small{font-size:12px;color:#64748B;font-weight:800;margin-left:6px}
+.ic-ops .ic-mas{display:block;color:#64748B;font-weight:800;font-size:11.5px;cursor:help}

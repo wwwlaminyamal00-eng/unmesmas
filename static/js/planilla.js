@@ -214,7 +214,7 @@
             <label><span data-etiqueta-sueldo>Sueldo mensual (S/)</span><input type="number" name="sueldo" required min="0.01" step="0.01" value="${p.sueldo ?? ''}"></label>
             <label data-solo="Planilla">Pensión<select name="pension">${opciones(OPC.pensiones, p.pension)}</select></label>
             <label data-solo="AFP">% total de la AFP <small>(aporte + seguro + comisión)</small><input type="number" name="afp_porcentaje" min="0.01" max="19.99" step="0.01" value="${p.afp_porcentaje ?? ''}" placeholder="Ej.: 11.37"></label>
-            <label>Banco<input name="banco" maxlength="60" value="${esc(p.banco || '')}" placeholder="Ej.: BCP"></label>
+            <label>Banco<input name="banco" data-lista="bancos" value="${esc(p.banco || '')}"></label>
             <label>N° de cuenta<input name="cuenta" maxlength="60" value="${esc(p.cuenta || '')}"></label>
             <label class="ge-check" data-solo="Planilla"><input type="checkbox" name="asignacion_familiar" ${p.asignacion_familiar ? 'checked' : ''}> Asignación familiar (tiene hijos menores)</label>
             <label class="ge-check" data-solo="Jornada"><input type="checkbox" name="jornada_parcial" ${p.jornada_parcial ? 'checked' : ''}> Jornada parcial (menos de 4 horas diarias)</label>

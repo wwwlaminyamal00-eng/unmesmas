@@ -13,43 +13,46 @@
 
 {% block content %}
 <div id="icApp" class="ge-app">
-    <div class="ge-barra">
-        <label>Mes
-            <input type="month" id="icMes">
-        </label>
-    </div>
-
+    <!-- 22/10/2026: pantalla simple (Erika: "muy cargado"): una fila de estado, una línea de aviso y la tabla por OC -->
+    <div class="ic-estado" id="icKpis"></div>
     <div id="icAvisos"></div>
-    <div class="ge-kpis" id="icKpis"></div>
 
     <details class="ge-ayuda">
         <summary>¿Cómo funciona?</summary>
         <ul>
-            <li>Una venta es "entre empresas" cuando el cliente tiene el RUC de la otra empresa del grupo. Se reconoce sola, desde Ventas o desde lo subido del SIRE.</li>
-            <li>Cada venta debe estar registrada como compra en la otra empresa. Si falta, esa empresa pierde el crédito fiscal y sale en <b class="ge-rojo">rojo</b>.</li>
-            <li>El IGV es el mismo cálculo del módulo SUNAT. La sugerencia solo usa saldos a favor o retenciones que una empresa no llega a usar.</li>
+            <li>Cada orden de compra (OC) hecha a la otra empresa del grupo es una fila. OC hecha en KCF con AGD como proveedor = <b>AGD le vende a KCF</b>.</li>
+            <li>Pasos: la que compra paga y recibe (Compras). La que vende hace su PC con "N° OC del cliente" = el N° de la OC, despacha y factura. La que compra registra esa factura en Compras.</li>
+            <li>El stock se mueve una sola vez: sale con el despacho de la que vende y entra con "Recibir mercadería" de la que compra. No uses además Inventario ▸ Intercompany para lo mismo.</li>
+            <li>Lo pendiente sale en <b class="ge-rojo">rojo</b>; lo completo en verde.</li>
         </ul>
     </details>
 
     <div class="tabs inv-tabs" id="icTabs">
-        <button class="tab-btn active" data-tab="resumen">📊 Ventas y deudas</button>
+        <button class="tab-btn active" data-tab="resumen">🔁 Operaciones</button>
         <button class="tab-btn" data-tab="igv">🧮 IGV: desde dónde facturar</button>
         <button class="tab-btn" data-tab="stock">📦 Stock del grupo</button>
+        <label class="ge-buscar ic-mes">Mes <input type="month" id="icMes"></label>
     </div>
 
     <section class="section active" id="ic-sec-resumen">
         <div class="inv-panel">
-            <div class="inv-head"><div class="inv-title" id="icTitVentas">Ventas entre empresas</div></div>
-            <div id="icVentas"></div>
+            <div class="inv-head"><div class="inv-title">Operaciones entre empresas (una fila por OC)</div>
+                <label class="ge-buscar">Ver <select id="icFiltroOps"><option value="todas">Todas</option><option value="pend">Solo con pendientes</option><option value="ok">Solo completas</option></select></label>
+                <label class="ge-buscar">Buscar <input type="search" id="icBuscarOps" placeholder="N° OC, N° PC, cliente o factura"></label></div>
+            <div id="icOperaciones"></div>
         </div>
-        <div class="inv-panel">
-            <div class="inv-head"><div class="inv-title">💳 Lo que se deben</div></div>
+        <details class="inv-panel ic-plegable">
+            <summary class="inv-head"><div class="inv-title">💳 Lo que se deben <small id="icDeudasResumen"></small></div></summary>
             <div id="icDeudas"></div>
-        </div>
-        <div class="inv-panel">
-            <div class="inv-head"><div class="inv-title">📅 Últimos 6 meses (sin IGV)</div></div>
+        </details>
+        <details class="inv-panel ic-plegable">
+            <summary class="inv-head"><div class="inv-title" id="icTitVentas">🧾 Facturas entre empresas del mes</div></summary>
+            <div id="icVentas"></div>
+        </details>
+        <details class="inv-panel ic-plegable">
+            <summary class="inv-head"><div class="inv-title">📅 Últimos 6 meses (sin IGV)</div></summary>
             <div id="icTendencia"></div>
-        </div>
+        </details>
     </section>
 
     <section class="section" id="ic-sec-igv">

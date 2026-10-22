@@ -79,7 +79,7 @@
                 <div>
                     <div class="inv-title">Pedidos de clientes por comprar</div>
                     <div class="inv-help">Marca los productos que vas a comprar al <b>mismo proveedor</b> y pulsa "Crear orden de compra".
-                        <b>Comprar para pedido</b> = pedido del cliente − stock disponible de la empresa. <b>Comprar para stock</b> empieza en 0:
+                        <b>Comprar para pedido</b> = pedido del cliente − lo que ya está en órdenes − el stock que le toca (el stock se reparte entre los pedidos, el más antiguo primero, y no se cuenta dos veces). <b>Comprar para stock</b> empieza en 0:
                         poner más es una <b>decisión</b> (poca liquidez) y pedirá un motivo. El <b>saldo después de entregar</b> es lo que quedará en almacén.</div>
                 </div>
                 <div class="inv-filters">
@@ -339,7 +339,7 @@
             <label>Monto pagado (S/)<input type="number" id="pagoMonto" min="0" step="0.01"></label>
             <label>Fecha del pago<input type="date" id="pagoFecha"></label>
             <label>Método<select id="pagoMetodo"></select></label>
-            <label>Banco desde el que se pagó<input type="text" id="pagoBanco" maxlength="80" placeholder="Ej. BCP"></label>
+            <label>Banco desde el que se pagó<select id="pagoBanco" data-lista="bancos"></select></label>
             <label class="inv-full">N° de operación<input type="text" id="pagoOperacion" maxlength="80" placeholder="Está en la constancia del banco"></label>
             <label class="inv-full">Observaciones<textarea id="pagoObs" rows="2" maxlength="500"></textarea></label>
         </div>

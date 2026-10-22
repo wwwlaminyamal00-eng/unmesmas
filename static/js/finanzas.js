@@ -189,6 +189,7 @@
                 <td>${fecha(m.fecha)}</td>
                 <td><span class="fin-tipo ${m.tipo === 'COBRO' ? 'fin-tipo-cobro' : 'fin-tipo-pago'}">${m.tipo === 'COBRO' ? '⬇ Cobro' : '⬆ Pago'}</span></td>
                 <td>${esc(m.documento_numero)}</td>
+                <td class="fin-ocpc">${ocPcMovimiento(m)}</td>
                 <td class="left">${esc(m.tercero_nombre)}</td>
                 <td class="num">${soles(m.monto)}</td>
                 <td>${esc(m.metodo)}</td>
@@ -196,10 +197,19 @@
                 <td>${esc(m.usuario_nombre || '')}</td>
                 <td>${m.estado === 'Anulado' ? `<span class="badge badge-gray" title="${esc(m.motivo_anulacion)}">Anulado</span>` : '<span class="badge badge-info">Registrado</span>'}</td>
                 <td>${m.estado !== 'Anulado' && PUEDE_OPERAR ? `<button class="btn-mini danger" data-anular="${m.id}">Anular</button>` : ''}</td>
-            </tr>`).join('') : '<tr><td colspan="10">Aún no hay cobros ni pagos registrados.</td></tr>';
+            </tr>`).join('') : '<tr><td colspan="11">Aún no hay cobros ni pagos registrados.</td></tr>';
         } catch (e) {
-            body.innerHTML = `<tr><td colspan="10" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="11" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
+    }
+
+    // N° OC y N° PC de cada cobro/pago, en dos líneas (Erika 22/10/2026: trazabilidad)
+    function ocPcMovimiento(m) {
+        const linea = (et, v) => v ? `<div><small>${et}</small> <b>${esc(v)}</b></div>` : '';
+        const html = m.tipo === 'COBRO'
+            ? linea('N° PC', m.pc_numero) + linea('N° OC del cliente', m.oc_cliente)
+            : linea('N° OC', m.oc_numero) + linea(/^(Compra a stock|Sin PC)/.test(m.pc_numero || '') ? '' : 'N° PC', m.pc_numero);
+        return html || '<span class="fin-sin">—</span>';
     }
 
     // ---------- Flujo de caja ----------

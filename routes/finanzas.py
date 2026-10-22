@@ -14,7 +14,7 @@ from flask import Blueprint, render_template, request, jsonify, session
 from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_execute, db_tx
-from utils import a_decimal, redondear, es_admin, es_aprobador
+from utils import a_decimal, redondear, es_admin, es_aprobador, normalizar_banco
 from routes.multiempresa import filtro_sql
 
 finanzas_bp = Blueprint('finanzas', __name__)
@@ -398,23 +398,44 @@ def api_movimientos():
         asegurar_tablas_finanzas()
         tipo = (request.args.get('tipo') or '').upper()
         q = (request.args.get('q') or '').strip()
-        sql_emp, par_emp = filtro_sql('empresa_id')
-        sql = "SELECT * FROM finanzas_pagos WHERE TRUE" + sql_emp
+        sql_emp, par_emp = filtro_sql('fp.empresa_id')
+        # Trazabilidad (Erika 22/10/2026 12:26): cada cobro/pago con su N° OC y N° PC, igual que en CxC/CxP.
+        # Pagos: N° OC + N° PC (o "Compra a stock"). Cobros: N° PC + N° OC del cliente.
+        sql = """
+            SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra
+            FROM finanzas_pagos fp
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(cp.orden_compra_numero, ocp.numero_orden, oca.numero_orden) AS oc_numero,
+                       COALESCE(NULLIF(c.pc_vinculado, ''), NULLIF(COALESCE(ocp.pc_numeros, oca.pc_numeros), ''),
+                                (SELECT string_agg(DISTINCT i.pedido_numero, ', ') FROM ordenes_compra_items i
+                                  WHERE i.orden_compra_id = COALESCE(ocp.id, oca.id) AND COALESCE(i.pedido_numero, '') <> '')) AS pc_numero,
+                       NULLIF(c.orden_compra_cliente, '') AS oc_cliente,
+                       COALESCE(ocp.tipo_compra, oca.tipo_compra) AS tipo_compra
+                FROM (SELECT 1) uno
+                LEFT JOIN comprobantes c ON fp.documento_tabla = 'comprobantes' AND c.id = fp.documento_id
+                LEFT JOIN comprobantes_proveedor cp ON fp.documento_tabla = 'comprobantes_proveedor' AND cp.id = fp.documento_id
+                LEFT JOIN ordenes_compra ocp ON ocp.id = cp.orden_compra_id
+                LEFT JOIN ordenes_compra oca ON fp.documento_tabla = 'ordenes_compra' AND oca.id = fp.documento_id
+            ) x ON TRUE
+            WHERE TRUE""" + sql_emp
         params = list(par_emp)
         if tipo in ('COBRO', 'PAGO'):
-            sql += " AND tipo = %s"
+            sql += " AND fp.tipo = %s"
             params.append(tipo)
         if q:
-            # Buscador: documento, cliente / proveedor, RUC, N.º de operación o banco
-            sql += (" AND (documento_numero ILIKE %s OR tercero_nombre ILIKE %s OR tercero_documento ILIKE %s"
-                    " OR numero_operacion ILIKE %s OR banco ILIKE %s)")
-            params += [f'%{q}%'] * 5
-        sql += " ORDER BY fecha DESC, id DESC LIMIT 500"
+            # Buscador: documento, cliente / proveedor, RUC, N.º de operación, banco, N° OC o N° PC
+            sql += (" AND (fp.documento_numero ILIKE %s OR fp.tercero_nombre ILIKE %s OR fp.tercero_documento ILIKE %s"
+                    " OR fp.numero_operacion ILIKE %s OR fp.banco ILIKE %s OR x.oc_numero ILIKE %s OR x.pc_numero ILIKE %s"
+                    " OR x.oc_cliente ILIKE %s)")
+            params += [f'%{q}%'] * 8
+        sql += " ORDER BY fp.fecha DESC, fp.id DESC LIMIT 500"
         filas = db_query(sql, params)
         data = []
         for f in filas:
             item = {k: _fmt(v) for k, v in f.items()}
             item['monto'] = float(f['monto'])
+            if f['tipo'] == 'PAGO' and not f.get('pc_numero') and f.get('oc_numero'):
+                item['pc_numero'] = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PC vinculado'
             data.append(item)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
@@ -487,7 +508,7 @@ def api_registrar_movimiento():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (tipo, tabla, documento_id, doc['documento'], doc['tercero'], doc['ruc'], fecha, monto, metodo,
-                  (data.get('banco') or '').strip() or None, numero_operacion, fecha_aviso,
+                  normalizar_banco(data.get('banco')), numero_operacion, fecha_aviso,
                   (data.get('observaciones') or '').strip() or None,
                   session.get('usuario_id'), session.get('nombre_completo')))
             nuevo_id = cur.fetchone()['id']

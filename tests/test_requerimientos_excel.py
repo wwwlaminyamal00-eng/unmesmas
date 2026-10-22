@@ -65,8 +65,11 @@ def test_comprado_y_lo_recogemos_es_pendiente_por_recojo(ab, vendedor):
     # si el proveedor lo trae a la sede, ya no hay que ir a recoger
     _sql("UPDATE ordenes_compra SET modalidad_entrega = 'Proveedor entrega' WHERE id = %s", (oc,), fetch=False)
     assert _estado_pc(vendedor, ab) == 'Por llegar'
-    # una OC sin aprobar todavía no cuenta como comprado
+    # 22/10/2026 (Erika): una OC ya generada, aunque esté por aprobar o en borrador, cuenta como "comprado, por llegar"
     _sql("UPDATE ordenes_compra SET estado = 'Por aprobar' WHERE id = %s", (oc,), fetch=False)
+    assert _estado_pc(vendedor, ab) == 'Por llegar'
+    assert 'OC-ABAST-1' in vendedor.get('/api/abastecimiento/pc').get_json()['data'][str(ab['pc'])]['ocs']
+    _sql("UPDATE ordenes_compra SET estado = 'Anulada' WHERE id = %s", (oc,), fetch=False)
     assert _estado_pc(vendedor, ab) == 'Pendiente por compra'
     _sql("UPDATE ordenes_compra SET estado = 'Anulada' WHERE id = %s", (oc,), fetch=False)
 

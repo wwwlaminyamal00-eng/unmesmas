@@ -88,7 +88,9 @@ def test_fecha_de_cita_del_despacho(vendedor):
     r = vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-22T10:30'})
     assert r.status_code == 200, r.json
     fila = next(d for d in vendedor.get('/ventas/api/despachos/listar').json['data'] if d['id'] == did)
-    assert str(fila['fecha_cita']).startswith('2026-10-22') and '10:30' in str(fila['fecha_cita'])
+    # 22/10/2026: la cita es solo fecha; si llega con hora (dato antiguo) la hora se ignora
+    assert fila['fecha_cita'] == '2026-10-22'
+    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-23'}).json['data']['fecha_cita'] == '2026-10-23'
     assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': 'mañana'}).status_code == 400
     assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': ''}).status_code == 200
     assert _sql("SELECT fecha_cita FROM despachos WHERE id = %s", (did,))[0][0] is None

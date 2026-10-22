@@ -29,7 +29,7 @@ from flask import Blueprint, render_template, request, jsonify, session, Respons
 from psycopg2.extras import RealDictCursor
 
 from database import db_query, db_tx
-from utils import a_decimal, redondear, es_admin, es_aprobador, rol_actual, tasa_igv, calcular_totales, \
+from utils import a_decimal, redondear, es_admin, es_aprobador, normalizar_banco, rol_actual, tasa_igv, calcular_totales, \
     bloquear_numeracion, id_empresa
 from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, _siguiente_numero, _fila, _empresas, _sedes, \
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
@@ -301,6 +301,31 @@ def _cant(n):
     return f'{a_decimal(n).normalize():f}'
 
 
+def _diferencias_recepcion(oc_items, contados):
+    """Lo que no coincide entre lo contado y lo que falta recibir de la OC, en palabras simples."""
+    difs = []
+    for iid, oi in oc_items.items():
+        pendiente = a_decimal(oi['cantidad']) - a_decimal(oi['cantidad_recibida'])
+        if iid not in contados:
+            if pendiente > 0:
+                difs.append({'producto': oi['producto'], 'pide': float(pendiente), 'registras': 0, 'danada': 0,
+                             'tipo': 'Falta', 'texto': f"{oi['producto']}: la OC pide {_cant(pendiente)} y no registras ninguno → faltan {_cant(pendiente)}"})
+            continue
+        buena, danada, _ = contados[iid]
+        llego = buena + danada
+        u = (' ' + oi['unidad']) if oi.get('unidad') else ''
+        base = {'producto': oi['producto'], 'pide': float(pendiente), 'registras': float(buena), 'danada': float(danada)}
+        if buena > pendiente:
+            difs.append({**base, 'tipo': 'Sobra', 'texto': f"{oi['producto']}: la OC pide {_cant(pendiente)}{u}, estás registrando "
+                         f"{_cant(buena)} → sobran {_cant(buena - pendiente)}"})
+        elif llego < pendiente:
+            difs.append({**base, 'tipo': 'Falta', 'texto': f"{oi['producto']}: la OC pide {_cant(pendiente)}{u}, estás registrando "
+                         f"{_cant(llego)} → faltan {_cant(pendiente - llego)}"})
+        if danada > 0:
+            difs.append({**base, 'tipo': 'Dañado', 'texto': f"{oi['producto']}: {_cant(danada)}{u} dañados"})
+    return difs
+
+
 def motivo_sin_pedido(d):
     """Motivo obligatorio para comprar sin pedido de cliente. Devuelve (motivo de la lista, detalle).
     Acepta motivo_compra (lista) + motivo_stock (texto, obligatorio si es "Otro"). Por compatibilidad,
@@ -510,15 +535,34 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
     por_empresa = {}
     for eid in {p['empresa_id'] for p in pedidos if p['empresa_id'] is not None}:
         por_empresa[eid] = _stock_libre_empresa(ids, eid)
+    # El stock libre se REPARTE entre los pedidos, el más antiguo primero (22/10/2026). Antes cada pedido usaba
+    # todo el stock: con 32 en stock, un PC de 18 y otro de 40, el de 18 salía "cubierto con stock" y el de 40
+    # "comprar 8", pero en total faltan 26 (58 − 32). Ahora al PC más antiguo le tocan 18 y al otro 14.
+    restante = {}
+    for p in sorted(pedidos, key=lambda x: (str(x['fecha'] or ''), x['id'])):
+        for it in p['items']:
+            if not it['producto_id']:
+                continue
+            if p['empresa_id'] is not None:
+                llave = (str(p['empresa_id']), it['producto_id'])
+                total_st = por_empresa.get(p['empresa_id'], {}).get(it['producto_id'], Decimal('0'))
+            else:
+                llave = ('grupo', it['producto_id'])
+                total_st = libre.get(it['producto_id'], Decimal('0'))
+            if llave not in restante:
+                restante[llave] = total_st
+            toca = min(max(restante[llave], Decimal('0')), it['falta'])
+            restante[llave] -= toca
+            it['_st_total'], it['_st_asignado'] = total_st, toca
     for p in pedidos:
         for it in p['items']:
             it['stock_libre'] = float(libre.get(it['producto_id'], 0)) if it['producto_id'] else 0
-            # Tabla resumen de Erika: pedido del cliente − stock disponible de la empresa = comprar para el pedido
-            if p['empresa_id'] is not None:
-                st = por_empresa.get(p['empresa_id'], {}).get(it['producto_id'], Decimal('0')) if it['producto_id'] else Decimal('0')
-            else:
-                st = libre.get(it['producto_id'], Decimal('0')) if it['producto_id'] else Decimal('0')
-            it['stock_empresa'] = float(st)
+            # Tabla resumen de Erika: pedido del cliente − stock que le toca a este pedido = comprar para el pedido
+            st_total = it.pop('_st_total', Decimal('0'))
+            st = it.pop('_st_asignado', Decimal('0'))
+            it['stock_empresa'] = float(st_total)
+            it['stock_asignado'] = float(st)
+            it['stock_otros_pedidos'] = float(max(min(st_total, it['falta']) - st, Decimal('0')))
             it['comprar_pedido'] = float(max(it['falta'] - st, Decimal('0')))
             for k in ('cantidad', 'comprado', 'falta'):
                 it[k] = float(it[k])
@@ -876,7 +920,8 @@ def api_abastecimiento():
             return jsonify({'success': True, 'data': []})
         stock_emp = _stock_libre_empresa(ids, empresa_id) if empresa_id is not None else _stock_libre_grupo(ids)
         stock_grupo = _stock_libre_grupo(ids)
-        pend = {pid: {'falta': Decimal('0'), 'pedido': Decimal('0'), 'comprado': Decimal('0'), 'pcs': []} for pid in ids}
+        pend = {pid: {'falta': Decimal('0'), 'pedido': Decimal('0'), 'comprado': Decimal('0'), 'por_comprar': Decimal('0'),
+                      'pcs': []} for pid in ids}
         for p in _pedidos_por_comprar(excluir_oc=oc_id, sin_filtro=True):
             if empresa_id is not None and p['empresa_id'] is not None and str(p['empresa_id']) != str(empresa_id):
                 continue
@@ -887,7 +932,11 @@ def api_abastecimiento():
                 d['falta'] += a_decimal(it['falta'])
                 d['pedido'] += a_decimal(it['cantidad'])
                 d['comprado'] += a_decimal(it['comprado'])
-                d['pcs'].append({'numero': p['numero'], 'cliente': p['cliente'], 'falta': it['falta']})
+                d['por_comprar'] += a_decimal(it['comprar_pedido'])
+                # Por pedido (22/10/2026): cuánto pide, cuánto ya está en otras OC, cuánto stock le toca y cuánto comprar
+                d['pcs'].append({'pedido_id': p['id'], 'numero': p['numero'], 'cliente': p['cliente'], 'fecha': p['fecha'],
+                                 'pide': it['cantidad'], 'en_oc': it['comprado'], 'ocs': it.get('ocs'), 'falta': it['falta'],
+                                 'stock_asignado': it['stock_asignado'], 'por_comprar': it['comprar_pedido']})
         prods = {f['id']: f for f in db_query("SELECT id, codigo, descripcion, unidad FROM productos WHERE id = ANY(%s)", (ids,))}
         data = []
         for pid in ids:
@@ -896,8 +945,8 @@ def api_abastecimiento():
             data.append({'producto_id': pid, 'codigo': pr.get('codigo'), 'descripcion': pr.get('descripcion'),
                          'unidad': pr.get('unidad'), 'stock': float(st), 'stock_grupo': float(stock_grupo.get(pid, 0)),
                          'pedido_cliente': float(d['falta']), 'pedido_total': float(d['pedido']),
-                         'ya_en_ordenes': float(d['comprado']), 'pedidos': d['pcs'][:10],
-                         'sugerido': float(max(d['falta'] - st, Decimal('0')))})
+                         'ya_en_ordenes': float(d['comprado']), 'pedidos': d['pcs'][:20],
+                         'sugerido': float(max(d['falta'] - st, Decimal('0'))), 'por_comprar': float(d['por_comprar'])})
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return _respuesta_error(e)
@@ -1367,7 +1416,7 @@ def api_orden_pago(oc_id):
                 VALUES ('PAGO', 'ordenes_compra', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (oc_id, oc['numero_orden'], oc['razon_social'], oc['ruc'], fecha, monto, metodo,
-                  (d.get('banco') or '').strip() or None, operacion or None, (d.get('observaciones') or '').strip() or None,
+                  normalizar_banco(d.get('banco')), operacion or None, (d.get('observaciones') or '').strip() or None,
                   uid, unom))
             # El pago queda en la empresa de la orden de compra
             cur.execute("UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM ordenes_compra WHERE id = %s) WHERE id = %s",
@@ -1579,6 +1628,16 @@ def api_orden_recibir(oc_id):
                 contados[iid] = (buena, danada, it)
             if not contados or sum(b + dn for b, dn, _ in contados.values()) <= 0:
                 raise ErrorCompras('No escribiste ninguna cantidad. Cuenta lo que llegó.')
+            # Pedido de Erika 22/10/2026 12:21: si lo contado no coincide con la OC, antes de grabar se avisa
+            # con una ventana clara (la OC pide 5, estás registrando 50: sobran 45). Se cuenta a ciegas igual:
+            # la cantidad de la OC solo se ve DESPUÉS de escribir lo contado y pulsar Guardar.
+            difs = _diferencias_recepcion(oc_items, contados)
+            confirmo = bool(d.get('confirmar_diferencias'))
+            if difs and not confirmo:
+                _historial(cur, oc_id, 'Aviso de diferencia al recibir',
+                           f"Guía {guia}: " + '; '.join(x['texto'] for x in difs) + ' (aún no se grabó)')
+                return jsonify({'success': False, 'codigo': 'diferencias', 'diferencias': difs,
+                                'error': 'Lo que contaste no coincide con la orden de compra. Revisa antes de grabar.'}), 409
             numero = _siguiente_numero(cur, 'RC', 'com_recepciones')
             cur.execute("""
                 INSERT INTO com_recepciones (numero, orden_compra_id, empresa_id, almacen_id, guia_proveedor, traido_por_tipo,
@@ -1661,6 +1720,10 @@ def api_orden_recibir(oc_id):
             cur.execute("UPDATE ordenes_compra SET estado = %s, updated_at = NOW() WHERE id = %s", (nuevo_estado, oc_id))
             if diferencias:
                 cur.execute("UPDATE com_recepciones SET con_diferencias = true WHERE id = %s", (rec_id,))
+            if difs:
+                motivo = (d.get('motivo_diferencias') or '').strip()
+                _historial(cur, oc_id, 'Recibió confirmando diferencias',
+                           f"{numero} · Guía {guia} · " + '; '.join(x['texto'] for x in difs) + (f' · Motivo: {motivo}' if motivo else ''))
             _historial(cur, oc_id, 'Mercadería recibida', f"{numero} · Guía {guia} · trajo: {traido_nombre} · recibió: {unom}"
                        + (f' · sede distinta a la de la OC' if oc['almacen_entrega_id'] and oc['almacen_entrega_id'] != almacen_id else ''))
         faltantes = [r for r in resultado if r['estado'] == 'Faltante']

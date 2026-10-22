@@ -206,3 +206,30 @@ def mayuscula_inicial(texto):
         if c.isalpha():
             return t[:i] + c.upper() + t[i + 1:]
     return t
+
+# Bancos en una sola lista (Erika 22/10/2026: "si no lo van a escribir con diferentes formas").
+# La misma lista está en static/js/lista_bancos.js (desplegables de pago, cobro, proveedores y planilla).
+BANCOS_PERU = ('BCP', 'BBVA', 'Interbank', 'Scotiabank', 'BanBif', 'Banco de la Nación', 'Pichincha', 'MiBanco',
+               'Banco GNB', 'Banco Falabella', 'Banco Ripley', 'Caja Arequipa', 'Caja Huancayo', 'Caja Piura',
+               'Caja Cusco', 'Caja Trujillo', 'Caja Sullana', 'Caja Municipal de Lima')
+_ALIAS_BANCO = (('credito', 'BCP'), ('bcp', 'BCP'), ('bbva', 'BBVA'), ('continental', 'BBVA'), ('interbank', 'Interbank'),
+                ('ibk', 'Interbank'), ('scotia', 'Scotiabank'), ('banbif', 'BanBif'), ('interamericano', 'BanBif'),
+                ('nacion', 'Banco de la Nación'), ('bn', 'Banco de la Nación'), ('pichincha', 'Pichincha'),
+                ('mibanco', 'MiBanco'), ('gnb', 'Banco GNB'), ('falabella', 'Banco Falabella'), ('ripley', 'Banco Ripley'),
+                ('arequipa', 'Caja Arequipa'), ('huancayo', 'Caja Huancayo'), ('piura', 'Caja Piura'),
+                ('cusco', 'Caja Cusco'), ('trujillo', 'Caja Trujillo'), ('sullana', 'Caja Sullana'),
+                ('lima', 'Caja Municipal de Lima'))
+
+
+def normalizar_banco(texto):
+    """'bcp ', 'Banco de Credito', 'BBVA Continental' -> 'BCP', 'BBVA'. Lo que no reconoce queda como se escribió."""
+    import unicodedata
+    original = re.sub(r'\s+', ' ', str(texto or '')).strip()
+    if not original:
+        return None
+    t = unicodedata.normalize('NFKD', original).encode('ascii', 'ignore').decode().lower()
+    palabras = set(re.findall(r'[a-z]+', t))
+    for clave, nombre in _ALIAS_BANCO:
+        if clave in palabras or (len(clave) > 3 and clave in t):
+            return nombre
+    return original[:80]

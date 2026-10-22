@@ -128,6 +128,11 @@ def test_flujo_completo_bajo_pedido(cx, aprobador, app):
     # 5. Quien recogió no puede recibir; tampoco quien hizo la OC
     assert cx['log'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec).status_code == 403
     r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    # 22/10/2026: falta 1 iPhone → primero avisa con la diferencia y no graba; se confirma a propósito
+    assert r.status_code == 409 and r.get_json()['codigo'] == 'diferencias', r.get_json()
+    assert any('faltan 1' in x['texto'] for x in r.get_json()['diferencias'])
+    rec['confirmar_diferencias'] = True
+    r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
     assert r.status_code == 200, r.get_json()
     res = r.get_json()
     assert res['estado'] == 'Recibida parcial'

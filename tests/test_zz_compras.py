@@ -240,7 +240,13 @@ def test_pedido_resumen_descuenta_stock_de_la_empresa(zz, admin):
     p = next(x for x in admin.get('/compras/api/flujo/pedidos').json['data'] if x['id'] == pc2)
     it = p['items'][0]
     assert it['cantidad'] == 40 and it['falta'] == 40
-    assert it['stock_empresa'] == 10 and it['comprar_pedido'] == 30          # ejemplo de Erika: 40 / 10 / 30
+    assert it['stock_empresa'] == 10                                        # ejemplo de Erika: 40 / 10 / 30
+    # 22/10/2026: el stock se reparte entre los pedidos (el más antiguo primero) y no se cuenta dos veces
+    todos = admin.get('/compras/api/flujo/pedidos', query_string={'todos': '1'}).json['data']
+    asignado = sum(i['stock_asignado'] for x in todos for i in x['items'] if i['producto_id'] == zz['BOTA'])
+    assert asignado <= 10 and it['comprar_pedido'] == it['falta'] - it['stock_asignado']
+    if asignado == it['stock_asignado']:                                      # ningún pedido más antiguo lo usa
+        assert it['comprar_pedido'] == 30
 
 
 # ---------- 22/10/2026: responsable de recojo y programa de transporte ----------

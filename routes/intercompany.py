@@ -190,6 +190,123 @@ def tendencia(emps, anio, mes, meses=6):
 
 
 # ============================================================
+# OPERACIONES INTERCOMPANY: UNA SOLA TABLA DESDE LA OC (Erika, 22/10/2026 12:34)
+# ============================================================
+# Antes este módulo solo veía FACTURAS de venta entre empresas: una OC de KCF a AGD GROUP (pagada o a crédito)
+# no aparecía hasta que AGD emitía su factura. Ahora cada OC a otra empresa del grupo es una fila con todo el
+# camino: para qué pedido/cliente se compró, pago, recepción, despacho del que vende (descuento de stock),
+# factura de venta y factura registrada en compras. Lo que falta sale en rojo.
+def _sql_texto_empresa(tabla, emp):
+    # empresa_id, o el texto "empresa" en filas antiguas que aún no tienen empresa_id
+    from routes.reportes import _tiene
+    if _tiene(tabla, 'empresa'):
+        return "(empresa_id::text = %s OR (empresa_id IS NULL AND UPPER(COALESCE(empresa, '')) = %s))", [str(emp['id']), emp['codigo'].upper()]
+    return "(empresa_id::text = %s)", [str(emp['id'])]
+
+
+def _col_o_vacio(tabla, col):
+    from routes.reportes import _tiene
+    return f"COALESCE({col}::text, '')" if _tiene(tabla, col) else "''"
+
+
+def operaciones_intercompany(emps):
+    from routes.compras_flujo import SQL_OC_LISTA, _oc_dict, asegurar_tablas_compras
+    from routes.ventas import _asegurar_columna_oc_cliente
+    asegurar_tablas_compras()
+    _asegurar_columna_oc_cliente()
+    por_ruc = {_rucs(e['ruc']): e for e in emps}
+    por_id = {str(e['id']): e for e in emps}
+    # Todas las OC (también las de las pantallas anteriores). El proveedor se reconoce por su RUC o, si el RUC está
+    # mal escrito en Maestros ▸ Proveedores, por la razón social de la empresa del grupo (22/10/2026 13:17).
+    nombres = [re.sub(r'[^A-Z0-9]', '', (e.get('razon_social') or '').upper()) for e in emps]
+    nombres = [n for n in nombres if len(n) >= 6]
+    filas = db_query(SQL_OC_LISTA + """ WHERE COALESCE(oc.estado, '') NOT IN ('Anulada', 'Anulado')
+                                         AND (regexp_replace(COALESCE(p.ruc, ''), '\\D', '', 'g') = ANY(%s)
+                                              OR regexp_replace(UPPER(COALESCE(p.razon_social, oc.contacto_proveedor, '')), '[^A-Z0-9]', '', 'g') = ANY(%s))
+                                       ORDER BY oc.id DESC LIMIT 300""", (list(por_ruc), nombres or ['-']))
+    if not filas:
+        return []
+    ocs = [_oc_dict(f) for f in filas]
+    oc_ids = [o['id'] for o in ocs]
+    # Facturas del proveedor registradas en Compras (de la empresa que compra)
+    fact_compra = defaultdict(list)
+    for f in db_query("""SELECT orden_compra_id, numero, monto FROM comprobantes_proveedor
+                         WHERE orden_compra_id = ANY(%s) AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')""", (oc_ids,)):
+        fact_compra[f['orden_compra_id']].append(f)
+    salida = []
+    cache_vende = {}
+    for o in ocs:
+        compra = por_id.get(str(o.get('empresa_id'))) or {'id': o.get('empresa_id'), 'codigo': o.get('empresa') or '?', 'ruc': ''}
+        vende = por_ruc.get(_rucs(o.get('ruc'))) or next(
+            (e for e in emps if re.sub(r'[^A-Z0-9]', '', (e.get('razon_social') or '').upper())
+             == re.sub(r'[^A-Z0-9]', '', (o.get('proveedor') or '').upper())), None)
+        if not vende or str(vende['id']) == str(compra.get('id')):
+            continue
+        numero = o['numero']
+        # Lado de la empresa que VENDE: su PC (con "N° OC del cliente" = esta OC), su despacho y su factura
+        llave = (str(vende['id']), _rucs(compra.get('ruc')))
+        if llave not in cache_vende:
+            cond, par = _sql_texto_empresa('pedido_compra_pc', vende)
+            pcs = db_query(f"""SELECT numero, estado, {_col_o_vacio('pedido_compra_pc', 'oc_cliente')} AS oc_cliente FROM pedido_compra_pc
+                               WHERE {cond} AND regexp_replace(COALESCE(ruc, ''), '\\D', '', 'g') = %s""", tuple(par) + (llave[1],))
+            cond, par = _sql_texto_empresa('despachos', vende)
+            desp = db_query(f"""SELECT numero, pc_numero, estado, {_col_o_vacio('despachos', 'stock_estado')} AS stock_estado FROM despachos
+                                WHERE {cond} AND regexp_replace(COALESCE(ruc, ''), '\\D', '', 'g') = %s""", tuple(par) + (llave[1],))
+            facts = db_query(f"""SELECT serie, numero, {_col_o_vacio('comprobantes', 'pc_vinculado')} AS pc,
+                                       {_col_o_vacio('comprobantes', 'orden_compra_cliente')} AS oc,
+                                       COALESCE(total, 0) AS total
+                                FROM comprobantes
+                                WHERE (empresa_id::text = %s) AND COALESCE(UPPER(estado_sunat), '') NOT IN ('ANULADO', 'ANULADA', 'BORRADOR')
+                                  AND regexp_replace(COALESCE(cliente_numero_doc, ''), '\\D', '', 'g') = %s""",
+                             (str(vende['id']), llave[1]))
+            cache_vende[llave] = (pcs, desp, facts)
+        pcs, desp, facts = cache_vende[llave]
+        n_up = numero.upper()
+        mis_pcs = [p for p in pcs if n_up in p['oc_cliente'].upper()]
+        nums_pc = {p['numero'] for p in mis_pcs}
+        mis_desp = [d for d in desp if d['pc_numero'] in nums_pc]
+        despachado = [d for d in mis_desp if (d['estado'] or '') in ('Despachado', 'Entregado')]
+        claves_compra = {_clave_doc(*((f['numero'] or '').rpartition('-')[::2])) for f in fact_compra.get(o['id'], [])}
+        mis_facts = [f for f in facts if n_up in f['oc'].upper() or f['pc'] in nums_pc
+                     or _clave_doc(f['serie'], f['numero']) in claves_compra]
+        total = a_decimal(o.get('total'))
+        saldo = a_decimal(o.get('saldo_pago'))
+        contado = (o.get('condicion_pago') or '').startswith('Contado')
+        pedida, recibida = a_decimal(o.get('pedida')), a_decimal(o.get('recibida'))
+        falta = []
+        if _rucs(o.get('ruc')) != _rucs(vende['ruc']):
+            falta.append(f"Corregir el RUC de {o.get('proveedor') or vende['codigo']} en Maestros ▸ Proveedores (debe ser {vende['ruc']})")
+        if (o.get('estado') or '') in ('Borrador', 'Por aprobar'):
+            falta.append(f"Aprobar la OC en Compras de {compra['codigo']} (está en {o.get('estado')})")
+        if saldo > 0:
+            falta.append(f"Pagar {_n(saldo):,.2f} a {vende['codigo']}" + ('' if contado else ' (crédito)'))
+        if recibida < pedida:
+            falta.append(f"Recibir la mercadería en {compra['codigo']}")
+        if not despachado:
+            falta.append(f"Despacho en {vende['codigo']} (su stock aún no descuenta)")
+        if not mis_facts:
+            falta.append(f"Factura de venta de {vende['codigo']}")
+        if not fact_compra.get(o['id']):
+            falta.append(f"Registrar la factura en compras de {compra['codigo']}")
+        salida.append({
+            'oc_id': o['id'], 'oc': numero, 'fecha': o.get('fecha'), 'estado_oc': o.get('estado'),
+            'vende': vende['codigo'], 'compra': compra['codigo'],
+            'pc': o.get('pedidos') or o.get('pc_numeros') or '', 'cotizacion': o.get('cotizaciones_cliente') or '',
+            'cliente': o.get('clientes') or o.get('clientes_pedido') or '',
+            'para_stock': bool(o.get('sin_pedido')),
+            'total': _n(total), 'condicion': o.get('condicion_pago') or '', 'dias_credito': o.get('dias_credito'),
+            'pagado': _n(total - saldo), 'saldo': _n(saldo),
+            'pedida': float(pedida), 'recibida': float(recibida),
+            'pc_vende': ', '.join(sorted(nums_pc)), 'despachos': ', '.join(d['numero'] for d in despachado),
+            'despacho_pendiente': bool(mis_desp) and not despachado,
+            'factura_venta': ', '.join(f"{f['serie']}-{f['numero']}" for f in mis_facts),
+            'factura_compra': ', '.join(f['numero'] for f in fact_compra.get(o['id'], [])),
+            'falta': falta, 'completa': not falta,
+        })
+    return salida
+
+
+# ============================================================
 # LO QUE SE DEBEN
 # ============================================================
 def deudas(emps):
@@ -343,7 +460,7 @@ def preparacion(emps):
     avisos = []
     cli, prov = falta('clientes', 'numero_documento'), falta('proveedores', 'ruc')
     if cli:
-        avisos.append('Maestros ▸ Clientes: crea a ' + ' y '.join(cli) + ' para poder facturarle desde la otra empresa.')
+        avisos.append('Maestros ▸ Clientes: falta ' + ' y '.join(cli) + ' como cliente (solo hace falta cuando la otra empresa le vende y le factura).')
     if prov:
         avisos.append('Maestros ▸ Proveedores: crea a ' + ' y '.join(prov) + ' para registrar sus facturas en Compras.')
     try:
@@ -379,6 +496,7 @@ def api_resumen():
         sentidos, tend = tendencia(emps, anio, mes)
         igv = igv_del_mes(emps, anio, mes)
         deb = deudas(emps)
+        ops = operaciones_intercompany(emps)
         totales = defaultdict(lambda: {'base': CERO, 'igv': CERO, 'total': CERO, 'n': 0})
         for v in ventas:
             t = totales[f"{v['vende']}→{v['compra']}"]
@@ -394,7 +512,7 @@ def api_resumen():
                         for k, v in totales.items()},
             'ventas': ventas, 'sin_compra': sum(1 for v in ventas if not v['registrada_en_compras']),
             'tendencia': tend, 'igv': igv, 'sugerencias': sugerencias(igv),
-            'deudas': deb, 'avisos': preparacion(emps)}})
+            'deudas': deb, 'avisos': preparacion(emps), 'operaciones': ops}})
     except ErrorIntercompany as ex:
         return _err(ex)
 

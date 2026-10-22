@@ -167,3 +167,7 @@ html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th
 .fin-pagos .fin-resumen .res-activo{border:2px solid var(--pago)}
 .fin-resumen .res-mes{margin-left:auto;font-size:12px;color:#64748B;font-weight:700}
 .fin-resumen .res-mes b{color:#0F172A}
+
+/* 22/10/2026: N° OC / N° PC en Cobros y pagos, en dos líneas */
+.fin-ocpc{font-size:12px;line-height:1.35;white-space:nowrap}
+.fin-ocpc small{color:#64748B;font-weight:600}

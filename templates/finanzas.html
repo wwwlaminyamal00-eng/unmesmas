@@ -106,10 +106,10 @@
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>
-                        <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th class="left">Cliente / proveedor</th>
+                        <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° OC / N° PC</th><th class="left">Cliente / proveedor</th>
                             <th>Monto</th><th>Método</th><th>Banco / N° operación / aviso</th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
                     </thead>
-                    <tbody id="movBody"><tr><td colspan="10">Cargando...</td></tr></tbody>
+                    <tbody id="movBody"><tr><td colspan="11">Cargando...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -158,7 +158,7 @@
                     {% for m in metodos %}<option>{{ m }}</option>{% endfor %}
                 </select>
             </label>
-            <label>Banco<input type="text" id="pagoBanco" maxlength="80" placeholder="Ej. BCP, BBVA, Interbank"></label>
+            <label>Banco<select id="pagoBanco" data-lista="bancos"></select></label>
             <label>N.º de operación<input type="text" id="pagoOperacion" maxlength="80" placeholder="Si el cliente lo envió"></label>
             <label>Fecha de aviso de pago<input type="date" id="pagoAviso" title="Día en que el cliente avisó que pagó"></label>
             <div class="fin-tip fin-full" id="pagoAvisoTip">📌 Depende del cliente: escribe el <b>N.º de operación</b> o la <b>fecha en que avisó el pago</b>. Basta con uno.</div>

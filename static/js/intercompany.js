@@ -51,26 +51,68 @@
 
     function pintar() {
         const d = datos;
+        // Un solo aviso pequeño si falta preparar algo (antes era un cartel rojo grande)
         $('#icAvisos').innerHTML = d.avisos.length
-            ? `<div class="ge-aviso-rojo"><b>Para que todo cuadre:</b><ul>${d.avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>` : '';
-        const tarjetas = d.sentidos.map(s => {
-            const t = d.totales[s] || { base: 0, n: 0 };
-            return kpi(`Ventas ${s.replace('→', ' → ')}`, soles(t.base), `${t.n} factura(s) · sin IGV`, 'ge-kpi-cobro');
-        });
-        tarjetas.push(kpi('Falta registrar como compra', d.sin_compra, d.sin_compra ? 'Pierde crédito fiscal' : 'Todo registrado', d.sin_compra ? 'ge-kpi-mal' : 'ge-kpi-ok'));
+            ? `<div class="ic-aviso" title="${esc(d.avisos.join('\n'))}">⚠ Para que todo cuadre: ${esc(d.avisos[0])}${d.avisos.length > 1 ? ` (y ${d.avisos.length - 1} más)` : ''}</div>` : '';
+        // Fila de estado delgada, contada desde la tabla de operaciones (una fila por OC entre empresas)
+        const ops = d.operaciones || [];
+        const abiertas = ops.filter(o => !o.completa).length;
+        const porPagar = ops.reduce((s, o) => s + num(o.saldo), 0);
+        const sinMercaderia = ops.filter(o => o.recibida < o.pedida || !o.despachos).length;
+        const sinFactura = ops.filter(o => !o.factura_venta || !o.factura_compra).length;
         const neto = d.deudas.netos[0];
-        tarjetas.push(kpi('Se deben (neto)', neto ? soles(neto.saldo) : 'S/ 0.00', neto ? `${neto.deudor} le debe a ${neto.acreedor}` : 'No se deben nada', neto ? 'ge-kpi-pago' : 'ge-kpi-ok'));
-        tarjetas.push(kpi('Stock del grupo', stock ? soles(stock.valor_grupo) : '...', stock ? `${stock.total_productos} productos con stock` : 'Valorizado', ''));
-        $('#icKpis').innerHTML = tarjetas.join('');
+        const pill = (texto, valor, mal, filtro) => `<${filtro ? 'button type="button" data-filtro="pend"' : 'span'} class="res-item ${mal ? 'res-mal' : 'res-ok'}">${texto} <b>${valor}</b></${filtro ? 'button' : 'span'}>`;
+        $('#icKpis').innerHTML = [
+            pill('Operaciones abiertas', `${abiertas} de ${ops.length}`, abiertas, true),
+            pill('Falta pagar', soles(porPagar), porPagar > 0, true),
+            pill('Falta recibir o despachar', sinMercaderia, sinMercaderia, true),
+            pill('Falta facturar o registrar', sinFactura, sinFactura, true),
+            pill(neto ? `${esc(neto.deudor)} le debe a ${esc(neto.acreedor)}` : 'Se deben', neto ? soles(neto.saldo) : 'S/ 0.00', false, false),
+            `<span class="res-item">Stock del grupo <b>${stock ? soles(stock.valor_grupo) : '...'}</b></span>`,
+        ].join('');
+        $('#icDeudasResumen').textContent = neto ? `· ${neto.deudor} le debe a ${neto.acreedor} ${soles(neto.saldo)}` : '· no se deben nada';
+        pintarOperaciones();
         pintarVentas();
         pintarDeudas();
         pintarTendencia();
         pintarIgv();
     }
 
+    function pintarOperaciones() {
+        const filtro = $('#icFiltroOps').value;
+        const q = $('#icBuscarOps').value.trim().toUpperCase();
+        const todas = datos.operaciones || [];
+        const ops = todas.filter(o => (filtro === 'todas' || (filtro === 'pend' ? !o.completa : o.completa))
+            && (!q || [o.oc, o.pc, o.cotizacion, o.cliente, o.pc_vende, o.despachos, o.factura_venta, o.factura_compra, o.vende, o.compra]
+                .join(' ').toUpperCase().includes(q)));
+        if (!todas.length) {
+            $('#icOperaciones').innerHTML = `<div class="inv-vacio">Todavía no hay órdenes de compra hechas a la otra empresa del grupo.
+                Para crear una: Compras ▸ Nueva OC y elige como proveedor a la otra empresa (por su RUC).</div>`;
+            return;
+        }
+        if (!ops.length) { $('#icOperaciones').innerHTML = '<div class="inv-vacio">Ninguna operación coincide con el filtro.</div>'; return; }
+        const ok = (c, si, no, titulo) => `<span class="ic-linea ${c ? 'ic-ok' : 'ic-mal'}"${titulo ? ` title="${esc(titulo)}"` : ''}>${c ? '✔ ' + si : '⏳ ' + no}</span>`;
+        $('#icOperaciones').innerHTML = `<table class="inv-table ge-tabla ic-ops"><thead><tr><th>N° OC</th><th>Vende → Compra</th>
+            <th>Para qué</th><th>Monto</th><th>Pago</th><th>Mercadería</th><th>Facturas</th><th>Siguiente paso</th></tr></thead><tbody>
+            ${ops.map(o => `<tr class="${o.completa ? 'ge-fila-ok' : 'ge-fila-pend'}">
+                <td><b class="ge-nw">${esc(o.oc)}</b><small>${fecha(o.fecha)}</small></td>
+                <td><b class="ge-nw">${esc(o.vende)} → ${esc(o.compra)}</b></td>
+                <td>${o.para_stock ? 'Stock' : `<span class="ic-linea" title="${esc([o.cotizacion && 'N° cotización: ' + o.cotizacion, o.cliente && 'Cliente: ' + o.cliente].filter(Boolean).join('\n'))}"><b>${esc(o.pc)}</b></span><small>${esc(o.cliente || '')}</small>`}</td>
+                <td><b class="ge-nw">${soles(o.total)}</b><small>${esc(o.condicion || '-')}</small></td>
+                <td>${num(o.saldo) > 0 ? `<span class="ge-estado rojo">Falta ${soles(o.saldo)}</span>` : '<span class="ge-estado verde">✔ Pagado</span>'}</td>
+                <td>${ok(o.recibida >= o.pedida, 'Recibida', `Por recibir (${cant(o.recibida)} de ${cant(o.pedida)})`, `Recibido en ${o.compra}: ${cant(o.recibida)} de ${cant(o.pedida)}`)}
+                    ${ok(!!o.despachos, 'Despachada', 'Sin despacho', o.despachos ? `Despacho de ${o.vende}: ${o.despachos}` : (o.pc_vende ? `PC de ${o.vende}: ${o.pc_vende}` : `${o.vende} aún no tiene PC con esta OC`))}</td>
+                <td>${ok(!!o.factura_venta, o.factura_venta, 'Sin factura', `Factura de venta de ${o.vende}`)}
+                    ${ok(!!o.factura_compra, 'En compras', 'Sin registrar', `Registrada en compras de ${o.compra}`)}</td>
+                <td>${o.completa ? '<span class="ge-estado verde">✔ Completa</span>'
+                    : `<span class="ic-linea ic-mal">${esc(o.falta[0])}</span>${o.falta.length > 1
+                        ? `<span class="ic-mas" title="${esc(o.falta.slice(1).join('\n'))}">y ${o.falta.length - 1} paso(s) más</span>` : ''}`}</td></tr>`).join('')}
+            </tbody></table>`;
+    }
+
     function pintarVentas() {
         const v = datos.ventas;
-        $('#icTitVentas').textContent = `Ventas entre empresas · ${datos.nombre_periodo}`;
+        $('#icTitVentas').textContent = `🧾 Facturas entre empresas · ${datos.nombre_periodo} (${datos.ventas.length})`;
         if (!v.length) {
             $('#icVentas').innerHTML = '<div class="inv-vacio">No hay ventas entre las empresas en este mes (ni en Ventas ni en lo subido del SIRE).</div>';
             return;
@@ -148,6 +190,14 @@
         $$('#icTabs .tab-btn').forEach(b => b.addEventListener('click', () => irA(b.dataset.tab)));
         irA(new URLSearchParams(location.search).get('tab') || 'resumen');
         $('#icMes').addEventListener('change', cargar);
+        $('#icFiltroOps').addEventListener('change', () => datos && pintarOperaciones());
+        $('#icBuscarOps').addEventListener('input', () => datos && pintarOperaciones());
+        $('#icKpis').addEventListener('click', e => {
+            if (!e.target.closest('[data-filtro]') || !datos) return;
+            $('#icFiltroOps').value = 'pend';
+            pintarOperaciones();
+            $('#icOperaciones').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
         $('#icBuscar').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(cargarStock, 350); });
         cargar();
     });

@@ -27,7 +27,7 @@ from flask import Blueprint, render_template, request, jsonify, session
 from psycopg2.extras import RealDictCursor, Json
 
 from database import db_query, db_tx
-from utils import a_decimal, redondear, es_admin, id_empresa
+from utils import a_decimal, redondear, es_admin, id_empresa, normalizar_banco
 from routes.multiempresa import empresas as lista_empresas, empresa_actual, empresa_por_id
 
 planilla_bp = Blueprint('planilla', __name__)
@@ -515,7 +515,7 @@ def guardar_persona(eid, d, pid=None):
             raise ErrorPlanilla('El % de AFP no es válido.')
     doc = re.sub(r'\D', '', d.get('documento') or '')[:20] or None
     valores = (nombres[:150], doc, tipo, (d.get('cargo') or '').strip()[:100] or None, ingreso, cese, sueldo, pension, afp,
-               bool(d.get('asignacion_familiar')) and tipo == 'Planilla', (d.get('banco') or '').strip()[:60] or None,
+               bool(d.get('asignacion_familiar')) and tipo == 'Planilla', (normalizar_banco(d.get('banco')) or '')[:60] or None,
                (d.get('cuenta') or '').strip()[:60] or None, (d.get('observaciones') or '').strip()[:500] or None,
                parcial and tipo != 'Recibo por honorarios')
     with db_tx() as conn:

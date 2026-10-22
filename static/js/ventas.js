@@ -1408,7 +1408,9 @@ function estadoCompraHTML(r, despachado, anulado) {
         'Pendiente por recojo': ['compra-camino', '🚚 Comprado, por recoger'],
         'Pendiente por compra': ['compra-falta', '🛒 Pendiente de compra']
     }[info.estado] || ['compra-camino', info.estado];
-    return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>`;
+    // Con OC generada (aunque esté en borrador o por aprobar) sale "Comprado, por llegar" con su N° de OC (22/10/2026)
+    const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? `<small class="compra-ocs">${info.ocs.map(sd).join(', ')}</small>` : '';
+    return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>${ocs}`;
 }
 function guiaFacturaDespachoHTML(r) {
     const g = r.guia ? `<div><small>Guía</small><br><b>${sd(r.guia)}</b></div>` : '';
@@ -1419,23 +1421,25 @@ function citaDespachoHTML(r, cerrado) {
     let txt = '';
     if (r.fecha_cita) {
         const d = new Date(String(r.fecha_cita).replace(' ', 'T'));
-        txt = isNaN(d) ? String(r.fecha_cita) : d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+        // Solo la fecha (Erika 22/10/2026: "no debería ir la hora, solo la fecha"); la hora antigua se ignora
+        const m = String(r.fecha_cita).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        txt = m ? `${m[3]}/${m[2]}/${m[1]}` : (isNaN(d) ? String(r.fecha_cita) : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
     }
     if (cerrado) return txt ? `<b>${txt}</b>` : '-';
-    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha y hora acordadas con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
+    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
 }
 function ponerCitaDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
     if (!r) return;
     document.getElementById('citaDespachoModal')?.remove();
-    const actual = r.fecha_cita ? String(r.fecha_cita).replace(' ', 'T').slice(0, 16) : '';
+    const actual = r.fecha_cita ? String(r.fecha_cita).slice(0, 10) : '';
     const d = document.createElement('div');
     d.id = 'citaDespachoModal';
     d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000002;display:flex;align-items:center;justify-content:center;padding:16px';
     d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
         <div style="font-size:18px;font-weight:900;margin-bottom:4px">📅 Fecha de cita con el cliente</div>
         <div style="font-size:13px;color:#475569;margin-bottom:12px">${sd(r.numero)} · ${sd(r.cliente)}</div>
-        <input type="datetime-local" id="citaDespachoValor" value="${actual}" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700">
+        <input type="date" id="citaDespachoValor" value="${actual}" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700">
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
           ${actual ? '<button type="button" data-acc="quitar" style="padding:9px 14px;border-radius:10px;border:1px solid #FCA5A5;background:#fff;color:#B91C1C;font-weight:800;cursor:pointer">Quitar cita</button>' : ''}
           <button type="button" data-acc="cancelar" style="padding:9px 14px;border-radius:10px;border:1px solid #CBD5E1;background:#fff;font-weight:800;cursor:pointer">Cancelar</button>
@@ -1457,7 +1461,7 @@ function ponerCitaDespacho(id) {
         else if (acc === 'quitar') guardar('');
         else if (acc === 'guardar') {
             const v = document.getElementById('citaDespachoValor').value;
-            if (!v) { showToast('⚠️ Elige la fecha y la hora de la cita', 'warning'); return; }
+            if (!v) { showToast('⚠️ Elige la fecha de la cita', 'warning'); return; }
             guardar(v);
         }
     });
@@ -1465,7 +1469,8 @@ function ponerCitaDespacho(id) {
 function generarCompraDesdeDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
     if (!r || !r.pc_numero) return;
-    window.location.href = '/compras?tab=pedidos&pc=' + encodeURIComponent(r.pc_numero);
+    // Lleva a Compras ▸ Pedidos por comprar con las líneas de este PC sombreadas y marcadas (22/10/2026)
+    window.location.href = '/compras?tab=pedidos&pc=' + encodeURIComponent(r.pc_numero) + '&desp=' + encodeURIComponent(r.numero || '');
 }
 async function facturaDesdeDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
@@ -1606,7 +1611,7 @@ function renderDespachos() {
             <td>${citaDespachoHTML(r, despachado || anulado)}</td>
             <td><div class="acc-col">
                 ${!despachado && !anulado ? `
-                    ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Abre Compras con este pedido ya cargado para hacer la orden de compra">Generar compra</button>` : ''}
+                    ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Lleva a Compras ▸ Pedidos por comprar con las líneas de este pedido sombreadas y marcadas">Generar compra</button>` : ''}
                     <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">Confirmar despacho</button>
                     ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">Generar factura</button>` : ''}` :
                   despachado ? `<span class="desp-hecho">${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
@@ -17184,7 +17189,9 @@ function abastBadge(tipo, id) {
     if (!info || !info.estado) return '';
     const est = ABAST_ESTILOS[info.estado] || { icono: '•', clase: 'abast-ok' };
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
-    return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono} ${info.estado}</span>`;
+    const texto = { 'Por llegar': 'Comprado, por llegar', 'Pendiente por recojo': 'Comprado, por recoger', 'Pendiente por compra': 'Pendiente de compra' }[info.estado] || info.estado;
+    const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? ` (${info.ocs.join(', ')})` : '';
+    return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono} ${texto}${ocs.replace(/[<>"&]/g, '')}</span>`;
 }
 async function cargarAbastecimiento() {
     const tipos = ['pc', 'cotizaciones', 'despachos'];
