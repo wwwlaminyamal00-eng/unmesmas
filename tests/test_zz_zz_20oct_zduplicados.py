@@ -97,12 +97,9 @@ def test_oc_duplicada(admin):
     # Anulada no cuenta
     admin.post(f"/compras/api/flujo/ordenes/{a.json['id']}/anular", json={'motivo': 'prueba de duplicado'})
     assert oc(p1, 4, pc).status_code == 200
-    # La OC impresa dice a qué PC pertenece, y la de stock dice "Sin PC"
+    # 22/10/2026: la OC impresa ya no muestra el N° PC (el proveedor no ve numeración interna)
     html = admin.get(f"/compras/flujo/ordenes/{a.json['id']}/imprimir", query_string={'hoja': 'borrador'}).get_data(as_text=True)
-    assert 'Relacionado al PC: <b>PC-ZZD-OC</b>' in html and 'CLIENTE' not in html.split('Relacionado')[0][-200:]
-    sid = _sql("SELECT id FROM ordenes_compra WHERE proveedor_id = %s AND COALESCE(pc_numeros, '') = '' LIMIT 1", (p1,))[0][0]
-    html = admin.get(f"/compras/flujo/ordenes/{sid}/imprimir", query_string={'hoja': 'borrador'}).get_data(as_text=True)
-    assert 'Compra directa a stock (Sin PC)' in html
+    assert 'PC-ZZD-OC' not in html and 'Relacionado al PC' not in html and 'Sin PC' not in html
 
 
 def test_pantallas_ordenadas_y_ayudas_en_compras():

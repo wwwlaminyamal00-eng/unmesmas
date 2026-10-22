@@ -19,26 +19,11 @@
 {% block content %}
 <div id="finanzasApp" data-puede-operar="{{ 'true' if puede_operar else 'false' }}">
 
-    <!-- KPIs -->
-    <div class="fin-kpis" id="finKpis">
-        <div class="fin-kpi fin-kpi-cobro"><small>⬇ Por cobrar</small><b id="kpiPorCobrar">S/ 0.00</b><span id="kpiPorCobrarDocs">0 documentos</span></div>
-        <div class="fin-kpi fin-kpi-vencido"><small>🔴 Cobranza vencida</small><b id="kpiCobrarVencido">S/ 0.00</b><span>Llamar al cliente hoy</span></div>
-        <div class="fin-kpi fin-kpi-pago"><small>⬆ Por pagar</small><b id="kpiPorPagar">S/ 0.00</b><span id="kpiPorPagarDocs">0 documentos</span></div>
-        <div class="fin-kpi fin-kpi-vencido"><small>🔴 Pagos vencidos</small><b id="kpiPagarVencido">S/ 0.00</b><span>Coordinar con proveedor</span></div>
-        <div class="fin-kpi fin-kpi-ok"><small>✔ Cobrado este mes</small><b id="kpiCobradoMes">S/ 0.00</b><span id="kpiPagadoMes">Pagado: S/ 0.00</span></div>
-        <div class="fin-kpi fin-kpi-neta"><small>Posición neta</small><b id="kpiNeta">S/ 0.00</b><span>Por cobrar − por pagar</span></div>
-    </div>
-    <div class="fin-leyenda">
-        <span class="ley ley-cobro">⬇ Cobros: dinero que entra (clientes)</span>
-        <span class="ley ley-pago">⬆ Pagos: dinero que sale (proveedores)</span>
-        <span class="ley ley-vencido">🔴 Vencido</span>
-        <span class="ley ley-terminado">✔ Cobrado / pagado</span>
-    </div>
-
+    <!-- 22/10/2026 (Erika): sin las 6 tarjetas ni la leyenda; cada pestaña tiene una sola fila delgada de resumen -->
     <!-- TABS -->
     <div class="tabs" id="finTabs">
-        <button class="tab-btn tab-cobro active" data-tab="cxc">⬇ Cuentas por cobrar</button>
-        <button class="tab-btn tab-pago" data-tab="cxp">⬆ Cuentas por pagar</button>
+        <button class="tab-btn tab-cobro active" data-tab="cxc" title="Cobros: dinero que entra (clientes)">⬇ Cuentas por cobrar</button>
+        <button class="tab-btn tab-pago" data-tab="cxp" title="Pagos: dinero que sale (proveedores)">⬆ Cuentas por pagar</button>
         <button class="tab-btn" data-tab="movimientos">📒 Cobros y pagos</button>
         <button class="tab-btn" data-tab="flujo">📈 Flujo de caja</button>
     </div>
@@ -49,10 +34,7 @@
     <section class="section {{ 'fin-cobros' if t[0] == 'cxc' else 'fin-pagos' }} {{ 'active' if t[0] == 'cxc' else '' }}" id="sec-{{ t[0] }}">
         <div class="fin-panel">
             <div class="fin-head">
-                <div>
-                    <div class="fin-title">{{ t[1] }}</div>
-                    <div class="fin-help">{{ t[2] }}</div>
-                </div>
+                <div class="fin-title" title="{{ t[2] }}">{{ t[1] }}</div>
                 <div class="fin-filters">
                     <input type="search" id="{{ t[0] }}Buscar" placeholder="Buscar {{ t[3]|lower }}, RUC o documento...">
                     <select id="{{ t[0] }}Estado">
@@ -69,15 +51,14 @@
                     <button class="btn btn-secondary" data-export="{{ t[0] }}">⬇ Exportar CSV</button>
                 </div>
             </div>
-            {% if t[0] == 'cxp' %}
-            <div class="cxp-totales" id="cxpTotales">
-                <div class="cxp-tot sem-peligro"><small>🔴 Vencido</small><b id="cxpTotVencido">S/ 0.00</b><span id="cxpDocsVencido"></span></div>
-                <div class="cxp-tot sem-atencion"><small>🟡 Por vencer (7 días)</small><b id="cxpTotPorVencer">S/ 0.00</b><span id="cxpDocsPorVencer"></span></div>
-                <div class="cxp-tot sem-aldia"><small>Al día</small><b id="cxpTotAlDia">S/ 0.00</b></div>
-                <div class="cxp-tot cxp-tot-total"><small>Total por pagar</small><b id="cxpTotTotal">S/ 0.00</b></div>
+            <!-- Resumen del estado en una sola fila (cada número aparece una sola vez). Clic = filtra la tabla -->
+            <div class="fin-resumen" id="{{ t[0] }}Resumen" title="Haz clic en un estado para ver solo esos documentos">
+                <button type="button" class="res-item res-vencido" data-filtro="vencido">🔴 Vencido <b id="{{ t[0] }}ResVencido">S/ 0.00</b> <small id="{{ t[0] }}ResVencidoN"></small></button>
+                <button type="button" class="res-item res-porvencer" data-filtro="por vencer">Por vencer (7 días) <b id="{{ t[0] }}ResPorVencer">S/ 0.00</b> <small id="{{ t[0] }}ResPorVencerN"></small></button>
+                <button type="button" class="res-item res-aldia" data-filtro="al día">Al día <b id="{{ t[0] }}ResAlDia">S/ 0.00</b> <small id="{{ t[0] }}ResAlDiaN"></small></button>
+                <button type="button" class="res-item res-total" data-filtro="pendientes">Total {{ 'por cobrar' if t[0] == 'cxc' else 'por pagar' }} <b id="{{ t[0] }}ResTotal">S/ 0.00</b> <small id="{{ t[0] }}ResTotalN"></small></button>
+                <span class="res-mes">{{ 'Cobrado' if t[0] == 'cxc' else 'Pagado' }} este mes <b id="{{ t[0] }}ResMes">S/ 0.00</b></span>
             </div>
-            <div class="fin-help cxp-orden">Orden: primero lo <b>vencido</b> (más días de atraso arriba), luego lo <b>por vencer</b> (menos días que faltan arriba) y al final lo <b>al día</b>.</div>
-            {% endif %}
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>
@@ -88,7 +69,7 @@
                             {% else %}
                             <th>N° factura del proveedor</th><th>N° OC<small>N° PC relacionado</small></th>
                             {% endif %}
-                            <th>Nombre producto</th><th>Vencimiento<small>días</small></th>
+                            <th>Nombre producto</th><th title="Orden: primero lo vencido (más días de atraso arriba), luego lo por vencer y al final lo al día">Vencimiento<small>días</small></th>
                             {% if t[0] == 'cxc' %}
                             <th title="Total de la factura. Debajo: retención y notas de crédito (rebajan el saldo)">Monto a cobrar<small>retención / N. crédito</small></th><th>Cobrado</th>
                             {% else %}
@@ -139,7 +120,7 @@
             <div class="fin-head">
                 <div>
                     <div class="fin-title">Flujo de caja proyectado</div>
-                    <div class="fin-help">Ingresos esperados (saldos por cobrar) y egresos (saldos por pagar) según su fecha de vencimiento.</div>
+                    <div class="fin-help">Ingresos esperados (saldos por cobrar) y egresos (saldos por pagar) según su fecha de vencimiento. Posición neta (por cobrar − por pagar): <b id="kpiNeta">S/ 0.00</b></div>
                 </div>
                 <div class="fin-filters">
                     <select id="flujoSemanas">

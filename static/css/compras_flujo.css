@@ -179,3 +179,9 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-cubierto{display:block;font-size:11px;font-weight:800;color:#047857;white-space:nowrap}
 .com-ocultos{margin:6px 10px 10px}
 .com-oc-generada{display:block;margin-top:2px;font-size:11px;font-weight:900;color:#047857}
+/* 22/10/2026 Erika: "Recogemos" en azul y resaltado para que nadie olvide ir a recoger */
+.com-recojo{display:inline-block;color:#1D4ED8;font-weight:800;background:#DBEAFE;border:1px solid #93C5FD;border-radius:6px;padding:2px 8px}
+.com-resp{margin-top:4px;max-width:180px;font-size:12px;padding:3px 6px;border:1px solid #93C5FD;border-radius:6px;color:#1D4ED8;font-weight:700}
+.com-resp-falta{border-color:#DC2626;color:#DC2626;background:#FEF2F2}
+.com-resp-info,.com-resp-nombre{color:#1D4ED8}
+.btn-transporte{background:#1D4ED8;color:#fff!important;text-decoration:none;margin-right:6px}

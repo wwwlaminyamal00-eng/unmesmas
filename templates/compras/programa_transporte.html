@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Programa de transporte</title>
+<style>
+    /* Pedido de Erika 22/10/2026: lista de recojos para el personal de logística */
+    @page{size:A4 landscape;margin:10mm}
+    body{font-family:Arial,Helvetica,sans-serif;color:#0F172A;margin:20px;font-size:12px;background:#fff}
+    h1{margin:0;font-size:22px}
+    .sub{color:#475569;margin:4px 0 12px}
+    .acciones{margin-bottom:12px}
+    .acciones a,.acciones button{display:inline-block;padding:7px 14px;border:1px solid #1D4ED8;border-radius:6px;background:#fff;color:#1D4ED8;font-weight:bold;text-decoration:none;cursor:pointer;font-size:13px;margin-right:6px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#E5E7EB;border:1px solid #CBD5E1;padding:6px;font-size:11px}
+    td{border:1px solid #CBD5E1;padding:6px;vertical-align:top;text-align:center}
+    td.left{text-align:left}
+    .oc{font-weight:bold;font-size:13px}
+    .resp{font-weight:bold;color:#1D4ED8}
+    .sin{font-weight:bold;color:#DC2626}
+    .bloq{font-weight:bold;color:#DC2626}
+    .ok{font-weight:bold;color:#15803D}
+    ul{margin:0;padding-left:16px;text-align:left}
+    .firma{min-width:110px}
+    small{display:block;color:#475569}
+    @media print{.no-print{display:none}body{margin:0}}
+</style>
+</head>
+<body>
+<h1>🚚 Programa de transporte</h1>
+<div class="sub">Órdenes de compra aprobadas que <b>nosotros recogemos</b> y que aún no llegan completas. Generado el {{ ahora.strftime('%d/%m/%Y %H:%M') }} (hora de Lima).</div>
+<div class="acciones no-print">
+    <button onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+    <a href="?formato=csv">⬇ Descargar Excel</a>
+</div>
+<table>
+    <thead><tr><th>Fecha prometida</th><th>Responsable de recoger</th><th>Proveedor</th><th>N° orden de compra</th><th>Dirección de recojo</th>
+        <th>Productos a recoger</th><th>Llevar a</th><th>Estado</th><th class="firma">Firma de quien recoge</th></tr></thead>
+    <tbody>
+    {% for o in datos %}
+    <tr>
+        <td>{{ o.fecha_compromiso[8:10] ~ '/' ~ o.fecha_compromiso[5:7] ~ '/' ~ o.fecha_compromiso[0:4] if o.fecha_compromiso else '—' }}{% if o.atrasada %}<small class="bloq">ATRASADA</small>{% endif %}</td>
+        <td>{% if o.responsable_recojo %}<span class="resp">{{ o.responsable_recojo }}</span>{% else %}<span class="sin">SIN ASIGNAR</span>{% endif %}</td>
+        <td class="left"><b>{{ o.proveedor }}</b><small>RUC {{ o.ruc or '—' }}</small>{% if o.contacto or o.telefono %}<small>{{ o.contacto }} {{ o.telefono }}</small>{% endif %}</td>
+        <td><span class="oc">{{ o.numero }}</span><small>{{ o.empresa or '' }}</small></td>
+        <td class="left">{{ o.direccion_recojo or '—' }}</td>
+        <td><ul>{% for i in o.productos_recoger %}<li>{{ '%g'|format(i.cantidad) }} {{ i.unidad }} · {{ i.producto }}</li>{% endfor %}</ul></td>
+        <td>{{ o.sede or '—' }}</td>
+        <td>{% if o.listo %}<span class="ok">✔ Listo para recoger</span>{% else %}<span class="bloq">🔒 Falta el pago: no recoger</span>{% endif %}</td>
+        <td></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9">No hay mercadería por recoger. 👍</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</body>
+</html>

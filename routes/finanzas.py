@@ -340,7 +340,8 @@ def _filtrar(lista):
 def api_cxc():
     try:
         incluir = request.args.get('incluir_borradores', 'false').lower() == 'true'
-        return jsonify({'success': True, 'data': _filtrar(_cuentas('cxc', incluir))})
+        todas = _cuentas('cxc', incluir)
+        return jsonify({'success': True, 'data': _filtrar(todas), 'totales': totales_cxp(todas)})
     except Exception as e:
         print(f"❌ Error en finanzas api_cxc: {e}")
         return jsonify({'success': False, 'error': str(e), 'data': []}), 500
@@ -376,7 +377,9 @@ def totales_cxp(lista):
             'al_dia': suma(lambda x: x['semaforo'] == 'Al día'),
             'total': suma(lambda x: True),
             'docs_vencidos': sum(1 for x in lista if x['semaforo'] == 'Vencido'),
-            'docs_por_vencer': sum(1 for x in lista if x['semaforo'] == 'Por vencer')}
+            'docs_por_vencer': sum(1 for x in lista if x['semaforo'] == 'Por vencer'),
+            'docs_al_dia': sum(1 for x in lista if x['semaforo'] == 'Al día'),
+            'docs_total': sum(1 for x in lista if x['saldo'] > 0)}
 
 
 @finanzas_bp.route('/finanzas/api/cxp', methods=['GET'])

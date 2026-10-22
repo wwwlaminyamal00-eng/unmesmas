@@ -150,7 +150,10 @@ def test_tablas_centradas_y_colores_finanzas():
     base = (raiz / 'templates/base.html').read_text(encoding='utf-8')
     assert 'text-align:center!important' in base
     fin = (raiz / 'templates/finanzas.html').read_text(encoding='utf-8')
-    assert 'fin-kpi-cobro' in fin and 'fin-kpi-pago' in fin and 'fin-cobros' in fin and 'fin-pagos' in fin
+    assert 'fin-cobros' in fin and 'fin-pagos' in fin
+    # 22/10/2026: sin las 6 tarjetas ni la leyenda; una fila de resumen por pestaña, sin números repetidos
+    assert 'fin-kpis' not in fin and 'fin-leyenda' not in fin and 'cxp-orden' not in fin and 'cxp-totales' not in fin
+    assert 'id="{{ t[0] }}Resumen"' in fin
     pdf = (raiz / 'pdf_generator.py').read_text(encoding='utf-8')
     assert '.footer .item .sep { color: {{ color }}; font-weight: 900; margin: 0 2px; }' in pdf
 
@@ -256,3 +259,13 @@ def test_vencimiento_absurdo_no_se_acepta(admin):
             'condicion_pago': 'Crédito', 'dias_credito': 40000, 'modalidad_entrega': 'Proveedor entrega',
             'fecha_compromiso': '2026-10-30', 'motivo_compra': 'Stock estratégico', 'items': []})
         assert r.status_code == 400 and 'entre 1 y 360' in r.json['error']
+
+
+def test_resumen_compacto_cxc_y_cxp(admin):
+    """22/10/2026: CxC y CxP traen sus totales (vencido, por vencer, al día, total) para la fila de resumen."""
+    for tipo in ('cxc', 'cxp'):
+        r = admin.get(f'/finanzas/api/{tipo}', query_string={'estado': 'todos'})
+        assert r.status_code == 200, r.json
+        t = r.json['totales']
+        assert {'vencido', 'por_vencer', 'al_dia', 'total', 'docs_vencidos', 'docs_por_vencer', 'docs_al_dia', 'docs_total'} <= set(t)
+        assert round(t['vencido'] + t['por_vencer'] + t['al_dia'], 2) <= round(t['total'], 2) + 0.01

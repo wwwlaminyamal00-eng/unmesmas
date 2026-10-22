@@ -349,8 +349,8 @@
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
-                <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span>${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
+                <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
                 : '<tr><td colspan="14">No hay órdenes con este filtro.</td></tr>';
@@ -889,6 +889,25 @@
     // ========================================================
     // RECEPCIÓN A CIEGAS
     // ========================================================
+    // 22/10/2026 (Erika): cada recojo tiene responsable, para que no se olvide; se guarda con fecha y hora
+    function celdaResponsable(o) {
+        const quien = o.responsable_recojo_id ? `<small class="com-resp-info">Asignado por ${esc(o.responsable_recojo_por || '')} · ${fecha(o.responsable_recojo_en)}</small>` : '';
+        if (!(PUEDE.comprar || PUEDE.recibir || PUEDE.admin)) {
+            return o.responsable_recojo ? `<small class="com-resp-nombre">Recoge: ${esc(o.responsable_recojo)}</small>` : '<small class="neg">Sin responsable</small>';
+        }
+        const ops = cat.usuarios.map(u => `<option value="${u.id}"${Number(u.id) === Number(o.responsable_recojo_id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('');
+        return `<select class="com-resp${o.responsable_recojo_id ? '' : ' com-resp-falta'}" data-resp-oc="${o.id}"><option value="">¿Quién recoge?</option>${ops}</select>${quien}`;
+    }
+
+    async function guardarResponsable(sel) {
+        sel.disabled = true;
+        try {
+            const r = await post(`/compras/api/flujo/ordenes/${sel.dataset.respOc}/responsable_recojo`, { usuario_id: sel.value ? Number(sel.value) : null });
+            aviso(r.mensaje, 'success');
+            cargarRecibir();
+        } catch (e) { aviso(e.message, 'error'); sel.disabled = false; }
+    }
+
     async function cargarRecibir() {
         try {
             const { data } = await api('/compras/api/flujo/por_recibir');
@@ -900,7 +919,7 @@
                 else if (o.usuario_id === cat.usuarioId && !PUEDE.admin) accion = '<span class="inv-tip">Tú hiciste la orden: la recibe otra persona</span>';
                 else accion = `<button class="btn-mini" data-recibir="${o.id}">📦 Recibir</button>`;
                 return `<tr><td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td><td class="left">${esc(o.proveedor || '')}</td>
-                    <td>${o.modalidad_entrega === 'Nosotros recogemos' ? `🚚 Recogemos<small>${esc(o.direccion_recojo || '')}</small>` : 'Proveedor entrega'}</td>
+                    <td>${o.modalidad_entrega === 'Nosotros recogemos' ? `<span class="com-recojo">🚚 Recogemos</span><small>${esc(o.direccion_recojo || '')}</small>${celdaResponsable(o)}` : 'Proveedor entrega'}</td>
                     <td>${esc(o.sede || '')}</td><td>${fecha(o.fecha_compromiso)}${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
                     <td class="left">${esc(o.clientes || 'Stock')}</td><td><span class="${claseEstado(o.estado)}">${esc(o.estado)}</span></td><td>${accion}</td></tr>`;
             }).join('') : '<tr><td colspan="9">No hay mercadería por llegar.</td></tr>';
@@ -1175,6 +1194,7 @@
     });
     document.addEventListener('change', e => {
         if (e.target.dataset && e.target.dataset.extraPid) ponerExtraStock(Number(e.target.dataset.extraPid), e.target.value);
+        if (e.target.dataset && e.target.dataset.respOc) guardarResponsable(e.target);
     });
 
     function iniciarEventos() {

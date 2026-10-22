@@ -123,7 +123,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC</th><th>N° cotización</th><th>Lugar entrega</th><th>Pago</th><th>Total</th><th>Llegó</th><th>Estado</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <thead><tr><th>N° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC</th><th>N° cotización</th><th>Lugar entrega</th><th>Pago</th><th>Total</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
                     <tbody id="ocBody"><tr><td colspan="14">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -145,7 +145,10 @@
                     <div class="inv-title">Órdenes con mercadería por llegar</div>
                     <div class="inv-help">Las órdenes al contado aparecen bloqueadas hasta que Finanzas registra el pago.</div>
                 </div>
-                <button class="btn btn-secondary" id="btnRefrescarRecibir">↻ Actualizar</button>
+                <div>
+                    <a class="btn btn-transporte" href="/compras/flujo/programa_transporte" target="_blank" rel="noopener" title="Lista de lo que hay que recoger, con responsable. Se imprime o se descarga en Excel.">🚚 Programa de transporte</a>
+                    <button class="btn btn-secondary" id="btnRefrescarRecibir">↻ Actualizar</button>
+                </div>
             </div>
             <div class="table-wrap">
                 <table class="inv-table">

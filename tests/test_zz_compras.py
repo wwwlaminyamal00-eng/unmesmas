@@ -133,16 +133,17 @@ def test_impresion_para_proveedor_sin_cliente(zz, admin):
     assert r.status_code == 200
     html = r.data.decode('utf-8')
     assert 'BOTA DE SEGURIDAD ZZ' in html and 'DISTRIBUIDORA ZZ' in html
-    # 20/10/2026 22:54 Erika pidió que la OC diga a qué PC pertenece: el N° de PC sí sale, el cliente nunca
-    assert f'Relacionado al PC: <b>{PC_NUM}</b>' in html
-    for secreto in (CLIENTE, COT_NUM, 'Stock estratégico'):
+    # 22/10/2026 Erika: el proveedor no ve ningún N° interno (ni PC ni cotización del cliente) y la hoja es vertical
+    assert 'size:A4 portrait' in html and '<th>Modelo</th><th>Marca</th>' in html
+    assert '<td>BOTA DE SEGURIDAD ZZ</td><td></td><td>ZZ</td>' in html   # sin modelo: celda vacía; marca del catálogo
+    for secreto in (CLIENTE, COT_NUM, PC_NUM, 'Relacionado al PC', 'Stock estratégico', '#FEF3C7'):
         assert secreto not in html, secreto
     # vista previa de una OC de la pantalla anterior con pedido
     oc = _oc_legacy(admin, pedido_id=zz['pc']).json['data']
     r = admin.get(f"/compras/orden/{oc['id']}/preview")
     assert r.status_code == 200
     html = r.data.decode('utf-8')
-    assert 'LENTE DE SEGURIDAD ZZ' in html and CLIENTE not in html and f'Relacionado al PC: <b>{PC_NUM}</b>' in html
+    assert 'LENTE DE SEGURIDAD ZZ' in html and CLIENTE not in html and PC_NUM not in html
 
 
 # ---------- Cuentas por pagar ordenadas y con totales ----------
@@ -240,3 +241,27 @@ def test_pedido_resumen_descuenta_stock_de_la_empresa(zz, admin):
     it = p['items'][0]
     assert it['cantidad'] == 40 and it['falta'] == 40
     assert it['stock_empresa'] == 10 and it['comprar_pedido'] == 30          # ejemplo de Erika: 40 / 10 / 30
+
+
+# ---------- 22/10/2026: responsable de recojo y programa de transporte ----------
+def test_responsable_recojo_y_programa_de_transporte(zz, admin):
+    r = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, modalidad_entrega='Nosotros recogemos',
+                                                                  direccion_recojo='Jr. Recojo ZZ 456', motivo_compra='Stock estratégico',
+                                                                  items=[{'producto_id': zz['LENTE'], 'cantidad': 17, 'precio_unitario': 9}]))
+    assert r.status_code == 200, r.json
+    oc_id = r.json['id']
+    _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (oc_id,), fetch=False)
+    luis = _sql("SELECT id FROM usuarios WHERE usuario_sistema = 'compra7'")[0][0]
+    r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/responsable_recojo', json={'usuario_id': luis})
+    assert r.status_code == 200 and r.json['responsable'] == 'Compradora Siete', r.json
+    fila = next(o for o in admin.get('/compras/api/flujo/por_recibir').json['data'] if o['id'] == oc_id)
+    assert fila['responsable_recojo'] == 'Compradora Siete' and fila['responsable_recojo_en'] and fila['responsable_recojo_por']
+    html = admin.get('/compras/flujo/programa_transporte').get_data(as_text=True)
+    assert 'Jr. Recojo ZZ 456' in html and 'Compradora Siete' in html and 'LENTE DE SEGURIDAD ZZ' in html
+    assert 'Falta el pago' in html and CLIENTE not in html          # al contado sin pagar: no se recoge
+    csv_txt = admin.get('/compras/flujo/programa_transporte', query_string={'formato': 'csv'}).get_data(as_text=True)
+    assert 'Responsable de recoger' in csv_txt and 'Compradora Siete' in csv_txt and ';17;' in csv_txt
+    # una OC que entrega el proveedor no lleva responsable de recojo
+    otra = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico', items=[{'producto_id': zz['BOTA'], 'cantidad': 19, 'precio_unitario': 80}])).json['id']
+    r = admin.post(f'/compras/api/flujo/ordenes/{otra}/responsable_recojo', json={'usuario_id': luis})
+    assert r.status_code == 400 and 'entrega el proveedor' in r.json['error']

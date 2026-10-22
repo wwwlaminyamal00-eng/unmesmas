@@ -89,6 +89,10 @@ SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(150);
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS anulado_en TIMESTAMP;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS motivo_anulacion TEXT;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS responsable_recojo_id INTEGER;
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS responsable_recojo VARCHAR(150);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS responsable_recojo_por VARCHAR(150);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS responsable_recojo_en TIMESTAMP;
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS producto_id INTEGER;
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS unidad VARCHAR(20);
     ALTER TABLE ordenes_compra_items ADD COLUMN IF NOT EXISTS pedido_id INTEGER;
@@ -612,6 +616,7 @@ SQL_OC_LISTA = """
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
            oc.subtotal, oc.igv, oc.total, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
            oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at, oc.updated_at,
+           oc.responsable_recojo_id, oc.responsable_recojo, oc.responsable_recojo_por, oc.responsable_recojo_en,
            COALESCE(it.pedidos, oc.pc_numeros) AS pc_numeros, COALESCE(it.cotizaciones, oc.cotizaciones_cliente) AS cotizaciones_cliente,
            COALESCE(it.clientes, oc.clientes_pedido) AS clientes_pedido,
            (COALESCE(it.pedidos, oc.pc_numeros) IS NULL) AS sin_pedido,
@@ -1373,10 +1378,104 @@ def api_por_recibir():
         for o in datos:
             res.append({k: o[k] for k in ('id', 'numero', 'empresa', 'empresa_id', 'sede', 'almacen_entrega_id', 'proveedor',
                                           'modalidad_entrega', 'direccion_recojo', 'fecha_compromiso', 'estado',
-                                          'atrasada', 'paso', 'clientes', 'lineas', 'usuario_id')})
+                                          'atrasada', 'paso', 'clientes', 'lineas', 'usuario_id',
+                                          'responsable_recojo_id', 'responsable_recojo', 'responsable_recojo_por',
+                                          'responsable_recojo_en')})
         return jsonify({'success': True, 'data': res})
     except Exception as e:
         return _respuesta_error(e)
+
+
+# ============================================================
+# RECOJOS: RESPONSABLE Y PROGRAMA DE TRANSPORTE (pedido de Erika 22/10/2026)
+# "si hay que recoger y nadie lo recoge, porque a veces se olvida": cada OC que recogemos tiene un responsable
+# (Luis, Sebastián...) y la lista se descarga como programa para el personal de logística.
+# ============================================================
+@compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/responsable_recojo', methods=['POST'])
+def api_responsable_recojo(oc_id):
+    d = request.get_json(silent=True) or {}
+    try:
+        if not (puede_comprar() or puede_recibir()):
+            return _no_autorizado('Solo Compras, Almacén o la supervisora asignan quién recoge.')
+        uid, unom = _usuario()
+        resp_id = d.get('usuario_id') or None
+        nombre = None
+        if resp_id:
+            u = db_query("SELECT COALESCE(NULLIF(nombres_apellidos, ''), usuario_sistema) AS nombre FROM usuarios WHERE id = %s",
+                         (resp_id,))
+            if not u:
+                raise ErrorCompras('Esa persona no existe.')
+            nombre = u[0]['nombre']
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT estado, flujo, modalidad_entrega FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            oc = cur.fetchone()
+            if not oc or oc['flujo'] != 'v2':
+                raise ErrorCompras('La orden no existe.')
+            if oc['modalidad_entrega'] != 'Nosotros recogemos':
+                raise ErrorCompras('Esta orden la entrega el proveedor: no hay que recogerla.')
+            if oc['estado'] in ('Anulada', 'Cerrada', 'Recibida'):
+                raise ErrorCompras(f'La orden ya está {oc["estado"]}.')
+            cur.execute("""UPDATE ordenes_compra SET responsable_recojo_id = %s, responsable_recojo = %s,
+                           responsable_recojo_por = %s, responsable_recojo_en = NOW(), updated_at = NOW() WHERE id = %s""",
+                        (resp_id, nombre, unom, oc_id))
+        return jsonify({'success': True, 'responsable': nombre,
+                        'mensaje': f'Recoge: {nombre}.' if nombre else 'Quedó sin responsable.'})
+    except PermissionError as e:
+        return _no_autorizado(str(e))
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+def _recojos_pendientes():
+    """OC aprobadas que nosotros recogemos y aún no llegan completas, con lo que falta recoger."""
+    ocs = _listar_ocs("oc.flujo = 'v2' AND oc.modalidad_entrega = 'Nosotros recogemos' AND oc.estado IN ('Aprobada', 'Recibida parcial')")
+    if not ocs:
+        return []
+    ids = [o['id'] for o in ocs]
+    items = db_query("""SELECT orden_compra_id, producto, unidad,
+                                 cantidad - COALESCE(cantidad_recibida, 0) AS falta
+                          FROM ordenes_compra_items WHERE orden_compra_id = ANY(%s)
+                            AND cantidad - COALESCE(cantidad_recibida, 0) > 0 ORDER BY id""", (ids,))
+    provs = {p['id']: p for p in db_query(
+        "SELECT id, telefono, contacto FROM proveedores WHERE id = ANY(%s)",
+        ([o['proveedor_id'] for o in ocs if o.get('proveedor_id')] or [0],))}
+    res = []
+    for o in ocs:
+        prods = [{'producto': i['producto'], 'unidad': i['unidad'] or 'UND', 'cantidad': float(i['falta'])}
+                 for i in items if i['orden_compra_id'] == o['id']]
+        if not prods:
+            continue
+        p = provs.get(o.get('proveedor_id')) or {}
+        res.append({**o, 'productos_recoger': prods, 'telefono': p.get('telefono') or '', 'contacto': p.get('contacto') or '',
+                    'listo': o['paso']['codigo'] != 'pagar'})
+    res.sort(key=lambda o: (o.get('fecha_compromiso') or '9999', o['numero'] or ''))
+    return res
+
+
+@compras_flujo_bp.route('/compras/flujo/programa_transporte')
+def programa_transporte():
+    try:
+        datos = _recojos_pendientes()
+        if request.args.get('formato') == 'csv':
+            buf = io.StringIO()
+            w = csv.writer(buf, delimiter=';')
+            w.writerow(['Fecha prometida', 'Responsable de recoger', 'Proveedor', 'RUC', 'Contacto', 'Teléfono', 'N° orden de compra',
+                        'Empresa', 'Dirección de recojo', 'Nombre producto', 'Unidad de medida', 'Cantidad a recoger',
+                        'Llevar a', 'Estado'])
+            for o in datos:
+                for i in o['productos_recoger']:
+                    fp = o['fecha_compromiso']
+                    w.writerow([f'{fp[8:10]}/{fp[5:7]}/{fp[0:4]}' if fp else '', o['responsable_recojo'] or 'SIN ASIGNAR', o['proveedor'], o['ruc'] or '',
+                                o['contacto'], o['telefono'], o['numero'], o['empresa'] or '', o['direccion_recojo'] or '',
+                                i['producto'], i['unidad'], f"{i['cantidad']:g}", o['sede'] or '',
+                                'Listo para recoger' if o['listo'] else 'Falta el pago (no recoger)'])
+            return Response('\ufeff' + buf.getvalue(), mimetype='text/csv',
+                            headers={'Content-Disposition': f'attachment; filename=programa_transporte_{date.today():%Y%m%d}.csv'})
+        return render_template('compras/programa_transporte.html', datos=datos, ahora=datetime.now())
+    except Exception as e:
+        print(f'❌ Programa de transporte: {e}')
+        return 'No se pudo generar el programa de transporte.', 500
 
 
 @compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/para_recibir')
@@ -1778,13 +1877,17 @@ def orden_imprimir(oc_id):
         empresa = db_query("SELECT * FROM erp_empresas WHERE id = %s", (o['empresa_id'],)) if o['empresa_id'] else []
         sede = db_query("SELECT * FROM almacenes WHERE id = %s", (o['almacen_entrega_id'],)) if o['almacen_entrega_id'] else []
         prov = db_query("SELECT * FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o['proveedor_id'] else []
-        items = db_query("""SELECT id, producto, unidad, cantidad, precio_unitario, total FROM ordenes_compra_items
-                            WHERE orden_compra_id = %s ORDER BY id""", (oc_id,))
-        # Pedido de Erika 20/10/2026 22:54: la OC dice a qué PC pertenece (solo el número; el cliente nunca sale)
-        relacion_pc = o.get('pc_numeros')
+        # 22/10/2026: la hoja lleva modelo y marca del catálogo; si el producto no los tiene, la celda queda vacía
+        items = db_query("""SELECT i.id, i.producto, i.unidad, i.cantidad, i.precio_unitario, i.total,
+                                   NULLIF(TRIM(to_jsonb(p)->>'modelo'), '') AS modelo,
+                                   NULLIF(TRIM(to_jsonb(p)->>'marca'), '') AS marca
+                            FROM ordenes_compra_items i
+                            LEFT JOIN productos p ON p.id::text = i.producto_id::text
+                            WHERE i.orden_compra_id = %s ORDER BY i.id""", (oc_id,))
+        # Pedido de Erika 22/10/2026 (reemplaza el del 20/10): el proveedor no ve el N° PC ni ningún N° interno
         # Documento para el PROVEEDOR: nunca lleva cliente, cotización del cliente ni motivo interno
         o = {k: v for k, v in dict(o).items() if k not in CAMPOS_CONFIDENCIALES}
-        return render_template('compras/imprimir_oc.html', o=o, relacion_pc=relacion_pc, empresa=empresa[0] if empresa else {},
+        return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},
                                sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
                                hoja=request.args.get('hoja') or 'oc', hoy=date.today(),
                                declarada=_sede_declarada(o['empresa_id'], o['almacen_entrega_id']) if o['empresa_id'] and o['almacen_entrega_id'] else None)

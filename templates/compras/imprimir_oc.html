@@ -4,25 +4,27 @@
 <meta charset="utf-8">
 <title>{{ 'Hoja de recojo' if hoja == 'recojo' else 'Orden de compra' }} {{ o.numero }}</title>
 <style>
-    body{font-family:Arial,Helvetica,sans-serif;color:#0F172A;margin:24px;font-size:12px}
+    /* Pedido de Erika 22/10/2026: hoja vertical (A4), todo en blanco y solo el encabezado de la tabla en gris */
+    @page{size:A4 portrait;margin:12mm}
+    body{font-family:Arial,Helvetica,sans-serif;color:#0F172A;margin:24px auto;max-width:186mm;font-size:12px;background:#fff}
     .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid {{ empresa.color_primario or '#1E3A8A' }};padding-bottom:10px}
     .cab h1{margin:0;font-size:18px}
-    .doc{border:2px solid {{ empresa.color_primario or '#1E3A8A' }};border-radius:8px;padding:8px 14px;text-align:center}
-    .doc b{display:block;font-size:16px}
+    .doc{border:3px solid {{ empresa.color_primario or '#1E3A8A' }};border-radius:8px;padding:10px 16px;text-align:center;font-size:12px;white-space:nowrap;flex-shrink:0;margin-left:16px}
+    .doc .titulo{display:block;font-size:20px;font-weight:800;letter-spacing:.5px}
+    .doc b{display:block;font-size:24px;margin:2px 0}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
     .caja{border:1px solid #CBD5E1;border-radius:6px;padding:8px 10px;line-height:1.6}
     .caja h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;color:#475569}
     table{width:100%;border-collapse:collapse;margin-top:8px}
-    th{background:#F1F5F9;border:1px solid #CBD5E1;padding:6px;font-size:11px}
+    th{background:#E5E7EB;border:1px solid #CBD5E1;padding:6px;font-size:11px}
     td{border:1px solid #CBD5E1;padding:6px}
     td.n{text-align:right}
     .tot td{font-weight:bold}
-    .nota{background:#FEF3C7;border:1px solid #FCD34D;padding:8px 10px;border-radius:6px;margin-top:10px;line-height:1.5}
+    .nota{background:#fff;border:1px solid #CBD5E1;padding:8px 10px;border-radius:6px;margin-top:10px;line-height:1.5}
     .firmas{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:60px;text-align:center}
     .firmas div{border-top:1px solid #0F172A;padding-top:4px;font-size:11px}
     .vacio{height:28px}
-    @media print{.no-print{display:none}body{margin:10mm}}
-    .relacion-pc { margin: 6px 0 10px; padding: 6px 10px; border: 2px solid #0F172A; border-radius: 6px; font-size: 13px; font-weight: 700; display: inline-block; }
+    @media print{.no-print{display:none}body{margin:0;max-width:none}}
 </style>
 </head>
 <body>
@@ -32,9 +34,9 @@
         <h1>{{ empresa.razon_social or o.empresa }}</h1>
         RUC {{ empresa.ruc or '—' }}<br>{{ empresa.direccion_fiscal or '' }}<br>{{ empresa.telefono or '' }} {{ empresa.correo_documentos or '' }}
     </div>
-    <div class="doc">{{ 'HOJA DE RECOJO' if hoja == 'recojo' else 'ORDEN DE COMPRA' }}<b>{{ o.numero }}</b>{{ o.fecha.strftime('%d/%m/%Y') if o.fecha else '' }}</div>
+    <div class="doc"><span class="titulo">{{ 'HOJA DE RECOJO' if hoja == 'recojo' else 'ORDEN DE COMPRA' }}</span><b>{{ o.numero }}</b>{{ o.fecha.strftime('%d/%m/%Y') if o.fecha else '' }}</div>
 </div>
-<div class="relacion-pc">{% if relacion_pc %}Relacionado al PC: <b>{{ relacion_pc }}</b>{% else %}Compra directa a stock (Sin PC){% endif %}</div>
+{# 22/10/2026: el proveedor no ve ningún N° interno (PC, cotización del cliente): solo se ven dentro del sistema #}
 
 <div class="grid">
     <div class="caja">
@@ -59,20 +61,20 @@
 </div>
 
 <table>
-    <thead><tr><th>#</th><th>Producto</th><th>Unidad</th><th>Cantidad</th>
+    <thead><tr><th>Producto</th><th>Modelo</th><th>Marca</th><th>Unidad de medida</th><th>Cantidad</th>
         {% if hoja != 'recojo' %}<th>Precio unit. sin IGV</th><th>Total</th>{% else %}<th>Recogido (contar con el proveedor)</th><th>Observación</th>{% endif %}</tr></thead>
     <tbody>
     {% for i in items %}
-    <tr><td>{{ loop.index }}</td><td>{{ i.producto }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>
+    <tr><td>{{ i.producto }}</td><td>{{ i.modelo or '' }}</td><td>{{ i.marca or '' }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>
         {% if hoja != 'recojo' %}<td class="n">S/ {{ '%.2f'|format(i.precio_unitario|float) }}</td><td class="n">S/ {{ '%.2f'|format(i.total|float) }}</td>
         {% else %}<td class="vacio"></td><td></td>{% endif %}</tr>
     {% endfor %}
     </tbody>
     {% if hoja != 'recojo' %}
     <tfoot>
-        <tr class="tot"><td colspan="5" class="n">Subtotal</td><td class="n">S/ {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
-        <tr class="tot"><td colspan="5" class="n">IGV</td><td class="n">S/ {{ '%.2f'|format(o.igv|float) }}</td></tr>
-        <tr class="tot"><td colspan="5" class="n">TOTAL</td><td class="n">S/ {{ '%.2f'|format(o.total|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">S/ {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">S/ {{ '%.2f'|format(o.igv|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">S/ {{ '%.2f'|format(o.total|float) }}</td></tr>
     </tfoot>
     {% endif %}
 </table>

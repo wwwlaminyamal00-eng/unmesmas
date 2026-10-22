@@ -35,14 +35,9 @@
         try {
             const { data } = await api('/finanzas/api/resumen');
             const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-            set('kpiPorCobrar', soles(data.por_cobrar));
-            set('kpiPorCobrarDocs', `${data.documentos_por_cobrar} documentos · ${soles(data.por_cobrar_7dias)} vence en 7 días`);
-            set('kpiCobrarVencido', soles(data.por_cobrar_vencido));
-            set('kpiPorPagar', soles(data.por_pagar));
-            set('kpiPorPagarDocs', `${data.documentos_por_pagar} documentos · ${soles(data.por_pagar_7dias)} vence en 7 días`);
-            set('kpiPagarVencido', soles(data.por_pagar_vencido));
-            set('kpiCobradoMes', soles(data.cobrado_mes));
-            set('kpiPagadoMes', 'Pagado: ' + soles(data.pagado_mes));
+            // 22/10/2026: solo lo que no está en la fila de resumen de cada pestaña
+            set('cxcResMes', soles(data.cobrado_mes));
+            set('cxpResMes', soles(data.pagado_mes));
             set('kpiNeta', soles(data.posicion_neta));
         } catch (e) { console.error('Resumen finanzas:', e); }
     }
@@ -58,24 +53,35 @@
         try {
             const { data, totales } = await api(`/finanzas/api/${tipo}?${params}`);
             datos[tipo] = data;   // CxP ya viene ordenado del servidor (vencido > por vencer > al día): no se reordena
-            if (tipo === 'cxp') pintarTotalesCxp(totales);
+            pintarResumen(tipo, totales);
             renderCuentas(tipo);
         } catch (e) {
             body.innerHTML = `<tr><td colspan="12" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
     }
 
-    // Totales arriba de Cuentas por pagar (sobre todo lo pendiente, sin importar el filtro)
-    function pintarTotalesCxp(t) {
+    // Fila de resumen arriba de cada tabla (sobre todo lo pendiente, sin importar el filtro). 22/10/2026
+    function pintarResumen(tipo, t) {
         if (!t) return;
-        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        set('cxpTotVencido', soles(t.vencido));
-        set('cxpDocsVencido', `${t.docs_vencidos || 0} documento(s)`);
-        set('cxpTotPorVencer', soles(t.por_vencer));
-        set('cxpDocsPorVencer', `${t.docs_por_vencer || 0} documento(s)`);
-        set('cxpTotAlDia', soles(t.al_dia));
-        set('cxpTotTotal', soles(t.total));
+        const set = (id, v) => { const el = document.getElementById(tipo + id); if (el) el.textContent = v; };
+        const n = c => `(${c || 0})`;
+        set('ResVencido', soles(t.vencido)); set('ResVencidoN', n(t.docs_vencidos));
+        set('ResPorVencer', soles(t.por_vencer)); set('ResPorVencerN', n(t.docs_por_vencer));
+        set('ResAlDia', soles(t.al_dia)); set('ResAlDiaN', n(t.docs_al_dia));
+        set('ResTotal', soles(t.total)); set('ResTotalN', n(t.docs_total));
+        const caja = document.getElementById(tipo + 'Resumen');
+        caja.querySelector('.res-vencido').classList.toggle('res-cero', !(t.vencido > 0));
+        caja.querySelector('.res-porvencer').classList.toggle('res-cero', !(t.por_vencer > 0));
+        const filtro = document.getElementById(tipo + 'Estado').value;
+        caja.querySelectorAll('.res-item').forEach(b => b.classList.toggle('res-activo', b.dataset.filtro === filtro));
     }
+    document.addEventListener('click', e => {
+        const b = e.target.closest('.fin-resumen .res-item');
+        if (!b) return;
+        const tipo = b.closest('.fin-resumen').id.replace('Resumen', '');
+        document.getElementById(tipo + 'Estado').value = b.dataset.filtro;
+        cargarCuentas(tipo);
+    });
 
     // Chip de semáforo de CxP con días de atraso o días que faltan
     function chipCxp(x) {
