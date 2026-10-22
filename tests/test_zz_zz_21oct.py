@@ -2,6 +2,7 @@
 Pedido de Erika del 21/10/2026 16:35: Configuración ▸ Correlativos, permisos que de verdad limitan el menú
 y las URL, botones de Entregas sin emojis y pedidos con OC ya generada. Datos inventados, solo en la base local.
 """
+from datetime import date
 from tests.test_inventario import _sql
 from tests.test_zz_zz_20oct_zduplicados import _guia, _factura
 
@@ -186,3 +187,72 @@ def test_pagar_a_un_dato_por_linea(admin):
         for etiqueta in ("'Proveedor'", "'RUC / DNI'", "'Banco'", "'N° de cuenta'", "'CCI'", 'Monto a pagar (incluye IGV)'):
             assert etiqueta in txt, (js, etiqueta)
         assert 'cuentaDeRelleno' in txt
+
+
+def _hoy_lima():
+    # Fecha de Lima (la del ERP), no CURRENT_DATE de la base, que puede estar en UTC
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    return datetime.now(ZoneInfo('America/Lima')).date()
+
+
+def test_cuentas_con_detalle_oc_pc_productos_estado_y_comentario(admin):
+    """18:38: cada factura dice su OC, su PC, sus productos, si está pendiente / parcial / pagada,
+    la fecha real de pago y un comentario de Finanzas."""
+    prov = _sql("""INSERT INTO proveedores (razon_social, ruc, direccion, condicion_pago, activo)
+                   VALUES ('PROVEEDOR DETALLE ZZ', '20555000111', 'Lima', 'Contado', true) RETURNING id""")[0][0]
+    oc = _sql("""INSERT INTO ordenes_compra (numero_orden, proveedor_id, estado, subtotal, igv, total, fecha_creacion,
+                                             pc_numeros, tipo_compra)
+                 VALUES ('OC-ZZDET-1', %s, 'Aprobada', 100, 18, 118, NOW(), 'PC-ZZDET-1', 'Bajo pedido') RETURNING id""", (prov,))[0][0]
+    _sql("""INSERT INTO ordenes_compra_items (orden_compra_id, producto, cantidad, precio_unitario, total)
+            VALUES (%s, 'GUANTE ZZDET', 10, 5, 50), (%s, 'CASCO ZZDET', 5, 10, 50)""", (oc, oc), fetch=False)
+    cp = _sql("""INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre,
+                                                     orden_compra_id, orden_compra_numero, estado, created_at, fecha_vencimiento)
+                 VALUES ('Factura', 'F001-ZZDET1', CURRENT_DATE, 118, '20555000111', 'PROVEEDOR DETALLE ZZ', %s,
+                         'OC-ZZDET-1', 'Pendiente', NOW(), CURRENT_DATE + 30) RETURNING id""", (oc,))[0][0]
+    # adelanto pagado en Compras antes de registrar la factura
+    _sql("""INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre, fecha, monto,
+                                        estado, created_at)
+            VALUES ('PAGO', 'comprobantes_proveedor', %s, 'F001-ZZDET1', 'PROVEEDOR DETALLE ZZ', CURRENT_DATE - 2, 50,
+                    'Registrado', NOW() - INTERVAL '2 days')""", (cp,), fetch=False)
+    fila = next(x for x in admin.get('/finanzas/api/cxp?estado=todos').json['data'] if x['id'] == cp)
+    assert fila['oc_numero'] == 'OC-ZZDET-1' and fila['pc_numero'] == 'PC-ZZDET-1'
+    assert [p['producto'] for p in fila['productos']] == ['GUANTE ZZDET', 'CASCO ZZDET']
+    assert fila['estado_pago'] == 'Pago parcial' and fila['adelanto'] == 50 and fila['saldo'] == 68
+    assert fila['fecha_pago_real'] is None
+    # se completa el pago: Pagado con su fecha real
+    _sql("""INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre, fecha, monto, estado)
+            VALUES ('PAGO', 'comprobantes_proveedor', %s, 'F001-ZZDET1', 'PROVEEDOR DETALLE ZZ', %s, 68, 'Registrado')""",
+         (cp, _hoy_lima()), fetch=False)
+    fila = next(x for x in admin.get('/finanzas/api/cxp?estado=todos').json['data'] if x['id'] == cp)
+    assert fila['estado_pago'] == 'Pagado' and fila['fecha_pago_real'] == _hoy_lima().isoformat() and fila['adelanto'] == 50
+    # comentario de Finanzas
+    r = admin.post('/finanzas/api/comentario', json={'tipo': 'cxp', 'id': cp, 'comentario': 'pagar con la caja de AGD'})
+    assert r.status_code == 200 and r.json['comentario'] == 'Pagar con la caja de AGD'
+    fila = next(x for x in admin.get('/finanzas/api/cxp?estado=todos').json['data'] if x['id'] == cp)
+    assert fila['comentario'] == 'Pagar con la caja de AGD'
+    assert admin.post('/finanzas/api/comentario', json={'tipo': 'otro', 'id': cp, 'comentario': 'x'}).status_code == 400
+    # cuentas por cobrar: N° PC y productos de la factura de venta
+    cxc = admin.get('/finanzas/api/cxc?estado=todos').json['data']
+    assert all({'estado_pago', 'pc_numero', 'oc_cliente', 'productos', 'fecha_pago_real'} <= set(x) for x in cxc)
+    assert all(x['estado_pago'] in ('Por cobrar', 'Cobro parcial', 'Cobrado') for x in cxc)
+
+
+def test_vencimiento_absurdo_no_se_acepta(admin):
+    """18:38: una factura vencía el 25/04/2136 por una OC con 'Crédito 40000 días'."""
+    cp = _sql("""INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, estado)
+                 VALUES ('Factura', 'F001-ZZVENC', '2026-10-19', 100, '20555000111', 'PROVEEDOR DETALLE ZZ', 'Pendiente')
+                 RETURNING id""")[0][0]
+    r = admin.put(f'/finanzas/api/cxp/{cp}/vencimiento', json={'fecha_vencimiento': '2136-04-25'})
+    assert r.status_code == 400 and 'Revisa el año' in r.json['error']
+    assert admin.put(f'/finanzas/api/cxp/{cp}/vencimiento', json={'fecha_vencimiento': '2026-10-01'}).status_code == 400
+    assert admin.put(f'/finanzas/api/cxp/{cp}/vencimiento', json={'fecha_vencimiento': '2026-11-18'}).status_code == 200
+    emp = _sql("SELECT id FROM erp_empresas ORDER BY id LIMIT 1")
+    prov = _sql("SELECT id FROM proveedores WHERE activo ORDER BY id LIMIT 1")
+    sede = _sql("SELECT id FROM almacenes ORDER BY id LIMIT 1")
+    if emp and prov and sede:
+        r = admin.post('/compras/api/flujo/ordenes', json={
+            'empresa_id': emp[0][0], 'proveedor_id': prov[0][0], 'almacen_entrega_id': sede[0][0],
+            'condicion_pago': 'Crédito', 'dias_credito': 40000, 'modalidad_entrega': 'Proveedor entrega',
+            'fecha_compromiso': '2026-10-30', 'motivo_compra': 'Stock estratégico', 'items': []})
+        assert r.status_code == 400 and 'entre 1 y 360' in r.json['error']

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Intercompany - ERP Multiempresa{% endblock %}
+
+{% block page_title %}Intercompany KCF ↔ AGD{% endblock %}
+
+{% block subtitle %}Ventas entre las empresas, lo que se deben, IGV y stock del grupo.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="icApp" class="ge-app">
+    <div class="ge-barra">
+        <label>Mes
+            <input type="month" id="icMes">
+        </label>
+    </div>
+
+    <div id="icAvisos"></div>
+    <div class="ge-kpis" id="icKpis"></div>
+
+    <details class="ge-ayuda">
+        <summary>¿Cómo funciona?</summary>
+        <ul>
+            <li>Una venta es "entre empresas" cuando el cliente tiene el RUC de la otra empresa del grupo. Se reconoce sola, desde Ventas o desde lo subido del SIRE.</li>
+            <li>Cada venta debe estar registrada como compra en la otra empresa. Si falta, esa empresa pierde el crédito fiscal y sale en <b class="ge-rojo">rojo</b>.</li>
+            <li>El IGV es el mismo cálculo del módulo SUNAT. La sugerencia solo usa saldos a favor o retenciones que una empresa no llega a usar.</li>
+        </ul>
+    </details>
+
+    <div class="tabs inv-tabs" id="icTabs">
+        <button class="tab-btn active" data-tab="resumen">📊 Ventas y deudas</button>
+        <button class="tab-btn" data-tab="igv">🧮 IGV: desde dónde facturar</button>
+        <button class="tab-btn" data-tab="stock">📦 Stock del grupo</button>
+    </div>
+
+    <section class="section active" id="ic-sec-resumen">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title" id="icTitVentas">Ventas entre empresas</div></div>
+            <div id="icVentas"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">💳 Lo que se deben</div></div>
+            <div id="icDeudas"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">📅 Últimos 6 meses (sin IGV)</div></div>
+            <div id="icTendencia"></div>
+        </div>
+    </section>
+
+    <section class="section" id="ic-sec-igv">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title" id="icTitIgv">IGV del mes</div><small class="ge-chip">Cálculo preliminar · quien declara es el contador</small></div>
+            <div id="icIgv"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">🧭 Sugerencia</div></div>
+            <div id="icSugerencias" class="ge-sugs"></div>
+        </div>
+        <details class="ge-ayuda">
+            <summary>Reglas para que sea legal</summary>
+            <ul>
+                <li>Las ventas entre empresas van a <b>valor de mercado</b> (el mismo precio que a un tercero).</li>
+                <li>La mercadería debe ser real, con guía de remisión, y el pago por banco si es de S/ 2,000 o más.</li>
+                <li>Mover ventas no crea ahorro si las dos empresas pagan IGV. Solo sirve para usar saldos que una empresa no llega a usar.</li>
+                <li>Las retenciones sin usar también se pueden pedir en devolución (Formulario 1649). Revisa con el contador.</li>
+            </ul>
+        </details>
+    </section>
+
+    <section class="section" id="ic-sec-stock">
+        <div class="ge-kpis" id="icStockKpis"></div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">📦 Stock por empresa y total del grupo</div>
+                <label class="ge-buscar">Buscar <input type="search" id="icBuscar" placeholder="Código o nombre del producto"></label></div>
+            <div id="icStock"></div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/intercompany.js') }}"></script>
+{% endblock %}

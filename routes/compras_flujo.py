@@ -1094,6 +1094,9 @@ def api_orden_guardar():
         dias = int(a_decimal(d.get('dias_credito') or 0))
         if condicion == 'Crédito' and dias <= 0:
             raise ErrorCompras('Escribe los días de crédito que da el proveedor.')
+        if condicion == 'Crédito' and dias > 360:
+            # Pedido de Erika 21/10/2026: una OC con "Crédito 40000 días" hizo vencer una factura en el año 2136
+            raise ErrorCompras(f'{dias} días de crédito no es posible: escribe entre 1 y 360 días.')
         if condicion != 'Crédito':
             dias = 0
         modalidad = d.get('modalidad_entrega') or ''
@@ -1688,7 +1691,11 @@ def api_orden_factura(oc_id):
                                          f'S/ {esperado} (diferencia S/ {redondear(monto - esperado)}). Revisa el total y corrígelo.'}), 409
             if not cuadra and len(motivo_dif) < 5:
                 raise ErrorCompras('Escribe por qué registras la factura con diferencia (por ejemplo: "el proveedor cobró flete").')
-            vence = fecha + timedelta(days=int(oc['dias_credito'] or 0))
+            dias_oc = int(oc['dias_credito'] or 0)
+            if dias_oc > 360:
+                raise ErrorCompras(f'La orden {oc["numero_orden"]} tiene {dias_oc} días de crédito (no es posible). '
+                                   'Corrige los días de crédito de la orden antes de registrar la factura.')
+            vence = fecha + timedelta(days=dias_oc)
             cur.execute("""
                 INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, orden_compra_id,
                     orden_compra_numero, estado, observaciones, creado_por, empresa_id, fecha_vencimiento, monto_esperado, cuadra)

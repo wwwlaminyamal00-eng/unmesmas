@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Planilla y RRHH - ERP Multiempresa{% endblock %}
+
+{% block page_title %}Planilla y RRHH{% endblock %}
+
+{% block subtitle %}Sueldos, subvenciones, vacaciones, CTS y gratificaciones. Se conecta solo con SUNAT.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="plaApp" class="ge-app" data-admin="{{ 'true' if es_admin else 'false' }}">
+    <div class="ge-barra">
+        <label>Empresa
+            <select id="plaEmpresa">
+                {% for e in empresas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa_activa }}>{{ e.codigo }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Mes
+            <input type="month" id="plaMes">
+        </label>
+        <span class="ge-chip" id="plaRegimen"></span>
+        <button type="button" class="btn btn-primary ge-btn-grande" id="plaAgregar">+ Agregar persona</button>
+    </div>
+
+    <div id="plaAvisos"></div>
+    <div class="ge-kpis" id="plaKpis"></div>
+
+    <details class="ge-ayuda">
+        <summary>¿Cómo funciona?</summary>
+        <ul>
+            <li>Agrega a cada persona una sola vez con su sueldo o subvención real. El ERP <b>nunca inventa sueldos</b>.</li>
+            <li>Cada mes, el ERP calcula lo que toca pagar: sueldo, descuento de ONP o AFP, EsSalud de la empresa, y en su mes la gratificación (julio y diciembre), la CTS (mayo y noviembre) y la media subvención de los practicantes (cada 6 meses).</li>
+            <li>Cuando pagas, marca el pago con el N° de operación del banco. Lo que falta pagar sale en <b class="ge-rojo">rojo</b>.</li>
+            <li>Las bases de EsSalud, ONP, AFP y sueldos se pasan solas a <a href="/sunat?tab=pagos">SUNAT ▸ Pagos del mes</a>.</li>
+            <li>Son cálculos de referencia según la ley peruana. La renta de 5.ª y las comisiones exactas de AFP las confirma el contador.</li>
+        </ul>
+    </details>
+
+    <div class="tabs inv-tabs" id="plaTabs">
+        <button class="tab-btn active" data-tab="pagos">💵 Pagos del mes</button>
+        <button class="tab-btn" data-tab="personal">👥 Personal y vacaciones</button>
+        <button class="tab-btn" data-tab="beneficios">🎁 CTS y gratificaciones</button>
+    </div>
+
+    <section class="section active" id="pla-sec-pagos">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title" id="plaTitPagos">Pagos del mes</div></div>
+            <div id="plaPagos"></div>
+        </div>
+        <div id="plaSunat"></div>
+    </section>
+
+    <section class="section" id="pla-sec-personal">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">👥 Personal</div></div>
+            <div id="plaPersonal"></div>
+        </div>
+    </section>
+
+    <section class="section" id="pla-sec-beneficios">
+        <div id="plaBeneficios"></div>
+    </section>
+
+    <!-- Ventana para agregar / editar / marcar -->
+    <div class="ge-modal" id="plaModal" hidden>
+        <form class="ge-modal-caja ge-modal-ancha" id="plaModalForm" autocomplete="off">
+            <div class="ge-modal-tit" id="plaModalTit"></div>
+            <div class="ge-modal-det" id="plaModalDet"></div>
+            <div class="ge-form" id="plaModalCampos"></div>
+            <div class="ge-modal-pie">
+                <button type="button" class="btn btn-secondary" id="plaModalCancelar">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="plaModalOk">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    window.PLA_OPCIONES = {
+        regimenes: {{ regimenes | tojson }},
+        tipos: {{ tipos | list | tojson }},
+        pensiones: {{ pensiones | list | tojson }}
+    };
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/planilla.js') }}"></script>
+{% endblock %}

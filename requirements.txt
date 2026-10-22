@@ -7,6 +7,7 @@ weasyprint>=60            # PDF de cotizaciones, guías y comprobantes
 qrcode>=7.4               # QR en los PDF
 pillow>=10.0
 pytz                      # zona horaria de Lima (antes faltaba y podía fallar)
+xlrd>=2.0                 # extractos de banco en .xls antiguo (Conciliación bancaria)
 bcrypt>=4.0               # verificación de contraseñas antiguas con hash bcrypt
 gunicorn>=21.2            # servidor de producción (Render)
 # Dependencias que ya estaban en el proyecto y se conservan por compatibilidad

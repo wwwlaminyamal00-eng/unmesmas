@@ -93,32 +93,74 @@
         return `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}</span>`;
     }
 
+    // Días para vencer / de atraso calculados en el navegador (sirve para cobrar y pagar)
+    function chipDias(x) {
+        if (x.saldo <= 0 || !x.fecha_vencimiento) return '';
+        const hoy = new Date(hoyISO() + 'T00:00:00');
+        const ven = new Date(String(x.fecha_vencimiento).slice(0, 10) + 'T00:00:00');
+        const n = Math.round((ven - hoy) / 86400000);
+        if (n < 0) return `<span class="sem-chip sem-peligro">${-n} día${n === -1 ? '' : 's'} de atraso</span>`;
+        if (n === 0) return '<span class="sem-chip sem-atencion">vence hoy</span>';
+        if (n <= 7) return `<span class="sem-chip sem-atencion">faltan ${n} día${n === 1 ? '' : 's'}</span>`;
+        return `<span class="sem-chip sem-aldia">faltan ${n} días</span>`;
+    }
+
+    // Monto con su moneda (S/ o $), como en el Excel de Erika
+    const dinero = (x, v) => x.moneda === 'USD' ? '$ ' + Number(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : soles(v);
+
+    function celdaProductos(x) {
+        const p = x.productos || [];
+        if (!p.length) return '<span class="fin-gris">—</span>';
+        const linea = it => `${it.cantidad !== null && it.cantidad !== undefined ? `<b>${Number(it.cantidad)}</b> × ` : ''}${esc(it.producto)}`;
+        if (p.length === 1) return `<span class="fin-prod">${linea(p[0])}</span>`;
+        return `<span class="fin-prod">${linea(p[0])}</span><details class="fin-mas"><summary>+${p.length - 1} más</summary>
+            <ul>${p.slice(1).map(it => `<li>${linea(it)}</li>`).join('')}</ul></details>`;
+    }
+
+    function chipEstado(x) {
+        const e = x.estado_pago || '';
+        const cls = /^(Pagado|Cobrado)$/.test(e) ? 'est-terminado' : /parcial/i.test(e) ? 'est-parcial' : 'est-pendiente';
+        const ico = cls === 'est-terminado' ? '✔ ' : cls === 'est-parcial' ? '◐ ' : '⏳ ';
+        return `<span class="est-chip ${cls}">${ico}${esc(e)}</span>`;
+    }
+
     function renderCuentas(tipo) {
         const body = document.getElementById(tipo + 'Body');
         const lista = datos[tipo];
         const esCxc = tipo === 'cxc';
         if (!lista.length) {
-            body.innerHTML = `<tr><td colspan="12">No hay documentos para este filtro.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="14">No hay documentos para este filtro.</td></tr>`;
         } else {
-            body.innerHTML = lista.map(x => {
+            body.innerHTML = lista.map((x, i) => {
                 const accion = x.saldo > 0
-                    ? `<button class="btn-mini" ${PUEDE_OPERAR ? '' : 'disabled title="Sin permiso"'} data-pagar="${tipo}:${x.id}">${esCxc ? 'Registrar cobro' : 'Registrar pago'}</button>`
-                    : `<span class="sem sem-terminado">✔ ${esCxc ? 'Cobrado' : 'Pagado'}</span>`;
+                    ? `<button class="btn-mini" ${PUEDE_OPERAR ? '' : 'disabled title="Sin permiso"'} data-pagar="${tipo}:${x.id}" title="${esCxc ? 'Registrar cobro' : 'Registrar pago'}">${esCxc ? '⬇ Cobrar' : '⬆ Pagar'}</button>`
+                    : '<span class="fin-gris">—</span>';
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
-                const chip = esCxc
-                    ? `<span class="${semClase(x.semaforo)}">${esc(x.semaforo)}${x.dias_vencido ? ' · ' + x.dias_vencido + ' d' : ''}</span>`
-                    : chipCxp(x);
-                return `<tr class="${!esCxc && x.semaforo === 'Vencido' ? 'cxp-fila-vencida' : ''}">
-                    <td>${chip}</td>
-                    <td>${esc(x.tipo_comprobante || '')} ${esc(x.documento)}</td>
-                    <td class="left">${esc(x.tercero)}</td>
-                    <td>${esc(x.ruc)}</td>
-                    <td>${fecha(x.fecha_emision)}</td>
-                    <td>${fecha(x.fecha_vencimiento)}${venc}</td>
-                    <td class="num">${soles(x.total)}</td>
-                    ${esCxc ? `<td class="num">${soles(x.retencion)}</td><td class="num">${soles(x.notas_credito)}</td>` : ''}
-                    <td class="num">${soles(x.abonado)}</td>
-                    <td class="num saldo">${soles(x.saldo)}</td>
+                const vinculo = esCxc
+                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>OC cliente: ${esc(x.oc_cliente)}</small>` : ''}`
+                    : `<b>${esc(x.oc_numero || '—')}</b>${x.pc_numero ? `<small>${esc(x.pc_numero)}</small>` : ''}`;
+                // Cobrar: la retención y la nota de crédito van debajo del monto. Pagar: el adelanto va debajo de lo pagado.
+                const extraMonto = esCxc ? [x.retencion ? `Retención ${dinero(x, x.retencion)}` : '', x.notas_credito ? `N. crédito ${dinero(x, x.notas_credito)}` : '']
+                    .filter(Boolean).map(t => `<small>${t}</small>`).join('') : '';
+                const extraPagado = !esCxc && x.adelanto ? `<small title="Pagado en Compras antes de registrar la factura">Adelanto ${dinero(x, x.adelanto)}</small>` : '';
+                const comentario = `<span class="fin-coment">${esc(x.comentario || '')}</span>`
+                    + (x.nota_registro ? `<small class="fin-gris" title="Observación al registrar la factura en Compras">Compras: ${esc(x.nota_registro)}</small>` : '')
+                    + (PUEDE_OPERAR ? `<button class="btn-mini sec" title="Escribir comentario" data-coment="${tipo}:${x.id}">✏️</button>` : '');
+                const filaCls = x.saldo <= 0 ? 'fin-fila-ok' : x.semaforo === 'Vencido' ? 'cxp-fila-vencida' : '';
+                return `<tr class="${filaCls}">
+                    <td>${i + 1}</td>
+                    <td class="left"><b>${esc(x.tercero)}</b></td>
+                    <td>${esc(x.ruc || '—')}</td>
+                    <td><b>${esc(x.documento)}</b><small>${esc(x.tipo_comprobante || '')} · ${fecha(x.fecha_emision)}</small></td>
+                    <td>${vinculo}</td>
+                    <td class="left">${celdaProductos(x)}</td>
+                    <td>${fecha(x.fecha_vencimiento)}${venc}${chipDias(x) ? '<br>' + chipDias(x) : ''}</td>
+                    <td class="num">${dinero(x, x.total)}${extraMonto}</td>
+                    <td class="num">${dinero(x, x.abonado)}${extraPagado}</td>
+                    <td class="num saldo">${dinero(x, x.saldo)}</td>
+                    <td>${chipEstado(x)}</td>
+                    <td>${x.fecha_pago_real ? `<b>${fecha(x.fecha_pago_real)}</b>` : x.ultimo_abono ? `<small>Último abono ${fecha(x.ultimo_abono)}</small>` : '<span class="fin-gris">—</span>'}</td>
+                    <td class="fin-coment-celda">${comentario}</td>
                     <td>${accion}</td>
                 </tr>`;
             }).join('');
@@ -294,8 +336,10 @@
     function exportarCSV(tipo) {
         const filas = datos[tipo];
         if (!filas.length) { aviso('No hay datos para exportar', 'warning'); return; }
-        const cols = ['semaforo', 'tipo_comprobante', 'documento', 'tercero', 'ruc', 'fecha_emision', 'fecha_vencimiento', 'total', 'abonado', 'saldo'];
-        const csv = [cols.join(';')].concat(filas.map(f => cols.map(c => `"${String(f[c] ?? '').replace(/"/g, '""')}"`).join(';'))).join('\n');
+        const cols = ['tercero', 'ruc', 'tipo_comprobante', 'documento', 'fecha_emision', tipo === 'cxc' ? 'pc_numero' : 'oc_numero',
+            tipo === 'cxc' ? 'oc_cliente' : 'pc_numero', 'productos', 'fecha_vencimiento', 'semaforo', 'moneda', 'total',
+            tipo === 'cxc' ? 'retencion' : 'adelanto', 'abonado', 'saldo', 'estado_pago', 'fecha_pago_real', 'comentario'];
+        const csv = [cols.join(';')].concat(filas.map(f => cols.map(c => `"${String(c === 'productos' ? (f.productos || []).map(p => `${p.cantidad ?? ''} ${p.producto}`.trim()).join(' | ') : (f[c] ?? '')).replace(/"/g, '""')}"`).join(';'))).join('\n');
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
         a.download = `${tipo}_${hoyISO()}.csv`;
@@ -331,12 +375,27 @@
     document.getElementById('flujoSemanas').addEventListener('change', cargarFlujo);
     document.getElementById('pagoGuardar').addEventListener('click', guardarPago);
     document.getElementById('vencGuardar').addEventListener('click', guardarVencimiento);
+    // Comentario de Finanzas en la fila (no cambia la factura)
+    async function escribirComentario(clave) {
+        const [tipo, id] = clave.split(':');
+        const doc = datos[tipo].find(x => String(x.id) === id);
+        if (!doc) return;
+        const texto = prompt(`Comentario para ${doc.documento} (${doc.tercero}).\nDéjalo vacío para borrarlo.`, doc.comentario || '');
+        if (texto === null) return;
+        try {
+            const r = await api('/finanzas/api/comentario', { method: 'POST', body: JSON.stringify({ tipo, id, comentario: texto }) });
+            doc.comentario = r.comentario;
+            renderCuentas(tipo);
+        } catch (e) { aviso(e.message, 'error'); }
+    }
+
     document.addEventListener('click', e => {
         const t = e.target;
         if (t.dataset.close) cerrar(t.dataset.close);
         if (t.dataset.export) exportarCSV(t.dataset.export);
         if (t.dataset.pagar && !t.disabled) { const [tipo, id] = t.dataset.pagar.split(':'); abrirPago(tipo, id); }
         if (t.dataset.anular) anularMovimiento(t.dataset.anular);
+        if (t.dataset.coment) escribirComentario(t.dataset.coment);
         if (t.dataset.venc) {
             const doc = datos.cxp.find(x => String(x.id) === t.dataset.venc);
             document.getElementById('vencId').value = t.dataset.venc;

@@ -314,6 +314,21 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
 </div>
                 </div>
 
+                <!-- SEGUIMIENTO COMERCIAL (22/10/2026): permiso propio -->
+                <div class="menu-group" data-modulo="seguimiento">
+                    <div class="menu-header-wrapper">
+                        <a href="/seguimiento" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>4.1 ─ Seguimiento comercial</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/seguimiento?tab=llamar" class="child-btn" style="text-decoration:none;">📞 Sin cerrar</a>
+                        <a href="/seguimiento?tab=cierre" class="child-btn" style="text-decoration:none;">📊 Tasa de cierre</a>
+                        <a href="/seguimiento?tab=historial" class="child-btn" style="text-decoration:none;">🗂 Historial de llamadas</a>
+                    </div>
+                </div>
+
                 
                
 <!-- COMPRAS -->
@@ -375,6 +390,52 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
                 </div>
 
+                <!-- CONCILIACIÓN BANCARIA (21/10/2026): extracto del banco vs cobros y pagos de Finanzas -->
+                <div class="menu-group" data-modulo="bancos">
+                    <div class="menu-header-wrapper">
+                        <a href="/bancos" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>7.1 ─ Conciliación bancaria</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/bancos?tab=revisar" class="child-btn" style="text-decoration:none;">⚠ Por revisar</a>
+                        <a href="/bancos?tab=conciliados" class="child-btn" style="text-decoration:none;">✔ Conciliados</a>
+                        <a href="/bancos?tab=extracto" class="child-btn" style="text-decoration:none;">📄 Todo el extracto</a>
+                        <a href="/bancos?tab=archivos" class="child-btn" style="text-decoration:none;">🗂 Extractos subidos</a>
+                    </div>
+                </div>
+
+                <!-- INTERCOMPANY KCF ↔ AGD (21/10/2026): solo gerencia y permiso propio -->
+                <div class="menu-group" data-modulo="intercompany">
+                    <div class="menu-header-wrapper">
+                        <a href="/intercompany" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>7.2 ─ Intercompany KCF ↔ AGD</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/intercompany?tab=resumen" class="child-btn" style="text-decoration:none;">📊 Ventas y deudas</a>
+                        <a href="/intercompany?tab=igv" class="child-btn" style="text-decoration:none;">🧮 IGV: desde dónde facturar</a>
+                        <a href="/intercompany?tab=stock" class="child-btn" style="text-decoration:none;">📦 Stock del grupo</a>
+                    </div>
+                </div>
+
+                <!-- PLANILLA Y RRHH (22/10/2026): sueldos, solo gerencia y permiso propio -->
+                <div class="menu-group" data-modulo="planilla">
+                    <div class="menu-header-wrapper">
+                        <a href="/planilla" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>7.3 ─ Planilla y RRHH</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/planilla?tab=pagos" class="child-btn" style="text-decoration:none;">💵 Pagos del mes</a>
+                        <a href="/planilla?tab=personal" class="child-btn" style="text-decoration:none;">👥 Personal y vacaciones</a>
+                        <a href="/planilla?tab=beneficios" class="child-btn" style="text-decoration:none;">🎁 CTS y gratificaciones</a>
+                    </div>
+                </div>
+
                 <!-- REPORTES -->
                 <div class="menu-group" data-modulo="reportes">
                     <div class="menu-header-wrapper">
@@ -390,6 +451,23 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <a href="/reportes?tab=inventario" class="child-btn" style="text-decoration:none;">📦 Reporte de inventario</a>
                         <a href="/reportes?tab=cxc" class="child-btn" style="text-decoration:none;">🧾 Por cobrar (finanzas)</a>
                         <a href="/reportes?tab=cxp" class="child-btn" style="text-decoration:none;">📑 Por pagar (finanzas)</a>
+                    </div>
+                </div>
+
+                <!-- SUNAT E IMPUESTOS (21/10/2026): módulo propio, solo gerencia y permiso SUNAT -->
+                <div class="menu-group" data-modulo="sunat">
+                    <div class="menu-header-wrapper">
+                        <a href="/sunat" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>8.1 ─ SUNAT e impuestos</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/sunat?tab=resumen" class="child-btn" style="text-decoration:none;">🧮 Resumen de impuestos</a>
+                        <a href="/sunat?tab=plan" class="child-btn" style="text-decoration:none;">🧭 Plan de acción</a>
+                        <a href="/sunat?tab=contador" class="child-btn" style="text-decoration:none;">📄 Preliminar vs contador</a>
+                        <a href="/sunat?tab=pagos" class="child-btn" style="text-decoration:none;">✅ Pagos del mes</a>
+                        <a href="/sunat?tab=completar" class="child-btn" style="text-decoration:none;">📥 Completar datos</a>
                     </div>
                 </div>
 
@@ -564,6 +642,26 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 <a href="/reportes" class="crumb-btn" style="text-decoration:none;">Reportes</a>
                 <span>/</span>
                 <span class="crumb-btn active-crumb">Reportes</span>
+            {% elif '/intercompany' in request.path %}
+                <a href="/finanzas" class="crumb-btn" style="text-decoration:none;">Finanzas</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">Intercompany KCF ↔ AGD</span>
+            {% elif '/seguimiento' in request.path %}
+                <a href="/ventas" class="crumb-btn" style="text-decoration:none;">Ventas</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">Seguimiento comercial</span>
+            {% elif '/planilla' in request.path %}
+                <a href="/finanzas" class="crumb-btn" style="text-decoration:none;">Finanzas</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">Planilla y RRHH</span>
+            {% elif '/bancos' in request.path %}
+                <a href="/finanzas" class="crumb-btn" style="text-decoration:none;">Finanzas</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">Conciliación bancaria</span>
+            {% elif '/sunat' in request.path %}
+                <a href="/sunat" class="crumb-btn" style="text-decoration:none;">SUNAT e impuestos</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">SUNAT e impuestos</span>
             
             <!-- ========================================== -->
             <!-- HERRAMIENTAS                               -->
@@ -1096,7 +1194,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
         // Finanzas, Reportes, Herramientas y Papelera: el menú lateral se despliega y marca la pestaña abierta,
         // igual que Compras (pedido de Erika 21/10/2026 17:12). Se mantiene al recargar porque la pestaña va en la URL.
         const MENU_MODULO_PARAM = {
-            '/finanzas': ['finanzas', 'tab', 'cxc'], '/reportes': ['reportes', 'tab', 'tablero'],
+            '/finanzas': ['finanzas', 'tab', 'cxc'], '/reportes': ['reportes', 'tab', 'tablero'], '/sunat': ['sunat', 'tab', 'resumen'], '/bancos': ['bancos', 'tab', 'revisar'], '/intercompany': ['intercompany', 'tab', 'resumen'], '/planilla': ['planilla', 'tab', 'pagos'], '/seguimiento': ['seguimiento', 'tab', 'llamar'],
             '/herramientas': ['herramientas', 'sec', 'importar'], '/papelera': ['papelera', 'tab', 'papelera']
         };
         function abrirMenuModulo() {
@@ -1119,7 +1217,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
 
         function highlightActiveModule() {
             // Las pestañas propias de estos módulos no se apagan (antes quedaban todas sin marcar)
-            const propias = [...document.querySelectorAll('#finTabs .tab-btn.active, #repTabs .tab-btn.active, #papTabs .tab-btn.active')];
+            const propias = [...document.querySelectorAll('#finTabs .tab-btn.active, #repTabs .tab-btn.active, #papTabs .tab-btn.active, #sunTabs .tab-btn.active')];
             _highlightActiveModuleBase();
             propias.forEach(b => b.classList.add('active'));
             abrirMenuModulo();
@@ -1832,7 +1930,11 @@ async function cargarSubmodulos() {
         { id: 32, codigo: 'REPORTE_COMPRAS', nombre: 'Reportes' },
         { id: 33, codigo: 'REPORTE_INVENTARIO', nombre: 'Reportes' },
         { id: 34, codigo: 'REPORTE_FINANZAS', nombre: 'Reportes' },
-        { id: 35, codigo: 'SUNAT', nombre: 'SUNAT' }
+        { id: 35, codigo: 'SUNAT', nombre: 'SUNAT' },
+        { id: 36, codigo: 'CONCILIACION_BANCARIA', nombre: 'Bancos' },
+        { id: 37, codigo: 'INTERCOMPANY', nombre: 'Intercompany' },
+        { id: 38, codigo: 'PLANILLA', nombre: 'Planilla' },
+        { id: 39, codigo: 'SEGUIMIENTO_COMERCIAL', nombre: 'Seguimiento' }
     ];
     
     console.log('✅ Submódulos cargados:', submodulosData.length);
@@ -2144,7 +2246,11 @@ const PERM_COLUMNAS = [
     { col: 'CxP', codigos: ['CUENTAS_PAGAR'] },
     { col: 'Caja', codigos: ['CAJA_BANCOS', 'FLUJO_CAJA'] },
     { col: 'Reportes', codigos: ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS'] },
-    { col: 'SUNAT', codigos: ['SUNAT'] }
+    { col: 'SUNAT', codigos: ['SUNAT'] },
+    { col: 'Bancos', codigos: ['CONCILIACION_BANCARIA'] },
+    { col: 'Intercompany', codigos: ['INTERCOMPANY'] },
+    { col: 'Planilla', codigos: ['PLANILLA'] },
+    { col: 'Seguimiento', codigos: ['SEGUIMIENTO_COMERCIAL'] }
 ];
 const PERM_SEIS = [
     ['puede_ver', 'Ver'], ['puede_crear', 'Crear'], ['puede_editar', 'Editar'],
@@ -3640,7 +3746,12 @@ document.addEventListener('DOMContentLoaded', function() {
             compras: ['SOLICITUD_COMPRA', 'COMPARATIVO_PROVEEDORES', 'ORDEN_COMPRA', 'COMPROBANTES_PROVEEDOR', 'RECEPCION_MERCADERIA'],
             inventario: ['ESTADO_STOCK', 'KARDEX', 'ENTRADAS_SALIDAS', 'TRANSFERENCIAS'],
             finanzas: ['CUENTAS_COBRAR', 'CUENTAS_PAGAR', 'CAJA_BANCOS', 'FLUJO_CAJA'],
-            reportes: ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS', 'SUNAT']
+            reportes: ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS'],
+            sunat: ['SUNAT'],
+            bancos: ['CONCILIACION_BANCARIA'],
+            intercompany: ['INTERCOMPANY'],
+            planilla: ['PLANILLA'],
+            seguimiento: ['SEGUIMIENTO_COMERCIAL']
         };
         // Grupos que se ven aunque el usuario no tenga permisos configurados (como antes)
         const MENU_POR_DEFECTO = ['productos', 'ventas', 'compras', 'inventario'];

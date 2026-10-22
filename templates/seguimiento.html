@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Seguimiento comercial - ERP Multiempresa{% endblock %}
+
+{% block page_title %}Seguimiento comercial{% endblock %}
+
+{% block subtitle %}Cotizaciones sin cerrar, a quién llamar hoy y tasa de cierre por vendedora.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="segApp" class="ge-app">
+    <div class="ge-barra">
+        <label>Empresa
+            <select id="segEmpresa">
+                <option value="todas">Todas</option>
+                {% for e in empresas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa_activa }}>{{ e.codigo }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Tasa de cierre de los últimos
+            <select id="segDias">
+                <option value="30">30 días</option>
+                <option value="90" selected>90 días</option>
+                <option value="180">6 meses</option>
+                <option value="365">1 año</option>
+            </select>
+        </label>
+    </div>
+
+    <div class="ge-kpis" id="segKpis"></div>
+
+    <details class="ge-ayuda">
+        <summary>¿Cómo funciona?</summary>
+        <ul>
+            <li>Todo sale de Ventas. Una cotización está <b>sin cerrar</b> cuando ya se mandó al cliente (Generada) y no tiene respuesta.</li>
+            <li>Si nunca se llamó, el ERP pone la primera llamada <b>3 días</b> después de hecha. Al registrar una llamada eliges cuándo volver a llamar.</li>
+            <li>Lo que toca hoy o está atrasado sale en <b class="ge-rojo">rojo</b>.</li>
+            <li><b>Ganada</b>: aceptada por el cliente, facturada o con PC. <b>Perdida</b>: rechazada o marcada aquí "No compró". Las anuladas no cuentan.</li>
+            <li>Cuando el cliente acepte, márcala como aceptada en <a href="/ventas?tab=cotizaciones">Ventas ▸ Cotizaciones</a> o crea su PC: sale sola de esta lista.</li>
+        </ul>
+    </details>
+
+    <div class="tabs inv-tabs" id="segTabs">
+        <button class="tab-btn active" data-tab="llamar">📞 Sin cerrar</button>
+        <button class="tab-btn" data-tab="cierre">📊 Tasa de cierre</button>
+        <button class="tab-btn" data-tab="historial">🗂 Historial de llamadas</button>
+    </div>
+
+    <section class="section active" id="seg-sec-llamar">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">📞 Cotizaciones sin cerrar</div><small class="ge-chip">Primero las que toca llamar</small></div>
+            <div id="segAbiertas"></div>
+        </div>
+        <details class="ge-ayuda" id="segPorEnviarCaja">
+            <summary id="segPorEnviarTit">Cotizaciones que aún no se mandan al cliente</summary>
+            <div id="segPorEnviar"></div>
+        </details>
+    </section>
+
+    <section class="section" id="seg-sec-cierre">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title" id="segTitVend">Por vendedora</div></div>
+            <div id="segVendedoras"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">📅 Últimos 6 meses</div></div>
+            <div id="segMeses"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">❌ Perdidas y por qué</div></div>
+            <div id="segPerdidas"></div>
+        </div>
+    </section>
+
+    <section class="section" id="seg-sec-historial">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">🗂 Historial de llamadas</div><small class="ge-chip">Últimas 300</small></div>
+            <div id="segHistorial"></div>
+        </div>
+    </section>
+
+    <div class="ge-modal" id="segModal" hidden>
+        <form class="ge-modal-caja ge-modal-ancha" id="segModalForm" autocomplete="off">
+            <div class="ge-modal-tit" id="segModalTit"></div>
+            <div class="ge-modal-det" id="segModalDet"></div>
+            <div class="ge-form" id="segModalCampos">
+                <label>¿Cómo lo contactaste?
+                    <select name="medio" required>{% for m in medios %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select>
+                </label>
+                <label data-si-sigue>Volver a llamar el
+                    <input type="date" name="proxima_llamada">
+                </label>
+                <label style="grid-column:1/-1">¿Qué dijo el cliente?
+                    <input name="comentario" required maxlength="1000" placeholder="Ej.: Lo está revisando con su jefe, llamar el lunes">
+                </label>
+                <label class="ge-check" style="grid-column:1/-1"><input type="checkbox" name="no_compro"> El cliente no va a comprar</label>
+                <label data-si-perdida hidden>¿Por qué?
+                    <select name="motivo_cierre"><option value="">Elige...</option>{% for m in motivos %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select>
+                </label>
+            </div>
+            <div class="ge-modal-pie">
+                <button type="button" class="btn btn-secondary" id="segModalCancelar">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="segModalOk">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/seguimiento.js') }}"></script>
+{% endblock %}

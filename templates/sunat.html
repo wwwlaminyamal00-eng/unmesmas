@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}SUNAT e impuestos - ERP Multiempresa{% endblock %}
+
+{% block page_title %}SUNAT e impuestos{% endblock %}
+
+{% block subtitle %}IGV, renta y pagos del mes de KCF y AGD.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sunat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="sunApp" data-admin="{{ 'true' if es_admin else 'false' }}">
+    <div class="sun-barra">
+        <label>Empresa
+            <select id="sunEmpresa">
+                {% for e in empresas %}<option value="{{ e.id }}" data-ruc="{{ e.ruc }}" {{ 'selected' if e.id == empresa_activa }}>{{ e.codigo }} · RUC {{ e.ruc }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Mes (periodo)
+            <input type="month" id="sunPeriodo">
+        </label>
+        <div class="sun-preliminar" title="La declaración la hace el contador">⚠ Cálculo preliminar</div>
+    </div>
+
+    <div class="tabs inv-tabs" id="sunTabs">
+        <button class="tab-btn active" data-tab="resumen">🧮 Resumen de impuestos</button>
+        <button class="tab-btn" data-tab="plan">🧭 Plan de acción</button>
+        <button class="tab-btn" data-tab="contador">📄 Preliminar vs contador</button>
+        <button class="tab-btn" data-tab="pagos">✅ Pagos del mes</button>
+        <button class="tab-btn" data-tab="completar">📥 Completar datos</button>
+    </div>
+
+    <!-- RESUMEN -->
+    <section class="section active" id="sun-sec-resumen">
+        <div class="sun-cargando" id="resCargando">Calculando...</div>
+        <div id="resContenido" hidden>
+            <div class="sun-aviso-datos" id="resAvisoDatos" hidden></div>
+            <div class="inv-kpis" id="resKpis"></div>
+
+            <div class="sun-grid2 sun-grid-32">
+                <div class="inv-panel">
+                    <div class="inv-head"><div class="inv-title">Resumen IGV y renta</div></div>
+                    <table class="inv-table sun-tabla-igv" id="resTablaIgv"></table>
+                </div>
+                <div class="inv-panel">
+                    <div class="inv-head"><div class="inv-title" id="resTituloOtros">Total a pagar a SUNAT</div></div>
+                    <table class="inv-table" id="resTablaOtros"></table>
+                    <form id="resFormRet" class="sun-ret" autocomplete="off"></form>
+                </div>
+            </div>
+
+            <div class="inv-panel" id="resPanelProy">
+                <div class="inv-head"><div class="inv-title">🔮 Si hoy fuera 31</div><small class="sun-chip">Marca lo que quieres sumar</small></div>
+                <div id="resProyeccion"></div>
+            </div>
+
+            <div class="inv-panel">
+                <div class="inv-head"><div class="inv-title">🧭 Plan de acción</div></div>
+                <div id="resPlan" class="sun-plan-corto"></div>
+            </div>
+
+            <details class="inv-panel sun-det">
+                <summary>⚙ Otros datos (opcional): saldos, percepciones y planilla</summary>
+                <form id="resFormManual" class="sun-form" autocomplete="off"></form>
+            </details>
+
+            <details class="inv-panel sun-det" id="resDetDocs">
+                <summary>📄 Ver los comprobantes del mes</summary>
+                <div class="sun-botones sun-det-botones">
+                    <button type="button" class="btn-mini" data-libro="VENTAS">Ventas</button>
+                    <button type="button" class="btn-mini sec" data-libro="COMPRAS">Compras</button>
+                </div>
+                <div id="resDetalle"></div>
+            </details>
+        </div>
+    </section>
+
+    <!-- PLAN DE ACCIÓN -->
+    <section class="section" id="sun-sec-plan">
+        <div class="sun-leyenda"><span class="sun-etq rojo">Hazlo ya</span><span class="sun-etq amarillo">Antes del cierre</span><span class="sun-etq info">Para decidir</span><span class="sun-etq verde">Bien</span></div>
+        <div id="planLista" class="sun-plan"><div class="sun-cargando">Calculando...</div></div>
+        <div id="planReglas"></div>
+    </section>
+
+    <!-- PRELIMINAR VS CONTADOR -->
+    <section class="section" id="sun-sec-contador">
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div class="inv-title">📄 Preliminar vs hoja del contador</div>
+                <div class="sun-botones">
+                    <a class="btn-mini" id="conDescargar" href="#">⬇ Descargar Excel</a>
+                    <label class="btn-mini sec sun-subir">⬆ Subir Excel del contador<input type="file" id="conArchivo" accept=".xlsx,.xlsm" hidden></label>
+                </div>
+            </div>
+            <div class="sun-nota" id="conNota"></div>
+            <div id="conObs"></div>
+            <table class="inv-table" id="conTabla"></table>
+        </div>
+    </section>
+
+    <!-- PAGOS DEL MES -->
+    <section class="section" id="sun-sec-pagos">
+        <div class="inv-kpis" id="pagKpis"></div>
+        <div class="inv-panel">
+            <div class="inv-head">
+                <div class="inv-title" id="pagTitulo">✅ Pagos del mes</div>
+                <label class="sun-mes-pago">Mes de pago <input type="month" id="pagMes"></label>
+            </div>
+            <div id="pagTabla"></div>
+        </div>
+    </section>
+
+    <!-- COMPLETAR DATOS -->
+    <section class="section" id="sun-sec-completar">
+        <div class="inv-panel">
+            <div class="inv-head"><div><div class="inv-title">📥 Subir facturas que faltan</div>
+                <div class="inv-help">Propuesta SIRE (RVIE / RCE) o Excel de las chicas. No cambia tus ventas ni compras.</div></div>
+                <a class="btn-mini sec" href="/sunat/api/plantilla.xlsx">⬇ Plantilla Excel</a>
+            </div>
+            <form id="impForm" class="sun-form sun-form-imp" autocomplete="off">
+                <label>¿Qué es?
+                    <select name="libro" required>
+                        <option value="VENTAS">Ventas</option>
+                        <option value="COMPRAS">Compras</option>
+                    </select>
+                </label>
+                <label>Viene de
+                    <select name="origen">
+                        <option value="SIRE">SIRE (SUNAT)</option>
+                        <option value="EXCEL">Excel</option>
+                    </select>
+                </label>
+                <label>Archivo<input type="file" name="archivo" accept=".txt,.zip,.csv,.xlsx,.xlsm" required></label>
+                <button type="submit" class="btn btn-primary">Ver antes de subir</button>
+            </form>
+            <div id="impVista"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">Archivos subidos este mes</div></div>
+            <div id="impLista"></div>
+        </div>
+        {% if es_admin %}
+        <details class="inv-panel sun-det">
+            <summary>⚙ Régimen tributario (renta mensual)</summary>
+            <form id="cfgForm" class="sun-form" autocomplete="off">
+                <label>Régimen
+                    <select name="regimen">
+                        {% for k, v in regimenes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label>Renta mensual (%)<input type="number" name="tasa_renta" step="0.01" min="0" max="10"></label>
+                <label class="inv-check"><input type="checkbox" name="es_agente_retencion"> Es agente de retención</label>
+                <label class="sun-ancho">Notas<input type="text" name="notas" maxlength="300" placeholder="Ej.: confirmado por el contador el 21/10/2026"></label>
+                <button type="submit" class="btn btn-primary">Guardar régimen</button>
+            </form>
+        </details>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/sunat.js') }}"></script>
+{% endblock %}

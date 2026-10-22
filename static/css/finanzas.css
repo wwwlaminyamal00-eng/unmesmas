@@ -101,6 +101,27 @@ html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th
 .sem-al-dia,.sem-aldia{background:#E2E8F0!important;color:#1E293B!important;border:1px solid #CBD5E1!important;font-weight:800!important}
 .sem-terminado,.sem-pagado{background:var(--terminado)!important;color:#052E00!important;border:1px solid #1FB800!important}
 .cxp-fila-vencida td{background:#FFF1F2!important}
+/* Cuentas por cobrar / pagar con detalle (pedido de Erika 21/10 18:38) */
+#finanzasApp .fin-table{font-size:12.5px}
+#finanzasApp #sec-cxc .fin-table :is(th,td),#finanzasApp #sec-cxp .fin-table :is(th,td){padding:6px 4px}
+#finanzasApp #sec-cxc .fin-table .sem-chip,#finanzasApp #sec-cxp .fin-table .sem-chip,#finanzasApp .est-chip{font-size:10.5px;padding:3px 7px}
+#finanzasApp #sec-cxc .fin-table .btn-mini,#finanzasApp #sec-cxp .fin-table .btn-mini{padding:5px 8px}
+#finanzasApp .fin-table th small,#finanzasApp .fin-table td small{display:block;font-size:11px;font-weight:700;color:#64748B;margin-top:2px}
+#finanzasApp .fin-table th small{color:inherit;opacity:.8}
+#finanzasApp .fin-gris{color:#94A3B8}
+#finanzasApp .fin-prod{display:block;line-height:1.3}
+#finanzasApp .fin-mas summary{cursor:pointer;color:#2563EB;font-weight:800;font-size:11.5px;margin-top:2px}
+#finanzasApp .fin-mas ul{margin:4px 0 0;padding-left:16px;text-align:left}
+#finanzasApp .fin-coment{display:block;font-weight:700;color:#0F172A}
+#finanzasApp .fin-coment-celda{max-width:120px}
+#finanzasApp #sec-cxc .fin-table td small,#finanzasApp #sec-cxp .fin-table td small{white-space:normal!important}
+#finanzasApp #sec-cxc .fin-table td .sem-chip,#finanzasApp #sec-cxp .fin-table td .sem-chip,#finanzasApp #sec-cxc .est-chip,#finanzasApp #sec-cxp .est-chip{white-space:normal!important;line-height:1.2}
+#finanzasApp .fin-coment-celda .btn-mini{margin-top:3px;padding:2px 6px}
+#finanzasApp .est-chip{display:inline-block;padding:4px 9px;border-radius:999px;font-size:11.5px;font-weight:900;white-space:nowrap}
+#finanzasApp .est-pendiente{background:#FF0033;color:#fff}
+#finanzasApp .est-parcial{background:#FDE68A;color:#78350F;border:1px solid #F59E0B}
+#finanzasApp .est-terminado{background:#39FF14;color:#0F172A}
+#finanzasApp .fin-fila-ok td{background:#F0FFF0!important}
 /* Cobros y pagos */
 .fin-tipo{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:900;white-space:nowrap}
 .fin-tipo-cobro{background:var(--cobro);color:#fff}

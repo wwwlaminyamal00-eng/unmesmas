@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Conciliación bancaria - ERP Multiempresa{% endblock %}
+
+{% block page_title %}Conciliación bancaria{% endblock %}
+
+{% block subtitle %}Lo que dice el banco contra lo registrado en Finanzas.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="banApp" class="ge-app" data-admin="{{ 'true' if es_admin else 'false' }}" data-finanzas="{{ 'true' if puede_finanzas else 'false' }}">
+    <div class="ge-barra">
+        <label>Empresa
+            <select id="banEmpresa">
+                {% for e in empresas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa_activa }}>{{ e.codigo }} · RUC {{ e.ruc }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Banco
+            <select id="banBanco"><option value="">Todos</option></select>
+        </label>
+        <label>Mes
+            <input type="month" id="banMes">
+        </label>
+        <button type="button" class="btn btn-primary ge-btn-grande" id="banAbrirSubir">⬆ Subir extracto del banco</button>
+    </div>
+
+    <form id="banFormSubir" class="inv-panel ge-subir" autocomplete="off" hidden>
+        <div class="inv-head"><div class="inv-title">⬆ Subir extracto</div><small class="ge-chip">Excel o CSV, tal como lo bajas del banco</small></div>
+        <div class="ge-form">
+            <label>Banco
+                <select name="banco" required>
+                    <option value="">Elige...</option>
+                    {% for b in bancos %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+                </select>
+            </label>
+            <label>N° de cuenta <small>(opcional)</small><input type="text" name="cuenta" maxlength="60" placeholder="Ej.: 194-1234567-0-12"></label>
+            <label>Moneda
+                <select name="moneda"><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select>
+            </label>
+            <label>Archivo<input type="file" name="archivo" accept=".xlsx,.xlsm,.xls,.csv,.txt,.htm,.html" required></label>
+            <button type="submit" class="btn btn-primary">Subir y conciliar</button>
+        </div>
+    </form>
+
+    <div class="ge-kpis" id="banKpis"></div>
+
+    <details class="ge-ayuda">
+        <summary>¿Cómo funciona?</summary>
+        <ol>
+            <li>Baja el extracto de la banca por internet (Excel o CSV) y súbelo aquí. Si lo subes dos veces, no se duplica.</li>
+            <li>El sistema une solo cada movimiento con su cobro o pago de Finanzas: por <b>N° de operación y monto</b>, o por <b>monto y fecha</b> cuando hay una sola opción. ITF y comisiones se marcan solos como gasto del banco.</li>
+            <li>Lo que queda en <b class="ge-rojo">rojo</b> se revisa: plata que entró o salió sin registrar, o cobros y pagos registrados que el banco no muestra.</li>
+        </ol>
+    </details>
+
+    <div class="tabs inv-tabs" id="banTabs">
+        <button class="tab-btn active" data-tab="revisar">⚠ Por revisar</button>
+        <button class="tab-btn" data-tab="conciliados">✔ Conciliados</button>
+        <button class="tab-btn" data-tab="extracto">📄 Todo el extracto</button>
+        <button class="tab-btn" data-tab="archivos">🗂 Extractos subidos</button>
+    </div>
+
+    <section class="section active" id="ban-sec-revisar">
+        <div class="inv-panel ge-panel-rojo">
+            <div class="inv-head"><div class="inv-title">🏦 En el banco, falta en el ERP</div><small class="ge-chip">Entró o salió plata y no hay cobro o pago registrado</small></div>
+            <div id="banPendBanco"></div>
+        </div>
+        <div class="inv-panel ge-panel-rojo">
+            <div class="inv-head"><div class="inv-title">🧾 En el ERP, no está en el banco</div><small class="ge-chip">Cobros y pagos registrados que el banco no muestra</small></div>
+            <div id="banPendErp"></div>
+        </div>
+    </section>
+
+    <section class="section" id="ban-sec-conciliados">
+        <div class="inv-panel"><div id="banConciliados"></div></div>
+    </section>
+
+    <section class="section" id="ban-sec-extracto">
+        <div class="inv-panel"><div id="banTodo"></div></div>
+    </section>
+
+    <section class="section" id="ban-sec-archivos">
+        <div class="inv-panel"><div id="banArchivos"></div></div>
+    </section>
+
+    <!-- Ventana para explicar / unir / deshacer -->
+    <div class="ge-modal" id="banModal" hidden>
+        <form class="ge-modal-caja" id="banModalForm" autocomplete="off">
+            <div class="ge-modal-tit" id="banModalTit"></div>
+            <div class="ge-modal-det" id="banModalDet"></div>
+            <div class="ge-form ge-form-1" id="banModalCampos"></div>
+            <div class="ge-modal-pie">
+                <button type="button" class="btn btn-secondary" id="banModalCancelar">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="banModalOk">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/bancos.js') }}"></script>
+{% endblock %}

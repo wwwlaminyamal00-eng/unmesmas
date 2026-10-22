@@ -12,6 +12,10 @@ import sys
 import pytest
 import psycopg2
 
+# Las conexiones directas de las pruebas usan la hora de Lima, igual que el ERP (database.py hace SET TIME ZONE).
+# Sin esto, entre las 19:00 y 24:00 de Lima NOW()/CURRENT_DATE de las pruebas caían en el día siguiente.
+os.environ.setdefault('PGTZ', 'America/Lima')
+
 TEST_DB = os.environ.get('TEST_DATABASE_URL')
 if not TEST_DB:
     pytest.exit("Define TEST_DATABASE_URL con una base PostgreSQL local de pruebas (no la de producción).", 2)

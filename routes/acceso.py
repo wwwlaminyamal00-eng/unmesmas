@@ -24,7 +24,13 @@ MENU_CODIGOS = {
                 'RECEPCION_MERCADERIA'],
     'inventario': ['ESTADO_STOCK', 'KARDEX', 'ENTRADAS_SALIDAS', 'TRANSFERENCIAS'],
     'finanzas': ['CUENTAS_COBRAR', 'CUENTAS_PAGAR', 'CAJA_BANCOS', 'FLUJO_CAJA'],
-    'reportes': ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS', 'SUNAT'],
+    'reportes': ['REPORTE_VENTAS', 'REPORTE_COMPRAS', 'REPORTE_INVENTARIO', 'REPORTE_FINANZAS'],
+    # Módulo propio (pedido de Erika 21/10/2026): ver Reportes no da acceso a los impuestos
+    'sunat': ['SUNAT'],
+    'bancos': ['CONCILIACION_BANCARIA'],   # Conciliación bancaria (21/10/2026 23:30)
+    'intercompany': ['INTERCOMPANY'],       # Intercompany KCF ↔ AGD: solo gerencia y quien Erika marque
+    'planilla': ['PLANILLA'],               # Planilla y RRHH: sueldos (datos sensibles), solo quien Erika marque
+    'seguimiento': ['SEGUIMIENTO_COMERCIAL'],  # Seguimiento comercial: cotizaciones sin cerrar y tasa de cierre
 }
 
 # Rutas de cada módulo. todo=True bloquea también sus APIs; todo=False solo la pantalla
@@ -32,6 +38,11 @@ MENU_CODIGOS = {
 RUTAS_MODULO = (
     ('/finanzas', 'finanzas', True),
     ('/reportes', 'reportes', True),
+    ('/sunat', 'sunat', True),
+    ('/bancos', 'bancos', True),
+    ('/intercompany', 'intercompany', True),
+    ('/planilla', 'planilla', True),
+    ('/seguimiento', 'seguimiento', True),
     ('/ventas', 'ventas', True),
     ('/api/cotizaciones', 'ventas', True),
     ('/comprobantes', 'ventas', True),
@@ -42,7 +53,7 @@ RUTAS_MODULO = (
     ('/productos', 'productos', False),
 )
 
-NOMBRE_MODULO = {'finanzas': 'Finanzas', 'reportes': 'Reportes', 'ventas': 'Ventas', 'compras': 'Compras',
+NOMBRE_MODULO = {'finanzas': 'Finanzas', 'reportes': 'Reportes', 'sunat': 'SUNAT e impuestos', 'bancos': 'Conciliación bancaria', 'intercompany': 'Intercompany', 'planilla': 'Planilla', 'seguimiento': 'Seguimiento comercial', 'ventas': 'Ventas', 'compras': 'Compras',
                  'inventario': 'Inventario', 'maestros': 'Maestros', 'productos': 'Productos'}
 
 _cache = {}

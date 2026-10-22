@@ -1,0 +1,137 @@
+/* Módulo SUNAT e impuestos - se apoya en inventario.css (inv-panel, inv-kpi, inv-table) y tema_empresa.css.
+   Colores de Erika: verde fluorescente = terminado; rojo encendido = pendiente. */
+.sun-barra{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:10px}
+.sun-barra label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.sun-barra select,.sun-barra input{height:36px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:800;font-family:inherit;background:#fff}
+.sun-preliminar{margin-left:auto;background:#FEF3C7;color:#78350F;border:1px solid #F59E0B;border-radius:10px;padding:8px 12px;font-weight:900;font-size:12.5px}
+.sun-cargando{padding:18px;font-weight:800;color:#64748B}
+#resContenido[hidden],.sun-cargando[hidden],.sun-aviso-datos[hidden]{display:none !important}
+.sun-aviso-datos{background:#FFE4E6;border:2px solid #FF0033;color:#7F1D1D;border-radius:12px;padding:10px 14px;font-weight:800;margin-bottom:12px}
+.sun-aviso-datos .btn-link{font-weight:950;color:#B91C1C;background:none;border:0;cursor:pointer;text-decoration:underline}
+.sun-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:14px}
+.sun-grid2 .inv-panel{margin-bottom:14px}
+.sun-botones{display:flex;gap:6px;flex-wrap:wrap}
+.sun-rojo{color:#E60023}
+
+/* Tarjetas */
+.inv-kpi.sun-kpi-ok{border-left-color:#39FF14}
+.inv-kpi.inv-kpi-danger b{color:#E60023}
+
+/* Tabla de IGV */
+.sun-tabla-igv td.left,.inv-table td.left{text-align:left}
+.sun-fila-sub td{background:#F1F5F9;font-weight:900}
+.sun-fila-debe td:first-child{border-left:4px solid #F97316}
+.sun-fila-haber td:first-child{border-left:4px solid #0D9488}
+.sun-fila-pagar td{background:#FFE4E6;font-weight:950;color:#9F1239;font-size:14px}
+.sun-fila-cero td{background:#39FF14;font-weight:950;color:#052E00;font-size:14px}
+.sun-fila-favor td{background:#ECFDF5;font-weight:850;color:#065F46}
+.sun-fila-seccion td{background:#E2E8F0;font-weight:950;color:#0F172A;text-align:left}
+.sun-fila-alerta td{background:#FFF1F2}
+.sun-dif-mal{display:inline-block;background:#FF0033;color:#fff;font-weight:950;padding:2px 8px;border-radius:999px}
+.sun-dif-ok{display:inline-block;background:#39FF14;color:#052E00;font-weight:950;padding:2px 8px;border-radius:999px}
+
+/* Formularios */
+.sun-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:12px 14px;align-items:end}
+.sun-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.sun-form label small{font-weight:700;color:#64748B;font-size:11px}
+.sun-form input,.sun-form select{height:36px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:700;font-family:inherit;background:#fff}
+.sun-form input[type=checkbox]{height:auto}
+.sun-form input[type=file]{display:block !important;height:auto;padding:6px 8px}
+.sun-form .sun-ancho{grid-column:span 2}
+.sun-form-pie{grid-column:1/-1;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:6px 14px 12px}
+.sun-form-pie small{color:#64748B;font-weight:700}
+.sun-form-imp{border-bottom:1px solid var(--line,#E2E8F0)}
+.sun-form-linea{grid-template-columns:auto repeat(auto-fit,minmax(160px,1fr));background:#F8FAFC}
+.sun-subir{cursor:pointer}
+.sun-tabla-wrap{max-height:60vh;overflow:auto;padding:0 14px 12px}
+.sun-tabla-wrap thead th{position:sticky;top:0;z-index:1}
+.inv-table tfoot td{background:#FEF3C7;font-weight:950;border-top:2px solid #F59E0B}
+.sun-nota{padding:10px 14px;font-weight:800;color:#334155}
+.sun-obs{margin:6px 14px;padding:9px 12px;border-radius:10px;background:#FEF3C7;border-left:5px solid #F59E0B;font-weight:800;color:#78350F}
+.sun-vista{padding:12px 14px}
+
+/* Fuente del comprobante */
+.sun-fuente{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:950}
+.sun-fuente.erp{background:#DBEAFE;color:#1E3A8A}
+.sun-fuente.arch{background:#FEF3C7;color:#78350F}
+.sun-fuente.ambos{background:#39FF14;color:#052E00}
+
+/* Plan de acción */
+.sun-plan{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;padding:12px 14px}
+.sun-accion{border:1px solid #E2E8F0;border-left:7px solid #94A3B8;border-radius:12px;padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:6px}
+.sun-accion.rojo{border-left-color:#FF0033;background:#FFF5F6}
+.sun-accion.amarillo{border-left-color:#FFB000;background:#FFFBEB}
+.sun-accion.info{border-left-color:#0EA5E9}
+.sun-accion.verde{border-left-color:#39FF14;background:#F0FFF0}
+.sun-accion-cab{display:flex;justify-content:space-between;align-items:center}
+.sun-accion-cab small{font-weight:850;color:#64748B;text-transform:uppercase;font-size:10.5px}
+.sun-etq{font-size:11px;font-weight:950;padding:2px 8px;border-radius:999px;background:#E2E8F0}
+.sun-etq.rojo{background:#FF0033;color:#fff}
+.sun-etq.amarillo{background:#FFB000;color:#3B2500}
+.sun-etq.info{background:#E0F2FE;color:#075985}
+.sun-etq.verde{background:#39FF14;color:#052E00}
+.sun-accion-tit{font-weight:950;font-size:14.5px;color:#0F172A}
+.sun-accion-txt{font-size:12.5px;font-weight:700;color:#334155;line-height:1.45}
+.sun-accion-montos{display:flex;gap:14px;font-size:12.5px;font-weight:800;color:#334155}
+.sun-accion ul{margin:0;padding-left:18px;font-size:12px;font-weight:700;color:#475569}
+.sun-accion .btn-mini{align-self:flex-start;text-decoration:none}
+
+/* Pagos del mes */
+.sun-mes-pago{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.sun-mes-pago input{height:34px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:800}
+.sun-pago.pendiente td,.sun-pago.urgente td,.sun-pago.vencido td{background:#FFF1F2}
+.sun-pago.pagado td{background:#F0FFF0}
+.sun-pago.no_aplica td{background:#F8FAFC;color:#94A3B8}
+.sun-estado{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:950;font-size:11.5px;white-space:nowrap}
+.sun-estado.pendiente,.sun-estado.urgente{background:#FF0033;color:#fff}
+.sun-estado.vencido{background:#9F1239;color:#fff}
+.sun-estado.pagado{background:#39FF14;color:#052E00}
+.sun-estado.no_aplica{background:#E2E8F0;color:#475569}
+.sun-acciones{white-space:nowrap}
+.sun-btn{height:28px;padding:0 10px;border-radius:8px;font-weight:850;font-size:12px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;margin:1px}
+.sun-btn.verde{background:#39FF14;border-color:#1FB800;color:#052E00}
+.sun-btn.gris{background:#F1F5F9;color:#334155}
+
+.sun-det{padding:0;margin-bottom:12px}
+.sun-det>summary{cursor:pointer;list-style:none;padding:12px 16px;font-weight:900;font-size:14px;color:#0F172A}
+.sun-det>summary::-webkit-details-marker{display:none}
+.sun-det>summary::after{content:'▸';float:right;color:#64748B}
+.sun-det[open]>summary::after{content:'▾'}
+.sun-det[open]>summary{border-bottom:1px solid #E2E8F0}
+.sun-det-botones{padding:10px 14px}
+.sun-chip{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#F1F5F9;color:#475569;font-size:11px;font-weight:850;vertical-align:middle}
+.sun-leyenda{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.sun-plan{padding:0}
+.sun-accion{gap:8px}
+.sun-accion .sun-etq{align-self:flex-start}
+.sun-mini-det summary{cursor:pointer;font-size:12px;font-weight:850;color:#475569}
+.sun-mini-det[open] summary{margin-bottom:6px}
+.sun-reglas{padding:10px 14px 14px 32px !important;font-size:13px !important}
+#resKpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+#pagKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+#resPanelProy[hidden]{display:none !important}
+.sun-grid-32{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+.sun-ret{display:flex;flex-direction:column;gap:6px;margin:12px 14px 14px;padding:12px;border:2px solid #0EA5E9;border-radius:12px;background:#F0F9FF}
+.sun-ret label{font-weight:950;font-size:14px;color:#0F172A}
+.sun-ret-fila{display:flex;gap:8px}
+.sun-ret-fila input{flex:1;min-width:0;height:38px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:850;font-size:15px}
+.sun-ret-ayuda{font-size:12px;font-weight:700;color:#475569}
+.sun-traza{font-size:12px;font-weight:800;color:#334155}
+.sun-cod{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:900;width:60px}
+.sun-c-base td{background:#D9D9D9;color:#111827}
+.sun-c-igv td{background:#C00000;color:#fff}
+.sun-c-ret td{background:#BFBFBF;color:#111827}
+.sun-c-renta td{background:#8DB4E2;color:#0B1F3A}
+.sun-c-voucher td{background:#00FFFF;color:#003B3B}
+.sun-c-fuerte td{font-size:14.5px;font-weight:950}
+.sun-tabla-igv td{border-color:rgba(255,255,255,.55)}
+.sun-tabla-igv small{display:inline;color:inherit;opacity:.8}
+.sun-plan-corto{display:flex;flex-direction:column;gap:8px;padding:12px 14px}
+.sun-plan-corto .btn-mini{align-self:flex-start}
+.sun-plan-fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-radius:10px;border-left:6px solid #94A3B8;background:#F8FAFC}
+.sun-plan-fila.rojo{border-left-color:#FF0033;background:#FFF5F6}
+.sun-plan-fila.amarillo{border-left-color:#FFB000;background:#FFFBEB}
+.sun-plan-fila.info{border-left-color:#0EA5E9}
+.sun-plan-fila .num{margin-left:auto;font-weight:900}
+@media(max-width:900px){#resKpis,#pagKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.sun-grid2{grid-template-columns:1fr}.sun-form .sun-ancho{grid-column:auto}.sun-preliminar{margin-left:0}}

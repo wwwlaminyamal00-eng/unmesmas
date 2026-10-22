@@ -5,6 +5,7 @@
 #   - Cuentas por pagar (CxP): comprobantes de proveedor (tabla comprobantes_proveedor)
 # y agrega una sola tabla nueva, finanzas_pagos, para registrar cobros y pagos
 # (parciales o totales) con trazabilidad de usuario. No modifica ni borra datos existentes.
+import json
 import os
 import threading
 from datetime import date, datetime, timedelta
@@ -56,6 +57,15 @@ SQL_DDL_FINANZAS = """
     CREATE INDEX IF NOT EXISTS idx_finanzas_pagos_doc ON finanzas_pagos (documento_tabla, documento_id);
     ALTER TABLE comprobantes_proveedor ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
     ALTER TABLE finanzas_pagos ADD COLUMN IF NOT EXISTS fecha_aviso DATE;
+    -- Comentario de Finanzas por factura (pedido de Erika 21/10/2026 18:38). Migración 018.
+    CREATE TABLE IF NOT EXISTS finanzas_comentarios (
+        documento_tabla VARCHAR(40) NOT NULL,
+        documento_id INTEGER NOT NULL,
+        comentario TEXT,
+        usuario_nombre VARCHAR(150),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (documento_tabla, documento_id)
+    );
 """
 
 
@@ -105,7 +115,7 @@ def _fmt(v):
 # ============================================================
 SQL_CXC = """
     WITH cobros AS (
-        SELECT documento_id, SUM(monto) AS cobrado
+        SELECT documento_id, SUM(monto) AS cobrado, MAX(fecha) AS ultimo_abono
         FROM finanzas_pagos
         WHERE documento_tabla = 'comprobantes' AND tipo = 'COBRO' AND estado <> 'Anulado'
         GROUP BY documento_id
@@ -127,9 +137,14 @@ SQL_CXC = """
            COALESCE(NULLIF(c.monto_a_pagar, 0), c.total, 0) AS importe_cobrar,
            COALESCE(cb.cobrado, 0) AS cobrado,
            COALESCE(nc.monto_nc, 0) AS notas_credito,
-           COALESCE(c.estado_sunat, 'Borrador') AS estado_documento
+           COALESCE(c.estado_sunat, 'Borrador') AS estado_documento,
+           cb.ultimo_abono, COALESCE(NULLIF(c.moneda, ''), 'PEN') AS moneda,
+           NULLIF(c.pc_vinculado, '') AS pc_numero, NULLIF(c.orden_compra_cliente, '') AS oc_cliente,
+           NULL AS oc_numero, NULL AS tipo_compra, 0 AS adelanto, NULL AS nota_registro,
+           c.items_json::text AS items_txt, fc.comentario, fc.usuario_nombre AS comentario_por
     FROM comprobantes c
     LEFT JOIN cobros cb ON cb.documento_id = c.id
+    LEFT JOIN finanzas_comentarios fc ON fc.documento_tabla = 'comprobantes' AND fc.documento_id = c.id
     LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero::text, LPAD(c.numero::text, 8, '0'),
                                                 COALESCE(c.serie, '') || '-' || COALESCE(c.numero::text, ''),
                                                 COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0'))
@@ -138,12 +153,6 @@ SQL_CXC = """
 """
 
 SQL_CXP = """
-    WITH pagos AS (
-        SELECT documento_id, SUM(monto) AS pagado
-        FROM finanzas_pagos
-        WHERE documento_tabla = 'comprobantes_proveedor' AND tipo = 'PAGO' AND estado <> 'Anulado'
-        GROUP BY documento_id
-    )
     SELECT cp.id, cp.tipo AS tipo_comprobante, NULL AS serie, cp.numero,
            cp.numero AS documento,
            cp.proveedor_nombre AS tercero, cp.ruc_proveedor AS ruc,
@@ -159,10 +168,27 @@ SQL_CXP = """
            0 AS notas_credito,
            COALESCE(cp.estado, 'Pendiente') AS estado_documento,
            COALESCE(cp.orden_compra_numero, oc.numero_orden) AS orden_compra,
-           pr.banco, pr.numero_cuenta, pr.cci
+           pr.banco, pr.numero_cuenta, pr.cci,
+           pg.ultimo_abono, 'PEN' AS moneda,
+           COALESCE(NULLIF(oc.pc_numeros, ''),
+                    (SELECT string_agg(DISTINCT i.pedido_numero, ', ') FROM ordenes_compra_items i
+                      WHERE i.orden_compra_id = cp.orden_compra_id AND COALESCE(i.pedido_numero, '') <> '')) AS pc_numero, NULL AS oc_cliente,
+           COALESCE(cp.orden_compra_numero, oc.numero_orden) AS oc_numero, oc.tipo_compra,
+           COALESCE(pg.adelanto, 0) AS adelanto, cp.observaciones AS nota_registro,
+           (SELECT json_agg(json_build_object('producto', i.producto, 'cantidad', i.cantidad) ORDER BY i.id)::text
+              FROM ordenes_compra_items i WHERE i.orden_compra_id = cp.orden_compra_id) AS items_txt,
+           fc.comentario, fc.usuario_nombre AS comentario_por
     FROM comprobantes_proveedor cp
-    LEFT JOIN pagos pg ON pg.documento_id = cp.id
+    -- Pagos de la factura. "Adelanto" = lo pagado en Compras antes de registrar la factura (pasó de la OC a la factura)
+    LEFT JOIN LATERAL (
+        SELECT SUM(f.monto) AS pagado, MAX(f.fecha) AS ultimo_abono,
+               SUM(f.monto) FILTER (WHERE f.created_at < cp.created_at) AS adelanto
+        FROM finanzas_pagos f
+        WHERE f.documento_tabla = 'comprobantes_proveedor' AND f.documento_id = cp.id
+          AND f.tipo = 'PAGO' AND f.estado <> 'Anulado'
+    ) pg ON TRUE
     LEFT JOIN ordenes_compra oc ON oc.id = cp.orden_compra_id
+    LEFT JOIN finanzas_comentarios fc ON fc.documento_tabla = 'comprobantes_proveedor' AND fc.documento_id = cp.id
     -- Cuenta del proveedor para el recuadro "Pagar a" (por la OC; si no hay OC, por el RUC)
     LEFT JOIN LATERAL (
         SELECT p.banco, p.numero_cuenta, p.cci FROM proveedores p
@@ -172,6 +198,49 @@ SQL_CXP = """
     ) pr ON TRUE
     WHERE COALESCE(UPPER(cp.estado), '') NOT IN ('ANULADO', 'ANULADA')
 """
+
+
+def _productos(items_txt):
+    """Productos de la factura (venta) o de su OC (compra): [{'producto', 'cantidad'}]."""
+    try:
+        items = json.loads(items_txt) if items_txt else []
+    except (TypeError, ValueError):
+        return []
+    if isinstance(items, dict):
+        items = items.get('items') or []
+    salida = []
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        nombre = str(it.get('producto') or it.get('descripcion') or it.get('nombre') or '').strip()
+        if nombre:
+            cant = it.get('cantidad')
+            try:
+                cant = float(cant) if cant not in (None, '') else None
+            except (TypeError, ValueError):
+                cant = None
+            salida.append({'producto': nombre, 'cantidad': cant})
+    return salida
+
+
+def _detalle(tipo, f, saldo, abonado):
+    """Columnas de detalle pedidas por Erika el 21/10/2026 18:38: a qué compra o venta pertenece la factura,
+    estado del pago (pendiente / parcial / pagado) y fecha real de pago."""
+    es_cxc = tipo == 'cxc'
+    if saldo <= 0:
+        estado = 'Cobrado' if es_cxc else 'Pagado'
+    elif abonado > 0:
+        estado = 'Cobro parcial' if es_cxc else 'Pago parcial'
+    else:
+        estado = 'Por cobrar' if es_cxc else 'Pendiente'
+    pc = f.get('pc_numero')
+    if not es_cxc and not pc and f.get('oc_numero'):
+        pc = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PC vinculado'
+    return {'estado_pago': estado, 'pc_numero': pc,
+            'fecha_pago_real': _fmt(f.get('ultimo_abono')) if saldo <= 0 and f.get('ultimo_abono') else None,
+            'ultimo_abono': _fmt(f.get('ultimo_abono')),
+            'adelanto': float(redondear(a_decimal(f.get('adelanto') or 0))),
+            'productos': _productos(f.get('items_txt')), 'items_txt': None}
 
 
 def _cuentas(tipo, incluir_borradores=False):
@@ -194,6 +263,7 @@ def _cuentas(tipo, incluir_borradores=False):
         semaforo = _semaforo(saldo, venc, hoy)
         dias_vencido = (hoy - (venc.date() if isinstance(venc, datetime) else venc)).days if venc and semaforo == 'Vencido' else 0
         item = {k: _fmt(v) for k, v in f.items()}
+        item.update(_detalle(tipo, f, saldo, abonado))
         item.update({
             'total': float(redondear(f['total'])),
             'retencion': float(redondear(f['retencion'])),
@@ -481,12 +551,66 @@ def api_cxp_vencimiento(cp_id):
             fecha = datetime.strptime((data.get('fecha_vencimiento') or '')[:10], '%Y-%m-%d').date()
         except ValueError:
             return jsonify({'success': False, 'error': 'Fecha de vencimiento inválida'}), 400
-        r = db_query("UPDATE comprobantes_proveedor SET fecha_vencimiento = %s, updated_at = NOW() "
-                     "WHERE id = %s RETURNING id", (fecha, cp_id))
-        if not r:
+        doc = db_query("SELECT fecha FROM comprobantes_proveedor WHERE id = %s", (cp_id,))
+        if not doc:
             return jsonify({'success': False, 'error': 'Comprobante no encontrado'}), 404
+        error = error_vencimiento(doc[0]['fecha'], fecha)
+        if error:
+            return jsonify({'success': False, 'error': error}), 400
+        db_query("UPDATE comprobantes_proveedor SET fecha_vencimiento = %s, updated_at = NOW() "
+                 "WHERE id = %s RETURNING id", (fecha, cp_id))
         return jsonify({'success': True, 'message': 'Fecha de vencimiento actualizada'})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Vencimientos absurdos (ej. 25/04/2136 por "Crédito 40000 días"): no se aceptan. Los clientes llegan a 360 días.
+MAX_DIAS_CREDITO = 400
+
+
+def error_vencimiento(emision, vencimiento):
+    """Mensaje si el vencimiento no tiene sentido; None si está bien."""
+    if isinstance(emision, datetime):
+        emision = emision.date()
+    if not emision or not vencimiento:
+        return None
+    if vencimiento < emision:
+        return 'El vencimiento no puede ser antes de la fecha de emisión de la factura.'
+    if (vencimiento - emision).days > MAX_DIAS_CREDITO:
+        return (f'El vencimiento no puede ser más de {MAX_DIAS_CREDITO} días después de la emisión '
+                f'({emision.strftime("%d/%m/%Y")}). Revisa el año.')
+    return None
+
+
+@finanzas_bp.route('/finanzas/api/comentario', methods=['POST'])
+def api_comentario():
+    """Comentario de Finanzas en una factura por cobrar o por pagar (no cambia el documento)."""
+    if not puede_operar_finanzas():
+        return jsonify({'success': False, 'error': 'No tienes permisos para esta acción'}), 403
+    data = request.get_json(silent=True) or {}
+    tabla = {'cxc': 'comprobantes', 'cxp': 'comprobantes_proveedor'}.get(str(data.get('tipo') or '').lower())
+    try:
+        doc_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        doc_id = None
+    if not tabla or not doc_id:
+        return jsonify({'success': False, 'error': 'Documento inválido'}), 400
+    texto = ' '.join(str(data.get('comentario') or '').split())[:500]
+    if texto:
+        texto = texto[0].upper() + texto[1:]
+    usuario = session.get('nombre') or session.get('usuario') or ''
+    try:
+        asegurar_tablas_finanzas()
+        if not db_query(f"SELECT id FROM {tabla} WHERE id = %s", (doc_id,)):
+            return jsonify({'success': False, 'error': 'Documento no encontrado'}), 404
+        db_execute("""INSERT INTO finanzas_comentarios (documento_tabla, documento_id, comentario, usuario_nombre, updated_at)
+                      VALUES (%s, %s, %s, %s, NOW())
+                      ON CONFLICT (documento_tabla, documento_id) DO UPDATE
+                      SET comentario = EXCLUDED.comentario, usuario_nombre = EXCLUDED.usuario_nombre, updated_at = NOW()""",
+                   (tabla, doc_id, texto or None, usuario))
+        return jsonify({'success': True, 'comentario': texto, 'message': 'Comentario guardado'})
+    except Exception as e:
+        print(f"❌ Error guardando comentario de finanzas: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

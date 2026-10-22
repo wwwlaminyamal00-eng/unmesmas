@@ -6,7 +6,8 @@ exportación CSV / Excel / PDF y la protección por rol en el servidor.
 """
 import io
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -14,7 +15,8 @@ from werkzeug.security import generate_password_hash
 from tests.test_inventario import _sql
 from tests.conftest import _login
 
-HOY = date.today()
+# El ERP trabaja con la fecha de Lima (main.py fija TZ=America/Lima): las pruebas usan esa misma fecha
+HOY = datetime.now(ZoneInfo('America/Lima')).date()
 RANGO = {'desde': (HOY - timedelta(days=30)).isoformat(), 'hasta': HOY.isoformat()}
 
 
@@ -66,9 +68,9 @@ def rep(app, admin):
                            cliente_nombre, subtotal, igv, total, monto_a_pagar, items_json, estado_sunat, documento_asociado,
                            pc_vinculado, es_credito, fecha_vencimiento, creado_por)
                        VALUES ('FACTURA', 'F001', %s, NOW() - %s * INTERVAL '1 day', 'RUC', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true,
-                               CURRENT_DATE + %s, %s) RETURNING id""",
+                               %s::date + %s, %s) RETURNING id""",
                     (numero, dias_atras, ruc, cliente, sub, igv, sub + igv, sub + igv, json.dumps(items), estado, asociado, pc,
-                     venc_dias, str(usuarios['zzrep_ven3'])))[0][0]
+                     HOY, venc_dias, str(usuarios['zzrep_ven3'])))[0][0]
     f1 = comp('90000001', 'ZZREP CLIENTE UNO', '20999000001', 500, 'Emitido',
               [{'codigo': 'ZZR-001', 'producto': 'ZZREP BOTA PUNTA ACERO', 'cantidad': 10, 'valorVenta': 30},
                {'codigo': 'ZZR-002', 'producto': 'ZZREP ARNES CUERPO ENTERO', 'cantidad': 5, 'valorVenta': 40}],
@@ -94,7 +96,9 @@ def rep(app, admin):
     _sql("""INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, orden_compra_id, estado)
             VALUES ('Factura', 'E001-ZZR1', NOW() - INTERVAL '35 days', 472, '20999111111', 'ZZREP PROVEEDOR SAC', %s, 'Pendiente')""",
          (oc,), fetch=False)
-    _sql("UPDATE comprobantes_proveedor SET fecha_vencimiento = CURRENT_DATE - 5 WHERE numero = 'E001-ZZR1'", fetch=False)
+    # Fechas desde el "hoy" de Python (el mismo que usa el reporte), no CURRENT_DATE: si la base está en otra zona
+    # horaria, entre las 19:00 y 24:00 de Lima ambos "hoy" no coinciden y los días de atraso salían con uno de diferencia.
+    _sql("UPDATE comprobantes_proveedor SET fecha_vencimiento = %s::date - 5 WHERE numero = 'E001-ZZR1'", (HOY,), fetch=False)
     # Stock parado: 7 botas sin movimiento hace 200 días
     emp = _sql("SELECT id FROM erp_empresas WHERE codigo = 'KCF'")[0][0]
     sede = _sql("SELECT id FROM almacenes WHERE codigo = 'SMP'")[0][0]

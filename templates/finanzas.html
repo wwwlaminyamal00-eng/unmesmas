@@ -82,13 +82,23 @@
                 <table class="fin-table">
                     <thead>
                         <tr>
-                            <th>Semáforo</th><th>Documento (tipo y N°)</th><th class="left">{{ t[3] }}</th><th>RUC</th>
-                            <th>Emisión</th><th>Vence</th><th>Total</th>
-                            {% if t[0] == 'cxc' %}<th>Retención (S/)</th><th title="Notas de crédito emitidas a esta factura (rebajan el saldo)">Nota de crédito (S/)</th>{% endif %}
-                            <th>{{ 'Cobrado' if t[0] == 'cxc' else 'Pagado' }}</th><th>Saldo</th><th>Acción</th>
+                            <th>N°</th><th>{{ t[3] }}</th><th>RUC / DNI</th>
+                            {% if t[0] == 'cxc' %}
+                            <th>N° factura de venta</th><th>N° PC<small>N° OC del cliente</small></th>
+                            {% else %}
+                            <th>N° factura del proveedor</th><th>N° OC<small>N° PC relacionado</small></th>
+                            {% endif %}
+                            <th>Nombre producto</th><th>Vencimiento<small>días</small></th>
+                            {% if t[0] == 'cxc' %}
+                            <th title="Total de la factura. Debajo: retención y notas de crédito (rebajan el saldo)">Monto a cobrar<small>retención / N. crédito</small></th><th>Cobrado</th>
+                            {% else %}
+                            <th>Monto a pagar</th><th title="Debajo: lo pagado en Compras antes de registrar la factura">Pagado<small>adelanto</small></th>
+                            {% endif %}
+                            <th>Saldo</th><th>Estado</th><th>{{ 'Fecha real de cobro' if t[0] == 'cxc' else 'Fecha real de pago' }}</th>
+                            <th>Comentario</th><th>Acción</th>
                         </tr>
                     </thead>
-                    <tbody id="{{ t[0] }}Body"><tr><td colspan="12">Cargando...</td></tr></tbody>
+                    <tbody id="{{ t[0] }}Body"><tr><td colspan="14">Cargando...</td></tr></tbody>
                 </table>
             </div>
             <div class="fin-foot" id="{{ t[0] }}Foot"></div>

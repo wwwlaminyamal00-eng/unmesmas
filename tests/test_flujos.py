@@ -1,5 +1,6 @@
 """Pruebas de los flujos principales: seguridad, ventas, facturación, compras y finanzas."""
 import threading
+from datetime import date, timedelta
 from decimal import Decimal
 
 import psycopg2
@@ -361,7 +362,11 @@ class TestFinanzas:
     def test_cuentas_por_pagar_y_flujo(self, admin):
         cxp = admin.get('/finanzas/api/cxp').json['data']
         assert cxp and cxp[0]['saldo'] == 1003.0
-        assert admin.put(f"/finanzas/api/cxp/{cxp[0]['id']}/vencimiento", json={'fecha_vencimiento': '2030-01-31'}).status_code == 200
+        # 21/10/2026: el vencimiento debe ser razonable (no antes de la emisión ni más de 400 días después)
+        emision = date.fromisoformat(str(cxp[0]['fecha_emision'])[:10])
+        assert admin.put(f"/finanzas/api/cxp/{cxp[0]['id']}/vencimiento", json={'fecha_vencimiento': '2030-01-31'}).status_code == 400
+        assert admin.put(f"/finanzas/api/cxp/{cxp[0]['id']}/vencimiento",
+                         json={'fecha_vencimiento': (emision + timedelta(days=60)).isoformat()}).status_code == 200
         r = admin.post('/finanzas/api/movimientos', json={'tipo': 'PAGO', 'documento_id': cxp[0]['id'], 'monto': 1003})
         assert r.status_code == 200
         assert sql("SELECT estado FROM comprobantes_proveedor WHERE id = %s", (cxp[0]['id'],))[0][0] == 'Pagado'

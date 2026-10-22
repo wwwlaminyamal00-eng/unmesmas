@@ -82,6 +82,11 @@ from routes.compras import compras_bp
 from routes.compras_flujo import compras_flujo_bp
 from routes.abastecimiento import abastecimiento_bp
 from routes.stock_automatico import stock_auto_bp
+from routes.sunat import sunat_bp
+from routes.bancos import bancos_bp
+from routes.intercompany import intercompany_bp
+from routes.planilla import planilla_bp
+from routes.seguimiento import seguimiento_bp
 
 
 # ==========================================
@@ -219,6 +224,11 @@ app.register_blueprint(compras_bp)
 app.register_blueprint(compras_flujo_bp)
 app.register_blueprint(abastecimiento_bp)
 app.register_blueprint(stock_auto_bp)
+app.register_blueprint(sunat_bp)   # SUNAT e impuestos (21/10/2026): solo gerencia y permiso SUNAT
+app.register_blueprint(bancos_bp)  # Conciliación bancaria (21/10/2026): gerencia y permiso propio
+app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026): gerencia y permiso propio
+app.register_blueprint(planilla_bp)  # Planilla y RRHH (22/10/2026): gerencia y permiso propio
+app.register_blueprint(seguimiento_bp)  # Seguimiento comercial (22/10/2026): permiso propio
 # Empresa activa (KCF / AGD / Todas), filtros y colores por empresa
 from routes import multiempresa
 multiempresa.registrar(app)

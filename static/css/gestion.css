@@ -1,0 +1,115 @@
+/* Módulos de gestión (21/10/2026): Conciliación bancaria, Intercompany, Planilla y Seguimiento comercial.
+   Se apoya en inventario.css (inv-panel, inv-kpi, inv-table, tabs). Reglas de Erika: verde fluorescente = terminado,
+   rojo encendido = pendiente, tablas centradas y sin scroll horizontal, tarjetas en una sola fila y del mismo tamaño. */
+.ge-barra{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}
+.ge-barra label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.ge-barra select,.ge-barra input{height:36px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:800;font-family:inherit;background:#fff}
+.ge-btn-grande{margin-left:auto;height:38px;font-weight:900}
+.ge-chip{background:#F1F5F9;color:#475569;border-radius:999px;padding:3px 10px;font-weight:800;font-size:11.5px}
+.ge-rojo{color:#E60023}
+
+/* Tarjetas: una sola fila, mismo tamaño */
+.ge-kpis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;margin-bottom:12px}
+.ge-kpis .inv-kpi{min-height:88px;justify-content:center}
+.ge-kpis .inv-kpi b{font-size:19px}
+.inv-kpi.ge-kpi-ok{border-left-color:#39FF14}
+.inv-kpi.ge-kpi-mal{border-left-color:#FF0033;background:#FFF5F6}
+.inv-kpi.ge-kpi-mal b{color:#E60023}
+.inv-kpi.ge-kpi-gris{border-left-color:#94A3B8}
+.inv-kpi.ge-kpi-cobro{border-left-color:#0D9488}
+.inv-kpi.ge-kpi-pago{border-left-color:#7C3AED}
+@media (max-width:900px){.ge-kpis{grid-auto-flow:row;grid-template-columns:repeat(2,1fr)}}
+
+/* Explicaciones plegadas */
+.ge-ayuda{background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;font-size:12.5px;color:#334155}
+.ge-ayuda>summary{cursor:pointer;padding:9px 14px;font-weight:900;color:#0F172A;list-style:none}
+.ge-ayuda>summary::-webkit-details-marker{display:none}
+.ge-ayuda>summary::before{content:'ℹ ';color:#0EA5E9}
+.ge-ayuda[open]>summary{border-bottom:1px solid #E2E8F0}
+.ge-ayuda ol,.ge-ayuda ul{margin:8px 0 10px;padding-left:34px;line-height:1.55;font-weight:700}
+
+/* Formularios */
+.ge-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:12px 14px;align-items:end}
+.ge-form.ge-form-1{grid-template-columns:1fr}
+.ge-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:850;color:#334155}
+.ge-form label small{font-weight:700;color:#64748B;font-size:11px;display:inline}
+.ge-form input,.ge-form select,.ge-form textarea{min-height:36px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:700;font-family:inherit;background:#fff}
+.ge-form textarea{padding:8px 10px;min-height:60px}
+.ge-form input[type=file]{display:block !important;padding:6px 8px;height:auto}
+.ge-form input[type=checkbox]{min-height:auto}
+.ge-subir[hidden],.ge-modal[hidden]{display:none !important}
+
+/* Tablas: centradas, sin scroll horizontal (el texto largo baja de línea) */
+.ge-tabla{table-layout:auto;width:100%}
+.ge-tabla th{white-space:normal}
+.ge-tabla td{overflow-wrap:break-word}
+.ge-tabla td.ge-desc{max-width:240px;font-size:12px;overflow-wrap:anywhere}
+.ge-tabla td.ge-nw,.ge-tabla td small.ge-nw{white-space:nowrap}
+.ge-tabla .ge-col-ancha{min-width:260px}
+.ge-tabla .ge-entra{color:#0F766E;font-weight:900;white-space:nowrap}
+.ge-tabla .ge-sale{color:#6D28D9;font-weight:900;white-space:nowrap}
+.ge-fila-pend td{background:#FFF1F2}
+.ge-fila-ok td{background:#F0FFF0}
+.ge-panel-rojo .inv-head{border-left:6px solid #FF0033}
+.ge-todo-ok{margin:12px 14px;padding:12px 14px;border-radius:12px;background:#39FF14;color:#052E00;font-weight:950;text-align:center}
+.ge-sin{color:#B91C1C;font-weight:850}
+
+/* Estados */
+.ge-estado{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:950;font-size:11.5px;white-space:nowrap}
+.ge-estado.rojo{background:#FF0033;color:#fff}
+.ge-estado.verde{background:#39FF14;color:#052E00}
+.ge-estado.amarillo{background:#FFB000;color:#3B2500}
+.ge-estado.gris{background:#E2E8F0;color:#475569}
+.ge-tipo{display:inline-block;padding:2px 9px;border-radius:999px;font-weight:900;font-size:11.5px;color:#fff}
+.ge-tipo.cobro{background:#0D9488}
+.ge-tipo.pago{background:#7C3AED}
+
+/* Botones delgados, una línea, sin emojis */
+.ge-btn{height:28px;padding:0 10px;border-radius:8px;font-weight:850;font-size:12px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;margin:1px;white-space:nowrap}
+.ge-btn.verde{background:#39FF14;border-color:#1FB800;color:#052E00}
+.ge-btn.amarillo{background:#FFD400;border-color:#E0B000;color:#3B2500}
+.ge-btn.rojo{background:#FF0033;border-color:#C00027;color:#fff}
+
+/* Opciones sugeridas */
+.ge-op{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 6px;margin:2px 0;border:1px dashed #CBD5E1;border-radius:8px;background:#fff;font-size:11.5px;text-align:left}
+.ge-op.exacta{border:1px solid #1FB800;background:#F0FFF0}
+
+/* Ventana pequeña */
+.ge-modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:5000;padding:16px}
+.ge-modal-caja{background:#fff;border-radius:14px;width:min(520px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+.ge-modal-tit{padding:14px 16px;font-weight:950;font-size:15px;border-bottom:1px solid #E2E8F0}
+.ge-modal-det{padding:10px 16px 0;font-size:12.5px;font-weight:700;color:#334155;line-height:1.5}
+.ge-modal-pie{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px 14px}
+.ge-ficha{display:flex;flex-direction:column;gap:3px}
+
+/* Intercompany */
+.ge-aviso-rojo{background:#FFE4E6;border:2px solid #FF0033;color:#7F1D1D;border-radius:12px;padding:10px 14px;font-weight:800;margin-bottom:12px;font-size:12.5px}
+.ge-aviso-rojo ul{margin:4px 0 0;padding-left:20px}
+.ge-neto{margin:12px 14px 4px;padding:10px 14px;border-radius:12px;background:#F5F3FF;border-left:6px solid #7C3AED;font-weight:800;font-size:14px;text-align:center}
+.ge-neto span{color:#6D28D9;font-size:17px;font-weight:950}
+.ge-sugs{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px;padding:12px 14px}
+.ge-sug{border:1px solid #E2E8F0;border-left:7px solid #94A3B8;border-radius:12px;padding:10px 14px;background:#fff;font-size:12.5px}
+.ge-sug b{display:block;font-size:14px;margin-bottom:4px;color:#0F172A}
+.ge-sug p{margin:0;font-weight:700;color:#334155;line-height:1.45}
+.ge-sug.amarillo{border-left-color:#FFB000;background:#FFFBEB}
+.ge-sug.info{border-left-color:#0EA5E9}
+.ge-sug.verde{border-left-color:#39FF14;background:#F0FFF0}
+.ge-cero{color:#CBD5E1}
+.ge-fila-actual td{background:#FEF9C3}
+.ge-buscar{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:850;color:#334155}
+.ge-buscar input{height:32px;border:1px solid #CBD5E1;border-radius:9px;padding:0 10px;font-weight:700;min-width:240px}
+
+/* Planilla y RRHH */
+.ge-modal-caja.ge-modal-ancha{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
+.ge-form label.ge-check{flex-direction:row;align-items:center;gap:8px}
+.ge-benef{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px}
+.ge-sub{display:block;font-size:11px;font-weight:700;color:#64748B}
+.ge-sunat{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:#F0F9FF;border-left:6px solid #0EA5E9;font-weight:800;font-size:12.5px;color:#0F172A;text-align:center}
+.ge-sunat a{font-weight:950}
+.ge-vac-lista{margin:6px 0 0;padding-left:18px;font-size:12px;font-weight:700;color:#334155}
+.ge-form label[hidden]{display:none !important}
+.ge-fila-cesado td{color:#94A3B8}
+
+/* Seguimiento comercial */
+.ge-tabla td.ge-ultima{min-width:190px;max-width:280px;font-size:12px;text-align:left}
+.ge-tabla a.ge-nw,.ge-tabla span.ge-nw{white-space:nowrap}
