@@ -76,6 +76,7 @@
                             <th>Monto a pagar</th><th title="Debajo: lo pagado en Compras antes de registrar la factura">Pagado<small>adelanto</small></th>
                             {% endif %}
                             <th>Saldo</th><th>Estado</th><th>{{ 'Fecha real de cobro' if t[0] == 'cxc' else 'Fecha real de pago' }}</th>
+                            {% if t[0] == 'cxc' %}<th title="¿Se ingresó en el portal del cliente? Fecha programada de pago y comprobante de retención del 3%">Portal y pago<small>retención 3%</small></th>{% endif %}
                             <th>Comentario</th><th>Acción</th>
                         </tr>
                     </thead>

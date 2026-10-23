@@ -12,6 +12,10 @@
             <!-- Ningún guardado falla en silencio: errores claros, "Guardando..." y registro de fallos (22/10/2026) -->
             <script src="/static/js/errores_guardado.js?v=20261022"></script>
             <script src="/static/js/lista_bancos.js?v=20261022"></script>
+            <!-- Monitor de errores en la consola de Chrome (F12), en rojo y con el detalle (22/10/2026) -->
+            <script src="/static/js/monitor_consola.js?v=20261022"></script>
+            <!-- Columna "Ítem" en todas las tablas y ayudas cortas con "ⓘ Ver más" (Erika, 22/10/2026 18:13) -->
+            <script src="/static/js/orden_pantallas.js?v=20261022"></script>
             <!-- Letra distinta por empresa (KCF: Montserrat, AGD: Roboto Slab) para no confundirse de empresa -->
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Roboto+Slab:wght@400;600;700;800&display=swap">
@@ -439,6 +443,22 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
                 </div>
 
+                <!-- CAJA CHICA (22/10/2026): fondo fijo, rendición semanal y arqueo; gerencia y permiso propio -->
+                <div class="menu-group" data-modulo="caja_chica">
+                    <div class="menu-header-wrapper">
+                        <a href="/caja-chica" class="menu-header" style="text-decoration:none;flex:1;">
+                            <div class="menu-left"><span>7.4 ─ Caja chica</span></div>
+                        </a>
+                        <span class="caret-toggle">›</span>
+                    </div>
+                    <div class="menu-children">
+                        <a href="/caja-chica?tab=gastos" class="child-btn" style="text-decoration:none;">🧾 Gastos</a>
+                        <a href="/caja-chica?tab=rendicion" class="child-btn" style="text-decoration:none;">📤 Rendición y reposición</a>
+                        <a href="/caja-chica?tab=arqueo" class="child-btn" style="text-decoration:none;">🔢 Arqueo</a>
+                        <a href="/caja-chica?tab=personas" class="child-btn" style="text-decoration:none;">👥 Personas y datos</a>
+                    </div>
+                </div>
+
                 <!-- REPORTES -->
                 <div class="menu-group" data-modulo="reportes">
                     <div class="menu-header-wrapper">
@@ -653,6 +673,10 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 <a href="/ventas" class="crumb-btn" style="text-decoration:none;">Ventas</a>
                 <span>/</span>
                 <span class="crumb-btn active-crumb">Seguimiento comercial</span>
+            {% elif '/caja-chica' in request.path %}
+                <a href="/finanzas" class="crumb-btn" style="text-decoration:none;">Finanzas</a>
+                <span>/</span>
+                <span class="crumb-btn active-crumb">Caja chica</span>
             {% elif '/planilla' in request.path %}
                 <a href="/finanzas" class="crumb-btn" style="text-decoration:none;">Finanzas</a>
                 <span>/</span>
@@ -1197,7 +1221,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
         // Finanzas, Reportes, Herramientas y Papelera: el menú lateral se despliega y marca la pestaña abierta,
         // igual que Compras (pedido de Erika 21/10/2026 17:12). Se mantiene al recargar porque la pestaña va en la URL.
         const MENU_MODULO_PARAM = {
-            '/finanzas': ['finanzas', 'tab', 'cxc'], '/reportes': ['reportes', 'tab', 'tablero'], '/sunat': ['sunat', 'tab', 'resumen'], '/bancos': ['bancos', 'tab', 'revisar'], '/intercompany': ['intercompany', 'tab', 'resumen'], '/planilla': ['planilla', 'tab', 'pagos'], '/seguimiento': ['seguimiento', 'tab', 'llamar'],
+            '/finanzas': ['finanzas', 'tab', 'cxc'], '/reportes': ['reportes', 'tab', 'tablero'], '/sunat': ['sunat', 'tab', 'resumen'], '/bancos': ['bancos', 'tab', 'revisar'], '/intercompany': ['intercompany', 'tab', 'resumen'], '/planilla': ['planilla', 'tab', 'pagos'], '/caja-chica': ['caja_chica', 'tab', 'gastos'], '/seguimiento': ['seguimiento', 'tab', 'llamar'],
             '/herramientas': ['herramientas', 'sec', 'importar'], '/papelera': ['papelera', 'tab', 'papelera']
         };
         function abrirMenuModulo() {
@@ -1938,7 +1962,8 @@ async function cargarSubmodulos() {
         { id: 36, codigo: 'CONCILIACION_BANCARIA', nombre: 'Bancos' },
         { id: 37, codigo: 'INTERCOMPANY', nombre: 'Intercompany' },
         { id: 38, codigo: 'PLANILLA', nombre: 'Planilla' },
-        { id: 39, codigo: 'SEGUIMIENTO_COMERCIAL', nombre: 'Seguimiento' }
+        { id: 39, codigo: 'SEGUIMIENTO_COMERCIAL', nombre: 'Seguimiento' },
+        { id: 40, codigo: 'CAJA_CHICA', nombre: 'Caja chica' }
     ];
     
     console.log('✅ Submódulos cargados:', submodulosData.length);
@@ -2254,6 +2279,7 @@ const PERM_COLUMNAS = [
     { col: 'Bancos', codigos: ['CONCILIACION_BANCARIA'] },
     { col: 'Intercompany', codigos: ['INTERCOMPANY'] },
     { col: 'Planilla', codigos: ['PLANILLA'] },
+    { col: 'Caja chica', codigos: ['CAJA_CHICA'] },
     { col: 'Seguimiento', codigos: ['SEGUIMIENTO_COMERCIAL'] }
 ];
 const PERM_SEIS = [
@@ -3759,6 +3785,7 @@ document.addEventListener('DOMContentLoaded', function() {
             bancos: ['CONCILIACION_BANCARIA'],
             intercompany: ['INTERCOMPANY'],
             planilla: ['PLANILLA'],
+            caja_chica: ['CAJA_CHICA'],
             seguimiento: ['SEGUIMIENTO_COMERCIAL']
         };
         // Grupos que se ven aunque el usuario no tenga permisos configurados (como antes)

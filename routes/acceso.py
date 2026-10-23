@@ -30,6 +30,7 @@ MENU_CODIGOS = {
     'bancos': ['CONCILIACION_BANCARIA'],   # Conciliación bancaria (21/10/2026 23:30)
     'intercompany': ['INTERCOMPANY'],       # Intercompany KCF ↔ AGD: solo gerencia y quien Erika marque
     'planilla': ['PLANILLA'],               # Planilla y RRHH: sueldos (datos sensibles), solo quien Erika marque
+    'caja_chica': ['CAJA_CHICA'],           # Caja chica (22/10/2026): Hellen registra y rinde; aprueba la gerencia
     'seguimiento': ['SEGUIMIENTO_COMERCIAL'],  # Seguimiento comercial: cotizaciones sin cerrar y tasa de cierre
 }
 
@@ -42,6 +43,7 @@ RUTAS_MODULO = (
     ('/bancos', 'bancos', True),
     ('/intercompany', 'intercompany', True),
     ('/planilla', 'planilla', True),
+    ('/caja-chica', 'caja_chica', True),
     ('/seguimiento', 'seguimiento', True),
     ('/ventas', 'ventas', True),
     ('/api/cotizaciones', 'ventas', True),
@@ -53,7 +55,7 @@ RUTAS_MODULO = (
     ('/productos', 'productos', False),
 )
 
-NOMBRE_MODULO = {'finanzas': 'Finanzas', 'reportes': 'Reportes', 'sunat': 'SUNAT e impuestos', 'bancos': 'Conciliación bancaria', 'intercompany': 'Intercompany', 'planilla': 'Planilla', 'seguimiento': 'Seguimiento comercial', 'ventas': 'Ventas', 'compras': 'Compras',
+NOMBRE_MODULO = {'finanzas': 'Finanzas', 'reportes': 'Reportes', 'sunat': 'SUNAT e impuestos', 'bancos': 'Conciliación bancaria', 'intercompany': 'Intercompany', 'planilla': 'Planilla', 'caja_chica': 'Caja chica', 'seguimiento': 'Seguimiento comercial', 'ventas': 'Ventas', 'compras': 'Compras',
                  'inventario': 'Inventario', 'maestros': 'Maestros', 'productos': 'Productos'}
 
 _cache = {}

@@ -37,11 +37,11 @@
     }
 
     async function cargar() {
-        $('#icKpis').innerHTML = '<div class="inv-vacio">Calculando...</div>';
+        $('#icConsol').innerHTML = '<div class="inv-vacio">Calculando...</div>';
         try {
             datos = await api('/intercompany/api/resumen?periodo=' + encodeURIComponent($('#icMes').value || ''));
         } catch (e) {
-            $('#icKpis').innerHTML = `<div class="inv-vacio">⚠ ${esc(e.message)}</div>`;
+            $('#icConsol').innerHTML = `<div class="inv-vacio">⚠ ${esc(e.message)}</div>`;
             return;
         }
         if (!$('#icMes').value) $('#icMes').value = datos.periodo;
@@ -49,28 +49,56 @@
         if (!stock) cargarStock();
     }
 
+    // Pasos en el orden del negocio: quién lo hace y cómo se dice cuando falta
+    const PASOS = [
+        ['despachado', 'vende', 'Despachado', 'por despachar'],
+        ['recibido', 'compra', 'Recibido', 'por recibir'],
+        ['facturado', 'vende', 'Facturado', 'por facturar'],
+        ['registrado', 'compra', 'Registrado', 'por registrar en compras'],
+        ['pago', 'compra', 'Pagado', 'por pagar'],
+    ];
+    const CAMPO_CUENTA = { despachado: 'por_despachar', recibido: 'por_recibir', facturado: 'por_facturar', registrado: 'por_registrar', pago: 'por_pagar' };
+    const activa = () => ((window.EMPRESA_ACTIVA || {}).corto || '').toUpperCase();
+
     function pintar() {
         const d = datos;
-        // Un solo aviso pequeño si falta preparar algo (antes era un cartel rojo grande)
-        $('#icAvisos').innerHTML = d.avisos.length
-            ? `<div class="ic-aviso" title="${esc(d.avisos.join('\n'))}">⚠ Para que todo cuadre: ${esc(d.avisos[0])}${d.avisos.length > 1 ? ` (y ${d.avisos.length - 1} más)` : ''}</div>` : '';
-        // Fila de estado delgada, contada desde la tabla de operaciones (una fila por OC entre empresas)
-        const ops = d.operaciones || [];
-        const abiertas = ops.filter(o => !o.completa).length;
-        const porPagar = ops.reduce((s, o) => s + num(o.saldo), 0);
-        const sinMercaderia = ops.filter(o => o.recibida < o.pedida || !o.despachos).length;
-        const sinFactura = ops.filter(o => !o.factura_venta || !o.factura_compra).length;
+        $('#icAvisos').innerHTML = d.avisos.length ? `<div class="ic-aviso">⚠ ${d.avisos.map(esc).join('<br>⚠ ')}</div>` : '';
+        const yo = activa();
+        // Primero el sentido en que vende la empresa activa (lo que me deben), luego en el que compra (lo que debo)
+        const cons = (d.consolidado || []).slice().sort((a, b) => (b.vende === yo) - (a.vende === yo));
+        const sel = $('#icSentido');
+        if (sel.options.length === 1) cons.forEach(c => sel.insertAdjacentHTML('beforeend', `<option value="${esc(c.vende)}>${esc(c.compra)}">${esc(c.vende)} vende a ${esc(c.compra)}</option>`));
+        // Una sola cifra final: quién le debe a quién por las OC sin pagar
+        const [a, b] = cons.length >= 2 ? [cons[0], cons[1]] : [null, null];
+        if (a) {
+            const neto = num(a.falta_pagar) - num(b.falta_pagar);
+            $('#icNeto').innerHTML = neto === 0
+                ? `<span class="ge-estado verde">✔ ${esc(a.vende)} y ${esc(a.compra)} no se deben nada por las OC</span>`
+                : `Al final, <b>${esc(neto > 0 ? a.compra : a.vende)}</b> le debe a <b>${esc(neto > 0 ? a.vende : a.compra)}</b>
+                   <span class="ge-estado rojo">${soles(Math.abs(neto))}</span>
+                   <small>(${esc(a.compra)} debe ${soles(a.falta_pagar)} · ${esc(b.compra)} debe ${soles(b.falta_pagar)})</small>`;
+        } else $('#icNeto').innerHTML = '';
+        $('#icConsol').innerHTML = cons.map(c => {
+            const para = c.vende === yo ? `Para ${esc(yo)}: lo que te deben` : (c.compra === yo ? `Para ${esc(yo)}: lo que debes` : '');
+            const chips = PASOS.map(p => {
+                const n = c[CAMPO_CUENTA[p[0]]];
+                if (!n) return '';
+                const extra = p[0] === 'facturado' ? ` · ${soles(c.monto_por_facturar)}` : (p[0] === 'pago' ? ` · ${soles(c.falta_pagar)}` : '');
+                return `<button type="button" class="ic-chip mal" data-sentido="${esc(c.vende)}>${esc(c.compra)}" data-paso="${p[0]}">
+                    <span>⏳ <b>${n}</b> ${p[3]}${extra}</span><small>lo hace ${esc(p[1] === 'vende' ? c.vende : c.compra)}</small></button>`;
+            }).join('');
+            return `<div class="ic-card${c.abiertas ? '' : ' ok'}">
+                <div class="ic-card-tit"><b>${esc(c.vende)} le vende a ${esc(c.compra)}</b><small>${para}</small></div>
+                <div class="ic-cifras"><span>OC <b>${c.ocs}</b></span><span>Total <b>${soles(c.total)}</b></span>
+                    <span>Pagado <b class="ic-ok">${soles(c.pagado)}</b></span>
+                    <span>Falta pagar <b class="${num(c.falta_pagar) > 0 ? 'ic-mal' : 'ic-ok'}">${soles(c.falta_pagar)}</b></span></div>
+                <div class="ic-chips">${c.ocs ? (chips || '<span class="ic-chip ok">✔ Todo al día</span>') : '<span class="ic-chip gris">Sin operaciones</span>'}</div>
+                ${c.facturas_por_cobrar ? `<div class="ic-pie">🧾 ${esc(c.vende)} aún tiene <b>${c.facturas_por_cobrar}</b> factura(s) por cobrar en Finanzas · ${soles(c.saldo_facturas)}${c.facturas_vencidas ? ` · <span class="ic-mal">${c.facturas_vencidas} vencida(s)</span>` : ''}
+                    <small>Si ${esc(c.compra)} ya pagó, registra el cobro en Finanzas de ${esc(c.vende)}.</small></div>` : ''}
+            </div>`;
+        }).join('');
         const neto = d.deudas.netos[0];
-        const pill = (texto, valor, mal, filtro) => `<${filtro ? 'button type="button" data-filtro="pend"' : 'span'} class="res-item ${mal ? 'res-mal' : 'res-ok'}">${texto} <b>${valor}</b></${filtro ? 'button' : 'span'}>`;
-        $('#icKpis').innerHTML = [
-            pill('Operaciones abiertas', `${abiertas} de ${ops.length}`, abiertas, true),
-            pill('Falta pagar', soles(porPagar), porPagar > 0, true),
-            pill('Falta recibir o despachar', sinMercaderia, sinMercaderia, true),
-            pill('Falta facturar o registrar', sinFactura, sinFactura, true),
-            pill(neto ? `${esc(neto.deudor)} le debe a ${esc(neto.acreedor)}` : 'Se deben', neto ? soles(neto.saldo) : 'S/ 0.00', false, false),
-            `<span class="res-item">Stock del grupo <b>${stock ? soles(stock.valor_grupo) : '...'}</b></span>`,
-        ].join('');
-        $('#icDeudasResumen').textContent = neto ? `· ${neto.deudor} le debe a ${neto.acreedor} ${soles(neto.saldo)}` : '· no se deben nada';
+        $('#icDeudasResumen').textContent = neto ? `· ${neto.deudor} le debe a ${neto.acreedor} ${soles(neto.saldo)}` : '· ninguna pendiente';
         pintarOperaciones();
         pintarVentas();
         pintarDeudas();
@@ -80,34 +108,50 @@
 
     function pintarOperaciones() {
         const filtro = $('#icFiltroOps').value;
+        const sentido = $('#icSentido').value;
         const q = $('#icBuscarOps').value.trim().toUpperCase();
         const todas = datos.operaciones || [];
-        const ops = todas.filter(o => (filtro === 'todas' || (filtro === 'pend' ? !o.completa : o.completa))
-            && (!q || [o.oc, o.pc, o.cotizacion, o.cliente, o.pc_vende, o.despachos, o.factura_venta, o.factura_compra, o.vende, o.compra]
-                .join(' ').toUpperCase().includes(q)));
         if (!todas.length) {
             $('#icOperaciones').innerHTML = `<div class="inv-vacio">Todavía no hay órdenes de compra hechas a la otra empresa del grupo.
                 Para crear una: Compras ▸ Nueva OC y elige como proveedor a la otra empresa (por su RUC).</div>`;
             return;
         }
-        if (!ops.length) { $('#icOperaciones').innerHTML = '<div class="inv-vacio">Ninguna operación coincide con el filtro.</div>'; return; }
-        const ok = (c, si, no, titulo) => `<span class="ic-linea ${c ? 'ic-ok' : 'ic-mal'}"${titulo ? ` title="${esc(titulo)}"` : ''}>${c ? '✔ ' + si : '⏳ ' + no}</span>`;
-        $('#icOperaciones').innerHTML = `<table class="inv-table ge-tabla ic-ops"><thead><tr><th>N° OC</th><th>Vende → Compra</th>
-            <th>Para qué</th><th>Monto</th><th>Pago</th><th>Mercadería</th><th>Facturas</th><th>Siguiente paso</th></tr></thead><tbody>
-            ${ops.map(o => `<tr class="${o.completa ? 'ge-fila-ok' : 'ge-fila-pend'}">
-                <td><b class="ge-nw">${esc(o.oc)}</b><small>${fecha(o.fecha)}</small></td>
-                <td><b class="ge-nw">${esc(o.vende)} → ${esc(o.compra)}</b></td>
-                <td>${o.para_stock ? 'Stock' : `<span class="ic-linea" title="${esc([o.cotizacion && 'N° cotización: ' + o.cotizacion, o.cliente && 'Cliente: ' + o.cliente].filter(Boolean).join('\n'))}"><b>${esc(o.pc)}</b></span><small>${esc(o.cliente || '')}</small>`}</td>
-                <td><b class="ge-nw">${soles(o.total)}</b><small>${esc(o.condicion || '-')}</small></td>
-                <td>${num(o.saldo) > 0 ? `<span class="ge-estado rojo">Falta ${soles(o.saldo)}</span>` : '<span class="ge-estado verde">✔ Pagado</span>'}</td>
-                <td>${ok(o.recibida >= o.pedida, 'Recibida', `Por recibir (${cant(o.recibida)} de ${cant(o.pedida)})`, `Recibido en ${o.compra}: ${cant(o.recibida)} de ${cant(o.pedida)}`)}
-                    ${ok(!!o.despachos, 'Despachada', 'Sin despacho', o.despachos ? `Despacho de ${o.vende}: ${o.despachos}` : (o.pc_vende ? `PC de ${o.vende}: ${o.pc_vende}` : `${o.vende} aún no tiene PC con esta OC`))}</td>
-                <td>${ok(!!o.factura_venta, o.factura_venta, 'Sin factura', `Factura de venta de ${o.vende}`)}
-                    ${ok(!!o.factura_compra, 'En compras', 'Sin registrar', `Registrada en compras de ${o.compra}`)}</td>
-                <td>${o.completa ? '<span class="ge-estado verde">✔ Completa</span>'
-                    : `<span class="ic-linea ic-mal">${esc(o.falta[0])}</span>${o.falta.length > 1
-                        ? `<span class="ic-mas" title="${esc(o.falta.slice(1).join('\n'))}">y ${o.falta.length - 1} paso(s) más</span>` : ''}`}</td></tr>`).join('')}
-            </tbody></table>`;
+        const pasa = o => (filtro === 'todas' || (filtro === 'pend' ? !o.completa : filtro === 'ok' ? o.completa : !o.estados[filtro]))
+            && (!sentido || `${o.vende}>${o.compra}` === sentido)
+            && (!q || [o.oc, o.pc, o.cotizacion, o.cliente, o.pc_vende, o.despachos, o.factura_venta, o.factura_compra]
+                .join(' ').toUpperCase().includes(q));
+        const yo = activa();
+        const sentidos = (datos.consolidado || []).slice().sort((a, b) => (b.vende === yo) - (a.vende === yo));
+        const celda = (o, p) => {
+            const ok = o.estados[p[0]];
+            const quien = p[1] === 'vende' ? o.vende : o.compra;
+            const det = {
+                despachado: ok ? o.despachos : (o.pc_vende ? `PC ${o.pc_vende}` : 'sin PC con esta OC'),
+                recibido: `${cant(o.recibida)} de ${cant(o.pedida)}`,
+                facturado: ok ? o.factura_venta : '',
+                registrado: ok ? o.factura_compra : '',
+                pago: ok ? '' : `falta ${soles(o.saldo)}`,
+            }[p[0]];
+            return `<td title="${esc(`${p[2]} (lo hace ${quien})`)}"><span class="ic-linea ${ok ? 'ic-ok' : 'ic-mal'}">${ok ? '✔' : '⏳'}</span>${det ? `<small>${esc(det)}</small>` : ''}</td>`;
+        };
+        let html = '';
+        sentidos.forEach(c => {
+            const ops = todas.filter(o => o.vende === c.vende && o.compra === c.compra && pasa(o));
+            if (sentido && sentido !== `${c.vende}>${c.compra}`) return;
+            html += `<div class="ic-sentido-tit">${esc(c.vende)} → ${esc(c.compra)} <small>${esc(c.vende)} vende · ${esc(c.compra)} compra · ${ops.length} OC</small></div>`;
+            if (!ops.length) { html += `<div class="inv-vacio">${c.ocs ? 'Ninguna operación de este sentido con el filtro elegido.' : 'Sin operaciones en este sentido.'}</div>`; return; }
+            html += `<table class="inv-table ge-tabla ic-ops"><thead><tr><th>N° OC</th><th>Para qué</th><th>Monto</th>
+                ${PASOS.map(p => `<th>${p[2]}<small>${esc(p[1] === 'vende' ? c.vende : c.compra)}</small></th>`).join('')}<th>Siguiente paso</th></tr></thead><tbody>
+                ${ops.map(o => `<tr class="${o.completa ? 'ge-fila-ok' : 'ge-fila-pend'}">
+                    <td><b class="ge-nw">${esc(o.oc)}</b><small>${fecha(o.fecha)}</small></td>
+                    <td>${o.para_stock ? 'Stock' : `<b>${esc(o.pc)}</b><small>${esc(o.cliente || '')}</small>`}</td>
+                    <td><b class="ge-nw">${soles(o.total)}</b><small>${esc(o.condicion || '-')}</small></td>
+                    ${PASOS.map(p => celda(o, p)).join('')}
+                    <td>${o.completa ? '<span class="ge-estado verde">✔ Completa</span>'
+                        : `<span class="ic-quien">${esc(o.siguiente.quien)}</span><span class="ic-linea ic-mal"${o.falta.length > 1 ? ` title="${esc('Después:\n' + o.falta.slice(1).join('\n'))}"` : ''}>${esc(o.siguiente.texto)}</span>`}</td></tr>`).join('')}
+                </tbody></table>`;
+        });
+        $('#icOperaciones').innerHTML = html;
     }
 
     function pintarVentas() {
@@ -192,9 +236,13 @@
         $('#icMes').addEventListener('change', cargar);
         $('#icFiltroOps').addEventListener('change', () => datos && pintarOperaciones());
         $('#icBuscarOps').addEventListener('input', () => datos && pintarOperaciones());
-        $('#icKpis').addEventListener('click', e => {
-            if (!e.target.closest('[data-filtro]') || !datos) return;
-            $('#icFiltroOps').value = 'pend';
+        $('#icSentido').addEventListener('change', () => datos && pintarOperaciones());
+        // Clic en un pendiente del resumen: filtra la tabla por ese sentido y ese paso
+        $('#icConsol').addEventListener('click', e => {
+            const b = e.target.closest('[data-paso]');
+            if (!b || !datos) return;
+            $('#icSentido').value = b.dataset.sentido;
+            $('#icFiltroOps').value = b.dataset.paso;
             pintarOperaciones();
             $('#icOperaciones').scrollIntoView({ behavior: 'smooth', block: 'start' });
         });

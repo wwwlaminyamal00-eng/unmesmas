@@ -38,7 +38,7 @@ def _ahora():
     return datetime.now(ZoneInfo('America/Lima')).replace(tzinfo=None)
 
 CERO = Decimal('0')
-RMV_POR_DEFECTO = Decimal('1130')          # Remuneración mínima vital (D.S. 006-2024-TR). Se cambia en Configuración.
+RMV_POR_DEFECTO = Decimal('1230')          # Remuneración mínima vital desde el 01/10/2026 (D.S. 015-2026-TR). Se cambia en Configuración.
 UIT_2026 = Decimal('5500')
 TIPOS = ('Planilla', 'Practicante', 'Recibo por honorarios')
 PENSIONES = ('ONP', 'AFP', 'Ninguno')
@@ -92,7 +92,7 @@ SQL_DDL_PLANILLA = """
     CREATE TABLE IF NOT EXISTS rrhh_config (
         empresa_id VARCHAR(64) PRIMARY KEY,
         regimen_laboral VARCHAR(10) NOT NULL DEFAULT 'GENERAL' CHECK (regimen_laboral IN ('GENERAL', 'PEQUENA', 'MICRO')),
-        rmv NUMERIC(10,2) NOT NULL DEFAULT 1130,
+        rmv NUMERIC(10,2) NOT NULL DEFAULT 1230,
         actualizado_por VARCHAR(150),
         actualizado_en TIMESTAMP DEFAULT NOW()
     );

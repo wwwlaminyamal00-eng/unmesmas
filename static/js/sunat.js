@@ -128,29 +128,46 @@
             kpi('Total SUNAT', soles(actual ? totalProy : d.total_sunat), d.vencimiento ? 'Vence ' + fecha(d.vencimiento) : '', 'inv-kpi-warn')
         ].join('');
 
-        // Mismo orden y colores que el cuadro del contador (casillas del PDT 621)
+        // Estado de cuenta del IGV: de arriba hacia abajo, cada línea suma o resta (orden del PDT 621)
         const m = d.manual_calculo, vo = d.voucher || {};
-        const c = (cod, txt, a, b, clase) => `<tr class="${clase}"><td class="sun-cod">${cod}</td><td class="left">${txt}</td><td class="num">${a === null ? '' : soles(a)}</td>${actual ? `<td class="num">${b === null ? '' : soles(b)}</td>` : ''}</tr>`;
-        const pagado = k => vo[k] && vo[k].estado === 'Pagado';
-        const vouch = (k, estimado) => pagado(k) ? soles(vo[k].monto) + (vo[k].fecha_pago ? ` <small>${fecha(vo[k].fecha_pago)}</small>` : '')
-            : (vo[k] && vo[k].estado === 'No aplica') || (k === 'IGV' && estimado <= 0) ? '<span class="sun-estado no_aplica">No aplica</span>'
-            : `<span class="sun-estado pendiente">Falta pagar${d.vencimiento ? ' · vence ' + fecha(d.vencimiento) : ''}</span>`;
-        const cols = actual ? 4 : 3;
-        $('#resTablaIgv').innerHTML = `<thead><tr><th>Código</th><th>Detalle</th><th>Hoy</th>${actual ? '<th>Al 31 (proyección)</th>' : ''}</tr></thead><tbody>
-            ${c('', '<b>Ventas (base imponible)</b>', sv.base, pr.ventasBase, 'sun-c-base')}
-            ${c('101', 'IGV ventas', sv.igv, pr.deb, 'sun-c-base')}
-            ${c('', '<b>Compras (base imponible)</b>', sc.base, pr.comprasBase, 'sun-c-base')}
-            ${c('108', 'IGV compras', sc.igv, pr.cred, 'sun-c-base')}
-            ${c('140', 'Impuesto resultante (IGV ventas − IGV compras)', liq.resultante, pr.deb - pr.cred, 'sun-c-igv')}
-            ${c('145', 'Saldo a favor del periodo anterior', liq.saldo_favor_anterior, liq.saldo_favor_anterior, 'sun-c-igv')}
-            ${c('184', '<b>Tributo a pagar o saldo a favor · IGV del mes</b>', liq.tributo, pr.liq.tributo, 'sun-c-igv sun-c-fuerte')}
-            ${c('10', 'Retenciones declaradas en el periodo', m.retenciones_mes, m.retenciones_mes, 'sun-c-ret')}
-            ${c('5', 'Saldo de retenciones de periodos anteriores', m.saldo_retenciones_anterior, m.saldo_retenciones_anterior, 'sun-c-ret')}
-            ${c('20', '<b>Saldo de retenciones no aplicadas</b>', liq.saldo_retenciones_siguiente, pr.liq.saldoRet, 'sun-c-ret sun-c-fuerte')}
-            ${c('', '<b>IGV a pagar (después de retenciones)</b>', liq.igv_pagar, pr.liq.pagar, liq.igv_pagar > 0 || pr.liq.pagar > 0 ? 'sun-fila-pagar' : 'sun-fila-cero')}
-            ${c('', 'Renta a pagar (proyectado)', d.renta.monto, pr.renta, 'sun-c-renta')}
-            <tr class="sun-c-renta"><td class="sun-cod"></td><td class="left"><b>Pago real renta (voucher de pago)</b></td><td colspan="${cols - 2}">${vouch('RENTA_3RA', 1)}</td></tr>
-            <tr class="sun-c-voucher"><td class="sun-cod"></td><td class="left"><b>Tributo a pagar · IGV (voucher de pago)</b></td><td colspan="${cols - 2}">${vouch('IGV', actual ? pr.liq.pagar : liq.igv_pagar)}</td></tr>
+        const neg = v => num(v) < 0 ? `−${soles(-num(v))}` : soles(v);
+        const sec = (txt) => `<tr class="sun-e-sec"><td colspan="${actual ? 3 : 2}" style="text-align:left">${txt}</td></tr>`;
+        const ln = (txt, a, b, o) => {
+            o = o || {};
+            const nota = o.nota ? `<span class="sun-e-nota">${o.nota}</span>` : '';
+            const vac = o.vacio ? ' sun-e-vacio' : '';
+            return `<tr class="${o.clase || 'sun-e-linea'}${vac}"><td class="sun-e-txt">${txt}${nota}</td><td class="sun-e-num">${a === null ? '' : neg(a)}</td>${actual ? `<td class="sun-e-num">${b === null ? '' : neg(b)}</td>` : ''}</tr>`;
+        };
+        // Ventas: facturas y boletas, menos notas de crédito, más notas de débito
+        const vFact = num(sv.igv) - num(sv.nc_igv) - num(sv.nd_igv), vFact31 = pr.deb - num(sv.nc_igv) - num(sv.nd_igv);
+        const cFact = num(sc.igv) - num(sc.nc_igv) - num(sc.nd_igv), cFact31 = pr.cred - num(sc.nc_igv) - num(sc.nd_igv);
+        const baseV = `Base imponible: ${soles(sv.base)}${actual ? ` hoy · ${soles(pr.ventasBase)} al 31` : ''}`;
+        const baseC = `Base imponible: ${soles(sc.base)}${actual ? ` hoy · ${soles(pr.comprasBase)} al 31` : ''}`;
+        const sf = num(liq.saldo_favor_anterior);
+        const percU = num(liq.percepciones_usadas), percU31 = Math.min(pr.liq.perc, Math.max(pr.liq.tributo, 0));
+        const retDisp = num(m.retenciones_mes) + num(m.saldo_retenciones_anterior);
+        const pagar = num(liq.igv_pagar), pagar31 = pr.liq.pagar;
+        const clavePagar = (actual ? pagar31 : pagar) > 0 ? 'sun-e-clave' : 'sun-e-clave cero';
+        $('#resTablaIgv').innerHTML = `<thead><tr><th class="sun-e-txt">Concepto</th><th class="sun-e-num">Hoy ${fecha(d.corte).slice(0, 5)}</th>${actual ? '<th class="sun-e-num">Al 31</th>' : ''}</tr></thead><tbody>
+            ${sec('1 · IGV de tus ventas')}
+            ${ln('IGV de facturas y boletas emitidas', vFact, vFact31, { nota: baseV })}
+            ${ln(`(−) Notas de crédito emitidas · ${sv.n_nc}`, sv.nc_igv, sv.nc_igv, { vacio: !sv.n_nc, nota: 'Devoluciones o descuentos a clientes: bajan tu IGV' })}
+            ${ln(`(+) Notas de débito emitidas · ${sv.n_nd}`, sv.nd_igv, sv.nd_igv, { vacio: !sv.n_nd, nota: 'Cobros extra a clientes: suben tu IGV' })}
+            ${ln('= IGV de ventas', sv.igv, pr.deb, { clase: 'sun-e-sub', nota: 'Casilla 101 · el IGV que cobraste a tus clientes' })}
+            ${sec('2 · IGV de tus compras (crédito fiscal)')}
+            ${ln('(−) IGV de facturas de compra', -cFact, -cFact31, { nota: baseC })}
+            ${ln(`(+) Notas de crédito recibidas · ${sc.n_nc}`, -num(sc.nc_igv), -num(sc.nc_igv), { vacio: !sc.n_nc, nota: 'Un proveedor te descontó: baja tu crédito' })}
+            ${ln(`(−) Notas de débito recibidas · ${sc.n_nd}`, -num(sc.nd_igv), -num(sc.nd_igv), { vacio: !sc.n_nd })}
+            ${ln('= IGV de compras', -sc.igv, -pr.cred, { clase: 'sun-e-sub', nota: 'Casilla 108 · el IGV que pagaste a tus proveedores: se descuenta' })}
+            ${sec('3 · Cálculo del IGV del mes')}
+            ${ln('Impuesto resultante (ventas − compras)', liq.resultante, pr.deb - pr.cred, { nota: 'Casilla 140' })}
+            ${ln('(−) Saldo a favor del mes anterior', -sf, -sf, { vacio: !sf, nota: 'Casilla 145 · si el mes pasado salió a favor' })}
+            ${ln('= IGV del mes, sin retenciones', liq.tributo, pr.liq.tributo, { clase: 'sun-e-sub sun-e-184', nota: 'Casilla 184 · lo que pagarías si no tuvieras retenciones' })}
+            ${num(liq.percepciones) || pr.liq.perc ? ln('(−) Percepciones', -percU, -percU31) : ''}
+            ${ln('(−) Retenciones que se usan', -num(liq.retenciones_usadas), -pr.liq.retUsada, { nota: `Tienes ${soles(retDisp)}: ${soles(m.retenciones_mes)} de este mes + ${soles(m.saldo_retenciones_anterior)} de meses anteriores` })}
+            <tr class="${clavePagar}"><td class="sun-e-txt">IGV A PAGAR, DESPUÉS DE RETENCIONES</td><td class="sun-e-num">${soles(pagar)}</td>${actual ? `<td class="sun-e-num">${soles(pagar31)}</td>` : ''}</tr>
+            ${ln('Retenciones que quedan para el próximo mes', liq.saldo_retenciones_siguiente, pr.liq.saldoRet, { clase: 'sun-e-pie', vacio: !num(liq.saldo_retenciones_siguiente) && !pr.liq.saldoRet })}
+            ${num(liq.saldo_favor_siguiente) || pr.liq.saldoFavor ? ln('Saldo a favor de IGV para el próximo mes', liq.saldo_favor_siguiente, pr.liq.saldoFavor, { clase: 'sun-e-pie' }) : ''}
         </tbody>`;
 
         // Proyección
@@ -165,18 +182,25 @@
             $$('#resProyeccion input[type=checkbox]').forEach(c => c.addEventListener('change', pintarResumen));
         }
 
-        // Total a SUNAT
+        // Total a SUNAT y caja necesaria
         const reg = d.config;
-        $('#resTituloOtros').innerHTML = `Total a pagar a SUNAT <small class="sun-chip">${esc(reg.regimen === 'RMT' ? 'MYPE' : reg.regimen_nombre)} ${num(d.renta.tasa)}%${reg.configurado ? '' : ' · sin confirmar'}</small>`;
-        const t = (txt, v, clase) => `<tr class="${clase || ''}"><td class="left">${txt}</td><td class="num">${soles(v)}</td></tr>`;
-        $('#resTablaOtros').innerHTML = `<thead><tr><th>Concepto</th><th>Monto</th></tr></thead><tbody>
-            ${t('IGV', igvFin)}
-            ${t('Renta mensual', actual ? pr.renta : d.renta.monto)}
-            ${t('EsSalud', d.plame.essalud)}
-            ${t('ONP', d.plame.onp)}
-            ${num(d.plame.renta_5ta) ? t('Renta 5.ª', d.plame.renta_5ta) : ''}
-            ${num(d.plame.renta_4ta) ? t('Renta 4.ª', d.plame.renta_4ta) : ''}
-            ${t('TOTAL', actual ? totalProy : d.total_sunat, 'sun-fila-pagar')}
+        $('#resTituloOtros').innerHTML = `Total a pagar a SUNAT <small class="sun-chip">vence ${d.vencimiento ? fecha(d.vencimiento) : '—'}</small>`;
+        const rentaHoy = num(d.renta.monto), renta31 = actual ? pr.renta : rentaHoy;
+        const plame = num(d.plame.essalud) + num(d.plame.onp) + num(d.plame.renta_5ta) + num(d.plame.renta_4ta);
+        const totHoy = pagar + rentaHoy + plame, tot31 = (actual ? pagar31 : pagar) + renta31 + plame;
+        const afp = num(d.plame.afp);
+        const est = k => vo[k] && vo[k].estado === 'Pagado' ? `<span class="sun-e-ok">✔ Pagado ${soles(vo[k].monto)}</span>` : '';
+        const t = (txt, a, b, o) => ln(txt + (o && o.est ? ' ' + o.est : ''), a, b, o);
+        $('#resTablaOtros').innerHTML = `<thead><tr><th class="sun-e-txt">Concepto</th><th class="sun-e-num">Hoy</th>${actual ? '<th class="sun-e-num">Al 31</th>' : ''}</tr></thead><tbody>
+            ${t('IGV a pagar', pagar, actual ? pagar31 : null, { est: est('IGV') })}
+            ${t(`Renta mensual (${num(d.renta.tasa)}% de ventas)`, rentaHoy, actual ? renta31 : null, { est: est('RENTA_3RA'), nota: `${esc(reg.regimen === 'RMT' ? 'Régimen MYPE' : reg.regimen_nombre)}${reg.configurado ? '' : ' · sin confirmar con el contador'}` })}
+            ${ln('EsSalud (9% de sueldos)', d.plame.essalud, actual ? d.plame.essalud : null)}
+            ${ln('ONP (13%)', d.plame.onp, actual ? d.plame.onp : null)}
+            ${num(d.plame.renta_5ta) ? ln('Renta de 5.ª', d.plame.renta_5ta, actual ? d.plame.renta_5ta : null) : ''}
+            ${num(d.plame.renta_4ta) ? ln('Renta de 4.ª', d.plame.renta_4ta, actual ? d.plame.renta_4ta : null) : ''}
+            ${ln('= Total a SUNAT', totHoy, actual ? tot31 : null, { clase: 'sun-e-sub' })}
+            ${afp ? ln('(+) AFP (se paga en AFPnet)', afp, actual ? afp : null) : ''}
+            <tr class="sun-e-caja"><td class="sun-e-txt">Caja que necesitas${d.vencimiento ? ' al ' + fecha(d.vencimiento) : ''}</td><td class="sun-e-num">${soles(totHoy + afp)}</td>${actual ? `<td class="sun-e-num">${soles(tot31 + afp)}</td>` : ''}</tr>
         </tbody>` + (reg.regimen === 'RMT' && num(d.renta.acumulado_anio) > num(d.renta.tope_rmt) ? `<div class="sun-obs">Las ventas del año pasan 300 UIT: la renta sube. Habla con el contador.</div>` : '');
 
         pintarFormManual();

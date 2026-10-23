@@ -235,6 +235,11 @@ def operaciones_intercompany(emps):
         fact_compra[f['orden_compra_id']].append(f)
     salida = []
     cache_vende = {}
+    # ¿La empresa que compra está creada como cliente? (hace falta para que la que vende le facture)
+    ruc_clientes = {_rucs(r['numero_documento']) for r in db_query(
+        "SELECT numero_documento FROM clientes WHERE regexp_replace(COALESCE(numero_documento, ''), '\\D', '', 'g') = ANY(%s)",
+        (list(por_ruc),))}
+    clientes_ok = {(str(v['id']), _rucs(c['ruc'])): _rucs(c['ruc']) in ruc_clientes for v in emps for c in emps}
     for o in ocs:
         compra = por_id.get(str(o.get('empresa_id'))) or {'id': o.get('empresa_id'), 'codigo': o.get('empresa') or '?', 'ruc': ''}
         vende = por_ruc.get(_rucs(o.get('ruc'))) or next(
@@ -273,21 +278,31 @@ def operaciones_intercompany(emps):
         saldo = a_decimal(o.get('saldo_pago'))
         contado = (o.get('condicion_pago') or '').startswith('Contado')
         pedida, recibida = a_decimal(o.get('pedida')), a_decimal(o.get('recibida'))
-        falta = []
+        # 22/10/2026 18:00 (Erika: "más ordenado, más claro"): pasos en el orden real del negocio y quién hace cada uno.
+        # Al contado se paga primero; a crédito el pago es lo último.
+        estados = {'pago': saldo <= 0, 'recibido': recibida >= pedida, 'despachado': bool(despachado),
+                   'facturado': bool(mis_facts), 'registrado': bool(fact_compra.get(o['id']))}
+        pasos = []
         if _rucs(o.get('ruc')) != _rucs(vende['ruc']):
-            falta.append(f"Corregir el RUC de {o.get('proveedor') or vende['codigo']} en Maestros ▸ Proveedores (debe ser {vende['ruc']})")
+            pasos.append(('ruc', compra['codigo'], f"Corregir el RUC de {o.get('proveedor') or vende['codigo']} en Maestros ▸ Proveedores (debe ser {vende['ruc']})"))
         if (o.get('estado') or '') in ('Borrador', 'Por aprobar'):
-            falta.append(f"Aprobar la OC en Compras de {compra['codigo']} (está en {o.get('estado')})")
-        if saldo > 0:
-            falta.append(f"Pagar {_n(saldo):,.2f} a {vende['codigo']}" + ('' if contado else ' (crédito)'))
-        if recibida < pedida:
-            falta.append(f"Recibir la mercadería en {compra['codigo']}")
-        if not despachado:
-            falta.append(f"Despacho en {vende['codigo']} (su stock aún no descuenta)")
-        if not mis_facts:
-            falta.append(f"Factura de venta de {vende['codigo']}")
-        if not fact_compra.get(o['id']):
-            falta.append(f"Registrar la factura en compras de {compra['codigo']}")
+            pasos.append(('aprobar', compra['codigo'], f"Aprobar la OC en Compras de {compra['codigo']} (está en {o.get('estado')})"))
+        texto_pago = f"Pagar {_n(saldo):,.2f} a {vende['codigo']}" + ('' if contado else ' (crédito)')
+        if not estados['pago'] and contado:
+            pasos.append(('pagar', compra['codigo'], texto_pago))
+        if not estados['despachado']:
+            pasos.append(('despachar', vende['codigo'], f"Despacho en {vende['codigo']} (su stock aún no descuenta)"))
+        if not estados['recibido']:
+            pasos.append(('recibir', compra['codigo'], f"Recibir la mercadería en {compra['codigo']}"))
+        if not estados['facturado']:
+            pasos.append(('facturar', vende['codigo'], f"Factura de venta de {vende['codigo']}"
+                          + ('' if clientes_ok.get((str(vende['id']), _rucs(compra.get('ruc'))), True)
+                             else f" (antes crea a {compra['codigo']} como cliente en Maestros ▸ Clientes)")))
+        if not estados['registrado']:
+            pasos.append(('registrar', compra['codigo'], f"Registrar la factura en compras de {compra['codigo']}"))
+        if not estados['pago'] and not contado:
+            pasos.append(('pagar', compra['codigo'], texto_pago))
+        falta = [p[2] for p in pasos]
         salida.append({
             'oc_id': o['id'], 'oc': numero, 'fecha': o.get('fecha'), 'estado_oc': o.get('estado'),
             'vende': vende['codigo'], 'compra': compra['codigo'],
@@ -301,8 +316,39 @@ def operaciones_intercompany(emps):
             'despacho_pendiente': bool(mis_desp) and not despachado,
             'factura_venta': ', '.join(f"{f['serie']}-{f['numero']}" for f in mis_facts),
             'factura_compra': ', '.join(f['numero'] for f in fact_compra.get(o['id'], [])),
-            'falta': falta, 'completa': not falta,
+            'falta': falta, 'completa': not falta, 'estados': estados,
+            'siguiente': {'codigo': pasos[0][0], 'quien': pasos[0][1], 'texto': pasos[0][2]} if pasos else None,
+            'contado': contado,
         })
+    return salida
+
+
+def consolidado(emps, ops, deb):
+    """Resumen por sentido (quién vende a quién): montos de las OC y cuántas faltan en cada paso.
+    "Falta pagar" sale de las OC (lo que la que compra aún no paga), así cuadra con la tabla."""
+    salida = []
+    for v in emps:
+        for c in emps:
+            if v['id'] == c['id']:
+                continue
+            mias = [o for o in ops if o['vende'] == v['codigo'] and o['compra'] == c['codigo']]
+            def cuenta(clave):
+                return sum(1 for o in mias if not o['estados'][clave])
+            def monto(clave):
+                return _n(sum((a_decimal(o['total']) for o in mias if not o['estados'][clave]), CERO))
+            cxc = [d for d in deb['detalle'] if d['acreedor'] == v['codigo'] and d['deudor'] == c['codigo']]
+            salida.append({
+                'vende': v['codigo'], 'compra': c['codigo'], 'ocs': len(mias),
+                'abiertas': sum(1 for o in mias if not o['completa']),
+                'total': _n(sum((a_decimal(o['total']) for o in mias), CERO)),
+                'pagado': _n(sum((a_decimal(o['pagado']) for o in mias), CERO)),
+                'falta_pagar': _n(sum((a_decimal(o['saldo']) for o in mias), CERO)),
+                'por_pagar': cuenta('pago'), 'por_recibir': cuenta('recibido'), 'por_despachar': cuenta('despachado'),
+                'por_facturar': cuenta('facturado'), 'monto_por_facturar': monto('facturado'),
+                'por_registrar': cuenta('registrado'),
+                'facturas_por_cobrar': len(cxc), 'saldo_facturas': _n(sum((a_decimal(d['saldo']) for d in cxc), CERO)),
+                'facturas_vencidas': sum(1 for d in cxc if d['dias_vencido'] > 0),
+            })
     return salida
 
 
@@ -512,7 +558,8 @@ def api_resumen():
                         for k, v in totales.items()},
             'ventas': ventas, 'sin_compra': sum(1 for v in ventas if not v['registrada_en_compras']),
             'tendencia': tend, 'igv': igv, 'sugerencias': sugerencias(igv),
-            'deudas': deb, 'avisos': preparacion(emps), 'operaciones': ops}})
+            'deudas': deb, 'avisos': preparacion(emps), 'operaciones': ops,
+            'consolidado': consolidado(emps, ops, deb)}})
     except ErrorIntercompany as ex:
         return _err(ex)
 

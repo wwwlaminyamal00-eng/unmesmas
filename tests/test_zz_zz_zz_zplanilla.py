@@ -122,7 +122,7 @@ def test_no_inventa_sueldos_y_valida(admin, kcf):
 
 def test_pagos_del_mes_y_sunat(admin, kcf):
     assert _nueva(admin, kcf, nombres='Ana Planilla Prueba').status_code == 200
-    assert _nueva(admin, kcf, nombres='Beto Practicante Prueba', tipo='Practicante', sueldo=1130).status_code == 200
+    assert _nueva(admin, kcf, nombres='Beto Practicante Prueba', tipo='Practicante', sueldo=1230)   # RMV desde 01/10/2026.status_code == 200
     r = admin.get(f'/planilla/api/pagos?empresa_id={kcf}&periodo={PERIODO}')
     assert r.status_code == 200, r.json
     d = r.json['data']

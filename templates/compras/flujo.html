@@ -42,6 +42,9 @@
     <!-- HOY EN COMPRAS -->
     <!-- ======================================================= -->
     <section class="section active" id="sec-hoy">
+        <!-- 22/10/2026 18:13 (Erika: "muy cargado"): el flujo de 7 pasos se despliega con un clic -->
+        <details class="com-flujo-plegable">
+        <summary>ⓘ ¿Cómo es una compra? (7 pasos, del pedido del cliente al inventario)</summary>
         <div class="com-flujo">
             <div class="com-flujo-paso"><span>1</span><b>Pedido del cliente</b><small>Ventas lo registra (PC)</small></div>
             <div class="com-flujo-paso"><span>2</span><b>Orden de compra</b><small>Compras: empresa, proveedor y sede</small></div>
@@ -51,6 +54,7 @@
             <div class="com-flujo-paso"><span>6</span><b>Factura</b><small>Debe cuadrar con lo recibido</small></div>
             <div class="com-flujo-paso fin"><span>✓</span><b>Inventario</b><small>Se ingresa y queda separado para el cliente</small></div>
         </div>
+        </details>
         <div class="inv-kpis">
             <div class="inv-kpi" data-ir="pedidos"><small>Pedidos por comprar</small><b id="kpiPedidos">0</b><span>Pedidos de clientes sin orden</span></div>
             <div class="inv-kpi inv-kpi-warn" data-ir="ordenes" data-paso="aprobar"><small>Por aprobar</small><b id="kpiAprobar">0</b><span>Órdenes esperando a la supervisora</span></div>
@@ -78,9 +82,9 @@
             <div class="inv-head">
                 <div>
                     <div class="inv-title">Pedidos de clientes por comprar</div>
-                    <div class="inv-help">Marca los productos que vas a comprar al <b>mismo proveedor</b> y pulsa "Crear orden de compra".
-                        <b>Comprar para pedido</b> = pedido del cliente − lo que ya está en órdenes − el stock que le toca (el stock se reparte entre los pedidos, el más antiguo primero, y no se cuenta dos veces). <b>Comprar para stock</b> empieza en 0:
-                        poner más es una <b>decisión</b> (poca liquidez) y pedirá un motivo. El <b>saldo después de entregar</b> es lo que quedará en almacén.</div>
+                    <div class="inv-help">Marca los productos del <b>mismo proveedor</b> y pulsa "Crear orden de compra".
+                        <b>Compra bajo pedido</b> = PC − lo que ya está en órdenes − el stock asignado a ese PC (el stock se reparte entre los PC, el más antiguo primero, y no se cuenta dos veces).
+                        <b>Comprar para stock</b> empieza en 0: comprar de más es una decisión (poca liquidez) y pide motivo.</div>
                 </div>
                 <div class="inv-filters">
                     <input type="search" id="pedBuscar" placeholder="Buscar cliente, pedido o producto...">
@@ -123,7 +127,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC</th><th>N° cotización</th><th>Lugar entrega</th><th>Pago</th><th>Total</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <thead><tr><th>N° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC</th><th>N° cotización</th><th>Lugar entrega</th><th>Forma de pago</th><th>Total (inc. IGV)</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
                     <tbody id="ocBody"><tr><td colspan="14">Cargando...</td></tr></tbody>
                 </table>
             </div>

@@ -222,8 +222,8 @@
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
                 <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
-                    <thead><tr><th></th><th class="left">Nombre producto</th><th>Pedido del cliente</th><th>Ya en órdenes</th><th>Stock que le toca</th>
-                        <th>Comprar para pedido</th><th>Comprar para stock</th><th>Total a comprar</th><th>Saldo después de entregar</th></tr></thead>
+                    <thead><tr><th></th><th class="left">Nombre producto</th><th>PC<small>Pedido de Compra del cliente</small></th><th>Ya en órdenes</th><th>Stock asignado<small>a este PC</small></th>
+                        <th>Compra bajo pedido</th><th>Comprar para stock</th><th>Total a comprar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
                         // Por defecto solo lo que falta comprar: lo cubierto por una orden o por stock no se muestra (21/10/2026)
@@ -241,11 +241,10 @@
                                 ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
                             <td class="num">${cant(it.comprado)}</td>
-                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El resto del stock ya le toca a pedidos más antiguos">de ${cant(it.stock_empresa)} en la empresa</small>` : ''}</td>
+                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El stock se reparte entre los PC: el más antiguo primero">${cant(it.stock_empresa)} en la empresa · ${cant(Number(it.stock_empresa) - r.stock)} para PC más antiguos</small>` : ''}</td>
                             <td class="num"><b>${cant(r.pedido)}</b></td>
                             <td>${marcable ? `<input type="number" class="inp-num ped-extra" min="0" step="any" value="${r.extra}" data-ped="${p.id}" data-i="${i}" title="0 por defecto: comprar de más es una decisión y pide motivo">` : ''}</td>
-                            <td class="num"><b data-res-total>${cant(r.total)}</b></td>
-                            <td class="num"><span data-res-saldo class="${r.saldo > 0 ? 'com-saldo' : ''}">${cant(r.saldo)}</span></td></tr>`;
+                            <td class="num"><b data-res-total>${cant(r.total)}</b></td></tr>`;
                     }).join('')}</tbody>
                 </table></div>
                 ${!$('pedTodos').checked && p.items.length > p.por_comprar ? `<div class="inv-tip com-ocultos">✔ ${p.items.length - p.por_comprar} producto(s) de este pedido ya están cubiertos (con orden de compra o stock) y no se muestran.</div>` : ''}
@@ -253,11 +252,11 @@
         contarMarcados();
     }
 
-    // Pedido 40, stock 10 -> comprar para pedido 30; + 100 para stock -> total 130, saldo después de entregar 100
+    // PC 40, stock asignado 10 -> compra bajo pedido 30; + 100 para stock -> total a comprar 130
     function calcResumen(p, i) {
         const it = p.items[i];
         const falta = Math.max(Number(it.falta) || 0, 0);
-        // Stock que le toca a ESTE pedido: el stock se reparte entre pedidos, el más antiguo primero (22/10/2026)
+        // Stock asignado a ESTE pedido: el stock se reparte entre pedidos, el más antiguo primero (22/10/2026)
         const stock = Math.max(Number(it.stock_asignado ?? it.stock_empresa) || 0, 0);
         const pedido = it.comprar_pedido !== undefined && it.comprar_pedido !== null ? Number(it.comprar_pedido) : Math.max(falta - stock, 0);
         const extra = Math.max(Number(extrasStock[`${p.id}_${i}`]) || 0, 0);
@@ -273,9 +272,6 @@
         const r = calcResumen(p, i);
         const tr = input.closest('tr');
         tr.querySelector('[data-res-total]').textContent = cant(r.total);
-        const s = tr.querySelector('[data-res-saldo]');
-        s.textContent = cant(r.saldo);
-        s.classList.toggle('com-saldo', r.saldo > 0);
         const chk = tr.querySelector('.ped-check');
         if (chk && r.extra > 0 && !chk.checked) { chk.checked = true; contarMarcados(); }
     }
@@ -347,8 +343,8 @@
     function paraHtml(o) {
         const motivo = o.motivo_compra ? `<small class="com-motivo">Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</small>` : '';
         if (o.sin_pedido || (o.tipo_compra === 'Para stock' && !o.clientes)) return `<span class="badge-sin-pedido">SIN PEDIDO</span>${motivo}`;
-        const cot = o.cotizaciones || o.cotizaciones_cliente;
-        return `${esc(o.clientes || o.clientes_pedido || '')}<small>${esc(o.pedidos || o.pc_numeros || '')}${cot ? ' · Cot. ' + esc(cot) : ''}${o.tipo_compra === 'Para stock' ? ' + stock' : ''}</small>${o.tipo_compra === 'Para stock' ? motivo : ''}`;
+        // 22/10/2026 (Erika): solo el cliente; el N° PC y el N° cotización ya tienen su propia columna
+        return `${esc(o.clientes || o.clientes_pedido || '')}${o.tipo_compra === 'Para stock' ? `<small>+ stock</small>${motivo}` : ''}`;
     }
 
     async function cargarOrdenes() {
@@ -372,7 +368,7 @@
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
                 <td>${estadoOC(o.estado)}${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
-                <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
+                <td><div class="com-barra ${Number(o.avance_recepcion) <= 0 ? 'com-barra-0' : (Number(o.avance_recepcion) >= 100 ? 'com-barra-100' : '')}"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
                 : '<tr><td colspan="14">No hay órdenes con este filtro.</td></tr>';
@@ -531,7 +527,7 @@
                 const va = enOrden(p.pedido_id);
                 return va >= p.por_comprar - 1e-9
                     ? `<span class="com-ab-ok">✔ Esta orden cubre ${cant(va)} de ${esc(p.numero)}${va > p.por_comprar + 1e-9 ? ` (${cant(va - p.por_comprar)} de más)` : ''}</span>`
-                    : `<span class="com-ab-mal">✖ A ${esc(p.numero)} le faltan ${cant(p.por_comprar - va)}: pide ${cant(p.pide)}, ya en otras OC ${cant(p.en_oc)}, stock que le toca ${cant(p.stock_asignado)}</span>`;
+                    : `<span class="com-ab-mal">✖ A ${esc(p.numero)} le faltan ${cant(p.por_comprar - va)}: pide ${cant(p.pide)}, ya en otras OC ${cant(p.en_oc)}, stock asignado ${cant(p.stock_asignado)}</span>`;
             });
             if (paraStock > 0) frases.push(`<span class="com-ab-stock">Para stock (sin pedido): ${cant(paraStock)}</span>`);
             if (!deEsta.length && !paraStock) frases.push('<span class="com-ab-stock">Esta línea no está unida a un pedido.</span>');
@@ -541,7 +537,7 @@
                     <span class="com-ab-stocktot">Stock libre en ${esc(nomEmp)}: <b>${cant(d.stock)}</b>${d.stock_grupo > d.stock ? ` · grupo ${cant(d.stock_grupo)}` : ''}</span></div>
                 <div class="com-ab-frases">${frases.join('')}</div>
                 ${pcs.length ? `<div class="table-wrap"><table class="inv-table com-abast-tabla">
-                    <thead><tr><th class="left">N° PC · cliente</th><th>Pide</th><th>Ya en otras OC</th><th>Stock que le toca<small>se reparte, el pedido más antiguo primero</small></th>
+                    <thead><tr><th class="left">N° PC · cliente</th><th>Pide</th><th>Ya en otras OC</th><th>Stock asignado<small>se reparte, el PC más antiguo primero</small></th>
                         <th>Falta comprar</th><th>En esta orden</th><th class="left">Resultado</th></tr></thead>
                     <tbody>${deEsta.map(p => filaPc(p, true)).join('')}${otros.map(p => filaPc(p, false)).join('')}</tbody></table></div>` : ''}
                 ${otrosTxt.length ? `<div class="com-ab-nota">Hay ${otrosTxt.length} pedido(s) más de este producto sin comprar (${otrosTxt.map(p => `${esc(p.numero)}: ${cant(p.por_comprar)}`).join(', ')}). Haz otra orden o pulsa "Sumarlo aquí".</div>` : ''}
@@ -1151,7 +1147,7 @@
             $('facBody').innerHTML = sinFactura.length ? sinFactura.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}</td><td>${estadoOC(o.estado)}</td>
-                <td><div class="com-barra"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
+                <td><div class="com-barra ${Number(o.avance_recepcion) <= 0 ? 'com-barra-0' : (Number(o.avance_recepcion) >= 100 ? 'com-barra-100' : '')}"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td>${o.facturas ? `${o.facturas} · ${soles(o.facturado)}${o.cuadra === false ? '<small class="neg">no cuadra</small>' : ''}` : '<span class="inv-tip">Ninguna</span>'}</td>
                 <td>${PUEDE.facturar ? `<button class="btn-mini" data-factura="${o.id}">🧾 Registrar factura</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="7">No hay facturas pendientes de registrar. 👍</td></tr>';

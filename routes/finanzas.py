@@ -66,6 +66,17 @@ SQL_DDL_FINANZAS = """
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (documento_tabla, documento_id)
     );
+    -- Seguimiento del cobro por factura de venta (Erika 23/10/2026, desde su Excel de seguimiento). Migración 029.
+    CREATE TABLE IF NOT EXISTS finanzas_seguimiento_cobro (
+        comprobante_id INTEGER PRIMARY KEY,
+        portal_ingresado BOOLEAN NOT NULL DEFAULT false,
+        portal_fecha DATE,
+        fecha_programada DATE,
+        retencion_numero VARCHAR(40),
+        retencion_monto NUMERIC(14,2) CHECK (retencion_monto >= 0),
+        usuario_nombre VARCHAR(150),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 """
 
 
@@ -133,8 +144,13 @@ SQL_CXC = """
            COALESCE(c.fecha_vencimiento::date,
                     c.fecha_emision::date + COALESCE(c.dias_credito, 0)) AS fecha_vencimiento,
            COALESCE(c.total, 0) AS total,
-           COALESCE(c.monto_retenido, 0) AS retencion,
-           COALESCE(NULLIF(c.monto_a_pagar, 0), c.total, 0) AS importe_cobrar,
+           -- Retención: la que se anotó del comprobante de retención del cliente o, si no, la calculada en la factura
+           COALESCE(sg.retencion_monto, c.monto_retenido, 0) AS retencion,
+           CASE WHEN sg.retencion_monto IS NOT NULL THEN COALESCE(c.total, 0) - sg.retencion_monto
+                ELSE COALESCE(NULLIF(c.monto_a_pagar, 0), c.total, 0) END AS importe_cobrar,
+           COALESCE(c.tiene_retencion, false) AS tiene_retencion, COALESCE(c.monto_retenido, 0) AS retencion_factura,
+           COALESCE(sg.portal_ingresado, false) AS portal_ingresado, sg.portal_fecha, sg.fecha_programada,
+           sg.retencion_numero, sg.retencion_monto AS retencion_anotada, sg.usuario_nombre AS seguimiento_por,
            COALESCE(cb.cobrado, 0) AS cobrado,
            COALESCE(nc.monto_nc, 0) AS notas_credito,
            COALESCE(c.estado_sunat, 'Borrador') AS estado_documento,
@@ -145,6 +161,7 @@ SQL_CXC = """
     FROM comprobantes c
     LEFT JOIN cobros cb ON cb.documento_id = c.id
     LEFT JOIN finanzas_comentarios fc ON fc.documento_tabla = 'comprobantes' AND fc.documento_id = c.id
+    LEFT JOIN finanzas_seguimiento_cobro sg ON sg.comprobante_id = c.id
     LEFT JOIN nc ON nc.comprobante_asociado IN (c.numero::text, LPAD(c.numero::text, 8, '0'),
                                                 COALESCE(c.serie, '') || '-' || COALESCE(c.numero::text, ''),
                                                 COALESCE(c.serie, '') || '-' || LPAD(COALESCE(c.numero::text, ''), 8, '0'))
@@ -332,7 +349,7 @@ def _filtrar(lista):
         lista = [x for x in lista if x['semaforo'].lower() == estado]
     if q:
         lista = [x for x in lista if q in (x.get('tercero') or '').lower() or q in (x.get('ruc') or '')
-                 or q in (x.get('documento') or '').lower()]
+                 or q in (x.get('documento') or '').lower() or q in (x.get('retencion_numero') or '').lower()]
     return lista
 
 
@@ -635,6 +652,78 @@ def api_comentario():
         return jsonify({'success': True, 'comentario': texto, 'message': 'Comentario guardado'})
     except Exception as e:
         print(f"❌ Error guardando comentario de finanzas: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _fecha_o_nada(valor, nombre):
+    texto = str(valor or '').strip()
+    if not texto:
+        return None
+    try:
+        return date.fromisoformat(texto[:10])
+    except ValueError:
+        raise ValueError(f'{nombre}: fecha no válida')
+
+
+@finanzas_bp.route('/finanzas/api/seguimiento_cobro', methods=['POST'])
+def api_seguimiento_cobro():
+    """Seguimiento de una factura por cobrar (Erika 23/10/2026): si ya se ingresó en el portal del cliente,
+    la fecha programada de pago y el comprobante de retención del 3% (N° y monto). No cambia la factura."""
+    if not puede_operar_finanzas():
+        return jsonify({'success': False, 'error': 'No tienes permisos para esta acción'}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        doc_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Documento inválido'}), 400
+    try:
+        asegurar_tablas_finanzas()
+        doc = db_query("SELECT id, serie, numero, fecha_emision, COALESCE(total, 0) AS total FROM comprobantes WHERE id = %s",
+                       (doc_id,))
+        if not doc:
+            return jsonify({'success': False, 'error': 'Factura no encontrada'}), 404
+        doc = doc[0]
+        portal = bool(data.get('portal_ingresado'))
+        portal_fecha = _fecha_o_nada(data.get('portal_fecha'), 'Fecha de ingreso al portal') if portal else None
+        programada = _fecha_o_nada(data.get('fecha_programada'), 'Fecha programada de pago')
+        numero_ret = ' '.join(str(data.get('retencion_numero') or '').split()).upper()[:40] or None
+        monto_txt = str(data.get('retencion_monto') if data.get('retencion_monto') is not None else '').strip()
+        monto_ret = None
+        if monto_txt:
+            monto_ret = redondear(a_decimal(monto_txt))
+            if monto_ret < 0 or monto_ret > a_decimal(doc['total']):
+                return jsonify({'success': False, 'error': 'El monto de la retención debe estar entre 0 y el total de la factura'}), 400
+        emision = doc.get('fecha_emision')
+        if isinstance(emision, datetime):
+            emision = emision.date()
+        if programada and emision and programada < emision:
+            return jsonify({'success': False, 'error': 'La fecha programada de pago no puede ser antes de la emisión de la factura'}), 400
+        usuario = session.get('nombre') or session.get('usuario') or ''
+        antes = db_query("SELECT * FROM finanzas_seguimiento_cobro WHERE comprobante_id = %s", (doc_id,))
+        db_execute("""INSERT INTO finanzas_seguimiento_cobro
+                          (comprobante_id, portal_ingresado, portal_fecha, fecha_programada, retencion_numero, retencion_monto,
+                           usuario_nombre, updated_at)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                      ON CONFLICT (comprobante_id) DO UPDATE SET
+                          portal_ingresado = EXCLUDED.portal_ingresado, portal_fecha = EXCLUDED.portal_fecha,
+                          fecha_programada = EXCLUDED.fecha_programada, retencion_numero = EXCLUDED.retencion_numero,
+                          retencion_monto = EXCLUDED.retencion_monto, usuario_nombre = EXCLUDED.usuario_nombre, updated_at = NOW()""",
+                   (doc_id, portal, portal_fecha, programada, numero_ret, monto_ret, usuario))
+        despues = {'portal_ingresado': portal, 'portal_fecha': _fmt(portal_fecha), 'fecha_programada': _fmt(programada),
+                   'retencion_numero': numero_ret, 'retencion_monto': float(monto_ret) if monto_ret is not None else None}
+        try:
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('ACTUALIZAR', 'Finanzas', 'finanzas_seguimiento_cobro', doc_id,
+                                antes={k: _fmt(v) for k, v in (antes[0].items() if antes else [])
+                                       if k in despues} or None, despues=despues,
+                                detalle=f"Seguimiento de cobro de {doc.get('serie') or ''}-{doc.get('numero') or doc_id}")
+        except Exception as e:
+            print(f"⚠️ Auditoría de seguimiento de cobro: {e}")
+        return jsonify({'success': True, 'data': despues, 'message': 'Seguimiento guardado'})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        print(f"❌ Error guardando seguimiento de cobro: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

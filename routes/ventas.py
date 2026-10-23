@@ -3790,12 +3790,101 @@ def api_despacho_cita(did):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ---------- Entregas: distrito y comentario en la fila (Erika 23/10/2026 04:35: "aqui es un si") ----------
+_entrega_cols_listas = False
+
+# Distritos de Lima Metropolitana y Callao, con el nombre que se muestra en pantalla
+DISTRITOS_LIMA = [
+    'Ancón', 'Ate', 'Barranco', 'Breña', 'Carabayllo', 'Cercado de Lima', 'Chaclacayo', 'Chorrillos', 'Cieneguilla',
+    'Comas', 'El Agustino', 'Independencia', 'Jesús María', 'La Molina', 'La Victoria', 'Lince', 'Los Olivos',
+    'Lurigancho', 'Lurín', 'Magdalena del Mar', 'Miraflores', 'Pachacámac', 'Pucusana', 'Pueblo Libre',
+    'Puente Piedra', 'Punta Hermosa', 'Punta Negra', 'Rímac', 'San Bartolo', 'San Borja', 'San Isidro',
+    'San Juan de Lurigancho', 'San Juan de Miraflores', 'San Luis', 'San Martín de Porres', 'San Miguel',
+    'Santa Anita', 'Santa María del Mar', 'Santa Rosa', 'Santiago de Surco', 'Surquillo', 'Villa El Salvador',
+    'Villa María del Triunfo', 'Callao', 'Bellavista', 'Carmen de la Legua Reynoso', 'La Perla', 'La Punta',
+    'Mi Perú', 'Ventanilla',
+]
+_ALIAS_DISTRITO = {
+    'SMP': 'San Martín de Porres', 'S.M.P.': 'San Martín de Porres', 'CERCADO': 'Cercado de Lima',
+    'LIMA CERCADO': 'Cercado de Lima', 'SURCO': 'Santiago de Surco', 'SJL': 'San Juan de Lurigancho',
+    'SJM': 'San Juan de Miraflores', 'VES': 'Villa El Salvador', 'VMT': 'Villa María del Triunfo',
+    'MAGDALENA': 'Magdalena del Mar', 'CHOSICA': 'Lurigancho',
+}
+
+
+def _sin_tildes(texto):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', str(texto or '').upper()) if unicodedata.category(c) != 'Mn')
+
+
+_MAPA_DISTRITO = {_sin_tildes(d): d for d in DISTRITOS_LIMA}
+_MAPA_DISTRITO.update({_sin_tildes(a): d for a, d in _ALIAS_DISTRITO.items()})
+_RE_DISTRITO = re.compile(r'(?<![A-Z0-9])(' + '|'.join(re.escape(k) for k in sorted(_MAPA_DISTRITO, key=len, reverse=True)) + r')(?![A-Z0-9])')
+
+
+def adivinar_distrito(direccion):
+    """Saca el distrito del texto de la dirección. El distrito suele ir al final, así que gana el último que aparece
+    (en "AV. INDEPENDENCIA 123 - SAN ISIDRO" es San Isidro). Si no hay ninguno, devuelve ''."""
+    halla = list(_RE_DISTRITO.finditer(_sin_tildes(direccion)))
+    return _MAPA_DISTRITO[halla[-1].group(1)] if halla else ''
+
+
+def _asegurar_columnas_entrega():
+    """Columnas distrito y comentario en despachos (migración 028; en la base de pruebas se crean aquí)."""
+    global _entrega_cols_listas
+    if _entrega_cols_listas:
+        return
+    hay = {r['column_name'] for r in db_query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'despachos' "
+        "AND column_name IN ('distrito', 'comentario')")}
+    if len(hay) < 2:
+        with db_tx() as conn:
+            cur = conn.cursor()
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS distrito VARCHAR(80)")
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS comentario VARCHAR(200)")
+    _entrega_cols_listas = True
+
+
+COMENTARIO_ENTREGA_MAX = 120
+
+
+@ventas_bp.route('/ventas/api/despachos/<int:did>/dato', methods=['POST'])
+@login_required
+def api_despacho_dato(did):
+    """Guarda desde la fila de Entregas el distrito o el comentario corto. Vacío lo borra."""
+    try:
+        _asegurar_columnas_entrega()
+        datos = request.get_json(silent=True) or {}
+        campo = datos.get('campo')
+        if campo not in ('distrito', 'comentario'):
+            return jsonify({'success': False, 'error': 'Solo se puede cambiar el distrito o el comentario'}), 400
+        valor = re.sub(r'\s+', ' ', str(datos.get('valor') or '')).strip()
+        if campo == 'comentario' and len(valor) > COMENTARIO_ENTREGA_MAX:
+            return jsonify({'success': False, 'error': f'El comentario es corto: máximo {COMENTARIO_ENTREGA_MAX} letras '
+                                                       f'(tiene {len(valor)})'}), 400
+        if campo == 'distrito' and valor:
+            valor = adivinar_distrito(valor) or valor[:80]
+        antes = db_query(f"SELECT id, numero, {campo} FROM despachos WHERE id = %s", (did,))
+        if not antes:
+            return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+        db_execute(f"UPDATE despachos SET {campo} = %s, updated_at = NOW() WHERE id = %s", (valor or None, did))
+        from routes.auditoria import registrar_auditoria
+        registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
+                            antes={campo: antes[0].get(campo)}, despues={campo: valor or None},
+                            detalle=f"{'Distrito' if campo == 'distrito' else 'Comentario'} del despacho "
+                                    f"{antes[0].get('numero') or did}: {valor or '(vacío)'}")
+        return jsonify({'success': True, 'data': {'id': did, campo: valor or None}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @ventas_bp.route('/ventas/api/despachos/listar', methods=['GET'])
 @login_required
 def api_despachos_listar():
     try:
         print("🚚 API DESPACHOS LISTAR - INICIO")
         _asegurar_fecha_cita()
+        _asegurar_columnas_entrega()
         
         query = """
             SELECT 
@@ -3803,7 +3892,8 @@ def api_despachos_listar():
                 d.pc_id, d.pc_numero, d.cotizacion_id, d.cotizacion_numero,
                 d.cliente, d.ruc, d.comprobante, d.guia, d.origen, d.destino,
                 d.transportista, d.observaciones, d.responsable,
-                d.items_json, d.created_at, d.updated_at, d.fecha_cita
+                d.items_json, d.created_at, d.updated_at, d.fecha_cita,
+                d.distrito, d.comentario
             FROM despachos d
             ORDER BY d.id DESC
         """
@@ -3947,7 +4037,11 @@ def api_despachos_listar():
                     'created_at': created_at_formateada,
                     'updated_at': row.get('updated_at'),
                     # Fecha de cita con el cliente (Entregas, 20/10/2026); texto ISO sin zona para la pantalla
-                    'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%d') if row.get('fecha_cita') else None
+                    'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%d') if row.get('fecha_cita') else None,
+                    # Distrito: el que escribió el usuario o, si no, el que se lee en la dirección (23/10/2026)
+                    'distrito': row.get('distrito') or adivinar_distrito(row.get('destino')),
+                    'distrito_escrito': bool(row.get('distrito')),
+                    'comentario': row.get('comentario') or ''
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")

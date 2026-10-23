@@ -49,7 +49,7 @@
         const q = document.getElementById(tipo + 'Buscar').value.trim();
         const params = new URLSearchParams({ estado, q });
         if (tipo === 'cxc') params.set('incluir_borradores', document.getElementById('cxcBorradores').checked);
-        body.innerHTML = '<tr><td colspan="12">Cargando...</td></tr>';
+        body.innerHTML = '<tr><td colspan="15">Cargando...</td></tr>';
         try {
             const { data, totales } = await api(`/finanzas/api/${tipo}?${params}`);
             datos[tipo] = data;   // CxP ya viene ordenado del servidor (vencido > por vencer > al día): no se reordena
@@ -130,12 +130,82 @@
         return `<span class="est-chip ${cls}">${ico}${esc(e)}</span>`;
     }
 
+    // Seguimiento del cobro (Erika 23/10/2026, de su Excel): portal del cliente, fecha programada y retención del 3%
+    function celdaSeguimiento(x) {
+        const l = [];
+        if (x.portal_ingresado) {
+            l.push(`<span class="seg-chip seg-ok" title="Ingresada en el portal de proveedores del cliente${x.portal_fecha ? ' el ' + fecha(x.portal_fecha) : ''}">✔ En portal</span>`);
+        } else if (x.saldo > 0) {
+            l.push('<span class="seg-chip seg-falta" title="Falta ingresar la factura en el portal de proveedores del cliente">✖ Falta portal</span>');
+        }
+        if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago prog. <b>${fecha(x.fecha_programada)}</b></small>`);
+        if (x.retencion_numero) {
+            l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Ret. <b>${esc(x.retencion_numero)}</b></small>`);
+        } else if (x.retencion > 0) {
+            l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Ret. 3%: falta N°</small>');
+        }
+        if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
+        return l.length ? l.join('') : '<span class="fin-gris">—</span>';
+    }
+
+    function abrirSeguimiento(id) {
+        const x = datos.cxc.find(d => String(d.id) === String(id));
+        if (!x) return;
+        document.getElementById('segModal')?.remove();
+        const tres = Math.round(Number(x.total || 0) * 3) / 100;
+        const monto = x.retencion_anotada ?? (x.retencion > 0 ? x.retencion : '');
+        const d = document.createElement('div');
+        d.id = 'segModal';
+        d.className = 'seg-modal-bg';
+        d.innerHTML = `<div class="seg-modal">
+            <div class="seg-titulo">Seguimiento del cobro</div>
+            <div class="seg-sub">${esc(x.documento)} · ${esc(x.tercero)} · ${dinero(x, x.total)}</div>
+            <label class="seg-check"><input type="checkbox" id="segPortal" ${x.portal_ingresado ? 'checked' : ''}> Ingresada en el portal del cliente</label>
+            <label class="seg-campo" id="segPortalFechaCaja">Fecha de ingreso al portal<input type="date" id="segPortalFecha" value="${x.portal_fecha ? String(x.portal_fecha).slice(0, 10) : ''}"></label>
+            <label class="seg-campo">Fecha programada de pago<input type="date" id="segProgramada" value="${x.fecha_programada ? String(x.fecha_programada).slice(0, 10) : ''}"></label>
+            <div class="seg-grupo">Retención del 3% (comprobante que envía el cliente)</div>
+            <label class="seg-campo">N° comprobante de retención<input type="text" id="segRetNum" maxlength="40" placeholder="Ej. R001-00006805" value="${esc(x.retencion_numero || '')}"></label>
+            <label class="seg-campo">Monto retenido (S/)<input type="number" id="segRetMonto" min="0" step="0.01" value="${monto}"></label>
+            <div class="seg-ayuda">3% de esta factura = ${dinero(x, tres)}. Este monto es el que usa SUNAT ▸ Retenciones del mes. Vacío = el de la factura.</div>
+            <div class="seg-botones">
+              <button type="button" class="btn btn-secondary" data-seg-cerrar="1">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="segGuardar">💾 Guardar</button>
+            </div></div>`;
+        document.body.appendChild(d);
+        const caja = d.querySelector('#segPortalFechaCaja');
+        const chk = d.querySelector('#segPortal');
+        const verFecha = () => { caja.style.display = chk.checked ? '' : 'none'; };
+        chk.addEventListener('change', () => { if (chk.checked && !d.querySelector('#segPortalFecha').value) d.querySelector('#segPortalFecha').value = hoyISO(); verFecha(); });
+        verFecha();
+        d.addEventListener('click', e => { if (e.target === d || e.target.dataset.segCerrar) d.remove(); });
+        d.querySelector('#segGuardar').addEventListener('click', async () => {
+            try {
+                await api('/finanzas/api/seguimiento_cobro', { method: 'POST', body: JSON.stringify({
+                    id: x.id, portal_ingresado: chk.checked, portal_fecha: d.querySelector('#segPortalFecha').value,
+                    fecha_programada: d.querySelector('#segProgramada').value, retencion_numero: d.querySelector('#segRetNum').value,
+                    retencion_monto: d.querySelector('#segRetMonto').value }) });
+                d.remove();
+                aviso('Seguimiento guardado', 'success');
+                cargarCuentas('cxc');
+            } catch (e) { aviso(e.message, 'error'); }
+        });
+    }
+
+    // "Ver cobro" desde Ventas ▸ Entregas: la factura de esa entrega sale sombreada (23/10/2026)
+    const facturaBuscada = new URLSearchParams(location.search).get('factura');
+    const claveDoc = s => {
+        const m = String(s || '').trim().toUpperCase().match(/^([A-Z0-9]+)-0*(\d+)$/);
+        return m ? m[1] + '-' + m[2] : String(s || '').trim().toUpperCase();
+    };
+    const buscadas = new Set(String(facturaBuscada || '').split(',').map(claveDoc).filter(Boolean));
+    let yaSeBajo = false;
+
     function renderCuentas(tipo) {
         const body = document.getElementById(tipo + 'Body');
         const lista = datos[tipo];
         const esCxc = tipo === 'cxc';
         if (!lista.length) {
-            body.innerHTML = `<tr><td colspan="14">No hay documentos para este filtro.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="${esCxc ? 15 : 14}">No hay documentos para este filtro.</td></tr>`;
         } else {
             body.innerHTML = lista.map((x, i) => {
                 const accion = x.saldo > 0
@@ -152,7 +222,8 @@
                 const comentario = `<span class="fin-coment">${esc(x.comentario || '')}</span>`
                     + (x.nota_registro ? `<small class="fin-gris" title="Observación al registrar la factura en Compras">Compras: ${esc(x.nota_registro)}</small>` : '')
                     + (PUEDE_OPERAR ? `<button class="btn-mini sec" title="Escribir comentario" data-coment="${tipo}:${x.id}">✏️</button>` : '');
-                const filaCls = x.saldo <= 0 ? 'fin-fila-ok' : x.semaforo === 'Vencido' ? 'cxp-fila-vencida' : '';
+                const resaltada = esCxc && buscadas.has(claveDoc(x.documento));
+                const filaCls = (x.saldo <= 0 ? 'fin-fila-ok' : x.semaforo === 'Vencido' ? 'cxp-fila-vencida' : '') + (resaltada ? ' fin-fila-resaltada' : '');
                 return `<tr class="${filaCls}">
                     <td>${i + 1}</td>
                     <td class="left"><b>${esc(x.tercero)}</b></td>
@@ -166,10 +237,25 @@
                     <td class="num saldo">${dinero(x, x.saldo)}</td>
                     <td>${chipEstado(x)}</td>
                     <td>${x.fecha_pago_real ? `<b>${fecha(x.fecha_pago_real)}</b>` : x.ultimo_abono ? `<small>Último abono ${fecha(x.ultimo_abono)}</small>` : '<span class="fin-gris">—</span>'}</td>
+                    ${esCxc ? `<td class="seg-celda">${celdaSeguimiento(x)}</td>` : ''}
                     <td class="fin-coment-celda">${comentario}</td>
                     <td>${accion}</td>
                 </tr>`;
             }).join('');
+        }
+        if (esCxc && buscadas.size && !yaSeBajo) {
+            const fila = body.querySelector('.fin-fila-resaltada');
+            if (fila) {
+                yaSeBajo = true;
+                setTimeout(() => fila.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
+            } else if (!document.getElementById('cxcBorradores').checked) {
+                // Puede ser un borrador: se vuelve a buscar incluyéndolos
+                document.getElementById('cxcBorradores').checked = true;
+                cargarCuentas('cxc');
+            } else {
+                yaSeBajo = true;
+                aviso(`No se encontró la factura ${facturaBuscada} en Cuentas por cobrar`, 'warning');
+            }
         }
         const total = lista.reduce((s, x) => s + x.saldo, 0);
         document.getElementById(tipo + 'Foot').textContent = `${lista.length} documentos · Saldo total: ${soles(total)}`;
@@ -412,6 +498,7 @@
         if (t.dataset.pagar && !t.disabled) { const [tipo, id] = t.dataset.pagar.split(':'); abrirPago(tipo, id); }
         if (t.dataset.anular) anularMovimiento(t.dataset.anular);
         if (t.dataset.coment) escribirComentario(t.dataset.coment);
+        if (t.dataset.seg) abrirSeguimiento(t.dataset.seg);
         if (t.dataset.venc) {
             const doc = datos.cxp.find(x => String(x.id) === t.dataset.venc);
             document.getElementById('vencId').value = t.dataset.venc;
@@ -420,6 +507,8 @@
         }
     });
 
+    // Viene de "Ver cobro": se muestran todas (también las ya cobradas) para que la factura aparezca
+    if (facturaBuscada) document.getElementById('cxcEstado').value = 'todos';
     const tabInicial = new URLSearchParams(location.search).get('tab');
     const tabArranque = ['cxc', 'cxp', 'movimientos', 'flujo'].includes(tabInicial) ? tabInicial : 'cxc';
     activarTab(tabArranque);

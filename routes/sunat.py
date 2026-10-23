@@ -567,13 +567,18 @@ def retenciones_sugeridas(eid, desde, hasta):
     (El cliente retiene cuando paga. Lo exacto está en SUNAT ▸ Consulta de comprobantes de retención.)"""
     if not _cols('finanzas_pagos'):
         return CERO, 0
+    # Si en Finanzas ▸ Cuentas por cobrar se anotó el comprobante de retención del cliente, manda ese monto (23/10/2026)
+    from routes.finanzas import asegurar_tablas_finanzas
+    asegurar_tablas_finanzas()
     sql_e, par_e = _sql_emp('comprobantes', 'c.empresa_id', eid)
     f = db_query(f"""
-        SELECT COALESCE(SUM(c.monto_retenido), 0) AS t, COUNT(*) AS n FROM comprobantes c
+        SELECT COALESCE(SUM(COALESCE(sg.retencion_monto, c.monto_retenido, 0)), 0) AS t, COUNT(*) AS n FROM comprobantes c
         JOIN (SELECT documento_id, MIN(fecha) AS primero FROM finanzas_pagos
               WHERE tipo = 'COBRO' AND documento_tabla = 'comprobantes' AND COALESCE(estado, '') <> 'Anulado'
               GROUP BY documento_id) p ON p.documento_id = c.id
-        WHERE COALESCE(c.tiene_retencion, false) AND p.primero BETWEEN %s AND %s {sql_e}""", (desde, hasta) + par_e)
+        LEFT JOIN finanzas_seguimiento_cobro sg ON sg.comprobante_id = c.id
+        WHERE (COALESCE(c.tiene_retencion, false) OR COALESCE(sg.retencion_monto, 0) > 0)
+          AND p.primero BETWEEN %s AND %s {sql_e}""", (desde, hasta) + par_e)
     return a_decimal(f[0]['t']), f[0]['n']
 
 

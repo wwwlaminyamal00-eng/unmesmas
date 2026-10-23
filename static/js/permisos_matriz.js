@@ -42,7 +42,7 @@
         ESTADO_STOCK: 'Stock', KARDEX: 'Kardex', ENTRADAS_SALIDAS: 'Entradas y salidas', TRANSFERENCIAS: 'Traslados entre sedes',
         CUENTAS_COBRAR: 'Cuentas por cobrar', CUENTAS_PAGAR: 'Cuentas por pagar', CAJA_BANCOS: 'Cobros y pagos',
         FLUJO_CAJA: 'Flujo de caja', CONCILIACION_BANCARIA: 'Conciliación bancaria', INTERCOMPANY: 'Intercompany KCF ↔ AGD',
-        PLANILLA: 'Planilla y RRHH (sueldos)',
+        PLANILLA: 'Planilla y RRHH (sueldos)', CAJA_CHICA: 'Caja chica',
         REPORTE_VENTAS: 'Reporte de ventas', REPORTE_COMPRAS: 'Reporte de compras', REPORTE_INVENTARIO: 'Reporte de inventario',
         REPORTE_FINANZAS: 'Reporte de finanzas', SUNAT: 'SUNAT e impuestos'
     };

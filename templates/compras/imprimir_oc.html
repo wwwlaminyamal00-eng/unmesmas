@@ -24,6 +24,11 @@
     .firmas{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:60px;text-align:center}
     .firmas div{border-top:1px solid #0F172A;padding-top:4px;font-size:11px}
     .vacio{height:28px}
+    /* Pedido de Erika 22/10/2026: datos para la transferencia, con N° de cuenta y CCI como texto que se copia */
+    .transfer{border:2px solid {{ empresa.color_primario or '#1E3A8A' }};border-radius:8px;padding:10px 14px;margin-top:12px;line-height:1.7}
+    .transfer h3{margin:0 0 4px;font-size:13px;text-transform:uppercase}
+    .transfer .dato{font-family:Consolas,'Courier New',monospace;font-size:14px;font-weight:bold;user-select:all;-webkit-user-select:all;cursor:text}
+    .transfer .falta{color:#B91C1C;font-weight:bold}
     @media print{.no-print{display:none}body{margin:0;max-width:none}}
 </style>
 </head>
@@ -90,6 +95,18 @@
     La guía de remisión debe indicar como punto de llegada: {{ sede.nombre }} ({{ sede.direccion or '' }}).
     Solo se recibe mercadería con guía. Pagamos únicamente a la cuenta bancaria registrada del proveedor.
     {% if o.notas %}<br>Notas: {{ o.notas }}{% endif %}
+</div>
+{# Sin cuenta registrada el aviso es solo interno: no sale impreso para el proveedor #}
+<div class="transfer{% if not (prov.numero_cuenta or prov.cci) %} no-print{% endif %}">
+    <h3>Datos para la transferencia</h3>
+    {% if prov.numero_cuenta or prov.cci %}
+    Titular: <b>{{ prov.razon_social or o.proveedor }}</b> · RUC {{ prov.ruc or '—' }}<br>
+    Banco: <b>{{ prov.banco or '—' }}</b><br>
+    N° de cuenta: <span class="dato">{{ prov.numero_cuenta or '—' }}</span><br>
+    CCI (Código de Cuenta Interbancario): <span class="dato">{{ prov.cci or '—' }}</span>
+    {% else %}
+    <span class="falta">El proveedor no tiene cuenta bancaria registrada. Complétala en Maestros ▸ Proveedores antes de pagar.</span>
+    {% endif %}
 </div>
 {% if declarada == false %}<p class="no-print" style="color:#B91C1C"><b>Aviso interno:</b> {{ sede.nombre }} no está declarada en SUNAT para esta empresa.</p>{% endif %}
 <div class="firmas"><div>Elaboró: {{ o.creado_por_nombre or '' }}</div><div>Aprobó: {{ o.aprobado_por or '' }}</div><div>Proveedor (conformidad)</div></div>

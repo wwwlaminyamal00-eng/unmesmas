@@ -13,20 +13,7 @@
 
 {% block content %}
 <div id="icApp" class="ge-app">
-    <!-- 22/10/2026: pantalla simple (Erika: "muy cargado"): una fila de estado, una línea de aviso y la tabla por OC -->
-    <div class="ic-estado" id="icKpis"></div>
-    <div id="icAvisos"></div>
-
-    <details class="ge-ayuda">
-        <summary>¿Cómo funciona?</summary>
-        <ul>
-            <li>Cada orden de compra (OC) hecha a la otra empresa del grupo es una fila. OC hecha en KCF con AGD como proveedor = <b>AGD le vende a KCF</b>.</li>
-            <li>Pasos: la que compra paga y recibe (Compras). La que vende hace su PC con "N° OC del cliente" = el N° de la OC, despacha y factura. La que compra registra esa factura en Compras.</li>
-            <li>El stock se mueve una sola vez: sale con el despacho de la que vende y entra con "Recibir mercadería" de la que compra. No uses además Inventario ▸ Intercompany para lo mismo.</li>
-            <li>Lo pendiente sale en <b class="ge-rojo">rojo</b>; lo completo en verde.</li>
-        </ul>
-    </details>
-
+    <!-- 22/10/2026 18:00 (Erika: "más ordenado, consolidado"): pestañas arriba, un resumen por sentido y una tabla por sentido -->
     <div class="tabs inv-tabs" id="icTabs">
         <button class="tab-btn active" data-tab="resumen">🔁 Operaciones</button>
         <button class="tab-btn" data-tab="igv">🧮 IGV: desde dónde facturar</button>
@@ -35,14 +22,19 @@
     </div>
 
     <section class="section active" id="ic-sec-resumen">
+        <div id="icNeto" class="ic-neto"></div>
+        <div id="icConsol" class="ic-consol"></div>
         <div class="inv-panel">
-            <div class="inv-head"><div class="inv-title">Operaciones entre empresas (una fila por OC)</div>
-                <label class="ge-buscar">Ver <select id="icFiltroOps"><option value="todas">Todas</option><option value="pend">Solo con pendientes</option><option value="ok">Solo completas</option></select></label>
+            <div class="inv-head"><div class="inv-title">Operaciones entre empresas <small class="ic-sub">una fila por orden de compra (OC)</small></div>
+                <label class="ge-buscar">Sentido <select id="icSentido"><option value="">Los dos</option></select></label>
+                <label class="ge-buscar">Ver <select id="icFiltroOps"><option value="todas">Todas</option><option value="pend">Con algo pendiente</option>
+                    <option value="pago">Falta pagar</option><option value="despachado">Falta despachar</option><option value="recibido">Falta recibir</option>
+                    <option value="facturado">Falta facturar</option><option value="registrado">Falta registrar en compras</option><option value="ok">Completas</option></select></label>
                 <label class="ge-buscar">Buscar <input type="search" id="icBuscarOps" placeholder="N° OC, N° PC, cliente o factura"></label></div>
             <div id="icOperaciones"></div>
         </div>
         <details class="inv-panel ic-plegable">
-            <summary class="inv-head"><div class="inv-title">💳 Lo que se deben <small id="icDeudasResumen"></small></div></summary>
+            <summary class="inv-head"><div class="inv-title">💳 Facturas por cobrar entre empresas <small id="icDeudasResumen"></small></div></summary>
             <div id="icDeudas"></div>
         </details>
         <details class="inv-panel ic-plegable">
@@ -52,6 +44,18 @@
         <details class="inv-panel ic-plegable">
             <summary class="inv-head"><div class="inv-title">📅 Últimos 6 meses (sin IGV)</div></summary>
             <div id="icTendencia"></div>
+        </details>
+        <details class="inv-panel ic-plegable">
+            <summary class="inv-head"><div class="inv-title">ℹ ¿Cómo funciona?</div></summary>
+            <ul class="ic-ayuda">
+                <li>Cada orden de compra (OC) hecha a la otra empresa del grupo es una fila. OC hecha en KCF con AGD como proveedor = <b>AGD le vende a KCF</b>.</li>
+                <li>Orden de los pasos: <b>la que vende</b> despacha (su stock baja) y factura; <b>la que compra</b> recibe (su stock sube), registra la factura en Compras y paga. Al contado, el pago va primero.</li>
+                <li>La que vende hace su PC con "N° OC del cliente" = el N° de la OC; así el sistema une el despacho y la factura con la OC.</li>
+                <li>El stock se mueve una sola vez. No uses además Inventario ▸ Intercompany para lo mismo.</li>
+                <li>"Falta pagar" sale de las OC (lo pagado en Compras). Las facturas por cobrar de Finanzas están en el panel de arriba.</li>
+                <li>Lo pendiente sale en <b class="ge-rojo">rojo</b>; lo completo en verde.</li>
+            </ul>
+            <div id="icAvisos"></div>
         </details>
     </section>
 

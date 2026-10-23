@@ -1428,6 +1428,129 @@ function citaDespachoHTML(r, cerrado) {
     if (cerrado) return txt ? `<b>${txt}</b>` : '-';
     return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
 }
+// ---------- Entregas más simple (Erika 23/10/2026 04:35: "aqui es un si") ----------
+// Cantidad y producto en una sola casilla, una línea por producto
+function productosDespachoHTML(r) {
+    const items = Array.isArray(r.items) ? r.items : [];
+    if (!items.length) return '-';
+    return items.map(it => {
+        const n = Number(it.cantidad);
+        const cant = isNaN(n) ? sd(it.cantidad) : n.toLocaleString('es-PE', { maximumFractionDigits: 2 });
+        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto || it.descripcion || it.nombre)}</div>`;
+    }).join('');
+}
+// Distrito en vez de la dirección completa; la dirección sale al pasar el mouse
+function distritoDespachoHTML(r, cerrado) {
+    const dir = esc(r.destino || 'Sin dirección');
+    if (r.distrito) {
+        return `<span class="ent-distrito" title="Dirección: ${dir}">📍 ${esc(r.distrito)}</span>` +
+            (cerrado ? '' : `<button class="ent-editar" onclick="editarDatoDespacho(${r.id}, 'distrito', this)" title="Cambiar el distrito">✏</button>`);
+    }
+    if (cerrado) return `<span title="Dirección: ${dir}">-</span>`;
+    return `<button class="ent-sin-dato" onclick="editarDatoDespacho(${r.id}, 'distrito', this)" title="Dirección: ${dir}">📍 Poner distrito</button>`;
+}
+// Comentario corto que se escribe en la misma fila (clic para escribir o cambiar)
+function comentarioDespachoHTML(r) {
+    const c = String(r.comentario || '').trim();
+    return `<span class="ent-coment ${c ? '' : 'vacio'}" onclick="editarDatoDespacho(${r.id}, 'comentario', this)" title="Clic para ${c ? 'cambiar' : 'escribir'} el comentario (máximo 120 letras)">${c ? esc(c) : '✏ Agregar'}</span>`;
+}
+function listaDistritosLima() {
+    if (document.getElementById('listaDistritosLima')) return;
+    const dl = document.createElement('datalist');
+    dl.id = 'listaDistritosLima';
+    dl.innerHTML = DISTRITOS_LIMA.map(d => `<option value="${d}"></option>`).join('');
+    document.body.appendChild(dl);
+}
+const DISTRITOS_LIMA = ['Ancón', 'Ate', 'Barranco', 'Breña', 'Carabayllo', 'Cercado de Lima', 'Chaclacayo', 'Chorrillos', 'Cieneguilla',
+    'Comas', 'El Agustino', 'Independencia', 'Jesús María', 'La Molina', 'La Victoria', 'Lince', 'Los Olivos', 'Lurigancho', 'Lurín',
+    'Magdalena del Mar', 'Miraflores', 'Pachacámac', 'Pucusana', 'Pueblo Libre', 'Puente Piedra', 'Punta Hermosa', 'Punta Negra', 'Rímac',
+    'San Bartolo', 'San Borja', 'San Isidro', 'San Juan de Lurigancho', 'San Juan de Miraflores', 'San Luis', 'San Martín de Porres',
+    'San Miguel', 'Santa Anita', 'Santa María del Mar', 'Santa Rosa', 'Santiago de Surco', 'Surquillo', 'Villa El Salvador',
+    'Villa María del Triunfo', 'Callao', 'Bellavista', 'Carmen de la Legua Reynoso', 'La Perla', 'La Punta', 'Mi Perú', 'Ventanilla'];
+function editarDatoDespacho(id, campo, el) {
+    const r = (despachosData || []).find(x => x.id === id);
+    const celda = el && el.closest('td');
+    if (!r || !celda || celda.querySelector('.ent-input')) return;
+    if (campo === 'distrito') listaDistritosLima();
+    const actual = campo === 'distrito' ? (r.distrito || '') : (r.comentario || '');
+    celda.innerHTML = `<input class="ent-input" maxlength="${campo === 'comentario' ? 120 : 80}" ${campo === 'distrito' ? 'list="listaDistritosLima" placeholder="Escribe el distrito"' : 'placeholder="Comentario corto"'}>`;
+    const inp = celda.querySelector('input');
+    inp.value = actual;
+    inp.focus();
+    let hecho = false;
+    const terminar = async guardar => {
+        if (hecho) return;
+        hecho = true;
+        const valor = inp.value.trim();
+        inp.remove();  // ya no se está escribiendo: la tabla se puede volver a dibujar
+        if (!guardar || valor === actual) { renderDespachos(); return; }
+        try {
+            const res = await fetch(`/ventas/api/despachos/${id}/dato`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campo, valor })
+            });
+            const j = await res.json();
+            if (!j.success) throw new Error(j.error || 'No se pudo guardar');
+            if (campo === 'distrito') { r.distrito = j.data.distrito || ''; r.distrito_escrito = !!j.data.distrito; }
+            else r.comentario = j.data.comentario || '';
+            showToast(campo === 'distrito' ? '📍 Distrito guardado' : '💬 Comentario guardado', 'success');
+        } catch (e) {
+            showToast('❌ ' + e.message, 'error');
+        }
+        renderDespachos();
+    };
+    inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); terminar(true); }
+        if (e.key === 'Escape') terminar(false);
+    });
+    inp.addEventListener('blur', () => terminar(true));
+}
+// Filtro por fecha de cita: "Elegir fecha…" muestra el calendario
+function cambiarFiltroCita() {
+    const sel = document.getElementById('despachoCita');
+    const f = document.getElementById('despachoCitaFecha');
+    if (f) f.style.display = sel && sel.value === 'fecha' ? '' : 'none';
+    renderDespachos();
+}
+function sumarDiasISO(iso, dias) {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + dias);
+    return d.toISOString().slice(0, 10);
+}
+function pasaFiltroCita(r, modo, fechaElegida) {
+    if (!modo) return true;
+    const cita = r.fecha_cita ? String(r.fecha_cita).slice(0, 10) : '';
+    if (modo === 'sin') return !cita;
+    if (!cita) return false;
+    const hoy = isoLima(new Date());
+    if (modo === 'hoy') return cita === hoy;
+    if (modo === 'manana') return cita === sumarDiasISO(hoy, 1);
+    if (modo === 'semana') return cita >= hoy && cita <= sumarDiasISO(hoy, 6);
+    if (modo === 'fecha') return !fechaElegida || cita === fechaElegida;
+    return true;
+}
+// Las opciones del filtro de distrito salen de las entregas que hay
+function llenarFiltroDistrito() {
+    const sel = document.getElementById('despachoDistrito');
+    if (!sel) return;
+    const elegido = sel.value;
+    const nombres = [...new Set((despachosData || []).map(r => r.distrito).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+    const sinDistrito = (despachosData || []).some(r => !r.distrito);
+    const html = '<option value="">📍 Todos los distritos</option>' +
+        nombres.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
+        (sinDistrito ? '<option value="__sin">Sin distrito</option>' : '');
+    if (sel.dataset.html !== html) {
+        sel.innerHTML = html;
+        sel.dataset.html = html;
+        sel.value = [...sel.options].some(o => o.value === elegido) ? elegido : '';
+    }
+}
+// "Ver cobro": Entregas se queda con lo logístico; el cobro se sigue en Finanzas (Erika 23/10/2026)
+function verCobroDespacho(id) {
+    const r = (despachosData || []).find(x => x.id === id);
+    if (!r || !r.comprobante) return;
+    window.location.href = '/finanzas?tab=cxc&factura=' + encodeURIComponent(String(r.comprobante).replace(/\s+/g, ''));
+}
 function ponerCitaDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
     if (!r) return;
@@ -1516,11 +1639,21 @@ function renderDespachos() {
     // 🔽 FILTRO POR FECHAS
     const fechaInicio = document.getElementById('despachoFechaInicio')?.value || '';
     const fechaFin = document.getElementById('despachoFechaFin')?.value || '';
+    // Si alguien está escribiendo un comentario o distrito en la fila, no se borra lo que escribe al recargar datos
+    if (document.querySelector('#despachoRows .ent-input')) return;
+    // Filtros por distrito y por fecha de cita (Erika 23/10/2026)
+    llenarFiltroDistrito();
+    const distritoSel = document.getElementById('despachoDistrito')?.value || '';
+    const citaModo = document.getElementById('despachoCita')?.value || '';
+    const citaFecha = document.getElementById('despachoCitaFecha')?.value || '';
     
     const list = despachosData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.cliente || ''} ${r.pc_numero || ''} ${r.destino || ''}`.toLowerCase();
+        const prods = (Array.isArray(r.items) ? r.items : []).map(it => it.producto || '').join(' ');
+        const searchStr = `${r.numero || ''} ${r.cliente || ''} ${r.pc_numero || ''} ${r.destino || ''} ${r.distrito || ''} ${r.comentario || ''} ${prods}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
+        if (distritoSel && (distritoSel === '__sin' ? !!r.distrito : r.distrito !== distritoSel)) return false;
+        if (!pasaFiltroCita(r, citaModo, citaFecha)) return false;
         
         // 🔽 FILTRO POR FECHAS
         let matchFecha = true;
@@ -1566,7 +1699,7 @@ function renderDespachos() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
         return;
     }
     
@@ -1605,10 +1738,12 @@ function renderDespachos() {
             <td>${sd(r.pc_numero)}</td>
             <td>${sd(r.cotizacion_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
+            <td>${productosDespachoHTML(r)}</td>
             <td>${guiaFacturaDespachoHTML(r)}</td>
-            <td>${sd(r.destino)}</td>
+            <td>${distritoDespachoHTML(r, anulado)}</td>
             <td>${estadoCompraHTML(r, despachado, anulado)}</td>
             <td>${citaDespachoHTML(r, despachado || anulado)}</td>
+            <td>${comentarioDespachoHTML(r)}</td>
             <td><div class="acc-col">
                 ${!despachado && !anulado ? `
                     ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Lleva a Compras ▸ Pedidos por comprar con las líneas de este pedido sombreadas y marcadas">Generar compra</button>` : ''}
@@ -1617,6 +1752,7 @@ function renderDespachos() {
                   despachado ? `<span class="desp-hecho">${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
                      <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">Anular</button>` : ''
                 }
+                ${r.comprobante && !anulado ? `<button class="btn-ver-cobro" onclick="verCobroDespacho(${r.id})" title="Abre Finanzas ▸ Cuentas por cobrar con la factura de esta entrega sombreada: portal, pago programado y retención">Ver cobro</button>` : ''}
                 <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">Generar rótulo</button>
             </div></td>
         </tr>`;
@@ -2036,8 +2172,8 @@ function clearDespachoDateFilter() {
     
     if (fechaInicio) fechaInicio.value = '';
     if (fechaFin) fechaFin.value = '';
-    
-    renderDespachos();
+    ['despachoDistrito', 'despachoCita', 'despachoCitaFecha'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    cambiarFiltroCita();
     showToast('🧹 Filtros de fecha limpiados', 'info');
 }
 

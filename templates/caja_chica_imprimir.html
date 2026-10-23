@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{% if doc == 'vale' %}Vale de caja chica N° {{ m.numero }}{% elif doc == 'movilidad' %}Planilla de movilidad{% elif doc == 'rendicion' %}Rendición N° {{ r.numero }}{% else %}Acta de fondo fijo{% endif %} - {{ e.codigo }}</title>
+<style>
+    @page { size: A4; margin: 14mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 16px; }
+    h1 { font-size: 17px; margin: 0 0 4px; text-align: center; }
+    h2 { font-size: 13px; margin: 14px 0 6px; }
+    .emp { text-align: center; margin-bottom: 10px; }
+    .emp b { font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+    th, td { border: 1px solid #555; padding: 5px 6px; text-align: center; vertical-align: middle; }
+    th { background: #E5E7EB; }
+    td.l { text-align: left; }
+    .datos td { border: none; text-align: left; padding: 3px 4px; }
+    .firmas { display: flex; justify-content: space-around; gap: 30px; margin-top: 48px; }
+    .firmas div { flex: 1; text-align: center; border-top: 1px solid #111; padding-top: 4px; }
+    .nota { font-size: 10.5px; color: #444; margin-top: 10px; }
+    .rojo { color: #C00000; font-weight: bold; }
+    .hoja { page-break-after: always; }
+    .hoja:last-child { page-break-after: auto; }
+    .vale { border: 2px solid #111; padding: 14px; max-width: 640px; margin: 0 auto; }
+    .monto { font-size: 18px; font-weight: bold; }
+    .barra { text-align: right; margin-bottom: 10px; }
+    @media print { .barra { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="barra"><button onclick="window.print()">🖨 Imprimir</button></div>
+
+{% macro cabecera() %}
+<div class="emp"><b>{{ e.razon_social or e.nombre_comercial or e.codigo }}</b><br>RUC {{ e.ruc or '—' }}{% if e.direccion_fiscal %} · {{ e.direccion_fiscal }}{% endif %}</div>
+{% endmacro %}
+
+{% if doc == 'vale' %}
+<div class="vale">
+    {{ cabecera() }}
+    <h1>VALE DE CAJA CHICA N° {{ '%06d' % m.numero }}</h1>
+    <table class="datos">
+        <tr><td><b>Fecha:</b> {{ m.fecha.strftime('%d/%m/%Y') }}</td><td style="text-align:right" class="monto">S/ {{ '{:,.2f}'.format(m.egreso or m.ingreso) }}</td></tr>
+        <tr><td colspan="2"><b>Son:</b> {{ letras }}</td></tr>
+        <tr><td colspan="2"><b>Concepto:</b> {{ m.rubro or m.tipo }} · {{ m.descripcion }}</td></tr>
+        {% if m.pagado_a %}<tr><td colspan="2"><b>Pagado a:</b> {{ m.pagado_a }}</td></tr>{% endif %}
+        <tr><td colspan="2"><b>Gastó / recibió:</b> {{ m.quien or '' }}</td></tr>
+        {% if m.referencia %}<tr><td colspan="2"><b>N° PC / OC / despacho:</b> {{ m.referencia }}</td></tr>{% endif %}
+        <tr><td colspan="2"><b>Comprobante:</b> {{ m.comprobante_tipo or '—' }}{% if m.comprobante_numero %} N° {{ m.comprobante_numero }}{% endif %}</td></tr>
+        {% if m.empresa_gasto and m.empresa_gasto != e.codigo %}<tr><td colspan="2"><b>Gasto de:</b> {{ m.empresa_gasto }}</td></tr>{% endif %}
+    </table>
+    <div class="firmas"><div>Recibí conforme<br>Nombre y DNI</div><div>Entregó<br>{{ conf.responsable or 'Responsable de caja' }}</div><div>Autorizó<br>{{ m.autorizado_por or 'Gerencia' }}</div></div>
+    <p class="nota">Documento interno de control. No reemplaza al comprobante de pago ante SUNAT. Registrado por {{ m.creado_por }} el {{ m.creado_en.strftime('%d/%m/%Y %H:%M') }}.</p>
+</div>
+
+{% elif doc == 'movilidad' %}
+{% if not planillas %}
+<p>No hay pasajes con "Planilla de movilidad" del {{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}.</p>
+{% endif %}
+{% for p in planillas %}
+<div class="hoja">
+    {{ cabecera() }}
+    <h1>PLANILLA DE GASTOS DE MOVILIDAD</h1>
+    <table class="datos">
+        <tr><td><b>N° de planilla:</b> {{ e.codigo }}-{{ desde.strftime('%Y%m%d') }}-{{ loop.index }}</td><td><b>Fecha de emisión:</b> {{ ahora.strftime('%d/%m/%Y') }}</td></tr>
+        <tr><td><b>Periodo:</b> del {{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}</td><td><b>Tope diario:</b> S/ {{ '{:,.2f}'.format(tope) }} (4% RMV)</td></tr>
+        <tr><td><b>Nombre:</b> {{ p.nombre }}</td><td><b>DNI:</b> {{ p.dni or '________' }}</td></tr>
+    </table>
+    <table>
+        <thead><tr><th>Fecha</th><th>Motivo y destino del desplazamiento</th><th>N° PC / OC / despacho</th><th>Monto (S/)</th></tr></thead>
+        <tbody>
+        {% for f in p.filas %}
+            <tr><td>{{ f.fecha.strftime('%d/%m/%Y') }}</td><td class="l">{{ f.descripcion }}{% if f.observacion %} · {{ f.observacion }}{% endif %}</td><td>{{ f.referencia or '' }}</td><td>{{ '{:,.2f}'.format(f.egreso) }}</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="3" style="text-align:right">Total</th><th>{{ '{:,.2f}'.format(p.total) }}</th></tr></tfoot>
+    </table>
+    {% if p.excede %}<p class="rojo">Días que pasan el tope: {% for d, t in p.excede.items() %}{{ d.strftime('%d/%m') }} (S/ {{ '{:,.2f}'.format(t) }}){% if not loop.last %}, {% endif %}{% endfor %}. Deducible: S/ {{ '{:,.2f}'.format(p.deducible) }}.</p>{% endif %}
+    <div class="firmas"><div>Firma de {{ p.nombre }}<br>DNI {{ p.dni or '' }}</div><div>V° B° {{ conf.responsable or 'Responsable de caja' }}</div></div>
+    <p class="nota">Art. 37 inc. a1) de la Ley del Impuesto a la Renta y art. 21 inc. v) de su Reglamento. Cada traslado lo hizo y lo firma la persona indicada.{% if p.tipo == 'Practicante' %} Persona en modalidad formativa (practicante): el contador decide si este gasto se deduce.{% endif %}</p>
+</div>
+{% endfor %}
+
+{% elif doc == 'rendicion' %}
+{{ cabecera() }}
+<h1>RENDICIÓN DE CAJA CHICA N° {{ r.numero }}</h1>
+<table class="datos">
+    <tr><td><b>Periodo:</b> del {{ r.desde.strftime('%d/%m/%Y') }} al {{ r.hasta.strftime('%d/%m/%Y') }}</td><td><b>Estado:</b> {{ r.estado }}</td></tr>
+    <tr><td><b>Enviada por:</b> {{ r.enviada_por }} · {{ r.enviada_en.strftime('%d/%m/%Y %H:%M') }}</td><td>{% if r.revisada_por %}<b>Revisada por:</b> {{ r.revisada_por }} · {{ r.revisada_en.strftime('%d/%m/%Y %H:%M') }}{% endif %}</td></tr>
+    <tr><td><b>Fondo fijo:</b> S/ {{ '{:,.2f}'.format(conf.fondo_fijo) }}</td><td>{% if r.monto_repuesto is not none %}<b>Repuesto:</b> S/ {{ '{:,.2f}'.format(r.monto_repuesto) }} el {{ r.fecha_reposicion.strftime('%d/%m/%Y') }}{% if r.numero_operacion %} · N° op. {{ r.numero_operacion }}{% endif %}{% endif %}</td></tr>
+</table>
+<h2>Resumen por rubro</h2>
+<table><thead><tr><th>Rubro</th><th>N° de gastos</th><th>Total (S/)</th><th>Sin sustento SUNAT (S/)</th></tr></thead><tbody>
+{% for x in rubros %}<tr><td class="l">{{ x.rubro }}</td><td>{{ x.n }}</td><td>{{ '{:,.2f}'.format(x.total) }}</td><td>{{ '{:,.2f}'.format(x.sin_sustento) }}</td></tr>{% endfor %}
+</tbody><tfoot><tr><th class="l">Total</th><th>{{ gastos | length }}</th><th>{{ '{:,.2f}'.format(r.total_gastado) }}</th><th>{{ '{:,.2f}'.format(r.sin_sustento) }}</th></tr></tfoot></table>
+<h2>Detalle</h2>
+<table><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Pagado a</th><th>Descripción</th><th>N° PC / OC</th><th>Comprobante</th><th>S/</th></tr></thead><tbody>
+{% for g in gastos %}<tr><td>{{ g.numero }}</td><td>{{ g.fecha.strftime('%d/%m/%Y') }}</td><td>{{ g.quien or '' }}</td><td>{{ g.pagado_a or '' }}</td><td class="l">{{ g.descripcion }}</td><td>{{ g.referencia or '' }}</td>
+<td>{{ g.comprobante_tipo }}{% if g.comprobante_numero %} {{ g.comprobante_numero }}{% endif %}{% if g.comprobante_tipo not in sustenta %} <span class="rojo">●</span>{% endif %}</td><td>{{ '{:,.2f}'.format(g.egreso) }}</td></tr>{% endfor %}
+</tbody></table>
+<div class="firmas"><div>Rindió<br>{{ conf.responsable or 'Responsable de caja' }}</div><div>Aprobó<br>Gerencia</div></div>
+
+{% else %}
+{{ cabecera() }}
+<h1>ACTA DE ENTREGA DE FONDO FIJO DE CAJA CHICA</h1>
+<p>En Lima, el {{ ahora.strftime('%d/%m/%Y') }}, {{ e.razon_social or e.codigo }} (RUC {{ e.ruc or '—' }}) entrega a
+<b>{{ conf.responsable or '______________________' }}</b>, con DNI <b>{{ conf.responsable_dni or '__________' }}</b>, un fondo fijo de caja chica de
+<b>S/ {{ '{:,.2f}'.format(conf.fondo_fijo) }}</b> ({{ letras }}), para pagar gastos menores de la empresa.</p>
+<p>El fondo se maneja en la cuenta: <b>{{ conf.cuenta or '______________________________' }}</b>, usada solo para la caja chica.</p>
+<h2>Reglas</h2>
+<ol>
+    <li>Cada gasto se registra en el ERP el mismo día, con foto del voucher o comprobante.</li>
+    <li>Se pide factura al RUC de la empresa dueña del pedido siempre que sea posible. Los pasajes del personal se sustentan con planilla de movilidad firmada por quien viajó.</li>
+    <li>Los gastos mayores a S/ 100 se autorizan antes por la gerencia.</li>
+    <li>Cada semana se rinde lo gastado y se hace un arqueo. La gerencia aprueba y repone exactamente lo gastado.</li>
+    <li>El dinero de la caja chica no se mezcla con dinero personal ni se presta.</li>
+    <li>Al dejar el cargo, la responsable devuelve el fondo completo (efectivo + saldo + comprobantes).</li>
+</ol>
+<div class="firmas"><div>Entrega<br>{{ e.razon_social or e.codigo }} · Gerencia</div><div>Recibe<br>{{ conf.responsable or 'Responsable' }} · DNI {{ conf.responsable_dni or '' }}</div></div>
+{% endif %}
+</body>
+</html>

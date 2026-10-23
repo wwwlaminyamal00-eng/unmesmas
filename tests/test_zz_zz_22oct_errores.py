@@ -167,7 +167,11 @@ def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):
     assert o['vende'] == 'AGD' and o['compra'] == 'KCF' and o['para_stock'] is True and o['completa'] is False
     assert o['saldo'] > 0 and any('Pagar' in f and 'crédito' in f for f in o['falta'])
     assert any('Recibir la mercadería en KCF' == f for f in o['falta'])
-    assert any(f.startswith('Despacho en AGD') for f in o['falta']) and 'Factura de venta de AGD' in o['falta']
+    assert any(f.startswith('Despacho en AGD') for f in o['falta']) and any(f.startswith('Factura de venta de AGD') for f in o['falta'])
+    # 22/10/2026 18:00: orden del negocio (a crédito el pago va al final) y un solo siguiente paso con quién lo hace
+    assert o['siguiente'] == {'codigo': 'despachar', 'quien': 'AGD', 'texto': 'Despacho en AGD (su stock aún no descuenta)'}
+    assert o['falta'][-1].startswith('Pagar') and o['estados'] == {'pago': False, 'recibido': False, 'despachado': False,
+                                                                    'facturado': False, 'registrado': False}
     # KCF recibe; AGD hace su PC con "N° OC del cliente" = la OC, despacha y factura
     items = admin.get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').json['items']
     r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json={
@@ -185,7 +189,14 @@ def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):
     o = fila()
     assert o['recibida'] == 4 and o['pc_vende'] == 'PC-AGD-ZZ1' and o['despachos'] == 'DESP-AGD-ZZ1'
     assert o['factura_venta'].startswith('F001-') and o['factura_venta'].endswith('777')
-    assert o['falta'] == [f"Pagar {o['saldo']:,.2f} a AGD (crédito)", 'Registrar la factura en compras de KCF']
+    assert o['falta'] == ['Registrar la factura en compras de KCF', f"Pagar {o['saldo']:,.2f} a AGD (crédito)"]
+    assert o['siguiente']['quien'] == 'KCF' and o['estados']['facturado'] and not o['estados']['registrado']
+    # Resumen consolidado por sentido: cuadra con la tabla (falta pagar sale de las OC)
+    d = admin.get('/intercompany/api/resumen').json['data']
+    c = next(x for x in d['consolidado'] if (x['vende'], x['compra']) == ('AGD', 'KCF'))
+    mias = [x for x in d['operaciones'] if (x['vende'], x['compra']) == ('AGD', 'KCF')]
+    assert c['ocs'] == len(mias) and c['falta_pagar'] == round(sum(x['saldo'] for x in mias), 2)
+    assert c['por_registrar'] == sum(1 for x in mias if not x['estados']['registrado']) >= 1
     # La pantalla tiene la tabla
     html = admin.get('/intercompany').get_data(as_text=True)
     assert 'icOperaciones' in html and 'AGD le vende a KCF' in html
@@ -280,3 +291,44 @@ def test_stock_se_reparte_y_oc_generada_cuenta_como_por_llegar(zz, admin):
     with aplicacion.app_context():
         t = texto_en_transito([{'producto': 'ESTABILIZADOR ZZ 120W', 'producto_id': prod}])
     assert numero in t and 'Recíbela en Compras' in t
+
+
+def test_oc_impresa_con_datos_para_la_transferencia(zz, admin):
+    # Pedido de Erika 22/10/2026 (pre-producción): banco, N° de cuenta y CCI del proveedor, como texto que se copia
+    _sql("UPDATE proveedores SET banco = 'BCP', numero_cuenta = '193-7777777-0-77', cci = '00219300777777707777' WHERE id = %s",
+         (zz['prov'],), fetch=False)
+    r = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico',
+                                                              items=[{'producto_id': zz['LENTE'], 'cantidad': 37, 'precio_unitario': 9}]))
+    assert r.status_code == 200, r.json
+    oc_id = r.json['id']
+    _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (oc_id,), fetch=False)
+    html = admin.get(f'/compras/flujo/ordenes/{oc_id}/imprimir').get_data(as_text=True)
+    assert 'Datos para la transferencia' in html and 'BCP' in html
+    assert '<span class="dato">00219300777777707777</span>' in html and 'user-select:all' in html
+    _sql("UPDATE proveedores SET numero_cuenta = NULL, cci = NULL WHERE id = %s", (zz['prov'],), fetch=False)
+    html = admin.get(f'/compras/flujo/ordenes/{oc_id}/imprimir').get_data(as_text=True)
+    assert 'transfer no-print' in html and 'no tiene cuenta bancaria registrada' in html
+
+
+def test_monitor_de_errores_en_consola(admin, anonimo):
+    for url in ('/compras', '/ventas', '/finanzas'):
+        assert 'monitor_consola.js' in admin.get(url).get_data(as_text=True), url
+    assert 'monitor_consola.js' in anonimo.get('/login').get_data(as_text=True)
+    base = open('templates/base.html', encoding='utf-8').read()
+    assert base.index('errores_guardado.js') < base.index('monitor_consola.js')
+    js = open('static/js/monitor_consola.js', encoding='utf-8').read()
+    assert "addEventListener('unhandledrejection'" in js and 'console.error' in js and 'erpErrores' in js
+
+
+def test_compras_terminos_y_orden_global(admin):
+    # Erika 22/10/2026 18:13: términos de Compras, colores de la OC, columna Ítem y ayudas con "ⓘ Ver más"
+    js = open('static/js/compras_flujo.js', encoding='utf-8').read()
+    assert 'Pedido de Compra del cliente' in js and 'Stock asignado' in js and 'Compra bajo pedido' in js
+    assert 'Stock que le toca' not in js and 'Saldo después de entregar' not in js and 'para PC más antiguos' in js
+    html = admin.get('/compras').get_data(as_text=True)
+    assert '<th>Forma de pago</th><th>Total (inc. IGV)</th>' in html and 'com-flujo-plegable' in html
+    assert 'orden_pantallas.js' in html
+    css = open('static/css/compras_flujo.css', encoding='utf-8').read()
+    assert '.est-por-aprobar{background:#FF0033' in css and '.est-recibida{background:#0057FF' in css and 'com-barra-100' in css
+    g = open('static/js/orden_pantallas.js', encoding='utf-8').read()
+    assert "th.textContent = 'Ítem'" in g and 'ⓘ Ver más' in g and '.modal' in g

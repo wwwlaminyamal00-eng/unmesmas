@@ -212,3 +212,18 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-abast-sem.gris{background:#E2E8F0;color:#334155;border:2px solid #CBD5E1}
 .com-ab-nota{margin-top:6px;font-size:12px;font-weight:800;color:#475569}
 .com-ab-extra{margin-top:6px;font-size:12.5px;font-weight:800;color:#5C4300;display:flex;align-items:center;gap:8px}
+/* 22/10/2026 18:13 (Erika, reemplaza los colores de las 11:00): Por aprobar rojo, Aprobada verde, Mercadería recibida azul eléctrico */
+.est-por-aprobar{background:#FF0033!important;color:#fff!important;border:1px solid #C80028!important;font-weight:900}
+.est-aprobada{background:#00C853!important;color:#fff!important;border:1px solid #00962F!important;font-weight:900;text-shadow:none!important}
+.est-recibida{background:#0057FF!important;color:#fff!important;border:1px solid #0040C0!important;font-weight:900}
+/* Llegó mercadería: 0% línea roja, 100% verde fluorescente */
+.com-barra.com-barra-0{background:#FF0033}
+.com-barra.com-barra-100 i{background:#39FF14}
+.com-barra i{background:#FFB000}
+.com-resumen th small{display:block;font-size:10.5px;font-weight:700;color:#64748B;text-transform:none}
+/* 22/10/2026 18:13: flujo de 7 pasos plegado en Hoy en Compras */
+.com-flujo-plegable{margin:0 0 10px}
+.com-flujo-plegable>summary{cursor:pointer;display:inline-block;padding:5px 12px;border:1px solid #93C5FD;border-radius:999px;background:#EFF6FF;color:#1D4ED8;font-weight:800;font-size:13px}
+.com-flujo-plegable[open]>summary{margin-bottom:8px}
+/* Qué hacer hoy: filas más delgadas para que no se vea cargado */
+#hoyAlertas .inv-alerta{padding:7px 12px;margin-bottom:6px;font-size:13px}

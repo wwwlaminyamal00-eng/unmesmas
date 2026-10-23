@@ -181,9 +181,11 @@
 .btn-generar-compra{padding:6px 10px;font-size:11px;border-radius:8px;border:2px solid #CA8A04;background:#FFD600;color:#3D2E00;font-weight:900;cursor:pointer}
 .btn-generar-compra:hover{background:#FFC400}
 /* Entregas ▸ Acción (21/10/2026): botones sin emojis, delgados, en una línea y del mismo ancho */
-#despachoRows td .acc-col{min-width:118px}
+#despachoRows td .acc-col{min-width:116px}
 #despachoRows td .acc-col :is(button,.desp-hecho){width:100%;padding:3px 8px!important;font-size:10.5px!important;line-height:1.25!important;white-space:nowrap!important;border-radius:6px!important;box-shadow:none!important;margin:0!important;min-height:0!important;height:auto!important}
 .btn-factura-desp{padding:4px 9px;font-size:10px;border-radius:8px;border:1px solid #2563EB;background:#fff;color:#1D4ED8;font-weight:800;cursor:pointer}
+/* Ver cobro: verde azulado, el color de los cobros en Finanzas (23/10/2026) */
+.btn-ver-cobro{padding:4px 9px;font-size:10px;border-radius:8px;border:1px solid #0D9488;background:#fff;color:#0F766E;font-weight:800;cursor:pointer}
 .compra-est{display:inline-block;padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:900;line-height:1.25}
 .compra-ocs{display:block;margin-top:3px;font-size:10px;font-weight:800;color:#1D4ED8;white-space:nowrap}
 .compra-ok{background:#00E676;color:#003D1A}
@@ -191,6 +193,25 @@
 .compra-falta{background:#FFD6DB;color:#9B0010;border:1px solid #E30613}
 .cita-btn{padding:4px 8px;border-radius:8px;border:1px dashed #94A3B8;background:#fff;color:#334155;font-size:10.5px;font-weight:800;cursor:pointer}
 .cita-btn.tiene{border:1px solid #2563EB;color:#1D4ED8;background:#EFF6FF}
+/* Entregas más simple (Erika 23/10/2026): cantidad y producto juntos, distrito, comentario en la fila */
+#despachoRows .ent-prod{white-space:normal!important;text-align:left;font-size:11px;line-height:1.3;min-width:84px}
+#despachoRows td .desp-por:not(.acc-col *){white-space:normal!important;display:inline-block;max-width:84px;line-height:1.2;padding:4px 8px}
+#despachoRows td .desp-hecho:not(.acc-col *){padding:4px 7px;font-size:10px}
+#despachoRows .compra-est{padding:4px 6px;font-size:10px}
+#despachar table.master-table :is(th,td){padding-left:4px!important;padding-right:4px!important;font-size:11px}
+#despachar table.master-table th{font-size:10.5px}
+#despachoRows .cita-btn{max-width:72px;line-height:1.2;padding:3px 4px;font-size:10px}
+#despachoRows td .acc-col :is(button,.desp-hecho){font-size:10px!important;padding:3px 5px!important}
+#despachoRows .ent-prod b{display:inline-block;min-width:22px;text-align:right;color:#0F172A}
+#despachoRows .ent-prod + .ent-prod{border-top:1px dotted #CBD5E1;margin-top:2px;padding-top:2px}
+.ent-distrito{font-weight:800;color:#0F172A;cursor:help}
+.ent-editar{border:0;background:none;cursor:pointer;font-size:11px;padding:0 2px;color:#64748B}
+.ent-sin-dato{padding:3px 6px;border-radius:8px;border:1px dashed #94A3B8;background:#fff;color:#334155;font-size:10.5px;font-weight:800;cursor:pointer;max-width:80px;line-height:1.2}
+.ent-coment{display:block;max-width:150px;min-width:56px;text-align:left;font-size:11px;color:#334155;cursor:pointer;border-radius:6px;padding:2px 4px;white-space:normal;word-break:break-word}
+.ent-coment:hover{background:#F1F5F9}
+.ent-coment.vacio{color:#94A3B8;font-style:italic;text-align:center;font-size:10px;min-width:0}
+.ent-input{width:100%;min-width:120px;height:30px;border:2px solid #2563EB;border-radius:8px;padding:0 6px;font-size:12px;font-weight:700}
+.ent-filtro{height:38px;border-radius:12px;border:1px solid #E5E7EB;padding:0 8px;font-weight:800;background:#fff;color:#0F172A;font-size:11px}
 
 /* 🚚 Crear despacho - Naranja fluorescente NEON */
 .menu-pop .menu-despacho {
@@ -3072,6 +3093,19 @@
                     <input type="date" id="despachoFechaFin" style="height:38px; border-radius:12px; border:1px solid #E5E7EB; padding:0 10px; font-weight:800; background:#fff; color:#0F172A; outline:none; font-size:11px; width:140px;" title="Fecha fin">
                     <button class="btn btn-secondary" onclick="clearDespachoDateFilter()" style="height:38px; padding:0 12px; font-size:11px;" title="Limpiar filtros">✕</button>
                 </div>
+                <!-- Filtros de Entregas (Erika 23/10/2026): por distrito y por fecha de cita -->
+                <select id="despachoDistrito" class="ent-filtro" onchange="renderDespachos()" title="Ver solo las entregas de un distrito">
+                    <option value="">📍 Todos los distritos</option>
+                </select>
+                <select id="despachoCita" class="ent-filtro" onchange="cambiarFiltroCita()" title="Ver las entregas según la fecha de cita con el cliente">
+                    <option value="">📅 Todas las citas</option>
+                    <option value="hoy">Cita hoy</option>
+                    <option value="manana">Cita mañana</option>
+                    <option value="semana">Cita en los próximos 7 días</option>
+                    <option value="sin">Sin cita</option>
+                    <option value="fecha">Elegir fecha de cita…</option>
+                </select>
+                <input type="date" id="despachoCitaFecha" class="ent-filtro" onchange="renderDespachos()" title="Fecha de cita" style="display:none; width:140px;">
             </div>
             <div class="clean-actions">
                 <select id="despachoStatus">
@@ -3093,10 +3127,12 @@
                         <th>N° PC</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
+                        <th>Cantidad y producto</th>
                         <th>N° guía / N° factura</th>
-                        <th>Lugar entrega</th>
+                        <th>Distrito</th>
                         <th>Estado compra</th>
                         <th>Fecha de cita</th>
+                        <th>Comentario</th>
                         <th>Acción</th>
                     </tr>
                 </thead>

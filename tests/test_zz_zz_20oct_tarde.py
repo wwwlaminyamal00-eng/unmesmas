@@ -104,7 +104,7 @@ def test_pantalla_de_entregas_18h():
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     tabla = html[html.index('<div id="despachar"'):]
     tabla = tabla[:tabla.index('</thead>')]
-    orden = [tabla.index(f'<th>{t}</th>') for t in ('N° PC', 'N° cotización', 'Cliente', 'N° guía / N° factura', 'Lugar entrega',
+    orden = [tabla.index(f'<th>{t}</th>') for t in ('N° PC', 'N° cotización', 'Cliente', 'N° guía / N° factura', 'Distrito',
                                                    'Estado compra', 'Fecha de cita', 'Acción')]
     assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')

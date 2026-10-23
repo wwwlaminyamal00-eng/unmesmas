@@ -110,7 +110,24 @@
 #resKpis{grid-template-columns:repeat(5,minmax(0,1fr))}
 #pagKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 #resPanelProy[hidden]{display:none !important}
-.sun-grid-32{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+.sun-estado-igv{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.sun-estado-igv th{background:#fff;color:#64748B;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #CBD5E1;padding:8px 14px}
+.sun-estado-igv td{padding:7px 14px;border-bottom:1px solid #F1F5F9;color:#0F172A;font-size:13.5px;background:#fff}
+.sun-estado-igv .sun-e-txt{text-align:left !important}
+.sun-estado-igv .sun-e-num{text-align:right !important;white-space:nowrap;font-weight:700;width:125px}
+.sun-estado-igv td,.sun-estado-igv th{border-left:0 !important;border-right:0 !important;vertical-align:middle}
+.sun-e-nota{display:block;font-size:11.5px;font-weight:600;color:#64748B;margin-top:1px}
+.sun-e-sec td{text-align:left !important;padding:14px 14px 4px;font-size:11.5px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #E2E8F0}
+.sun-e-vacio td{color:#94A3B8 !important}
+.sun-e-sub td{font-weight:900;border-top:1.5px solid #334155;border-bottom:1px solid #E2E8F0}
+.sun-e-184 td{background:#FFF1F2;color:#9F1239}
+.sun-e-184 .sun-e-nota{color:#BE123C}
+.sun-e-clave td{background:#FF0033;color:#fff;font-size:16px;font-weight:950;padding:12px 14px;border:0}
+.sun-e-clave.cero td{background:#39FF14;color:#052E00}
+.sun-e-pie td{font-size:12.5px;color:#475569;font-weight:700}
+.sun-e-caja td{background:#0F172A;color:#fff;font-size:15px;font-weight:950;padding:11px 14px}
+.sun-e-ok{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#39FF14;color:#052E00;font-size:11px;font-weight:900}
+.sun-grid-32{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
 .sun-ret{display:flex;flex-direction:column;gap:6px;margin:12px 14px 14px;padding:12px;border:2px solid #0EA5E9;border-radius:12px;background:#F0F9FF}
 .sun-ret label{font-weight:950;font-size:14px;color:#0F172A}
 .sun-ret-fila{display:flex;gap:8px}
@@ -135,3 +152,7 @@
 .sun-plan-fila .num{margin-left:auto;font-weight:900}
 @media(max-width:900px){#resKpis,#pagKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.sun-grid2{grid-template-columns:1fr}.sun-form .sun-ancho{grid-column:auto}.sun-preliminar{margin-left:0}}
+/* Notita fija de tareas de cada mes (pedido de Erika 22/10 19:00) */
+.sun-nota-mes{margin-top:14px;background:#FFFBEB;border:1px solid #FCD34D;border-left:5px solid #F59E0B;border-radius:12px;padding:12px 16px;color:#1E293B;font-size:14px}
+.sun-nota-mes ol{margin:6px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:3px}
+.sun-nota-mes a{color:#1D4ED8;font-weight:700}

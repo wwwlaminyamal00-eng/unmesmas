@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Caja chica - ERP Multiempresa{% endblock %}
+
+{% block page_title %}Caja chica{% endblock %}
+
+{% block subtitle %}Fondo fijo, gastos con foto, rendición semanal, reposición y arqueo.{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+<style>
+    .cc-foto-mini{display:inline-block;width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #CBD5E1;vertical-align:middle}
+    .cc-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .cc-fotos img{max-width:260px;max-height:260px;border-radius:8px;border:1px solid #CBD5E1}
+    .cc-hist td{color:#64748B}
+    .cc-anulado td{text-decoration:line-through;color:#94A3B8}
+    .cc-filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:8px}
+    .cc-filtros label{display:flex;flex-direction:column;font-size:12px;font-weight:700;color:#475569}
+    .cc-pie{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="ccApp" class="ge-app" data-admin="{{ 'true' if es_admin else 'false' }}">
+    <div class="ge-barra">
+        <label>Empresa
+            <select id="ccEmpresa">
+                {% for e in empresas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa_activa }}>{{ e.codigo }}</option>{% endfor %}
+            </select>
+        </label>
+        <span class="ge-chip" id="ccFondo"></span>
+        <button type="button" class="btn btn-primary ge-btn-grande" id="ccNuevoGasto">+ Registrar gasto</button>
+    </div>
+
+    <div id="ccAvisos"></div>
+    <div class="ge-kpis" id="ccKpis"></div>
+
+    <details class="ge-ayuda">
+        <summary>¿Cómo funciona?</summary>
+        <ul>
+            <li><b>Fondo fijo:</b> la caja empieza cada semana con el mismo monto. Cada viernes se repone exactamente lo gastado.</li>
+            <li><b>Cada gasto el mismo día</b>, con su foto (voucher, Yape, boleta o captura del pasaje) y, si es de un pedido, su N° de PC, OC o despacho.</li>
+            <li><b>Comprobante:</b> pide siempre factura al RUC de la empresa dueña del pedido. Los pasajes del personal van en <b>planilla de movilidad</b> (cada persona firma la suya, con su nombre y DNI reales). Si no hay comprobante, imprime el <b>vale de caja</b>: sirve como control interno, no ante SUNAT.</li>
+            <li><b>Viernes:</b> Hellen envía la rendición y hace el arqueo. Erika aprueba y repone; la transferencia queda en Finanzas ▸ Cobros y pagos y la Conciliación bancaria la encuentra sola.</li>
+            <li>Un gasto enviado ya no se cambia. Si Erika observa la rendición, los gastos vuelven para corregirlos.</li>
+        </ul>
+    </details>
+
+    <div class="tabs inv-tabs" id="ccTabs">
+        <button class="tab-btn active" data-tab="gastos">🧾 Gastos</button>
+        <button class="tab-btn" data-tab="rendicion">📤 Rendición y reposición</button>
+        <button class="tab-btn" data-tab="arqueo">🔢 Arqueo</button>
+        <button class="tab-btn" data-tab="personas">👥 Personas y datos</button>
+    </div>
+
+    <section class="section active" id="cc-sec-gastos">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">🧾 Movimientos de caja chica</div></div>
+            <div class="cc-filtros">
+                <label>Desde<input type="date" id="ccDesde"></label>
+                <label>Hasta<input type="date" id="ccHasta"></label>
+                <label>Buscar<input type="search" id="ccBuscar" placeholder="Persona, destino, N° PC, N° comprobante..."></label>
+                <label class="ge-check" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="ccAnulados"> Ver anulados</label>
+                <button type="button" class="btn btn-secondary" id="ccIngreso">+ Depósito o devolución</button>
+                <button type="button" class="btn btn-secondary" id="ccMovilidad">🖨 Planilla de movilidad</button>
+            </div>
+            <div id="ccMovs"></div>
+        </div>
+    </section>
+
+    <section class="section" id="cc-sec-rendicion">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">📤 Rendición semanal</div></div>
+            <div id="ccRendir"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">Rendiciones enviadas</div></div>
+            <div id="ccRendiciones"></div>
+        </div>
+    </section>
+
+    <section class="section" id="cc-sec-arqueo">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">🔢 Arqueo: contar lo que hay</div></div>
+            <div id="ccArqueo"></div>
+        </div>
+    </section>
+
+    <section class="section" id="cc-sec-personas">
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">👥 Personas</div>
+                <button type="button" class="ge-btn" id="ccNuevaPersona">+ Agregar persona</button></div>
+            <div id="ccPersonas"></div>
+        </div>
+        <div class="inv-panel">
+            <div class="inv-head"><div class="inv-title">⚙ Datos de la caja</div></div>
+            <div id="ccConfig"></div>
+        </div>
+        <div class="inv-panel" id="ccImportarPanel" hidden>
+            <div class="inv-head"><div class="inv-title">📥 Cargar el histórico (Excel)</div></div>
+            <div id="ccImportar"></div>
+        </div>
+    </section>
+
+    <div class="ge-modal" id="ccModal" hidden>
+        <form class="ge-modal-caja ge-modal-ancha" id="ccModalForm" autocomplete="off">
+            <div class="ge-modal-tit" id="ccModalTit"></div>
+            <div class="ge-modal-det" id="ccModalDet"></div>
+            <div class="ge-form" id="ccModalCampos"></div>
+            <div class="ge-modal-pie">
+                <button type="button" class="btn btn-secondary" id="ccModalCancelar">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="ccModalOk">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    window.CC_OPCIONES = {
+        rubros: {{ rubros | list | tojson }},
+        comprobantes: {{ comprobantes | list | tojson }},
+        tiposPersona: {{ tipos_persona | list | tojson }},
+        conNumero: {{ con_numero | list | tojson }},
+        sustenta: {{ sustenta | list | tojson }},
+        topeAviso: {{ tope_aviso }}
+    };
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/caja_chica.js') }}"></script>
+{% endblock %}

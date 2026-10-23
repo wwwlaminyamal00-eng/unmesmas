@@ -42,12 +42,12 @@
 
             <div class="sun-grid2 sun-grid-32">
                 <div class="inv-panel">
-                    <div class="inv-head"><div class="inv-title">Resumen IGV y renta</div></div>
-                    <table class="inv-table sun-tabla-igv" id="resTablaIgv"></table>
+                    <div class="inv-head"><div class="inv-title">IGV del mes, paso a paso</div></div>
+                    <table class="sun-estado-igv no-centrar" id="resTablaIgv" data-sin-item></table>
                 </div>
                 <div class="inv-panel">
                     <div class="inv-head"><div class="inv-title" id="resTituloOtros">Total a pagar a SUNAT</div></div>
-                    <table class="inv-table" id="resTablaOtros"></table>
+                    <table class="sun-estado-igv no-centrar" id="resTablaOtros" data-sin-item></table>
                     <form id="resFormRet" class="sun-ret" autocomplete="off"></form>
                 </div>
             </div>
@@ -110,6 +110,14 @@
                 <label class="sun-mes-pago">Mes de pago <input type="month" id="pagMes"></label>
             </div>
             <div id="pagTabla"></div>
+        </div>
+        <div class="sun-nota-mes" data-sin-item>
+            <b>📌 Cada mes, apenas cierra el mes</b>
+            <ol>
+                <li>Sube la propuesta del SIRE de ventas (RVIE) y de compras (RCE) en <a href="/sunat?tab=completar">📥 Completar datos</a>.</li>
+                <li>Sube la hoja del contador en <a href="/sunat?tab=contador">📄 Preliminar vs contador</a>.</li>
+                <li>Escribe las retenciones del mes en <a href="/sunat?tab=resumen">🧮 Resumen de impuestos</a>.</li>
+            </ol>
         </div>
     </section>
 
