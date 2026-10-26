@@ -2317,7 +2317,9 @@ function renderComprobantes() {
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
                     <b style="white-space:nowrap;color:${esCredito ? '#1D4ED8' : '#0F172A'}">${sd(window.normalizarCondicion(r.condicion))}</b>
-                    ${esCredito && estadoCredito ? badgeCredito : ''}
+                    ${/* "Pendiente de aprobación" ya no se muestra (Erika 26/10/2026): nadie lo aprobaba y la condición
+                       ya viene fija del PC aprobado. Solo se avisa si alguien marcó el crédito como rechazado. */
+                      esCredito && estadoCredito === 'Rechazada' ? badgeCredito : ''}
                     ${badgeRetencion}
                 </div>
             </td>
