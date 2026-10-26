@@ -49,7 +49,7 @@
         const q = document.getElementById(tipo + 'Buscar').value.trim();
         const params = new URLSearchParams({ estado, q });
         if (tipo === 'cxc') params.set('incluir_borradores', document.getElementById('cxcBorradores').checked);
-        body.innerHTML = '<tr><td colspan="15">Cargando...</td></tr>';
+        body.innerHTML = '<tr><td colspan="14">Cargando...</td></tr>';
         try {
             const { data, totales } = await api(`/finanzas/api/${tipo}?${params}`);
             datos[tipo] = data;   // CxP ya viene ordenado del servidor (vencido > por vencer > al día): no se reordena
@@ -141,13 +141,25 @@
         }
         // N° MIGO: quitado de todos los módulos (Erika 26/10/2026 21:27); los datos siguen en la base
         if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago programado <b>${fecha(x.fecha_programada)}</b></small>`);
-        if (x.retencion_numero) {
-            l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Retención <b>${esc(x.retencion_numero)}</b></small>`);
-        } else if (x.retencion > 0) {
-            l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Retención 3%: falta N°</small>');
-        }
         if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
-        return l.length ? l.join('') : '<span class="fin-gris">—</span>';
+        return l.join('');
+    }
+
+    // N° PC (Pedido del cliente): lo que manda el cliente. Valores de relleno ("*****") o un N° de OC de proveedor
+    // escrito por error (OC-AAAAMMDD-NNNN) se muestran como "—" sin tocar la base (Erika 26/10/2026 21:31)
+    function pcCliente(v) {
+        const t = String(v || '').trim();
+        if (!t || /^[*.\-_\s]+$/.test(t) || /^OC-\d{8}-\d{4}$/i.test(t)) return '';
+        return t;
+    }
+
+    // Retención 3%: N° del comprobante del cliente, su fecha y el monto retenido; si no aplica, "—"
+    function celdaRetencion(x) {
+        const monto = x.retencion_anotada ?? x.retencion;
+        if (!x.retencion_numero && !(x.retencion > 0) && !(x.retencion_anotada > 0)) return '<span class="fin-gris">—</span>';
+        const num = x.retencion_numero ? `<b>${esc(x.retencion_numero)}</b>`
+            : '<span class="ret-falta" title="Anota el N° del comprobante de retención cuando el cliente lo envíe">Falta N°</span>';
+        return `${num}<small>${x.retencion_fecha ? fecha(x.retencion_fecha) : 'Fecha: —'}</small><small>${dinero(x, monto)}</small>`;
     }
 
     function abrirSeguimiento(id) {
@@ -167,6 +179,7 @@
             <label class="seg-campo">Fecha programada de pago<input type="date" id="segProgramada" value="${x.fecha_programada ? String(x.fecha_programada).slice(0, 10) : ''}"></label>
             <div class="seg-grupo">Retención del 3% (comprobante que envía el cliente)</div>
             <label class="seg-campo">N° comprobante de retención<input type="text" id="segRetNum" maxlength="40" placeholder="Ej. R001-00006805" value="${esc(x.retencion_numero || '')}"></label>
+            <label class="seg-campo">Fecha de emisión de la retención<input type="date" id="segRetFecha" value="${x.retencion_fecha ? String(x.retencion_fecha).slice(0, 10) : ''}"></label>
             <label class="seg-campo">Monto retenido (S/)<input type="number" id="segRetMonto" min="0" step="0.01" value="${monto}"></label>
             <div class="seg-ayuda">3% de esta factura = ${dinero(x, tres)}. Este monto es el que usa SUNAT ▸ Retenciones del mes. Vacío = el de la factura.</div>
             <div class="seg-botones">
@@ -185,7 +198,7 @@
                 await api('/finanzas/api/seguimiento_cobro', { method: 'POST', body: JSON.stringify({
                     id: x.id, portal_ingresado: chk.checked, portal_fecha: d.querySelector('#segPortalFecha').value,
                     fecha_programada: d.querySelector('#segProgramada').value, retencion_numero: d.querySelector('#segRetNum').value,
-                    retencion_monto: d.querySelector('#segRetMonto').value,
+                    retencion_monto: d.querySelector('#segRetMonto').value, retencion_fecha: d.querySelector('#segRetFecha').value,
                     ...(d.querySelector('#segMigo') ? { numero_migo: d.querySelector('#segMigo').value } : {}) }) });
                 d.remove();
                 aviso('Seguimiento guardado', 'success');
@@ -208,7 +221,7 @@
         const lista = datos[tipo];
         const esCxc = tipo === 'cxc';
         if (!lista.length) {
-            body.innerHTML = `<tr><td colspan="${esCxc ? 15 : 14}">No hay documentos para este filtro.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="${esCxc ? 14 : 12}">No hay documentos para este filtro.</td></tr>`;
         } else {
             body.innerHTML = lista.map((x, i) => {
                 const accion = x.saldo > 0
@@ -216,11 +229,14 @@
                     : '<span class="fin-gris">—</span>';
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
                 const vinculo = esCxc
-                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>N° PC (Pedido del cliente): ${esc(x.oc_cliente)}</small>` : ''}`
-                    : `<b>${esc(x.oc_numero || '—')}</b>${x.pc_numero ? `<small>${esc(x.pc_numero)}</small>` : ''}`;
+                    ? `<td class="col-num-doc"><b>${esc(x.pc_numero || '—')}</b></td><td class="col-num-doc">${esc(pcCliente(x.oc_cliente) || '—')}</td>`
+                    : `<td><b>${esc(x.oc_numero || '—')}</b>${x.pc_numero ? `<small>${esc(x.pc_numero)}</small>` : ''}</td>`;
                 // Cobrar: la retención y la nota de crédito van debajo del monto. Pagar: el adelanto va debajo de lo pagado.
                 const extraMonto = esCxc ? [x.retencion ? `Retención ${dinero(x, x.retencion)}` : '', x.notas_credito ? `N. crédito ${dinero(x, x.notas_credito)}` : '']
                     .filter(Boolean).map(t => `<small>${t}</small>`).join('') : '';
+                // Fecha real de cobro / pago debajo de lo cobrado o pagado (26/10/2026: tabla sin scroll horizontal)
+                const fechaReal = x.fecha_pago_real ? `<small title="Fecha real de ${esCxc ? 'cobro' : 'pago'}">El <b>${fecha(x.fecha_pago_real)}</b></small>`
+                    : x.ultimo_abono ? `<small>Último abono ${fecha(x.ultimo_abono)}</small>` : '';
                 const extraPagado = !esCxc && x.adelanto ? `<small title="Pagado en Compras antes de registrar la factura">Adelanto ${dinero(x, x.adelanto)}</small>` : '';
                 const comentario = `<span class="fin-coment">${esc(x.comentario || '')}</span>`
                     + (x.nota_registro ? `<small class="fin-gris" title="Observación al registrar la factura en Compras">Compras: ${esc(x.nota_registro)}</small>` : '')
@@ -232,17 +248,15 @@
                     <td class="left"><b>${esc(x.tercero)}</b></td>
                     <td>${esc(x.ruc || '—')}</td>
                     <td><b>${esc(x.documento)}</b><small>${esc(x.tipo_comprobante || '')} · ${fecha(x.fecha_emision)}</small></td>
-                    <td>${vinculo}</td>
+                    ${vinculo}
                     <td class="left">${celdaProductos(x)}</td>
                     <td>${fecha(x.fecha_vencimiento)}${venc}${chipDias(x) ? '<br>' + chipDias(x) : ''}</td>
                     <td class="num">${dinero(x, x.total)}${extraMonto}</td>
-                    <td class="num">${dinero(x, x.abonado)}${extraPagado}</td>
+                    <td class="num">${dinero(x, x.abonado)}${extraPagado}${fechaReal}</td>
                     <td class="num saldo">${dinero(x, x.saldo)}</td>
-                    <td>${chipEstado(x)}</td>
-                    <td>${x.fecha_pago_real ? `<b>${fecha(x.fecha_pago_real)}</b>` : x.ultimo_abono ? `<small>Último abono ${fecha(x.ultimo_abono)}</small>` : '<span class="fin-gris">—</span>'}</td>
-                    ${esCxc ? `<td class="seg-celda">${celdaSeguimiento(x)}</td>` : ''}
-                    <td class="fin-coment-celda">${comentario}</td>
-                    <td>${accion}</td>
+                    <td class="est-celda">${chipEstado(x)}${esCxc ? celdaSeguimiento(x) : ''}</td>
+                    ${esCxc ? `<td class="ret-celda">${celdaRetencion(x)}</td>` : ''}
+                    <td class="fin-coment-celda">${accion}${comentario}</td>
                 </tr>`;
             }).join('');
         }
@@ -274,8 +288,9 @@
             if (tipo) params.set('tipo', tipo);
             if (q) params.set('q', q);
             const { data } = await api('/finanzas/api/movimientos' + (params.toString() ? '?' + params : ''));
+            pintarResumenMov(data);
             body.innerHTML = data.length ? data.map(m => `<tr class="${m.tipo === 'COBRO' ? 'fila-cobro' : 'fila-pago'}">
-                <td>${fecha(m.fecha)}</td>
+                <td>${fecha(m.fecha)}${m.fecha_aviso ? `<small title="Fecha real de pago (aviso de pago)">Real <b>${fecha(m.fecha_aviso)}</b></small>` : ''}</td>
                 <td><span class="fin-tipo ${m.tipo === 'COBRO' ? 'fin-tipo-cobro' : 'fin-tipo-pago'}">${m.tipo === 'COBRO' ? '⬇ Cobro' : '⬆ Pago'}</span></td>
                 <td>${esc(m.documento_numero)}</td>
                 <td class="fin-ocpc">${ocPcMovimiento(m)}</td>
@@ -283,14 +298,28 @@
                 <td class="num">${m.moneda_pago && m.moneda_pago !== 'PEN' || (m.monto_pagado && Number(m.monto_pagado) !== Number(m.monto))
                     ? `${dineroM(m.moneda_pago, m.monto_pagado)}${m.tipo_cambio ? `<small>TC ${Number(m.tipo_cambio).toFixed(3)}</small>` : ''}` : soles(m.monto)}</td>
                 <td>${esc(m.metodo)}</td>
-                <td>${esc([m.banco, m.numero_operacion ? 'Op. ' + m.numero_operacion : '', m.fecha_aviso ? 'Avisó ' + fecha(m.fecha_aviso) : ''].filter(Boolean).join(' · ')) || '—'}</td>
+                <td>${esc(m.banco || '—')}${m.numero_operacion ? `<small>Op. ${esc(m.numero_operacion)}</small>` : ''}</td>
+                <td class="ret-celda">${m.tipo === 'COBRO' && (m.retencion_numero || m.retencion_monto) ? `<b>${esc(m.retencion_numero || 'Falta N°')}</b><small>${m.retencion_fecha ? fecha(m.retencion_fecha) : 'Fecha: —'}</small><small>${m.retencion_monto != null ? soles(m.retencion_monto) : ''}</small>` : '<span class="fin-gris">—</span>'}</td>
                 <td>${esc(m.usuario_nombre || '')}</td>
                 <td>${m.estado === 'Anulado' ? `<span class="badge badge-gray" title="${esc(m.motivo_anulacion)}">Anulado</span>` : '<span class="badge badge-info">Registrado</span>'}</td>
                 <td>${m.estado !== 'Anulado' && PUEDE_OPERAR ? `<button class="btn-mini danger" data-anular="${m.id}">Anular</button>` : ''}</td>
-            </tr>`).join('') : '<tr><td colspan="11">Aún no hay cobros ni pagos registrados.</td></tr>';
+            </tr>`).join('') : '<tr><td colspan="12">Aún no hay cobros ni pagos registrados.</td></tr>';
         } catch (e) {
-            body.innerHTML = `<tr><td colspan="11" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="12" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
+    }
+
+    // Resumen de Cobros y pagos con los mismos colores (Erika 26/10/2026): cobros azul, pagos morado, anulados rojo
+    function pintarResumenMov(data) {
+        const caja = document.getElementById('movResumen');
+        if (!caja) return;
+        const vivos = data.filter(m => m.estado !== 'Anulado');
+        const suma = t => vivos.filter(m => m.tipo === t).reduce((a, m) => a + Number(m.monto || 0), 0);
+        const n = t => vivos.filter(m => m.tipo === t).length;
+        const anulados = data.length - vivos.length;
+        caja.innerHTML = `<span class="fin-mov-tipo fin-mov-cobros">⬇ Cobros ${soles(suma('COBRO'))} (${n('COBRO')})</span>`
+            + `<span class="fin-mov-tipo fin-mov-pagos">⬆ Pagos ${soles(suma('PAGO'))} (${n('PAGO')})</span>`
+            + (anulados ? `<span class="fin-mov-tipo fin-mov-anulados">Anulados (${anulados})</span>` : '');
     }
 
     // N° OC y N° PV de cada cobro/pago, en dos líneas (Erika 22/10/2026: trazabilidad)
@@ -351,9 +380,16 @@
                 fila('N° de cuenta', esc(doc.numero_cuenta || '—'), 'fd-num') +
                 fila('CCI', esc(doc.cci || '—'), 'fd-num');
         }
-        ficha += fila(`N° ${esc((doc.tipo_comprobante || 'documento').toLowerCase())}`, esc(doc.documento || '—'), 'fd-num') +
-            fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', dinero(doc, doc.total), 'fd-monto');
-        if (esCxc && doc.retencion) ficha += fila('Retención', dinero(doc, doc.retencion));
+        ficha += fila(`N° ${esc((doc.tipo_comprobante || 'documento').toLowerCase())}`, esc(doc.documento || '—'), 'fd-num');
+        if (esCxc) {
+            ficha += fila('N° PV (Pedido de venta)', esc(doc.pc_numero || '—'), 'fd-num') +
+                fila('N° PC (Pedido del cliente)', esc(pcCliente(doc.oc_cliente) || '—'), 'fd-num');
+        }
+        ficha += fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', dinero(doc, doc.total), 'fd-monto');
+        if (esCxc && doc.retencion) {
+            ficha += fila('Retención 3%', dinero(doc, doc.retencion)) +
+                fila('Monto a cobrar neto', dinero(doc, Math.round((doc.total - doc.retencion) * 100) / 100), 'fd-monto');
+        }
         if (doc.notas_credito) ficha += fila('Nota de crédito', dinero(doc, doc.notas_credito));
         ficha += fila(esCxc ? 'Falta cobrar' : 'Falta pagar', dinero(doc, doc.saldo), 'fd-monto ' + (doc.saldo > 0 ? 'fd-falta' : 'fd-ok'));
         if (doc.moneda === 'USD' && doc.tipo_cambio) ficha += fila('Tipo de cambio del documento', Number(doc.tipo_cambio).toFixed(3), 'fd-num');
@@ -365,6 +401,17 @@
                 ? '<div class="fd-nota">Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</div>'
                 : '<div class="fd-nota fd-alerta">⚠️ El proveedor no tiene cuenta registrada. Regístrala en Maestros ▸ Proveedores antes de pagar.</div>';
         }
+        // Bloque "Retención" solo si la factura tiene retención (Erika 26/10/2026 21:32)
+        const conRet = esCxc && (doc.retencion > 0 || doc.retencion_numero);
+        document.getElementById('pagoRetCaja').style.display = conRet ? '' : 'none';
+        document.getElementById('pagoRetNum').value = conRet ? (doc.retencion_numero || '') : '';
+        document.getElementById('pagoRetFecha').value = conRet && doc.retencion_fecha ? String(doc.retencion_fecha).slice(0, 10) : '';
+        document.getElementById('pagoRetMonto').value = conRet ? Number(doc.retencion_anotada ?? doc.retencion ?? 0).toFixed(2) : '';
+        const sugerido = Math.round(Number(doc.total || 0) * 3) / 100;
+        document.getElementById('pagoRetAyuda').dataset.sugerido = sugerido.toFixed(2);
+        pagoRetBase = Number(doc.retencion_anotada ?? doc.retencion ?? 0);
+        pagoRet = conRet ? { id: doc.id, antes: [doc.retencion_numero || '', doc.retencion_fecha ? String(doc.retencion_fecha).slice(0, 10) : '',
+            Number(doc.retencion_anotada ?? doc.retencion ?? 0).toFixed(2)].join('|') } : null;
         const cajaDoc = document.getElementById('pagoDoc');
         cajaDoc.className = 'ficha-datos ' + (esCxc ? 'fd-cobro' : 'fd-pago');
         cajaDoc.innerHTML = ficha;
@@ -379,6 +426,7 @@
         document.getElementById('pagoTC').value = doc.tipo_cambio ? Number(doc.tipo_cambio).toFixed(3) : '';
         pintarMonedaPago();
         document.getElementById('pagoFecha').value = hoyISO();
+        if (conRet) ayudaRetencion(false);
         ['pagoBanco', 'pagoOperacion', 'pagoAviso', 'pagoObs'].forEach(i => { document.getElementById(i).value = ''; });
         document.getElementById('pagoAvisoTip').style.display = esCxc ? '' : 'none';
         // La fecha de aviso es solo de cobros (el cliente avisa); en un pago basta el N.º de operación
@@ -389,6 +437,24 @@
     }
 
     let pagoDoc = { moneda: 'PEN', saldo: 0 };
+    let pagoRet = null;
+    let pagoRetBase = 0;
+    // Monto real retenido: si el cliente retuvo distinto al 3%, avisa y ajusta el monto a cobrar (Erika 26/10/2026)
+    function ayudaRetencion(ajustar) {
+        const ay = document.getElementById('pagoRetAyuda');
+        const sug = Number(ay.dataset.sugerido || 0);
+        const v = document.getElementById('pagoRetMonto').value;
+        const real = v === '' ? null : Number(v);
+        ay.classList.toggle('ret-dif', real !== null && Math.abs(real - sug) > 0.01);
+        ay.textContent = `Sugerido (3% de la factura): ${dineroM(pagoDoc.moneda, sug)}.`
+            + (real !== null && Math.abs(real - sug) > 0.01 ? ` ⚠️ El cliente retuvo ${dineroM(pagoDoc.moneda, real)}: diferencia ${dineroM(pagoDoc.moneda, Math.round((real - sug) * 100) / 100)}.` : '');
+        if (ajustar && real !== null && monPago() === pagoDoc.moneda) {
+            const nuevo = Math.max(0, Math.round((pagoDoc.saldo + pagoRetBase - real) * 100) / 100);
+            document.getElementById('pagoMonto').value = nuevo.toFixed(2);
+            document.getElementById('pagoMonto').max = nuevo.toFixed(2);
+        }
+    }
+    const datosRet = () => ['pagoRetNum', 'pagoRetFecha', 'pagoRetMonto'].map(i => document.getElementById(i).value.trim());
     const monPago = () => pagoDoc.moneda === 'USD' ? document.getElementById('pagoMonedaPago').value : 'PEN';
     function montoEnDoc() {
         const m = parseFloat(document.getElementById('pagoMonto').value), tc = parseFloat(document.getElementById('pagoTC').value);
@@ -421,6 +487,7 @@
     document.addEventListener('input', e => {
         if (e.target.id === 'pagoTC') pintarMonedaPago();
         else if (e.target.id === 'pagoMonto') equivPago();
+        else if (e.target.id === 'pagoRetMonto') ayudaRetencion(true);
     });
 
     async function guardarPago() {
@@ -440,6 +507,14 @@
         }
         btn.disabled = true;
         try {
+            // Primero la retención (si cambió): si tiene un error, no se registra el cobro
+            if (pagoRet) {
+                const [num, fec, mon] = datosRet();
+                if ([num, fec, mon ? Number(mon).toFixed(2) : ''].join('|') !== pagoRet.antes) {
+                    await api('/finanzas/api/retencion_cobro', { method: 'POST', body: JSON.stringify({
+                        id: pagoRet.id, retencion_numero: num, retencion_fecha: fec, retencion_monto: mon }) });
+                }
+            }
             const r = await api('/finanzas/api/movimientos', {
                 method: 'POST',
                 body: JSON.stringify({

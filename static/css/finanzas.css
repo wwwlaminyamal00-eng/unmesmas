@@ -210,3 +210,33 @@ html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th
 .fin-resumen .res-item small{color:inherit;opacity:.8}
 .fin-resumen .res-cero, .fin-resumen .res-cero b{background:#F8FAFC;border-color:#E2E8F0;color:#94A3B8}
 .fin-resumen .res-activo{box-shadow:0 0 0 2px #0F172A33}
+/* 26/10/2026 (Erika): CxC con N° PV y N° PC en columnas separadas y retención del cliente (N°, fecha, monto) */
+#finanzasApp td.col-num-doc{white-space:nowrap!important}
+#finanzasApp td.col-num-doc{font-size:12px}
+#finanzasApp .ret-celda{white-space:nowrap;font-size:12px;line-height:1.35}
+#finanzasApp .ret-celda small{display:block;font-size:10.5px;color:#334155}
+#finanzasApp .ret-falta{color:#FF1E1E;font-weight:900;font-size:11px}
+#finanzasApp .est-celda .seg-chip,#finanzasApp .est-celda small{display:block;margin-top:3px}
+#finanzasApp .est-celda small{font-size:10.5px;color:#334155;line-height:1.3}
+.fin-ret{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#F0FDFA;border:1px solid #99F6E4;border-radius:9px;padding:10px}
+.fin-ret-titulo{grid-column:1/-1;font-size:12.5px;font-weight:900;color:#0F766E}
+@media(max-width:700px){.fin-ret{grid-template-columns:1fr}}
+.fin-ret-ayuda{grid-column:1/-1}
+.fin-ret-ayuda.ret-dif{color:#B45309!important;font-weight:900}
+/* 26/10/2026 21:49 (Erika): pastillas de arriba con la regla de colores. Vencido rojo, por vencer amarillo,
+   al día y total azul. En cero conservan su color (más suave), ya no se ponen grises. Cobrar, Pagar y Cobros y pagos. */
+.fin-resumen .res-vencido,.fin-resumen .res-vencido.res-cero{background:#FF1E1E;border-color:#C40000;color:#FFFFFF}
+.fin-resumen .res-vencido b,.fin-resumen .res-vencido.res-cero b{color:#FFFFFF}
+.fin-resumen .res-porvencer,.fin-resumen .res-porvencer.res-cero{background:#FFD60A;border-color:#E0B400;color:#5C4500}
+.fin-resumen .res-porvencer b,.fin-resumen .res-porvencer.res-cero b{color:#3D2E00}
+.fin-resumen .res-aldia,.fin-resumen .res-aldia.res-cero,.fin-cobros .fin-resumen .res-total,.fin-pagos .fin-resumen .res-total,.fin-resumen .res-total.res-cero{background:#0057FF;border-color:#0041C2;color:#FFFFFF}
+.fin-resumen .res-aldia b,.fin-resumen .res-aldia.res-cero b,.fin-cobros .fin-resumen .res-total b,.fin-pagos .fin-resumen .res-total b,.fin-resumen .res-total.res-cero b{color:#FFFFFF}
+.fin-resumen .res-item small{color:inherit;opacity:.9}
+.fin-resumen .res-cero{opacity:.6}
+.fin-resumen .res-activo{box-shadow:0 0 0 3px #0F172A55}
+.fin-mov-tipo{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:900}
+.fin-mov-cobros{background:#0057FF;color:#fff}
+.fin-mov-pagos{background:#7C3AED;color:#fff}
+.fin-mov-anulados{background:#FF1E1E;color:#fff}
+.fin-mov-resumen{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.fin-resumen .res-item.res-cero b{background:transparent!important}

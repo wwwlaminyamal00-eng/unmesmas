@@ -13,7 +13,7 @@
 {% block subtitle %}Cuentas por cobrar, cuentas por pagar, cobros, pagos y flujo de caja proyectado.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/finanzas.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/finanzas.css') }}?v=20261026g">
 {% endblock %}
 
 {% block content %}
@@ -65,22 +65,22 @@
                         <tr>
                             <th>N°</th><th>{{ t[3] }}</th><th>RUC / DNI</th>
                             {% if t[0] == 'cxc' %}
-                            <th>N° Factura de venta</th><th>N° PV (Pedido de venta)<small>N° PC (Pedido del cliente)</small></th>
+                            <th>N° Factura de venta</th><th class="col-num-doc">N° PV<small>Pedido de venta</small></th><th class="col-num-doc" title="Número que manda el cliente (por ejemplo Komatsu 20…, 40…, 60…). Si no lo mandó: —">N° PC<small>Pedido del cliente</small></th>
                             {% else %}
                             <th>N° Factura del proveedor</th><th>N° OC (Proveedor)<small>N° PV relacionado</small></th>
                             {% endif %}
                             <th>Nombre producto</th><th title="Orden: primero lo vencido (más días de atraso arriba), luego lo por vencer y al final lo al día">Vencimiento<small>días</small></th>
                             {% if t[0] == 'cxc' %}
-                            <th title="Total de la factura. Debajo: retención y notas de crédito (rebajan el saldo)">Monto a cobrar<small>retención / N. crédito</small></th><th>Cobrado</th>
+                            <th title="Total de la factura. Debajo: retención y notas de crédito (rebajan el saldo)">Monto a cobrar<small>retención / N. crédito</small></th><th title="Debajo: la fecha real de cobro">Cobrado<small>fecha real</small></th>
                             {% else %}
-                            <th>Monto a pagar</th><th title="Debajo: lo pagado en Compras antes de registrar la factura">Pagado<small>adelanto</small></th>
+                            <th>Monto a pagar</th><th title="Debajo: lo pagado en Compras antes de registrar la factura">Pagado<small>adelanto · fecha real</small></th>
                             {% endif %}
-                            <th>Saldo</th><th>Estado</th><th>{{ 'Fecha real de cobro' if t[0] == 'cxc' else 'Fecha real de pago' }}</th>
-                            {% if t[0] == 'cxc' %}<th title="¿Se ingresó en el portal del cliente? Fecha programada de pago y comprobante de retención del 3%">Portal y pago<small>retención 3%</small></th>{% endif %}
-                            <th>Comentario</th><th>Acción</th>
+                            <th>Saldo</th><th>Estado</th>
+                            {% if t[0] == 'cxc' %}<th title="Comprobante de retención que envía el cliente: N°, fecha de emisión y monto retenido. Si no aplica: —">Retención 3%<small>N° · fecha · monto</small></th>{% endif %}
+                            <th>Acción<small>comentario</small></th>
                         </tr>
                     </thead>
-                    <tbody id="{{ t[0] }}Body"><tr><td colspan="14">Cargando...</td></tr></tbody>
+                    <tbody id="{{ t[0] }}Body"><tr><td colspan="{{ 14 if t[0] == 'cxc' else 12 }}">Cargando...</td></tr></tbody>
                 </table>
             </div>
             <div class="fin-foot" id="{{ t[0] }}Foot"></div>
@@ -94,6 +94,7 @@
                 <div>
                     <div class="fin-title">Cobros y pagos registrados</div>
                     <div class="fin-help">Historial con usuario responsable. Un movimiento anulado deja el documento nuevamente pendiente.</div>
+                    <div class="fin-mov-resumen" id="movResumen"></div>
                 </div>
                 <div class="fin-filters">
                     <input type="search" id="movBuscar" placeholder="Buscar documento, cliente/proveedor, RUC u operación...">
@@ -107,10 +108,10 @@
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>
-                        <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° OC (Proveedor) / N° PV</th><th class="left">Cliente / proveedor</th>
-                            <th>Monto</th><th>Método</th><th>Banco / N° operación / aviso</th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
+                        <tr><th>Fecha de registro<small>fecha real de pago</small></th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° PV / N° PC<small>N° OC (Proveedor) en pagos</small></th><th class="left">Cliente / proveedor</th>
+                            <th>Monto</th><th>Método</th><th>Banco<small>N° de operación</small></th><th title="Comprobante de retención que envía el cliente">Retención<small>N° · fecha · monto</small></th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
                     </thead>
-                    <tbody id="movBody"><tr><td colspan="11">Cargando...</td></tr></tbody>
+                    <tbody id="movBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -159,17 +160,25 @@
                 <input type="number" id="pagoTC" min="2.5" max="6" step="0.001" placeholder="Ej. 3.750"></label>
             <label><span id="pagoMontoEt">Monto (S/)</span><input type="number" id="pagoMonto" min="0.01" step="0.01">
                 <small class="mon-info" id="pagoEquiv"></small></label>
-            <label>Fecha<input type="date" id="pagoFecha"></label>
+            <label><span id="pagoFechaEt">Fecha de registro</span><input type="date" id="pagoFecha" title="Día en que se registra el cobro o pago en el sistema"></label>
             <label>Método
                 <select id="pagoMetodo">
                     {% for m in metodos %}<option>{{ m }}</option>{% endfor %}
                 </select>
             </label>
             <label>Banco<select id="pagoBanco" data-lista="bancos"></select></label>
-            <label>N.º de operación<input type="text" id="pagoOperacion" maxlength="80" placeholder="Si el cliente lo envió"></label>
-            <label>Fecha de aviso de pago<input type="date" id="pagoAviso" title="Día en que el cliente avisó que pagó"></label>
-            <div class="fin-tip fin-full" id="pagoAvisoTip">📌 Depende del cliente: escribe el <b>N.º de operación</b> o la <b>fecha en que avisó el pago</b>. Basta con uno.</div>
-            <label class="fin-full">Observaciones<textarea id="pagoObs" rows="2" maxlength="500"></textarea></label>
+            <label>N° de operación (si lo hay)<input type="text" id="pagoOperacion" maxlength="80" placeholder="Si el cliente lo envió"></label>
+            <label>Fecha real de pago (aviso de pago)<input type="date" id="pagoAviso" title="Día en que el cliente pagó o avisó que pagó. Es la que sale en la tabla como fecha real de pago"></label>
+            <div class="fin-tip fin-full" id="pagoAvisoTip">📌 Depende del cliente: escribe el <b>N° de operación</b> o la <b>fecha real de pago (aviso)</b>. Basta con uno.</div>
+            <div class="fin-full fin-ret" id="pagoRetCaja" style="display:none">
+                <div class="fin-ret-titulo">Retención 3% (comprobante que envía el cliente)</div>
+                <label>N° comprobante de retención<input type="text" id="pagoRetNum" maxlength="40" placeholder="Ej. R001-00006805"></label>
+                <label>Fecha de emisión<input type="date" id="pagoRetFecha"></label>
+                <label>Monto real retenido<input type="number" id="pagoRetMonto" min="0" step="0.01"></label>
+                <small class="mon-info fin-ret-ayuda" id="pagoRetAyuda"></small>
+                <small class="mon-info fin-ret-ayuda">Escribe el monto que dice el comprobante del cliente, aunque no sea el 3%. Un mismo comprobante puede cubrir varias facturas: anota el mismo N° en cada una con su monto. Si aún no llega, déjalo en blanco y anótalo después con ✏️.</small>
+            </div>
+            <label class="fin-full">Observaciones / comentarios<textarea id="pagoObs" rows="2" maxlength="500" placeholder="Lo que quieras anotar de este cobro o pago"></textarea></label>
             <div class="fin-tip fin-full">💡 Puedes registrar pagos parciales. El sistema no permite registrar más que el saldo pendiente.</div>
         </div>
         <div class="modal-foot">
@@ -199,5 +208,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/finanzas.js') }}"></script>
+<script src="{{ url_for('static', filename='js/finanzas.js') }}?v=20261026g"></script>
 {% endblock %}

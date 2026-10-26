@@ -2497,3 +2497,16 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Quitado de la vista: formulario y lista de Facturas, PDF de la factura, ficha del cliente ("Pide N° MIGO") y Finanzas ▸ Cuentas por cobrar ("Falta MIGO" y el campo del ✏️).
 - No se borró nada de la base. Las columnas `numero_migo` y `pide_migo` y sus datos siguen ahí, y las pantallas ya no las tocan al guardar.
 - Pruebas: 323 correctas (base normal) y 321 + 2 omitidas (reconstruida).
+
+### 24.52 Finanzas ▸ Cuentas por cobrar, Registrar cobro y Cobros y pagos (Erika, 26/10/2026 21:31-21:49)
+- **Tabla de Cuentas por cobrar**: "N° PV (Pedido de venta)" y "N° PC (Pedido del cliente)" en columnas separadas; "—" si el cliente no mandó número. Valores de relleno ("*****") o un N° de OC de proveedor escrito por error (OC-AAAAMMDD-NNNN) se ven como "—" sin tocar la base; al volver a guardar la factura quedan en blanco.
+- **Columna "Retención 3%"**: N° del comprobante de retención del cliente, su fecha de emisión y el monto real retenido. "Falta N°" en rojo si la factura tiene retención y aún no se anota; "—" si no aplica.
+- La fecha real de cobro va debajo de "Cobrado". Portal y pago programado van debajo del Estado. Comentario va con la acción. La tabla entra sin scroll horizontal.
+- **Fecha real de pago** = la fecha de aviso de pago del cliente; si no la hay, la fecha de registro.
+- **Ventana "Registrar cobro"**: arriba N° PV, N° PC, Retención 3% y Monto a cobrar neto. Campos en orden: Monto, Fecha de registro, Método, Banco, N° de operación (si lo hay), Fecha real de pago (aviso de pago), bloque Retención (N° comprobante, fecha de emisión, monto REAL retenido) y Observaciones / comentarios.
+- El monto real retenido puede ser distinto al 3%: se muestra el sugerido y la diferencia en ámbar, y el monto a cobrar se ajusta solo. La retención se guarda antes del cobro (`/finanzas/api/retencion_cobro`) con auditoría.
+- **Un comprobante de retención puede cubrir varias facturas** (ej. R001-00010077 de Cummins con 2 facturas E001): se anota el mismo N° en cada factura con su monto. No se bloquea como duplicado.
+- **Pastillas de arriba** (Cobrar y Pagar): Vencido rojo, Por vencer (7 días) amarillo, Al día y Total azul eléctrico; en cero conservan su color más suave.
+- **Cobros y pagos**: resumen arriba (cobros azul, pagos morado, anulados rojo); columnas "Fecha de registro / fecha real de pago", "Banco / N° de operación" y "Retención (N° · fecha · monto)".
+- Base: migración `035_retencion_fecha_cobro.sql` aplicada en Supabase (agrega la columna vacía `retencion_fecha`); respaldo previo `respaldo_20261015.finanzas_seguimiento_cobro_20261026` (la tabla tenía 0 filas). No se cambiaron datos.
+- Pruebas: 328 correctas (base normal) y 326 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_26oct_cxc_retencion.py`.

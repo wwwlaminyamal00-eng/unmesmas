@@ -114,7 +114,8 @@ def test_ver_cobro_desde_entregas():
     assert 'function verCobroDespacho' in js and ">Ver cobro</button>" in js and "'/finanzas?tab=cxc&factura='" in js
     fjs = (RAIZ / 'static/js/finanzas.js').read_text(encoding='utf-8')
     for t in ("get('factura')", 'fin-fila-resaltada', 'function celdaSeguimiento', 'function abrirSeguimiento',
-              "'/finanzas/api/seguimiento_cobro'", '✖ Falta portal', 'Retención 3%: falta N°'):
+              "'/finanzas/api/seguimiento_cobro'", '✖ Falta portal', 'Falta N°'):
         assert t in fjs, t
     html = (RAIZ / 'templates/finanzas.html').read_text(encoding='utf-8')
-    assert 'Portal y pago<small>retención 3%</small>' in html
+    # 26/10/2026: la retención tiene su propia columna; portal y pago programado van debajo del Estado
+    assert 'Retención 3%<small>N° · fecha · monto</small>' in html
