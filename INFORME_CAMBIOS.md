@@ -2510,3 +2510,11 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - **Cobros y pagos**: resumen arriba (cobros azul, pagos morado, anulados rojo); columnas "Fecha de registro / fecha real de pago", "Banco / N° de operación" y "Retención (N° · fecha · monto)".
 - Base: migración `035_retencion_fecha_cobro.sql` aplicada en Supabase (agrega la columna vacía `retencion_fecha`); respaldo previo `respaldo_20261015.finanzas_seguimiento_cobro_20261026` (la tabla tenía 0 filas). No se cambiaron datos.
 - Pruebas: 328 correctas (base normal) y 326 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_26oct_cxc_retencion.py`.
+
+### 24.53 Finanzas ▸ Cobros y pagos con montos claros (Erika, 26/10/2026 22:15)
+- Columnas separadas: "N° PV (Pedido de venta)" y "N° PC / N° OC" (en cobros, el N° PC del cliente o "—"; en pagos, el N° OC del proveedor).
+- Montos en tres columnas: "Monto factura (incluye IGV)", "Retención" (N°, fecha y monto; si aún no se anota la real, sale la de la factura con "Falta N°") y "Monto real cobrado / pagado" (lo que entró o salió del banco, ya sin la retención).
+- Método, banco y N° de operación en una sola columna. La tabla entra sin scroll horizontal.
+- Términos: "Tipo" sigue como Cobro / Pago (el movimiento). El estado dice **Cobrado** o **Pagado** en azul eléctrico, y **Anulado** en rojo.
+- Resumen de arriba: "Cobrado real" (azul) y "Pagado real" (morado) suman el monto real.
+- Pruebas: 328 correctas (base normal) y 326 + 2 omitidas (reconstruida).

@@ -87,3 +87,9 @@ def test_fecha_real_de_pago_es_la_del_aviso_y_se_ve_en_cobros(admin):
     admin.post('/finanzas/api/retencion_cobro', json={'id': cid, 'retencion_numero': 'R001-00000555', 'retencion_monto': '35.40'})
     m = next(x for x in admin.get('/finanzas/api/movimientos?tipo=COBRO&q=F0ZQ').json['data'] if x['documento_id'] == cid)
     assert m['retencion_numero'] == 'R001-00000555' and m['retencion_monto'] == 35.4 and m['fecha_aviso'] == '2026-10-18'
+    # Cobros y pagos (Erika 22:15): monto de la factura (con IGV), retención y monto real cobrado
+    assert m['total_documento'] == 1180 and m['monto'] == 1144.6
+    html = (RAIZ / 'templates' / 'finanzas.html').read_text(encoding='utf-8')
+    js = (RAIZ / 'static' / 'js' / 'finanzas.js').read_text(encoding='utf-8')
+    assert 'Monto factura<small>incluye IGV</small>' in html and 'Monto real<small>cobrado / pagado</small>' in html
+    assert "'Cobrado' : 'Pagado'" in js and 'Cobrado real' in js

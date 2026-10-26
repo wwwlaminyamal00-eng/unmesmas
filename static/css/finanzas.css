@@ -240,3 +240,8 @@ html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th
 .fin-mov-anulados{background:#FF1E1E;color:#fff}
 .fin-mov-resumen{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .fin-resumen .res-item.res-cero b{background:transparent!important}
+/* 26/10/2026 22:15 (Erika): Cobros y pagos con monto factura, retención y monto real; estado Cobrado/Pagado y Anulado en rojo */
+#finanzasApp #sec-movimientos .fin-table{font-size:12px}
+#finanzasApp #sec-movimientos td small{display:block;font-size:10.5px;color:#334155}
+#finanzasApp .mov-real b{color:#0F172A;font-weight:900}
+#finanzasApp .mov-anulado{display:inline-block;background:#FF1E1E;color:#fff;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:900}
