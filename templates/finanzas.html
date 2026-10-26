@@ -13,7 +13,7 @@
 {% block subtitle %}Cuentas por cobrar, cuentas por pagar, cobros, pagos y flujo de caja proyectado.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/finanzas.css') }}?v=20261026g">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/finanzas.css') }}?v=20261026h">
 {% endblock %}
 
 {% block content %}
@@ -108,10 +108,10 @@
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>
-                        <tr><th>Fecha de registro<small>fecha real de pago</small></th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° PV / N° PC<small>N° OC (Proveedor) en pagos</small></th><th class="left">Cliente / proveedor</th>
-                            <th>Monto</th><th>Método</th><th>Banco<small>N° de operación</small></th><th title="Comprobante de retención que envía el cliente">Retención<small>N° · fecha · monto</small></th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
+                        <tr><th>Fecha de registro<small>fecha real de pago</small></th><th>Tipo</th><th>Documento (tipo y N°)</th><th class="col-num-doc">N° PV<small>Pedido de venta</small></th><th title="Cobros: N° PC (Pedido del cliente). Pagos: N° OC (Proveedor)">N° PC / N° OC<small>cliente · proveedor</small></th><th class="left">Cliente / proveedor</th>
+                            <th title="Total del comprobante, incluye IGV">Monto factura<small>incluye IGV</small></th><th title="Comprobante de retención que envía el cliente">Retención<small>N° · fecha · monto</small></th><th title="Lo que realmente entró o salió del banco (ya sin la retención)">Monto real<small>cobrado / pagado</small></th><th>Banco<small>método · N° operación</small></th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
                     </thead>
-                    <tbody id="movBody"><tr><td colspan="12">Cargando...</td></tr></tbody>
+                    <tbody id="movBody"><tr><td colspan="13">Cargando...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -208,5 +208,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/finanzas.js') }}?v=20261026g"></script>
+<script src="{{ url_for('static', filename='js/finanzas.js') }}?v=20261026h"></script>
 {% endblock %}

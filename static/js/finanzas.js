@@ -293,19 +293,20 @@
                 <td>${fecha(m.fecha)}${m.fecha_aviso ? `<small title="Fecha real de pago (aviso de pago)">Real <b>${fecha(m.fecha_aviso)}</b></small>` : ''}</td>
                 <td><span class="fin-tipo ${m.tipo === 'COBRO' ? 'fin-tipo-cobro' : 'fin-tipo-pago'}">${m.tipo === 'COBRO' ? '⬇ Cobro' : '⬆ Pago'}</span></td>
                 <td>${esc(m.documento_numero)}</td>
-                <td class="fin-ocpc">${ocPcMovimiento(m)}</td>
+                <td class="col-num-doc">${m.tipo === 'COBRO' || /^PC-|^PV-/.test(m.pc_numero || '') ? `<b>${esc(m.pc_numero || '—')}</b>` : `<small>${esc(m.pc_numero || '—')}</small>`}</td>
+                <td class="col-num-doc">${m.tipo === 'COBRO' ? esc(pcCliente(m.oc_cliente) || '—') : (m.oc_numero ? `<small>N° OC</small>${esc(m.oc_numero)}` : '—')}</td>
                 <td class="left">${esc(m.tercero_nombre)}</td>
-                <td class="num">${m.moneda_pago && m.moneda_pago !== 'PEN' || (m.monto_pagado && Number(m.monto_pagado) !== Number(m.monto))
-                    ? `${dineroM(m.moneda_pago, m.monto_pagado)}${m.tipo_cambio ? `<small>TC ${Number(m.tipo_cambio).toFixed(3)}</small>` : ''}` : soles(m.monto)}</td>
-                <td>${esc(m.metodo)}</td>
-                <td>${esc(m.banco || '—')}${m.numero_operacion ? `<small>Op. ${esc(m.numero_operacion)}</small>` : ''}</td>
-                <td class="ret-celda">${m.tipo === 'COBRO' && (m.retencion_numero || m.retencion_monto) ? `<b>${esc(m.retencion_numero || 'Falta N°')}</b><small>${m.retencion_fecha ? fecha(m.retencion_fecha) : 'Fecha: —'}</small><small>${m.retencion_monto != null ? soles(m.retencion_monto) : ''}</small>` : '<span class="fin-gris">—</span>'}</td>
+                <td class="num">${m.total_documento != null ? soles(m.total_documento) : '—'}</td>
+                <td class="ret-celda">${m.tipo === 'COBRO' && (m.retencion_numero || m.retencion_monto) ? `${m.retencion_numero ? `<b>${esc(m.retencion_numero)}</b>` : '<span class="ret-falta">Falta N°</span>'}<small>${m.retencion_fecha ? fecha(m.retencion_fecha) : 'Fecha: —'}</small><small>${m.retencion_monto != null ? soles(m.retencion_monto) : ''}</small>` : '<span class="fin-gris">—</span>'}</td>
+                <td class="num mov-real"><b>${m.moneda_pago && m.moneda_pago !== 'PEN' || (m.monto_pagado && Number(m.monto_pagado) !== Number(m.monto))
+                    ? `${dineroM(m.moneda_pago, m.monto_pagado)}</b>${m.tipo_cambio ? `<small>TC ${Number(m.tipo_cambio).toFixed(3)}</small>` : ''}` : soles(m.monto) + '</b>'}</td>
+                <td>${esc(m.banco || '—')}<small>${esc(m.metodo || '')}${m.numero_operacion ? ` · Op. ${esc(m.numero_operacion)}` : ''}</small></td>
                 <td>${esc(m.usuario_nombre || '')}</td>
-                <td>${m.estado === 'Anulado' ? `<span class="badge badge-gray" title="${esc(m.motivo_anulacion)}">Anulado</span>` : '<span class="badge badge-info">Registrado</span>'}</td>
+                <td>${m.estado === 'Anulado' ? `<span class="mov-anulado" title="${esc(m.motivo_anulacion)}">Anulado</span>` : `<span class="badge">${m.tipo === 'COBRO' ? 'Cobrado' : 'Pagado'}</span>`}</td>
                 <td>${m.estado !== 'Anulado' && PUEDE_OPERAR ? `<button class="btn-mini danger" data-anular="${m.id}">Anular</button>` : ''}</td>
-            </tr>`).join('') : '<tr><td colspan="12">Aún no hay cobros ni pagos registrados.</td></tr>';
+            </tr>`).join('') : '<tr><td colspan="13">Aún no hay cobros ni pagos registrados.</td></tr>';
         } catch (e) {
-            body.innerHTML = `<tr><td colspan="12" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="13" class="neg">No se pudo cargar: ${esc(e.message)}</td></tr>`;
         }
     }
 
@@ -317,18 +318,9 @@
         const suma = t => vivos.filter(m => m.tipo === t).reduce((a, m) => a + Number(m.monto || 0), 0);
         const n = t => vivos.filter(m => m.tipo === t).length;
         const anulados = data.length - vivos.length;
-        caja.innerHTML = `<span class="fin-mov-tipo fin-mov-cobros">⬇ Cobros ${soles(suma('COBRO'))} (${n('COBRO')})</span>`
-            + `<span class="fin-mov-tipo fin-mov-pagos">⬆ Pagos ${soles(suma('PAGO'))} (${n('PAGO')})</span>`
+        caja.innerHTML = `<span class="fin-mov-tipo fin-mov-cobros" title="Monto real que entró al banco (ya sin retenciones)">⬇ Cobrado real ${soles(suma('COBRO'))} (${n('COBRO')})</span>`
+            + `<span class="fin-mov-tipo fin-mov-pagos" title="Monto real que salió del banco">⬆ Pagado real ${soles(suma('PAGO'))} (${n('PAGO')})</span>`
             + (anulados ? `<span class="fin-mov-tipo fin-mov-anulados">Anulados (${anulados})</span>` : '');
-    }
-
-    // N° OC y N° PV de cada cobro/pago, en dos líneas (Erika 22/10/2026: trazabilidad)
-    function ocPcMovimiento(m) {
-        const linea = (et, v) => v ? `<div><small>${et}</small> <b>${esc(v)}</b></div>` : '';
-        const html = m.tipo === 'COBRO'
-            ? linea('N° PV (Pedido de venta)', m.pc_numero) + linea('N° PC (Pedido del cliente)', m.oc_cliente)
-            : linea('N° OC (Proveedor)', m.oc_numero) + linea(/^(Compra a stock|Sin PV)/.test(m.pc_numero || '') ? '' : 'N° PV (Pedido de venta)', m.pc_numero);
-        return html || '<span class="fin-sin">—</span>';
     }
 
     // ---------- Flujo de caja ----------

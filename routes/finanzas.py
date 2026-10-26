@@ -456,7 +456,7 @@ def api_movimientos():
         # Trazabilidad (Erika 22/10/2026 12:26): cada cobro/pago con su N° OC y N° PV, igual que en CxC/CxP.
         # Pagos: N° OC + N° PV (o "Compra a stock"). Cobros: N° PV + N° PC (Pedido del cliente).
         sql = """
-            SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra,
+            SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra, x.total_documento, x.ret_factura,
                    sg.retencion_numero, sg.retencion_fecha, sg.retencion_monto
             FROM finanzas_pagos fp
             LEFT JOIN finanzas_seguimiento_cobro sg ON fp.tipo = 'COBRO' AND fp.documento_tabla = 'comprobantes'
@@ -467,7 +467,9 @@ def api_movimientos():
                                 (SELECT string_agg(DISTINCT i.pedido_numero, ', ') FROM ordenes_compra_items i
                                   WHERE i.orden_compra_id = COALESCE(ocp.id, oca.id) AND COALESCE(i.pedido_numero, '') <> '')) AS pc_numero,
                        NULLIF(c.orden_compra_cliente, '') AS oc_cliente,
-                       COALESCE(ocp.tipo_compra, oca.tipo_compra) AS tipo_compra
+                       COALESCE(ocp.tipo_compra, oca.tipo_compra) AS tipo_compra,
+                       COALESCE(c.total, cp.monto, oca.total) AS total_documento,
+                       NULLIF(COALESCE(c.monto_retenido, 0), 0) AS ret_factura
                 FROM (SELECT 1) uno
                 LEFT JOIN comprobantes c ON fp.documento_tabla = 'comprobantes' AND c.id = fp.documento_id
                 LEFT JOIN comprobantes_proveedor cp ON fp.documento_tabla = 'comprobantes_proveedor' AND cp.id = fp.documento_id
@@ -491,6 +493,9 @@ def api_movimientos():
         for f in filas:
             item = {k: _fmt(v) for k, v in f.items()}
             item['monto'] = float(f['monto'])
+            item['total_documento'] = float(f['total_documento']) if f.get('total_documento') is not None else None
+            if f.get('retencion_monto') is None and f.get('ret_factura') is not None and f['tipo'] == 'COBRO':
+                f['retencion_monto'] = f['ret_factura']   # la de la factura (3%) mientras no se anote la real
             if f.get('retencion_monto') is not None:
                 item['retencion_monto'] = float(f['retencion_monto'])
             if f['tipo'] == 'PAGO' and not f.get('pc_numero') and f.get('oc_numero'):
