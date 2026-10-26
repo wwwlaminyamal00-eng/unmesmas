@@ -2,7 +2,7 @@
 #
 # Qué hace (en simple):
 #   1. Gastos: Hellen anota cada gasto el mismo día (rubro, quién gastó, a quién se pagó, de dónde a dónde,
-#      N° de PC / OC / despacho, tipo de comprobante y foto). El saldo se calcula solo.
+#      N° de PV / OC / despacho, tipo de comprobante y foto). El saldo se calcula solo.
 #   2. Fondo fijo: la caja arranca cada semana con el mismo monto (S/ 600 por defecto).
 #   3. Rendición semanal: Hellen envía los gastos de la semana; Erika (gerencia) aprueba y repone exactamente
 #      lo que falta para completar el fondo. La reposición queda como pago en Finanzas ▸ Cobros y pagos,
@@ -873,9 +873,11 @@ def leer_historico(contenido):
     cab = [str(c.value or '').strip().lower() for c in next(ws.iter_rows(min_row=3, max_row=3))]
 
     def col(texto):
-        for i, c in enumerate(cab):
-            if c.startswith(texto):
-                return i
+        # La plantilla antigua dice "N° PC"; la nueva, "N° PV" (Pedido de venta).
+        for t in ([texto, 'n° pv'] if texto == 'n° pc' else [texto]):
+            for i, c in enumerate(cab):
+                if c.startswith(t):
+                    return i
         raise ErrorCaja(f'Falta la columna "{texto}" en la hoja Movimientos.')
     ix = {k: col(t) for k, t in (('fecha', 'fecha'), ('empresa', 'empresa'), ('tipo', 'tipo'), ('rubro', 'rubro'),
                                   ('quien', 'quién gastó'), ('pagado', 'pagado a'), ('desc', 'descripción'),

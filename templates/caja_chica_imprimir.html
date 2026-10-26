@@ -44,7 +44,7 @@
         <tr><td colspan="2"><b>Concepto:</b> {{ m.rubro or m.tipo }} · {{ m.descripcion }}</td></tr>
         {% if m.pagado_a %}<tr><td colspan="2"><b>Pagado a:</b> {{ m.pagado_a }}</td></tr>{% endif %}
         <tr><td colspan="2"><b>Gastó / recibió:</b> {{ m.quien or '' }}</td></tr>
-        {% if m.referencia %}<tr><td colspan="2"><b>N° PC / OC / despacho:</b> {{ m.referencia }}</td></tr>{% endif %}
+        {% if m.referencia %}<tr><td colspan="2"><b>N° PV / OC / despacho:</b> {{ m.referencia }}</td></tr>{% endif %}
         <tr><td colspan="2"><b>Comprobante:</b> {{ m.comprobante_tipo or '—' }}{% if m.comprobante_numero %} N° {{ m.comprobante_numero }}{% endif %}</td></tr>
         {% if m.empresa_gasto and m.empresa_gasto != e.codigo %}<tr><td colspan="2"><b>Gasto de:</b> {{ m.empresa_gasto }}</td></tr>{% endif %}
     </table>
@@ -66,7 +66,7 @@
         <tr><td><b>Nombre:</b> {{ p.nombre }}</td><td><b>DNI:</b> {{ p.dni or '________' }}</td></tr>
     </table>
     <table>
-        <thead><tr><th>Fecha</th><th>Motivo y destino del desplazamiento</th><th>N° PC / OC / despacho</th><th>Monto (S/)</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Motivo y destino del desplazamiento</th><th>N° PV / OC / despacho</th><th>Monto (S/)</th></tr></thead>
         <tbody>
         {% for f in p.filas %}
             <tr><td>{{ f.fecha.strftime('%d/%m/%Y') }}</td><td class="l">{{ f.descripcion }}{% if f.observacion %} · {{ f.observacion }}{% endif %}</td><td>{{ f.referencia or '' }}</td><td>{{ '{:,.2f}'.format(f.egreso) }}</td></tr>
@@ -93,7 +93,7 @@
 {% for x in rubros %}<tr><td class="l">{{ x.rubro }}</td><td>{{ x.n }}</td><td>{{ '{:,.2f}'.format(x.total) }}</td><td>{{ '{:,.2f}'.format(x.sin_sustento) }}</td></tr>{% endfor %}
 </tbody><tfoot><tr><th class="l">Total</th><th>{{ gastos | length }}</th><th>{{ '{:,.2f}'.format(r.total_gastado) }}</th><th>{{ '{:,.2f}'.format(r.sin_sustento) }}</th></tr></tfoot></table>
 <h2>Detalle</h2>
-<table><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Pagado a</th><th>Descripción</th><th>N° PC / OC</th><th>Comprobante</th><th>S/</th></tr></thead><tbody>
+<table><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Pagado a</th><th>Descripción</th><th>N° PV / OC</th><th>Comprobante</th><th>S/</th></tr></thead><tbody>
 {% for g in gastos %}<tr><td>{{ g.numero }}</td><td>{{ g.fecha.strftime('%d/%m/%Y') }}</td><td>{{ g.quien or '' }}</td><td>{{ g.pagado_a or '' }}</td><td class="l">{{ g.descripcion }}</td><td>{{ g.referencia or '' }}</td>
 <td>{{ g.comprobante_tipo }}{% if g.comprobante_numero %} {{ g.comprobante_numero }}{% endif %}{% if g.comprobante_tipo not in sustenta %} <span class="rojo">●</span>{% endif %}</td><td>{{ '{:,.2f}'.format(g.egreso) }}</td></tr>{% endfor %}
 </tbody></table>

@@ -12,7 +12,7 @@
         <!-- HEADER -->
         <div class="modal-head" style="padding:6px 14px; min-height:34px; flex-shrink:0; background:#0F172A;">
             <div>
-                <div class="modal-title" id="pedidoCompraModalTitle" style="font-size:15px; font-weight:700; color:#fff; margin:0;">Crear PC Cliente</div>
+                <div class="modal-title" id="pedidoCompraModalTitle" style="font-size:15px; font-weight:700; color:#fff; margin:0;">Crear PV Cliente</div>
                 <p style="color:#94A3B8; font-size:10px; font-weight:700; margin:0;" id="modalSub">Primero se valida. No comprar ni despachar si existe observación.</p>
             </div>
             <button class="btn btn-secondary" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:3px 12px;min-height:26px;border-radius:20px;font-size:11px;cursor:pointer;" onclick="closeModal('pedidoCompraModal')">✕ Cerrar</button>
@@ -30,7 +30,7 @@
                 max-height: calc(96vh - 80px);
              ">
             
-            <!-- FILA 1: Columna izquierda (Cotización + Datos PC apilados) + Resumen a la derecha -->
+            <!-- FILA 1: Columna izquierda (Cotización + Datos PV apilados) + Resumen a la derecha -->
             <div class="pc-fila-top" style="display:grid; grid-template-columns:1.6fr 0.9fr; gap:10px; align-items:start; margin-bottom:6px;">
 
                 <!-- COLUMNA IZQUIERDA: Bloque 1 arriba, Bloque 2 debajo -->
@@ -84,7 +84,7 @@
                                        style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; background:#F1F5F9; font-weight:800; font-size:10px; color:#64748B; cursor:not-allowed;">
                             </div>
                             <div class="form-field">
-                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Solo referencia: la condición de la PC se escribe abajo leyendo la OC del cliente">Condición cotizada</label>
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Solo referencia: la condición de la PV se escribe abajo leyendo la PC (Pedido del cliente)">Condición cotizada</label>
                                 <input id="pcCondicionPago" readonly 
                                        style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; background:#F1F5F9; font-weight:800; font-size:10px; color:#64748B; cursor:not-allowed;">
                             </div>
@@ -109,11 +109,11 @@
                                         <!-- BLOQUE 2: Datos del Pedido de Compra -->
                     <div class="form-section" style="padding:4px 10px; margin-bottom:4px; border-radius:6px; border:1px solid #E2E8F0;">
                         <div class="section-title" style="font-size:10px; font-weight:900; color:#7F1D1D; margin-bottom:2px;">
-                            2. Datos PC Pedido Compra
+                            2. Datos del PV (Pedido de venta)
                             <span style="font-weight:400; font-size:7px; color:#DC2626;">* Campos obligatorios</span>
                         </div>
                         
-                        <!-- Grid ajustado: Moneda más chica (0.5fr) y Monto PC más grande (1.7fr) -->
+                        <!-- Grid ajustado: Moneda más chica (0.5fr) y Monto PV más grande (1.7fr) -->
                         <div style="display:grid; grid-template-columns:1.05fr 0.95fr 1.25fr 1.05fr 1.1fr 0.5fr 1.7fr; gap:4px; margin-bottom:3px;">
                             
                             <!-- Fecha recepción -->
@@ -122,15 +122,15 @@
                                 <input id="pcFecha" type="datetime-local" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 4px; font-size:10px;">
                             </div>
                             
-                            <!-- N° PC interno: lo pone el sistema (correlativo por empresa) -->
+                            <!-- N° PV interno: lo pone el sistema (correlativo por empresa) -->
                             <div class="form-field">
-                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Lo pone el sistema al guardar: PC-KCF-000001, PC-AGD-000001...">N° PC interno</label>
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;" title="Lo pone el sistema al guardar: PC-KCF-000001, PC-AGD-000001...">N° PV interno</label>
                                 <input id="pcNumero" readonly placeholder="Automático" title="Lo pone el sistema al guardar (correlativo por empresa)" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px; font-weight:900; background:#ECFDF5; color:#047857; cursor:not-allowed;">
                             </div>
 
-                            <!-- N° OC del cliente (opcional): Komatsu IT40..., vacío si el cliente no emite OC -->
+                            <!-- N° PC (Pedido del cliente), opcional: Komatsu IT40..., vacío si el cliente no emite OC -->
                             <div class="form-field">
-                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° OC del cliente <span style="font-weight:600; color:#64748B; text-transform:none;">(opcional)</span></label>
+                                <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° PC (Pedido del cliente) <span style="font-weight:600; color:#64748B; text-transform:none;">(opcional)</span></label>
                                 <input id="pcOcCliente" maxlength="60" placeholder="Ej. IT40… (vacío si no emite OC)" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px; font-weight:800;">
                             </div>
                             
@@ -155,7 +155,7 @@
                                     <option value="Crédito 120 días">Crédito 120 días</option>
                                     <option value="Personalizado">✏️ Personalizado...</option>
                                 </select>
-                                <small id="pcCondicionAviso" style="display:block; font-size:8px; line-height:1.15; font-weight:800; color:#B45309; margin-top:1px;">Léela en la OC del cliente</small>
+                                <small id="pcCondicionAviso" style="display:block; font-size:8px; line-height:1.15; font-weight:800; color:#B45309; margin-top:1px;">Léela en la PC (Pedido del cliente)</small>
                                 <input id="pcCondicionCustom" placeholder="Ej: Crédito 75 días" 
                                        style="display:none; width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 4px; font-size:9px; margin-top:3px; background:#FFFFFF; color:#0F172A;"
                                        onfocus="this.select()">
@@ -169,10 +169,10 @@
 </select>
                                 </div>
                             
-                            <!-- Monto PC + CUADRITO DE DIFERENCIA (Mucho más grande) -->
+                            <!-- Monto PV + CUADRITO DE DIFERENCIA (Mucho más grande) -->
                             <div class="form-field" style="display: flex; align-items: flex-end; gap: 6px; padding-right: 0;">
                                 <div style="flex: 1; min-width: 0;">
-                                    <label class="obligatorio-label" style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase; white-space:nowrap;">Monto PC sin IGV</label>
+                                    <label class="obligatorio-label" style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase; white-space:nowrap;">Monto PV sin IGV</label>
                                     <input id="pcMontoPC" type="number" step="0.01" placeholder="0.00" class="campo-obligatorio-pc" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 4px; font-weight:800; font-size:11px;" oninput="actualizarResumenDesdeMontoPC(this)">
                                 </div>
                                 <div style="display: flex; flex-direction: column; flex-shrink: 0; width: 90px;">
@@ -228,12 +228,12 @@
                     </div>
                 </div> <!-- 🔴 CIERRE CORRECTO DE LA COLUMNA IZQUIERDA (bloque 1 + bloque 2) -->
 
-                <!-- RESUMEN PC (columna derecha) -->
+                <!-- RESUMEN PV (columna derecha) -->
                 <div style="display:flex; flex-direction:column; gap:8px;">
                     <div style="background:#FFFFFF; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(15,23,42,0.10); border:1px solid #E5E7EB;">
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; border-bottom:1px solid #F1F5F9; padding-bottom:8px;">
                             <span style="font-size:16px;">🧾</span>
-                            <span style="font-size:11px; font-weight:800; color:#1E293B; text-transform:uppercase; letter-spacing:0.5px;">Resumen PC</span>
+                            <span style="font-size:11px; font-weight:800; color:#1E293B; text-transform:uppercase; letter-spacing:0.5px;">Resumen PV</span>
                             <span style="margin-left:auto; font-size:8px; color:#475569; background:#F1F5F9; padding:2px 8px; border-radius:10px; font-weight:700;" id="pcResumenMoneda">S/</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
@@ -266,10 +266,10 @@
 
             </div> <!-- FIN FILA 1 (grid de 2 columnas) -->
 
-            <!-- BLOQUE 3: Ítems del PC (ocupa TODO el ancho) -->
+            <!-- BLOQUE 3: Ítems del PV (ocupa TODO el ancho) -->
             <div class="form-section" style="padding:4px 10px; margin-bottom:4px; border-radius:6px; border:1px solid #E2E8F0; display:flex; flex-direction:column; min-height:0;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; flex-wrap:wrap; gap:4px; flex-shrink:0;">
-                    <div class="section-title" style="font-size:10px; font-weight:900; color:#7F1D1D; margin:0;">3. Productos PC</div>
+                    <div class="section-title" style="font-size:10px; font-weight:900; color:#7F1D1D; margin:0;">3. Productos PV</div>
                     <div style="display:flex; gap:4px; flex-wrap:wrap;">
                         <button class="btn btn-soft" onclick="openProductSelectorPC()" style="height:22px; padding:0 10px; font-size:9px; border-radius:4px; border:1px solid #CBD5E1; background:#8B5CF6; color:#fff; font-weight:800; cursor:pointer;">📋 + Agregar items</button>
                     </div>
@@ -294,10 +294,10 @@
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Modelo</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Marca</th>
             <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:45px;">Cantidad cotizada</th>
-            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:45px;">Cantidad PC</th>
+            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:45px;">Cantidad PV</th>
             <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Precio Cot</th>
-            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Precio PC</th>
-            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:65px;">Valor Total PC</th>
+            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:55px;">Precio PV</th>
+            <th style="padding:2px 3px; font-size:7px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:65px;">Valor Total PV</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:40px;">Stock</th>
             <th style="padding:2px 3px; font-size:8px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; width:40px;">Faltante</th>
         </tr>
@@ -342,7 +342,7 @@
                         </label>
                         <span id="vEntregaLabel" style="font-size:7px; font-weight:700; margin-top:2px;">❌ NO VÁLIDO</span>
                     </div>
-                    <!-- Transporte ya no se valida en el PC (pedido de Erika 20/10/2026) -->
+                    <!-- Transporte ya no se valida en el PV (pedido de Erika 20/10/2026) -->
                     <div class="check-card" style="padding:4px 6px; border-radius:6px; border:1px solid #E2E8F0; background:#F8FAFC; display:flex; flex-direction:column; align-items:center;">
                         <label style="font-size:7.5px; font-weight:900; color:#334155; margin-bottom:3px;">🔢 Cantidad</label>
                         <label class="switch" style="position:relative; display:inline-block; width:34px; height:18px;">
@@ -424,7 +424,7 @@
                         align-items:center;
                         gap:4px;
                     ">
-                    ⚠️ Crear PC Observado
+                    ⚠️ Crear PV Observado
                 </button>
 
                 <button class="btn-neon-green"
@@ -444,7 +444,7 @@
                         align-items:center;
                         gap:4px;
                     ">
-                    ✅ Crear PC Conforme
+                    ✅ Crear PV Conforme
                 </button>
 
             </div>
@@ -459,7 +459,7 @@
 <div class="modal-bg" id="productSelectorPcModal">
     <div class="modal-box" style="width:min(900px,96vw); max-height:85vh;">
         <div class="modal-head">
-            <div class="modal-title">📋 Seleccionar productos para PC</div>
+            <div class="modal-title">📋 Seleccionar productos para PV</div>
             <button class="btn btn-secondary" style="background:transparent;color:#fff;border-color:#fff;padding:6px 14px;min-height:34px;border-radius:14px" onclick="closeModal('productSelectorPcModal')">✕ Cerrar</button>
         </div>
         <div class="modal-body" style="padding:12px 16px;">
@@ -603,7 +603,7 @@
 
 
 /* ============================================================
-   CAMPOS OBLIGATORIOS EN PC
+   CAMPOS OBLIGATORIOS EN PV
    ============================================================ */
 .campo-obligatorio-pc {
     border-left: 3px solid #DC2626 !important;
@@ -640,12 +640,12 @@
 
 <script>
 // ============================================================
-// FUNCIONES PARA EL RESUMEN LATERAL DEL PC - VERSIÓN COMPLETA
+// FUNCIONES PARA EL RESUMEN LATERAL DEL PV - VERSIÓN COMPLETA
 // ============================================================
 
 // ============================================================
-// DESCUENTO DE LA COTIZACIÓN EN EL RESUMEN DE LA PC (pedido de Erika 19/10/2026)
-// El precio de la PC ya viene con el descuento de la cotización. Aquí se muestra: Subtotal a precio de lista,
+// DESCUENTO DE LA COTIZACIÓN EN EL RESUMEN DE LA PV (pedido de Erika 19/10/2026)
+// El precio de la PV ya viene con el descuento de la cotización. Aquí se muestra: Subtotal a precio de lista,
 // Descuento (S/ o %), Valor venta con descuento, IGV y Total. Funciona con cualquier función que pinte el
 // resumen: se recalcula cada vez que cambia "Valor venta" o la tabla de productos.
 // ============================================================
@@ -682,7 +682,7 @@ function pcPintarDescuento() {
         netoFilas += cant * precio;
         if (lista > precio + 0.0001) descFilas += cant * (lista - precio);
     });
-    // Valor venta = lo que ya calculó el resumen (puede venir de "Monto PC" escrito a mano)
+    // Valor venta = lo que ya calculó el resumen (puede venir de "Monto PV" escrito a mano)
     const neto = _pcNum(document.getElementById('pcResumenValorVenta')?.textContent);
     const desc = netoFilas > 0 ? descFilas * (neto / netoFilas) : 0;
     const f = n => `${simbolo} ${n.toFixed(2)}`;
@@ -697,17 +697,17 @@ function pcPintarDescuento() {
     const descCot = Number(info?.descuento_total) || 0;
     if (desc > 0.004) {
         nota.style.background = '#ECFDF5'; nota.style.color = '#065F46';
-        nota.innerHTML = `✅ El precio de la PC <b>ya viene con el descuento</b> de la cotización ${numero}. Subtotal − Descuento = Valor venta; Valor venta + IGV = Total.`;
+        nota.innerHTML = `✅ El precio de la PV <b>ya viene con el descuento</b> de la cotización ${numero}. Subtotal − Descuento = Valor venta; Valor venta + IGV = Total.`;
     } else if (descCot > 0.004 && netoFilas > 0) {
         nota.style.background = '#FFF7ED'; nota.style.color = '#9A3412';
-        nota.innerHTML = `⚠️ La cotización ${numero} tiene un descuento de ${f(descCot)}, pero los precios de esta PC están sin descuento. Revise el Precio PC.`;
+        nota.innerHTML = `⚠️ La cotización ${numero} tiene un descuento de ${f(descCot)}, pero los precios de esta PV están sin descuento. Revise el Precio PV.`;
     } else {
         nota.style.background = '#F1F5F9'; nota.style.color = '#475569';
         nota.innerHTML = numero ? `La cotización ${numero} no tiene descuento (Descuento S/ 0.00). Valor venta + IGV = Total.` : 'Subtotal − Descuento = Valor venta · Valor venta + IGV = Total';
     }
 }
 
-// Condición de pago de la PC: se elige leyendo la OC del cliente (nunca se copia de la cotización)
+// Condición de pago de la PV: se elige leyendo la PC (Pedido del cliente) (nunca se copia de la cotización)
 function pcAvisoCondicion() {
     const sel = document.getElementById('pcCondicion');
     const aviso = document.getElementById('pcCondicionAviso');
@@ -715,7 +715,7 @@ function pcAvisoCondicion() {
     const vacio = !sel.value || sel.value === 'Seleccione';
     sel.style.borderColor = vacio ? '#F59E0B' : '#16A34A';
     sel.style.background = vacio ? '#FFFBEB' : '#F0FDF4';
-    if (aviso && vacio && !aviso.dataset.cotizada) aviso.textContent = 'Léela en la OC del cliente';
+    if (aviso && vacio && !aviso.dataset.cotizada) aviso.textContent = 'Léela en la PC (Pedido del cliente)';
     if (aviso && !vacio) aviso.textContent = '✔ Elegida: ' + sel.value;
 }
 
@@ -743,7 +743,7 @@ let _actualizandoResumen = false;
 let _timeoutResumen = null;
 
 /**
- * Actualiza el resumen lateral del PC basado en los productos de la tabla
+ * Actualiza el resumen lateral del PV basado en los productos de la tabla
  * Esta es la función PRINCIPAL que debe llamarse siempre
  */
 function actualizarResumenPC() {
@@ -752,7 +752,7 @@ function actualizarResumenPC() {
     _actualizandoResumen = true;
     
     try {
-        console.log('🔄 Actualizando resumen lateral del PC...');
+        console.log('🔄 Actualizando resumen lateral del PV...');
         
         // Obtener la moneda seleccionada
         const monedaSelect = document.getElementById('pcMoneda');
@@ -809,7 +809,7 @@ function actualizarResumenPC() {
         if (totalEl) totalEl.textContent = formatNum(total);
         if (productosEl) productosEl.textContent = productCount;
         
-        // ACTUALIZAR EL CAMPO DE MONTO PC
+        // ACTUALIZAR EL CAMPO DE MONTO PV
         const montoPCInput = document.getElementById('pcMontoPC');
         if (montoPCInput) {
             const currentValue = parseFloat(montoPCInput.value) || 0;
@@ -829,7 +829,7 @@ function actualizarResumenPC() {
 }
 
 /**
- * Función para actualizar el resumen desde el campo Monto PC (editable)
+ * Función para actualizar el resumen desde el campo Monto PV (editable)
  * Permite al usuario escribir un monto manual y actualiza el resumen
  */
 function actualizarResumenDesdeMontoPC(input) {
@@ -854,7 +854,7 @@ function actualizarResumenDesdeMontoPC(input) {
         if (igvEl) igvEl.textContent = formatNum(igv);
         if (totalEl) totalEl.textContent = formatNum(total);
         
-        console.log(`✅ Resumen actualizado desde Monto PC: ${valor}`);
+        console.log(`✅ Resumen actualizado desde Monto PV: ${valor}`);
         _timeoutResumen = null;
     }, 100);
 }
@@ -890,7 +890,7 @@ function actualizarResumenManual() {
 // ============================================================
 
 /**
- * Agrega un item a la tabla del PC con actualización de resumen
+ * Agrega un item a la tabla del PV con actualización de resumen
  */
 function agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio, stock) {
     const tbody = document.getElementById('pcItemsBody');
@@ -1204,5 +1204,5 @@ document.addEventListener('change', function(e) {
     }
 });
 
-console.log('✅ Funciones de resumen lateral del PC cargadas correctamente (versión completa)');
+console.log('✅ Funciones de resumen lateral del PV cargadas correctamente (versión completa)');
 </script>

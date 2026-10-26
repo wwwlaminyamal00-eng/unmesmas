@@ -44,7 +44,7 @@
                 <div class="ficha-section-title">🎯 ¿Para qué pedido es esta compra? <span style="font-weight:700;font-size:10px;color:#64748B;">Uso interno: el proveedor no ve el cliente ni el pedido</span></div>
                 <div class="ficha-grid">
                     <div class="form-field col-6">
-                        <label>Pedido del cliente (PC)</label>
+                        <label>Pedido de venta (PV)</label>
                         <select id="ordPedido" onchange="ordCambioPedido()">
                             <option value="">— Compra SIN pedido (para stock) —</option>
                         </select>
@@ -448,7 +448,7 @@ async function ordCargarPedidos(seleccionado) {
     sel.innerHTML = '<option value="">— Compra SIN pedido (para stock) —</option>' + window._ordPedidos.map(p =>
         `<option value="${p.id}">${p.numero} · ${p.cliente || ''}</option>`).join('');
     if (seleccionado && ![...sel.options].some(o => o.value === String(seleccionado))) {
-        sel.insertAdjacentHTML('beforeend', `<option value="${seleccionado}">PC #${seleccionado}</option>`);
+        sel.insertAdjacentHTML('beforeend', `<option value="${seleccionado}">PV #${seleccionado}</option>`);
     }
     sel.value = seleccionado ? String(seleccionado) : '';
     ordCambioPedido();

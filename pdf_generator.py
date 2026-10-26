@@ -595,7 +595,7 @@ class PDFGenerator:
     <div class="info-linea-unica">
         <span class="info-titulo">Documentos relacionados:</span>
         <div class="info-item">
-            <span class="info-label">OC:</span>
+            <span class="info-label">PC (PEDIDO DEL CLIENTE):</span>
             <span class="info-value">{{ orden_compra_cliente or '—' }}</span>
         </div>
         <div class="info-item">
@@ -1035,7 +1035,7 @@ class PDFGenerator:
     <div class="info-linea-unica">
         <span class="info-titulo">Documentos relacionados:</span>
         <div class="info-item">
-            <span class="info-label">OC:</span>
+            <span class="info-label">PC (PEDIDO DEL CLIENTE):</span>
             <span class="info-value">{{ orden_compra_cliente or '—' }}</span>
         </div>
         <div class="info-item">
@@ -1285,7 +1285,7 @@ class PDFGenerator:
                 'empresa_email': (emp.get('correo_rotulo') or emp.get('correo_documentos')) if emp else 'ventas@kcfcorporacion.com',
                 'empresa_web': emp.get('pagina_web') if emp else 'https://kcfcorporacion.com/',
                 'color': emp.get('color_primario') or '#CC0000',
-                # Rótulo de PC o despacho: el documento que se muestra en lugar del N° de guía
+                # Rótulo de PV o despacho: el documento que se muestra en lugar del N° de guía
                 'doc_label': datos_guia.get('doc_label') or 'N° GUÍA:',
                 'doc_valor': datos_guia.get('doc_valor') or f"{datos_guia.get('serie', 'T001')}-{datos_guia.get('numero', '')}",
                 'serie': datos_guia.get('serie', 'T001'),
@@ -1299,7 +1299,7 @@ class PDFGenerator:
                 'consignado_dni': consignado_dni,
                 # 🔽 FACTURA
                 'factura': factura_numero,
-                # Los 4 números (Erika 22/10/2026): despacho, PC, guía y factura; "—" si falta
+                # Los 4 números (Erika 22/10/2026): despacho, PV, guía y factura; "—" si falta
                 'nro_despacho': datos_guia.get('nro_despacho') or '—',
                 'nro_pc': datos_guia.get('nro_pc') or '—',
                 'nro_guia': datos_guia.get('nro_guia') or (f"{datos_guia.get('serie')}-{datos_guia.get('numero')}" if datos_guia.get('serie') else '—'),
@@ -1734,7 +1734,7 @@ class PDFGenerator:
 
         <div class="seccion-cuatro">
             <div class="caja-num"><div class="label">N° Despacho</div><div class="valor">{{ nro_despacho }}</div></div>
-            <div class="caja-num"><div class="label">N° Pedido de compra</div><div class="valor">{{ nro_pc }}</div></div>
+            <div class="caja-num"><div class="label">N° Pedido de venta</div><div class="valor">{{ nro_pc }}</div></div>
             <div class="caja-num"><div class="label">N° Guía</div><div class="valor">{{ nro_guia }}</div></div>
             <div class="caja-num"><div class="label">N° Factura</div><div class="valor">{{ nro_factura }}</div></div>
         </div>

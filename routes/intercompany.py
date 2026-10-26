@@ -248,7 +248,7 @@ def operaciones_intercompany(emps):
         if not vende or str(vende['id']) == str(compra.get('id')):
             continue
         numero = o['numero']
-        # Lado de la empresa que VENDE: su PC (con "N° OC del cliente" = esta OC), su despacho y su factura
+        # Lado de la empresa que VENDE: su PV (con "N° PC (Pedido del cliente)" = esta OC), su despacho y su factura
         llave = (str(vende['id']), _rucs(compra.get('ruc')))
         if llave not in cache_vende:
             cond, par = _sql_texto_empresa('pedido_compra_pc', vende)

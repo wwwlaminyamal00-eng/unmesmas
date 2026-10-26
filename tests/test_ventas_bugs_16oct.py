@@ -1,8 +1,8 @@
 """
 Pruebas del pedido de Erika del 16/10/2026 ("CORRECCIÓN DE 13 BUGS EN PRODUCCIÓN"), parte Ventas / Inventario:
-  - PC: editar guarda sobre el MISMO PC (fecha, condición de pago, interruptor "Producto") y ya no queda
+  - PV: editar guarda sobre el MISMO PV (fecha, condición de pago, interruptor "Producto") y ya no queda
     siempre "PC observado" porque la pantalla no manda el margen.
-  - Despacho hecho desde Cotizaciones: se vincula solo a su PC y lleva sus productos.
+  - Despacho hecho desde Cotizaciones: se vincula solo a su PV y lleva sus productos.
   - Editar un despacho no crea otro.
   - productos.stock = suma de inv_stock, mantenido por la base (trigger).
   - Hora de Perú en la base y en Python.
@@ -56,7 +56,7 @@ def test_despacho_desde_cotizacion_se_vincula_a_su_pc(vendedor):
                   VALUES ('COT-BUG-0001', '1', 1, 'Aceptada por Cliente', 100) RETURNING id""")[0][0]
     r = _pc(vendedor, sufijo='D1', cotizacion_id=cid, cotizacion_numero='COT-BUG-0001')
     pc_id = r.json['data']['id']
-    # Así guardaba la pantalla de "Crear despacho" desde Cotizaciones: sin PC ni productos
+    # Así guardaba la pantalla de "Crear despacho" desde Cotizaciones: sin PV ni productos
     d = vendedor.post('/ventas/api/despachos/guardar', json={'cotizacion_numero': 'COT-BUG-0001',
                                                              'cliente': 'CLIENTE PRUEBA SAC', 'estado': 'Pendiente despacho'})
     assert d.status_code == 200, d.json

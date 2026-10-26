@@ -142,7 +142,7 @@ def test_papelera_lista_anulados_y_eliminados(vend, anulados):
     assert not fact['puede_restaurar'] and 'SUNAT' in fact['por_que_no']
     # vendedor ve, pero no puede restaurar ni borrar
     assert not cot['puede_restaurar'] and not cot['puede_borrar']
-    assert [i for i in _items(vend, modulo='Pedidos (PC)')] and all(i['modulo'] == 'Pedidos (PC)' for i in _items(vend, modulo='Pedidos (PC)'))
+    assert [i for i in _items(vend, modulo='Pedidos (PV)')] and all(i['modulo'] == 'Pedidos (PV)' for i in _items(vend, modulo='Pedidos (PV)'))
 
 
 def test_restaurar_solo_admin(adm, vend, anulados):

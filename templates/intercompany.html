@@ -30,7 +30,7 @@
                 <label class="ge-buscar">Ver <select id="icFiltroOps"><option value="todas">Todas</option><option value="pend">Con algo pendiente</option>
                     <option value="pago">Falta pagar</option><option value="despachado">Falta despachar</option><option value="recibido">Falta recibir</option>
                     <option value="facturado">Falta facturar</option><option value="registrado">Falta registrar en compras</option><option value="ok">Completas</option></select></label>
-                <label class="ge-buscar">Buscar <input type="search" id="icBuscarOps" placeholder="N° OC, N° PC, cliente o factura"></label></div>
+                <label class="ge-buscar">Buscar <input type="search" id="icBuscarOps" placeholder="N° OC, N° PV, cliente o factura"></label></div>
             <div id="icOperaciones"></div>
         </div>
         <details class="inv-panel ic-plegable">
@@ -50,7 +50,7 @@
             <ul class="ic-ayuda">
                 <li>Cada orden de compra (OC) hecha a la otra empresa del grupo es una fila. OC hecha en KCF con AGD como proveedor = <b>AGD le vende a KCF</b>.</li>
                 <li>Orden de los pasos: <b>la que vende</b> despacha (su stock baja) y factura; <b>la que compra</b> recibe (su stock sube), registra la factura en Compras y paga. Al contado, el pago va primero.</li>
-                <li>La que vende hace su PC con "N° OC del cliente" = el N° de la OC; así el sistema une el despacho y la factura con la OC.</li>
+                <li>La que vende hace su PV con "N° PC (Pedido del cliente)" = el N° de la OC; así el sistema une el despacho y la factura con la OC.</li>
                 <li>El stock se mueve una sola vez. No uses además Inventario ▸ Intercompany para lo mismo.</li>
                 <li>"Falta pagar" sale de las OC (lo pagado en Compras). Las facturas por cobrar de Finanzas están en el panel de arriba.</li>
                 <li>Lo pendiente sale en <b class="ge-rojo">rojo</b>; lo completo en verde.</li>

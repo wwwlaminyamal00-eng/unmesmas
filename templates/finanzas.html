@@ -65,9 +65,9 @@
                         <tr>
                             <th>N°</th><th>{{ t[3] }}</th><th>RUC / DNI</th>
                             {% if t[0] == 'cxc' %}
-                            <th>N° Factura de venta</th><th>N° PC (Pedido de compra)<small>N° OC del cliente</small></th>
+                            <th>N° Factura de venta</th><th>N° PV (Pedido de venta)<small>N° PC (Pedido del cliente)</small></th>
                             {% else %}
-                            <th>N° Factura del proveedor</th><th>N° OC (Proveedor)<small>N° PC relacionado</small></th>
+                            <th>N° Factura del proveedor</th><th>N° OC (Proveedor)<small>N° PV relacionado</small></th>
                             {% endif %}
                             <th>Nombre producto</th><th title="Orden: primero lo vencido (más días de atraso arriba), luego lo por vencer y al final lo al día">Vencimiento<small>días</small></th>
                             {% if t[0] == 'cxc' %}
@@ -107,7 +107,7 @@
             <div class="table-wrap">
                 <table class="fin-table">
                     <thead>
-                        <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° OC (Proveedor) / N° PC</th><th class="left">Cliente / proveedor</th>
+                        <tr><th>Fecha</th><th>Tipo</th><th>Documento (tipo y N°)</th><th>N° OC (Proveedor) / N° PV</th><th class="left">Cliente / proveedor</th>
                             <th>Monto</th><th>Método</th><th>Banco / N° operación / aviso</th><th>Registrado por</th><th>Estado</th><th>Acción</th></tr>
                     </thead>
                     <tbody id="movBody"><tr><td colspan="11">Cargando...</td></tr></tbody>

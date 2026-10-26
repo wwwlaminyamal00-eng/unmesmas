@@ -23,7 +23,7 @@ from database import db_tx
 # (updated_at cambia solo; productos.stock lo recalcula Inventario en cada movimiento)
 TABLAS_AUDITADAS = {
     'cotizaciones': ('Ventas · Cotizaciones', 'updated_at'),
-    'pedido_compra_pc': ('Ventas · Pedidos (PC)', 'updated_at'),
+    'pedido_compra_pc': ('Ventas · Pedidos (PV)', 'updated_at'),
     'despachos': ('Ventas · Despachos', 'updated_at'),
     'guias_remision': ('Ventas · Guías', 'updated_at'),
     'comprobantes': ('Ventas · Facturas', 'updated_at'),

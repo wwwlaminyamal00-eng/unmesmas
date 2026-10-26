@@ -1,7 +1,7 @@
 """
 Pedido de Erika del 20/10/2026 (tarde, "Macro-actualización"): la condición de pago de la factura no cargaba sola.
 Faltaban dos caminos: "Crear factura" desde la cotización y la factura hecha a mano (elegir cotización o escribir el
-RUC). Ahí quedaba "Contado". Ahora empieza vacía, se llena del PC (o del cliente) y no se guarda vacía.
+RUC). Ahí quedaba "Contado". Ahora empieza vacía, se llena del PV (o del cliente) y no se guarda vacía.
 Datos inventados, solo en la base local de pruebas.
 """
 from pathlib import Path
@@ -30,7 +30,7 @@ def test_factura_desde_cotizacion_toma_la_condicion_de_su_pc(vendedor):
 def test_pantalla_de_factura_llena_la_condicion_en_todos_los_caminos():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     # Factura nueva: empieza vacía (antes "Contado" sin avisar) y no se guarda vacía
-    assert '— Se llena sola: elige PC, guía, cotización o RUC —' in js
+    assert '— Se llena sola: elige PV, guía, cotización o RUC —' in js
     assert '⚠️ Falta la condición de pago' in js and 'await aplicarCondicionFactura(true)' in js
     # Desde la cotización, al elegir la cotización y al escribir el RUC
     assert "'cargarProductosComprobanteDesdeCotizacion'].forEach" in js
@@ -105,7 +105,7 @@ def test_pantalla_de_entregas_18h():
     tabla = html[html.index('<div id="despachar"'):]
     tabla = tabla[:tabla.index('</thead>')]
     # 25/10/2026: N° Guía y N° Factura en columnas separadas (Erika: "para poder filtrar y ordenar")
-    orden = [tabla.index(f'>{t}</th>') for t in ('N° PC (Pedido de compra)', 'N° cotización', 'Cliente', 'N° Guía', 'N° Factura', 'Distrito',
+    orden = [tabla.index(f'>{t}</th>') for t in ('N° PV (Pedido de venta)', 'N° cotización', 'Cliente', 'N° Guía', 'N° Factura', 'Distrito',
                                                    'Estado compra', 'Fecha de cita y entrega real', 'Acción')]
     assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')

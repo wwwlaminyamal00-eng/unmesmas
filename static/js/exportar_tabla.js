@@ -7,8 +7,8 @@
 
     // Nombres claros para los módulos que llaman a exportData('...')
     var TITULOS = {
-        cotizaciones: 'Ventas - Cotizaciones', pedido_compra: 'Ventas - Pedidos de compra (PC)',
-        validacion: 'Ventas - Validación de PC', despachos: 'Ventas - Despachos', guias: 'Ventas - Guías de remisión',
+        cotizaciones: 'Ventas - Cotizaciones', pedido_compra: 'Ventas - Pedidos de venta (PV)',
+        validacion: 'Ventas - Validación de PV', despachos: 'Ventas - Despachos', guias: 'Ventas - Guías de remisión',
         comprobantes: 'Ventas - Facturas y boletas', notas_credito: 'Ventas - Notas de crédito',
         devoluciones: 'Ventas - Devoluciones', eliminadas: 'Ventas - Cotizaciones eliminadas', revision: 'Ventas - Revisión',
         solicitud_compra: 'Compras - Solicitudes de compra', comparativo: 'Compras - Cuadros comparativos',

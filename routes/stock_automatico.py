@@ -66,7 +66,7 @@ def _cant(n):
 
 
 def _items_despacho(cur, desp):
-    """Productos del despacho (o de su PC si el despacho no los guardó), con producto_id resuelto por código."""
+    """Productos del despacho (o de su PV si el despacho no los guardó), con producto_id resuelto por código."""
     from routes.compras_flujo import _items_pedido, _resolver_productos
     items = _items_pedido({'items_json': desp.get('items_json')})
     if not items and desp.get('pc_id'):
@@ -88,7 +88,7 @@ def _items_despacho(cur, desp):
 
 
 def _separaciones_cliente(cur, desp, empresa_id, almacen_id, producto_id):
-    """Separaciones activas de ESTE cliente (o de su PC) en esa empresa y sede."""
+    """Separaciones activas de ESTE cliente (o de su PV) en esa empresa y sede."""
     cur.execute("""
         SELECT id, cantidad FROM inv_separaciones
         WHERE empresa_id = %s AND almacen_id = %s AND producto_id = %s AND estado = 'Activa'
@@ -153,7 +153,7 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
             mov = aplicar_movimiento(
                 cur, empresa_id=empresa_id, almacen_id=almacen_id, producto_id=pid, motivo='VENTA', cantidad=cantidad,
                 documento_tipo='Despacho', documento_numero=desp.get('numero'), tercero=desp.get('cliente'),
-                observaciones=f"Despacho {desp.get('numero') or ''}" + (f" · PC {desp['pc_numero']}" if desp.get('pc_numero') else ''),
+                observaciones=f"Despacho {desp.get('numero') or ''}" + (f" · PV {desp['pc_numero']}" if desp.get('pc_numero') else ''),
                 separacion_id=seps[0]['id'] if seps else None, usar_reservado=usar)
         except ErrorInventario as e:
             cur.execute("ROLLBACK TO SAVEPOINT desp_item")

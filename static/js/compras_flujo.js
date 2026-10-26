@@ -12,7 +12,7 @@
     const cat = { empresas: [], sedes: [], proveedores: [], usuarios: [], registro: [], empresaDefecto: null, usuarioId: null, metodos: [] };
     let tabActual = 'hoy';
     let pedidosCache = [];
-    let pedidoResaltado = null;   // PC que llegó desde Ventas ▸ Entregas ▸ Generar compra (se sombrea)
+    let pedidoResaltado = null;   // PV que llegó desde Ventas ▸ Entregas ▸ Generar compra (se sombrea)
     let ordenesCache = [];
     let lineas = [];           // líneas del formulario de OC
     let provElegido = null;    // proveedor elegido en el formulario
@@ -225,7 +225,7 @@
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
                 <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
-                    <thead><tr><th></th><th class="left">Nombre producto</th><th>PC<small>Pedido de Compra del cliente</small></th><th>Ya en órdenes</th><th>Stock asignado<small>a este PC</small></th>
+                    <thead><tr><th></th><th class="left">Nombre producto</th><th>PV<small>Pedido de venta</small></th><th>Ya en órdenes</th><th>Stock asignado<small>a este PV</small></th>
                         <th>Compra bajo pedido</th><th>Comprar para stock</th><th>Total a comprar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
@@ -244,7 +244,7 @@
                                 ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
                             <td class="num">${cant(it.comprado)}</td>
-                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El stock se reparte entre los PC: el más antiguo primero">${cant(it.stock_empresa)} en la empresa · ${cant(Number(it.stock_empresa) - r.stock)} para PC más antiguos</small>` : ''}</td>
+                            <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El stock se reparte entre los PV: el más antiguo primero">${cant(it.stock_empresa)} en la empresa · ${cant(Number(it.stock_empresa) - r.stock)} para PV más antiguos</small>` : ''}</td>
                             <td class="num"><b>${cant(r.pedido)}</b></td>
                             <td>${marcable ? `<input type="number" class="inp-num ped-extra" min="0" step="any" value="${r.extra}" data-ped="${p.id}" data-i="${i}" title="0 por defecto: comprar de más es una decisión y pide motivo">` : ''}</td>
                             <td class="num"><b data-res-total>${cant(r.total)}</b></td></tr>`;
@@ -255,7 +255,7 @@
         contarMarcados();
     }
 
-    // PC 40, stock asignado 10 -> compra bajo pedido 30; + 100 para stock -> total a comprar 130
+    // PV 40, stock asignado 10 -> compra bajo pedido 30; + 100 para stock -> total a comprar 130
     function calcResumen(p, i) {
         const it = p.items[i];
         const falta = Math.max(Number(it.falta) || 0, 0);
@@ -286,7 +286,7 @@
     }
 
     // "Generar compra" de Ventas ▸ Entregas (Erika 22/10/2026): ya no abre la orden de golpe. Lleva a Pedidos por comprar,
-    // sombrea el pedido y SUS líneas (por línea del PC, no por producto: el mismo producto puede ir a Lima y a Arequipa),
+    // sombrea el pedido y SUS líneas (por línea del PV, no por producto: el mismo producto puede ir a Lima y a Arequipa),
     // las deja marcadas y se desplaza hasta ellas. La persona revisa y pulsa "Crear orden de compra".
     async function abrirCompraDePedido(numero, despacho) {
         const url = new URL(window.location); url.searchParams.delete('pc'); url.searchParams.delete('desp'); window.history.replaceState({}, '', url);
@@ -346,7 +346,7 @@
     function paraHtml(o) {
         const motivo = o.motivo_compra ? `<small class="com-motivo">Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</small>` : '';
         if (o.sin_pedido || (o.tipo_compra === 'Para stock' && !o.clientes)) return `<span class="badge-sin-pedido">SIN PEDIDO</span>${motivo}`;
-        // 22/10/2026 (Erika): solo el cliente; el N° PC y el N° cotización ya tienen su propia columna
+        // 22/10/2026 (Erika): solo el cliente; el N° PV y el N° cotización ya tienen su propia columna
         return `${esc(o.clientes || o.clientes_pedido || '')}${o.tipo_compra === 'Para stock' ? `<small>+ stock</small>${motivo}` : ''}`;
     }
 
@@ -385,7 +385,7 @@
                 <td><b>${esc(o.empresa || '—')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}<small>${esc(o.ruc || '')}</small></td>
                 <td class="left">${paraHtml(o)}</td>
-                <td>${o.sin_pedido ? '<span class="badge-sin-pedido">Sin PC</span>' : esc(o.pc_numeros || o.pedidos || '—')}</td>
+                <td>${o.sin_pedido ? '<span class="badge-sin-pedido">Sin PV</span>' : esc(o.pc_numeros || o.pedidos || '—')}</td>
                 <td>${esc(o.cotizaciones_cliente || o.cotizaciones || '—')}</td>
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
@@ -506,7 +506,7 @@
 
     // 22/10/2026 (Erika: "que sea una ayuda, no una confusión"): primero lo de ESTA orden, pedido por pedido.
     // Antes se sumaban todos los pedidos abiertos del producto (40 + 18 = 58) en una sola cifra y no se sabía
-    // de dónde salía "Faltan 18". Ahora: una fila por pedido (PC) con lo que pide, lo que ya está en otras OC,
+    // de dónde salía "Faltan 18". Ahora: una fila por pedido (PV) con lo que pide, lo que ya está en otras OC,
     // el stock que le toca (el stock se reparte, el pedido más antiguo primero) y lo que falta comprar.
     // Los pedidos de esta orden van arriba y sombreados; los demás salen aparte como "otro pedido sin comprar".
     function pintarAbastecimiento() {
@@ -565,7 +565,7 @@
                     <span class="com-ab-stocktot">Stock libre en ${esc(nomEmp)}: <b>${cant(d.stock)}</b>${d.stock_grupo > d.stock ? ` · grupo ${cant(d.stock_grupo)}` : ''}</span></div>
                 <div class="com-ab-frases">${frases.join('')}</div>
                 ${pcs.length ? `<div class="table-wrap"><table class="inv-table com-abast-tabla">
-                    <thead><tr><th class="left">N° PC · cliente</th><th>Pide</th><th>Ya en otras OC</th><th>Stock asignado<small>se reparte, el PC más antiguo primero</small></th>
+                    <thead><tr><th class="left">N° PV · cliente</th><th>Pide</th><th>Ya en otras OC</th><th>Stock asignado<small>se reparte, el PV más antiguo primero</small></th>
                         <th>Falta comprar</th><th>En esta orden</th><th class="left">Resultado</th></tr></thead>
                     <tbody>${deEsta.map(p => filaPc(p, true)).join('')}${otros.map(p => filaPc(p, false)).join('')}</tbody></table></div>` : ''}
                 ${otrosTxt.length ? `<div class="com-ab-nota">Hay ${otrosTxt.length} pedido(s) más de este producto sin comprar (${otrosTxt.map(p => `${esc(p.numero)}: ${cant(p.por_comprar)}`).join(', ')}). Haz otra orden o pulsa "Sumarlo aquí".</div>` : ''}
@@ -894,7 +894,7 @@
             const pd = o.proveedor_datos || {};
             $('detCuerpo').innerHTML = `
                 ${o.flujo === 'v2' ? `<div class="com-stepper">${PASOS.map((p, i) => `<div class="com-step ${o.estado === 'Anulada' ? 'anulada' : ep[p.k]}"><span>${ep[p.k] === 'hecho' ? '✓' : i + 1}</span><b>${p.t}</b></div>`).join('')}</div>` : ''}
-                <div class="com-relacion-pc">${o.pc_numeros ? `🔗 Relacionado al PC: <b>${esc(o.pc_numeros)}</b>${o.cotizaciones_cliente ? ` · N° cotización <b>${esc(o.cotizaciones_cliente)}</b>` : ''}` : '📦 Compra directa a stock (Sin PC)'}</div>
+                <div class="com-relacion-pc">${o.pc_numeros ? `🔗 Relacionado al PV: <b>${esc(o.pc_numeros)}</b>${o.cotizaciones_cliente ? ` · N° cotización <b>${esc(o.cotizaciones_cliente)}</b>` : ''}` : '📦 Compra directa a stock (Sin PV)'}</div>
                 <div class="com-siguiente com-paso-${o.paso.codigo}">👉 <b>Siguiente paso:</b> ${esc(o.paso.texto)} <small>(${esc(o.paso.quien)})</small></div>
                 ${(o.avisos || []).map(a => `<div class="inv-aviso">⚠️ ${esc(a)}</div>`).join('')}
                 ${o.motivo_anulacion ? `<div class="inv-alerta danger">Anulada: ${esc(o.motivo_anulacion)}</div>` : ''}

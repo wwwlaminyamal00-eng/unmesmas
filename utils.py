@@ -187,7 +187,7 @@ def id_empresa(valor):
 def normalizar_condicion(texto):
     """Escribe la condición de pago siempre igual: 'Contado', 'Contra entrega' o 'Crédito N días'.
     Antes convivían 'Credito 45 Dias', 'Crédito 45 días' y '45', y la factura no los reconocía
-    (salía "Contado" aunque el PC fuera a crédito). Devuelve '' si viene vacío."""
+    (salía "Contado" aunque el PV fuera a crédito). Devuelve '' si viene vacío."""
     t = (texto or '').strip()
     if not t or t.lower() in ('seleccione', 'personalizado', '--', '-'):
         return ''

@@ -70,7 +70,7 @@
             kpi('Monto sin cerrar', soles(k.monto_abierto), 'Con IGV', 'ge-kpi-cobro'),
             kpi('Vigencia vencida', k.vencidas, k.vencidas ? 'Confirmar precio antes de cerrar' : 'Todas vigentes', k.vencidas ? 'ge-kpi-mal' : 'ge-kpi-ok'),
             kpi(`Tasa de cierre · ${datos.dias_periodo} días`, pct(k.tasa), `${k.ganadas} ganadas de ${k.enviadas}`, k.tasa === null ? 'ge-kpi-gris' : 'ge-kpi-ok'),
-            kpi('Ganado este mes', soles(k.ganado_mes), 'Aceptadas o con PC', 'ge-kpi-ok')
+            kpi('Ganado este mes', soles(k.ganado_mes), 'Aceptadas o con PV', 'ge-kpi-ok')
         ].join('');
         pintarAbiertas();
         pintarPorEnviar();

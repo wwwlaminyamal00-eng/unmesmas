@@ -1,8 +1,8 @@
 """
-Pedido de Erika del 19/10/2026 (tarde): bugs de Compras, Proveedores, PC y Exportar + revisión integral.
+Pedido de Erika del 19/10/2026 (tarde): bugs de Compras, Proveedores, PV y Exportar + revisión integral.
   BUG 2: no se puede borrar un proveedor con productos (mensaje claro) y se puede desactivar.
   BUG 3: Exportar arma un Excel de la tabla que se ve, con filtros y fecha/hora de Lima en el nombre.
-  BUG 4: el resumen de la PC conoce el descuento de la cotización.
+  BUG 4: el resumen de la PV conoce el descuento de la cotización.
   Audio: vencimientos con semáforo (6 y 3 meses), fecha de vencimiento del producto, fecha de creación/modificación.
   Revisión: dos órdenes de compra creadas a la vez no repiten número.
 Datos inventados, solo en la base local de pruebas.

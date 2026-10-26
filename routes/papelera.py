@@ -1,6 +1,6 @@
 ﻿# routes/papelera.py - Módulo 10 "Papelera / Auditoría" (pedido de Erika 16/10/2026: "TRAZABILIDAD PARA TODO")
 #
-# Papelera: todo lo anulado o eliminado de cada módulo en una sola lista (cotizaciones, PC, despachos, guías,
+# Papelera: todo lo anulado o eliminado de cada módulo en una sola lista (cotizaciones, PV, despachos, guías,
 #   facturas, notas de crédito, OC, solicitudes, facturas de proveedor, cobros/pagos, traslados, maestros
 #   desactivados y registros borrados que solo quedan en la auditoría).
 #   - Restaurar: solo administradores y solo cuando no rompe nada. Guías, facturas y notas de crédito
@@ -61,7 +61,7 @@ FUENTES = [
      'fecha': [("(SELECT ce.eliminado_en FROM cotizaciones_eliminadas ce WHERE ce.cotizacion_id_original = t.id "
                 "ORDER BY ce.id DESC LIMIT 1)", ['@cotizaciones_eliminadas']), 'updated_at', 'fecha_creacion'],
      'restaurar_a': 'Borrador', 'borrable': True},
-    {'id': 'pc', 'modulo': 'Pedidos (PC)', 'tabla': 'pedido_compra_pc', 'numero': ['numero'], 'tercero': ['cliente'],
+    {'id': 'pc', 'modulo': 'Pedidos (PV)', 'tabla': 'pedido_compra_pc', 'numero': ['numero'], 'tercero': ['cliente'],
      'monto': ['monto'], 'estado': 'estado', 'cond': "UPPER(COALESCE(t.estado, '')) LIKE 'ANULAD%%'",
      'fecha': ['updated_at', 'fecha'], 'restaurar_a': 'Pendiente', 'borrable': True},
     {'id': 'desp', 'modulo': 'Despachos', 'tabla': 'despachos', 'numero': ['numero'], 'tercero': ['cliente'],

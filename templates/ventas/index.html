@@ -193,6 +193,21 @@
 .monto-ret{display:block;font-size:9.5px;color:#B91C1C;font-weight:700;white-space:nowrap}
 .migo-lista{display:block;font-size:9.5px;font-weight:800;color:#0F766E;margin-top:2px}
 .xml-lista{display:inline-block;margin-top:2px;padding:0 5px;border-radius:6px;background:#CCFBF1;color:#0F766E;font-size:9.5px;font-weight:900}
+.pie-factura{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pie-factura .pie-descargas,.pie-factura .pie-guardar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pie-factura .pie-tit{font-size:11px;font-weight:900;color:#475569}
+.pie-factura .btn-desc-fac{border-color:#0F766E;color:#0F766E;font-weight:900}
+.pie-factura .btn-desc-fac:disabled{opacity:.45;cursor:not-allowed}
+.ret-resumen{grid-column:span 12;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ret-card{background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;text-align:center}
+.ret-card .ret-tit{font-size:11px;font-weight:900;color:#334155;text-transform:uppercase}
+.ret-card .ret-valor{border:none!important;background:transparent!important;text-align:center;font-size:18px;font-weight:900;color:#0F172A;padding:0;box-shadow:none!important}
+.ret-card small{font-size:10px;color:#64748B;font-weight:700}
+.ret-card.ret-pct{border-color:#FCA5A5}.ret-card.ret-pct .ret-valor{color:#B91C1C}
+.ret-card.ret-retenido{border-color:#FCA5A5;background:#FEF2F2}.ret-card.ret-retenido .ret-valor{color:#B91C1C}
+.ret-card.ret-pagar{border-color:#10B981;background:#ECFDF5}.ret-card.ret-pagar .ret-valor{color:#047857}
+input.ret-obs{background:#F8FAFC!important;color:#334155;font-weight:700}
+@media (max-width:900px){.ret-resumen{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .monto-a-pagar-campo{font-weight:900!important;color:#047857!important;background:#ECFDF5!important;border-color:#10B981!important}
 select.condicion-fija{background:#F1F5F9!important;color:#0F172A!important;cursor:not-allowed;opacity:1!important}
 select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow .3s}
@@ -1267,7 +1282,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
     }
     
     /* ============================================================
-       ESTILOS PARA OTROS MODALES (PC, Despacho, Guías, etc.)
+       ESTILOS PARA OTROS MODALES (PV, Despacho, Guías, etc.)
        ============================================================ */
     #pedidoCompraModal .modal-box,
     #despachoModal .modal-box,
@@ -2118,7 +2133,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 }
 
 /* ============================================================
-   ESTILOS SAP - PC PEDIDO COMPRAS
+   ESTILOS SAP - PV PEDIDO COMPRAS
    ============================================================ */
 
 /* Barra de flujo tipo SAP */
@@ -2366,7 +2381,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 }
 
 /* ============================================================
-   BOTONES SAP - PC desde cotización y PC directo
+   BOTONES SAP - PV desde cotización y PV directo
    ============================================================ */
 
 /* Botón primario (azul/rojo corporativo) */
@@ -2397,7 +2412,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
     font-size: 14px;
 }
 
-/* Botón gris secundario (para PC directo) */
+/* Botón gris secundario (para PV directo) */
 .btn-sap-gray {
     height: 38px;
     border: 1px solid #CBD5E1;
@@ -2434,7 +2449,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 }
 
 /* ============================================================
-   ESTILOS SAP PARA MODAL DE PC
+   ESTILOS SAP PARA MODAL DE PV
    ============================================================ */
 
 /* Sección del formulario tipo SAP */
@@ -2729,7 +2744,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 }
 
 /* ============================================================ */
-/* FIX FINAL - FOOTER DEL MODAL DE PC PEGADO AL BORDE */
+/* FIX FINAL - FOOTER DEL MODAL DE PV PEGADO AL BORDE */
 /* ============================================================ */
 
 #pedidoCompraModal .modal-box {
@@ -2911,7 +2926,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
     {% endif %}
     <script>window.PUEDE_VALIDAR_COT = {{ 'true' if puede_validar_ventas else 'false' }};</script>
     <button class="tab-btn" data-tab="pedido_compra">
-        📋 PC (Pedido de compra)
+        📋 PV (Pedido de venta)
         <span class="tab-badge">📍</span>
     </button>
     <button class="tab-btn" data-tab="despachar">
@@ -2998,17 +3013,17 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 
 
 <!-- ============================================================ -->
-<!-- PC PEDIDO COMPRAS - Estilo SAP -->
+<!-- PV PEDIDO COMPRAS - Estilo SAP -->
 <!-- ============================================================ -->
 <div id="pedido_compra" class="section">
     <div class="panel">
         <div class="clean-header sap-head">
             <div class="master-title-wrap">
-                <div class="master-title">📋 PC (Pedido de compra)</div>
+                <div class="master-title">📋 PV (Pedido de venta)</div>
                 <div class="master-subtitle">Aceptación formal del cliente recibida por correo / WhatsApp / plataforma</div>
             </div>
             <div class="search-box" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input id="pcSearch" placeholder="Buscar por PC / Cliente / RUC / Cotización / Producto..." style="flex:1; min-width:150px;" oninput="renderPedidos()">
+                <input id="pcSearch" placeholder="Buscar por PV / Cliente / RUC / Cotización / Producto..." style="flex:1; min-width:150px;" oninput="renderPedidos()">
                 <!-- Filtro de fechas -->
                 <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
                     <input type="date" id="pcFechaInicio" style="height:38px; border-radius:12px; border:1px solid #E5E7EB; padding:0 10px; font-weight:800; background:#fff; color:#0F172A; outline:none; font-size:11px; width:140px;" title="Fecha inicio" onchange="renderPedidos()">
@@ -3020,10 +3035,10 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
             <div class="clean-actions">
                 <button class="btn btn-secondary" onclick="exportData('pedido_compra')">📥 Exportar</button>
                 <button class="btn-sap-primary" onclick="openPedidoCompraModalSAP('cot')">
-                    <i class="bi bi-diagram-3"></i> PC desde cotización
+                    <i class="bi bi-diagram-3"></i> PV desde cotización
                 </button>
                 <button class="btn-sap-gray" onclick="openPedidoCompraModalSAP('directo')">
-                    <i class="bi bi-file-earmark-plus"></i> PC directo
+                    <i class="bi bi-file-earmark-plus"></i> PV directo
                 </button>
             </div>
         </div>
@@ -3035,7 +3050,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                 <tbody id="pcRows"></tbody>
             </table>
         </div>
-        <!-- BOTONES DE VISTA PARA PC -->
+        <!-- BOTONES DE VISTA PARA PV -->
         <div style="display: flex; justify-content: flex-start; gap: 8px; padding: 8px 12px; border-top: 1px solid #E5E7EB; background: #FAFBFC; border-radius: 0 0 12px 12px;">
             <button class="btn btn-view btn-primary-view active" onclick="setPedidoView('principal')" id="pcViewPrincipalBtn" style="background: #EF233C; color: #fff; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; transition: all 0.2s;">
                 📋 Principal
@@ -3052,13 +3067,13 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 </div>
 
 <!-- ============================================================ -->
-<!-- VALIDACIÓN PC VS COTIZACIÓN -->
+<!-- VALIDACIÓN PV VS COTIZACIÓN -->
 <!-- ============================================================ -->
 <div id="validacion" class="section">
     <div class="panel">
         <div class="clean-header">
             <div class="master-title-wrap">
-                <div class="master-title">🔍 Validación PC vs Cotización</div>
+                <div class="master-title">🔍 Validación PV vs Cotización</div>
                 <div class="master-subtitle">Revisión de precio, cantidad, producto, moneda, entrega, transporte, margen y stock</div>
             </div>
             <div class="search-box">
@@ -3078,7 +3093,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
     <table class="master-table val-table">
         <thead>
             <tr>
-                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">N° PC (Pedido de compra)</th>
+                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">N° PV (Pedido de venta)</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Cliente</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nombre producto</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Precio</th>
@@ -3097,7 +3112,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 </div>
 <div class="footer-table">
     <span id="valCount">Mostrando 0 de 0 validaciones</span>
-    <span><b>Regla:</b> Si el PC no está conforme, el sistema bloquea compra, despacho, guía y factura.</span>
+    <span><b>Regla:</b> Si el PV no está conforme, el sistema bloquea compra, despacho, guía y factura.</span>
 </div>
     </div>
 </div>
@@ -3114,7 +3129,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                 <div class="master-subtitle">Pendientes de despacho e historial</div>
             </div>
             <div class="search-box" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input id="despachoSearch" placeholder="Buscar por despacho / cliente / PC..." style="flex:1; min-width:150px;">
+                <input id="despachoSearch" placeholder="Buscar por despacho / cliente / PV..." style="flex:1; min-width:150px;">
                 <!-- Filtro de fechas -->
                 <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
                     <input type="date" id="despachoFechaInicio" style="height:38px; border-radius:12px; border:1px solid #E5E7EB; padding:0 10px; font-weight:800; background:#fff; color:#0F172A; outline:none; font-size:11px; width:140px;" title="Fecha inicio">
@@ -3155,7 +3170,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                         <th data-ent-orden="fecha" onclick="ordenarEntregas('fecha')" title="Ordenar">Fecha / Hora</th>
                         <th data-ent-orden="estado" onclick="ordenarEntregas('estado')" title="Ordenar">Estado</th>
                         <th data-ent-orden="numero" onclick="ordenarEntregas('numero')" title="Ordenar">N° despacho</th>
-                        <th data-ent-orden="pc_numero" onclick="ordenarEntregas('pc_numero')" title="Ordenar">N° PC (Pedido de compra)</th>
+                        <th data-ent-orden="pc_numero" onclick="ordenarEntregas('pc_numero')" title="Ordenar">N° PV (Pedido de venta)</th>
                         <th data-ent-orden="cotizacion_numero" onclick="ordenarEntregas('cotizacion_numero')" title="Ordenar">N° cotización</th>
                         <th data-ent-orden="cliente" onclick="ordenarEntregas('cliente')" title="Ordenar">Cliente</th>
                         <th>Cantidad y producto</th>
@@ -3219,7 +3234,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>N° cotización</th>
-                        <th>N° PC (Pedido de compra)</th>
+                        <th>N° PV (Pedido de venta)</th>
                         <th>N° Facturas</th>
                         <th>Origen</th>
                         <th>Destino</th>
@@ -3277,7 +3292,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>N° cotización</th>
-                        <th>N° PC (Pedido de compra)</th>
+                        <th>N° PV (Pedido de venta)</th>
                         <th>N° Guía</th>
                         <th>N° Factura</th>
                         <th title="Total de la factura, con IGV">Monto (inc. IGV)</th>

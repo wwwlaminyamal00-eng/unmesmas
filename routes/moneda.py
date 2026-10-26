@@ -5,7 +5,7 @@
 #
 # Reglas:
 #   - Cada documento guarda su moneda (PEN o USD) y su tipo de cambio (TC).
-#     Cotización, PC, factura de venta, OC y factura del proveedor.
+#     Cotización, PV, factura de venta, OC y factura del proveedor.
 #   - El TC del documento se propone con el TC SUNAT (venta) del día y se puede cambiar.
 #   - Los montos del documento quedan en su moneda. Lo que reduce la deuda (finanzas_pagos.monto) también.
 #     El pago real se guarda aparte: moneda_pago, tipo_cambio y monto_pagado.
@@ -256,7 +256,7 @@ def sql_monto_soles(a='fp'):
 
 def moneda_documento(datos, fecha=None, respaldo=None, tc_sunat_por_defecto=False):
     """Moneda y TC de un documento de venta. Si el formulario no trae moneda, usa la del documento de origen
-    (respaldo: la cotización o el PC). En dólares sin TC escrito: el del origen o, si tc_sunat_por_defecto,
+    (respaldo: la cotización o el PV). En dólares sin TC escrito: el del origen o, si tc_sunat_por_defecto,
     el TC SUNAT de la fecha (factura). Si no hay ninguno, pide escribirlo."""
     respaldo = respaldo or {}
     moneda = codigo_moneda(datos.get('moneda') or respaldo.get('moneda'))

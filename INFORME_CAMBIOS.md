@@ -2434,3 +2434,24 @@ Pedido: "Si Hellen puede aprobar sus propias OC, pero aquellas que el proveedor 
 ### 24.46 Facturas: sin la pastilla "Pendiente de aprobación" (Erika, 26/10/2026 20:03)
 - Era el "Estado del crédito" antiguo: toda factura a crédito nacía "Pendiente de aprobación" y nadie la aprobaba nunca. No lo usa ningún otro módulo.
 - Como la condición ya viene fija del PC aprobado, la lista ya no lo muestra. Solo aparece si alguien marca el crédito como "Rechazada".
+
+### 24.47 Nombres de golden rule: PV, PC y OC (Erika, 26/10/2026 20:26 y 20:41)
+- **PV (Pedido de venta)**: lo que antes se llamaba "PC (Pedido de compra)". Es el pedido interno de cada empresa, con número automático: PV-KCF-000012, PV-AGD-000103… La numeración sigue desde el último PC, sin saltos.
+- **PC (Pedido del cliente)**: el número que manda el cliente (antes "N° OC del cliente"). Es opcional. Si el cliente no manda número, se ve "—". Sale en la factura, en Entregas y en el PDF ("PC (PEDIDO DEL CLIENTE):").
+- **OC (Orden de compra) = solo Proveedor**. Ya no se usa "OC" para nada del cliente.
+- Cambiado en todos los módulos: Ventas, Entregas, Facturas, Compras, Inventario, Herramientas, Caja chica, Configuración ▸ Correlativos y los PDF.
+- Configuración ▸ Correlativos: "Pedido de venta (PV)" con serie PV-KCF / PV-AGD, y "Orden de compra (Proveedor)".
+- Los estados guardados ("PC conforme", "PC observado", "PC atendido") siguen igual en la base y se muestran como "PV …".
+- Los números ya emitidos (PC-KCF-000011, etc.) NO se cambiaron en la base: falta la respuesta escrita de Erika. Los nuevos salen como PV.
+- Caja chica: el importador acepta la columna "N° PC" (plantilla vieja) y "N° PV" (nueva).
+
+### 24.48 Facturas: retención con candado y pie ordenado (Erika, 26/10/2026 20:38 y 20:40)
+- El bloque "Retención del IGV" ya no tiene Estado del crédito, Fecha aprobación, Fecha vencimiento ni Días de crédito.
+- Ahora son 4 tarjetas: Monto total (incluye IGV), % de retención (3%, con 🔒), Monto retenido y Monto a pagar. Debajo, una observación que se escribe sola.
+- Nadie escribe montos a mano. El servidor recalcula todo: % = 3 (solo Erika puede cambiarlo), retenido = total × 3%, a pagar = total − retenido.
+- Vencimiento = fecha de emisión + días de la condición fija del PV. El formulario ya no puede mandar otra fecha ni otros días.
+- Pie de la factura: a la izquierda "Para el portal del cliente: ⬇ Descargar PDF | ⬇ Descargar XML". A la derecha: Cancelar | 💾 Guardar como borrador | 📄 Emitir comprobante.
+- Si la factura aún no tiene el XML de SUNAT, el botón dice "📎 Adjuntar XML de SUNAT". En ⋮ ya no dice "Subir", dice "Adjuntar XML descargado de SUNAT".
+- Observaciones: sección propia "📝 Observaciones" (opcional, sale en el PDF).
+- Capturas: `capturas/26oct_retencion.png`, `capturas/26oct_factura_pie.png` y `capturas/26oct_correlativos_pv.png`.
+- Pruebas: 318 correctas (base normal) y 316 + 2 omitidas (reconstruida). Prueba nueva: `test_retencion_calculada_y_con_candado`.

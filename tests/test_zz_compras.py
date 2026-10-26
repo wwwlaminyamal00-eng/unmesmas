@@ -1,6 +1,6 @@
 """
 Pruebas de los arreglos de Compras (16/10): filtros de las listas, compra sin pedido con motivo obligatorio,
-la OC guarda su PC / cotización / cliente / motivo, la orden del proveedor no muestra al cliente,
+la OC guarda su PV / cotización / cliente / motivo, la orden del proveedor no muestra al cliente,
 Cuentas por pagar ordenadas (vencido > por vencer > al día), candados de anular/eliminar (solo admin y con motivo),
 autollenado del proveedor desde proveedores_contactos y la tabla resumen pedido / stock / comprar.
 Datos inventados, solo en la base local de pruebas.
@@ -104,7 +104,7 @@ def test_oc_sin_pedido_exige_motivo(zz, admin):
     assert r.json['id'] in [o['id'] for o in lista] and all(o['sin_pedido'] for o in lista)
 
 
-# ---------- La OC guarda su PC, cotización, cliente y motivo ----------
+# ---------- La OC guarda su PV, cotización, cliente y motivo ----------
 def test_oc_guarda_pc_cotizacion_cliente(zz, admin):
     r = _oc_legacy(admin, pedido_id=zz['pc'])
     assert r.status_code == 200, r.json
@@ -133,10 +133,10 @@ def test_impresion_para_proveedor_sin_cliente(zz, admin):
     assert r.status_code == 200
     html = r.data.decode('utf-8')
     assert 'BOTA DE SEGURIDAD ZZ' in html and 'DISTRIBUIDORA ZZ' in html
-    # 22/10/2026 Erika: el proveedor no ve ningún N° interno (ni PC ni cotización del cliente) y la hoja es vertical
+    # 22/10/2026 Erika: el proveedor no ve ningún N° interno (ni PV ni cotización del cliente) y la hoja es vertical
     assert 'size:A4 portrait' in html and '<th>Modelo</th><th>Marca</th>' in html
     assert '<td>BOTA DE SEGURIDAD ZZ</td><td></td><td>ZZ</td>' in html   # sin modelo: celda vacía; marca del catálogo
-    for secreto in (CLIENTE, COT_NUM, PC_NUM, 'Relacionado al PC', 'Stock estratégico', '#FEF3C7'):
+    for secreto in (CLIENTE, COT_NUM, PC_NUM, 'Relacionado al PV', 'Stock estratégico', '#FEF3C7'):
         assert secreto not in html, secreto
     # vista previa de una OC de la pantalla anterior con pedido
     oc = _oc_legacy(admin, pedido_id=zz['pc']).json['data']

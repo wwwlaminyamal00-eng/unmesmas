@@ -316,10 +316,10 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
             <div class="menu-children">
             <a href="/ventas?tab=cotizaciones" class="child-btn" data-screen="cotizaciones" style="text-decoration:none;">📄 Cotizaciones</a>
-    {% if puede_validar_ventas %}<a href="/ventas?tab=validacion" class="child-btn" data-screen="validacion" style="text-decoration:none;">🔍 Validación PC vs Cotización</a>{% endif %}
+    {% if puede_validar_ventas %}<a href="/ventas?tab=validacion" class="child-btn" data-screen="validacion" style="text-decoration:none;">🔍 Validación PV vs Cotización</a>{% endif %}
     <a href="/ventas?tab=guias" class="child-btn" data-screen="guias" style="text-decoration:none;">📦 Guías de remisión cliente</a>
     <a href="/ventas?tab=notas_credito" class="child-btn" data-screen="notas_credito" style="text-decoration:none;">📝 Notas de crédito</a>
-    <a href="/ventas?tab=pedido_compra" class="child-btn" data-screen="pedido_compra" style="text-decoration:none;">📋 PC (Pedido de compra)</a>
+    <a href="/ventas?tab=pedido_compra" class="child-btn" data-screen="pedido_compra" style="text-decoration:none;">📋 PV (Pedido de venta)</a>
     <a href="/ventas?tab=despachar" class="child-btn" data-screen="despachar" style="text-decoration:none;">🚚 Entregas</a>
     <a href="/ventas?tab=devoluciones" class="child-btn" data-screen="devoluciones" style="text-decoration:none;">🔄 Devoluciones</a>
 </div>
@@ -616,7 +616,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     {% elif 'comprobantes' in request.args.get('tab', '') %}Comprobantes cliente
                     {% elif 'guias' in request.args.get('tab', '') %}Guías de remisión
                     {% elif 'notas_credito' in request.args.get('tab', '') %}Notas de crédito
-                    {% elif 'pedido_compra' in request.args.get('tab', '') %}Pedido Compras
+                    {% elif 'pedido_compra' in request.args.get('tab', '') %}Pedido de venta (PV)
                     {% elif 'despachar' in request.args.get('tab', '') %}Despachar
                     {% elif 'devoluciones' in request.args.get('tab', '') %}Devoluciones
                     {% else %}Ventas
@@ -1539,7 +1539,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 'comprobantes': 'Comprobantes cliente',
                 'guias': 'Guías de remisión cliente',
                 'notas_credito': 'Notas de crédito',
-                'pedido_compra': 'PC (Pedido de compra)',
+                'pedido_compra': 'PV (Pedido de venta)',
                 'despachar': 'Despachar',
                 'devoluciones': 'Devoluciones'
             };

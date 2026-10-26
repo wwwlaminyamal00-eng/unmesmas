@@ -3,7 +3,7 @@
 # Reglas (en simple):
 #   1. Arriba a la derecha se elige la empresa: KCF, AGD (o las que se agreguen en erp_empresas) o
 #      "Todas las empresas" (consolidado). Al cambiarla la página se recarga y TODO se filtra.
-#   2. Cada documento (cotización, PC, despacho, guía, factura, nota de crédito, devolución, OC,
+#   2. Cada documento (cotización, PV, despacho, guía, factura, nota de crédito, devolución, OC,
 #      recepción, factura de proveedor, cobro/pago) guarda empresa_id (UUID de erp_empresas).
 #      Los documentos que nacen de otro heredan su empresa (la guía del despacho, la factura de la guía...).
 #   3. Clientes, proveedores y productos son del grupo: empresa_id vacío = "de todas las empresas".
@@ -79,7 +79,7 @@ def asegurar_columnas_empresa():
                         cur.execute(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS {col} {t}')
                         if col == 'empresa_id':
                             cur.execute(f'CREATE INDEX IF NOT EXISTS idx_{tabla}_empresa_id ON {tabla} (empresa_id)')
-            # 16/10: el interruptor "Producto" del PC ahora se guarda (antes al reabrir salía apagado)
+            # 16/10: el interruptor "Producto" del PV ahora se guarda (antes al reabrir salía apagado)
             cur.execute("""SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
                            AND table_name = 'pedido_compra_pc' AND column_name = 'valida_productos'""")
             if not cur.fetchone() and _existe_tabla(cur, 'pedido_compra_pc'):

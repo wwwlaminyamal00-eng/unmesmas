@@ -1,7 +1,7 @@
 """
 Pedido de Erika del 20/10/2026 22:54: el sistema es un "policía" que no deja crear documentos duplicados
 (guía, factura y orden de compra), validado en el servidor. También: N° en vez de Nr°, cliente antes del RUC,
-tarjetas en una fila, avisos "¿Ahora qué?" en Compras y el PC en la OC. Datos inventados, solo en la base local.
+tarjetas en una fila, avisos "¿Ahora qué?" en Compras y el PV en la OC. Datos inventados, solo en la base local.
 """
 import json
 from pathlib import Path
@@ -38,7 +38,7 @@ def test_guia_duplicada_por_despacho_y_por_pc(vendedor):
     r2 = _guia(vendedor, despacho_numero='DSP-ZZD-1', pc_numero='PC-ZZD-G', items=[{'codigo': 'PRD-0001', 'cantidad': 1}])
     assert r2.status_code == 409 and r2.json['codigo'] == 'duplicado'
     assert f"T001-{r.json['data']['numero']}" in r2.json['error'] and '⛔ ERROR' in r2.json['error']
-    # El resto del PC (1) sí se puede; pasarse del PC (ya hay 1, +2 > 2) no
+    # El resto del PV (1) sí se puede; pasarse del PV (ya hay 1, +2 > 2) no
     assert _guia(vendedor, pc_numero='PC-ZZD-G', items=[{'codigo': 'PRD-0001', 'cantidad': 2}]).status_code == 409
     assert _guia(vendedor, pc_numero='PC-ZZD-G', items=[{'codigo': 'PRD-0001', 'cantidad': 1}]).status_code == 200
     # Anulada no cuenta: anulo la del despacho y se puede volver a hacer
@@ -53,11 +53,11 @@ def test_factura_duplicada_por_guia_y_por_pc(vendedor):
     assert f1.status_code == 200, f1.json
     r = _factura(vendedor, guia='T001-ZZD-99', items=[{'codigo': 'PRD-0001', 'cantidad': 1}])
     assert r.status_code == 409 and r.json['codigo'] == 'duplicado' and 'ya fue facturada' in r.json['error']
-    # Parcial: el otro guante sí; un tercero no (el PC ya quedó facturado completo)
+    # Parcial: el otro guante sí; un tercero no (el PV ya quedó facturado completo)
     assert _factura(vendedor, pc='PC-ZZD-F', items=[{'codigo': 'PRD-0001', 'cantidad': 1}]).status_code == 200
     r = _factura(vendedor, pc='PC-ZZD-F', items=[{'codigo': 'PRD-0001', 'cantidad': 1}])
     assert r.status_code == 409 and 'PC-ZZD-F ya fue facturado' in r.json['error']
-    # Sin guía ni PC (factura sin stock, regla de las 18:09) sigue permitida
+    # Sin guía ni PV (factura sin stock, regla de las 18:09) sigue permitida
     assert _factura(vendedor, items=[{'codigo': 'PRD-0001', 'cantidad': 50}]).status_code == 200
 
 
@@ -83,11 +83,11 @@ def test_oc_duplicada(admin):
 
     a = oc(p1, 4, pc)
     assert a.status_code == 200, a.json
-    # Mismo PC y mismo proveedor: bloqueada y nombra la OC que ya existe
+    # Mismo PV y mismo proveedor: bloqueada y nombra la OC que ya existe
     r = oc(p1, 3, pc)
     assert r.status_code >= 400 and 'Ya existe una Orden de Compra activa para este pedido' in r.json['error']
     assert a.json['numero'] in r.json['error']
-    # Mismo PC con otro proveedor: permitido (el resto del pedido)
+    # Mismo PV con otro proveedor: permitido (el resto del pedido)
     assert oc(p2, 3, pc).status_code == 200
     # Para stock: idéntica (mismo proveedor, producto y cantidad) bloqueada; otra cantidad sí
     assert oc(p1, 7).status_code == 200
@@ -97,9 +97,9 @@ def test_oc_duplicada(admin):
     # Anulada no cuenta
     admin.post(f"/compras/api/flujo/ordenes/{a.json['id']}/anular", json={'motivo': 'prueba de duplicado'})
     assert oc(p1, 4, pc).status_code == 200
-    # 22/10/2026: la OC impresa ya no muestra el N° PC (el proveedor no ve numeración interna)
+    # 22/10/2026: la OC impresa ya no muestra el N° PV (el proveedor no ve numeración interna)
     html = admin.get(f"/compras/flujo/ordenes/{a.json['id']}/imprimir", query_string={'hoja': 'borrador'}).get_data(as_text=True)
-    assert 'PC-ZZD-OC' not in html and 'Relacionado al PC' not in html and 'Sin PC' not in html
+    assert 'PC-ZZD-OC' not in html and 'Relacionado al PV' not in html and 'Sin PV' not in html
 
 
 def test_pantallas_ordenadas_y_ayudas_en_compras():
@@ -112,11 +112,11 @@ def test_pantallas_ordenadas_y_ayudas_en_compras():
     base = (RAIZ / 'templates/base.html').read_text(encoding='utf-8')
     assert 'grid-auto-flow:column!important' in base
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
-    for t in ('👉 ¿Ahora qué?', "cartelSiguiente($('recOc').value, '✅ ¡Mercadería recibida!'", 'Compra directa a stock (Sin PC)',
-              'Relacionado al PC:', "cartelSiguiente($('pagoOc').value"):
+    for t in ('👉 ¿Ahora qué?', "cartelSiguiente($('recOc').value, '✅ ¡Mercadería recibida!'", 'Compra directa a stock (Sin PV)',
+              'Relacionado al PV:', "cartelSiguiente($('pagoOc').value"):
         assert t in cjs, t
     fl = (RAIZ / 'templates/compras/flujo.html').read_text(encoding='utf-8')
-    assert '<th>N° PC (Pedido de compra)</th><th>N° cotización</th>' in fl
+    assert '<th>N° PV (Pedido de venta)</th><th>N° cotización</th>' in fl
 
 
 def test_despacho_duplicado_del_mismo_pc(vendedor):

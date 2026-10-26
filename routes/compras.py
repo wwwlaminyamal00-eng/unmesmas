@@ -26,7 +26,7 @@ compras_bp = Blueprint('compras', __name__)
 
 @compras_bp.before_request
 def _asegurar_columnas():
-    # Columnas nuevas (motivo de compra sin pedido, PC/cotización/cliente de la OC, registro de anulaciones)
+    # Columnas nuevas (motivo de compra sin pedido, PV/cotización/cliente de la OC, registro de anulaciones)
     if request.path.startswith('/compras') and 'usuario' in session:
         try:
             from routes.compras_flujo import asegurar_tablas_compras
@@ -468,7 +468,7 @@ def guardar_orden_db(data):
 
 
 def _pedido_de_orden(data):
-    """La OC dice para qué pedido del cliente (PC) es. Sin PC es una "Compra sin pedido" y el motivo es obligatorio."""
+    """La OC dice para qué pedido de venta (PV) es. Sin PV es una "Compra sin pedido" y el motivo es obligatorio."""
     from routes.compras_flujo import motivo_sin_pedido, ErrorCompras
     pedido_id = data.get('pedido_id') or None
     if pedido_id:
@@ -1711,7 +1711,7 @@ def api_ordenes_buscar():
 @compras_bp.route('/compras/orden/<int:id>/preview', methods=['GET'])
 @login_required
 def orden_preview(id):
-    """Vista previa / impresión de una orden de compra PARA EL PROVEEDOR (sin cliente, PC ni cotización del cliente).
+    """Vista previa / impresión de una orden de compra PARA EL PROVEEDOR (sin cliente, PV ni cotización del cliente).
     Antes buscaba la plantilla compras/orden_preview.html, que no existe; ahora usa la misma hoja de la nueva pantalla."""
     try:
         from routes.compras_flujo import orden_imprimir

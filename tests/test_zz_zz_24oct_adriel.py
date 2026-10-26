@@ -1,5 +1,5 @@
 """
-Mejoras del prompt de Adriel (24/10/2026 18:30): descripción del cliente en el PC, "Cuenta Corriente" en la
+Mejoras del prompt de Adriel (24/10/2026 18:30): descripción del cliente en el PV, "Cuenta Corriente" en la
 cotización, marca "-", OC con adelanto 50%, vendedores sin "Generar" ni "Revisión / Validación" y orden de columnas.
 """
 from decimal import Decimal

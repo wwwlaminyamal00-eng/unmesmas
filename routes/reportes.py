@@ -7,7 +7,7 @@
 #      Cuentas por cobrar/pagar usan las MISMAS consultas que Finanzas (routes/finanzas.py).
 #      Inventario usa inv_stock (stock y costo promedio) e inv_movimientos registrados (kardex).
 #   3. El vendedor de una venta es el usuario que hizo la cotización (cotizaciones.usuario_id) a la que apunta el
-#      comprobante (directo o a través de su PC). Si no tiene cotización, quien registró el comprobante.
+#      comprobante (directo o a través de su PV). Si no tiene cotización, quien registró el comprobante.
 #      Solo salen usuarios reales de la tabla usuarios.
 #   4. Costo de un producto: costo promedio del inventario (inv_stock); si no hay, productos.costo_unitario.
 #   5. Empresa: respeta el selector de arriba (KCF / AGD / Todas). Con "Todas" se puede elegir una en el filtro.
@@ -549,7 +549,7 @@ def rep_kpi(f):
         WHERE COALESCE(UPPER(TRIM(c.estado)), '') NOT IN ('ANULADA', 'ANULADO', 'ELIMINADA', 'ELIMINADO')
           AND c.fecha_creacion >= %s AND c.fecha_creacion < %s::date + 1 {emp_sql}
     """, (f['desde'], f['hasta']) + emp_par)
-    # Primer PC (no anulado) y primer comprobante (no anulado) de cada cotización
+    # Primer PV (no anulado) y primer comprobante (no anulado) de cada cotización
     pcs = {}
     for p in db_query("""SELECT cotizacion_id, cotizacion_numero, numero, fecha FROM pedido_compra_pc
                          WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')"""):
@@ -609,7 +609,7 @@ def rep_kpi(f):
     cols = [_col('puesto', '#', 'num'), _col('colaborador', 'Colaborador'), _col('rol', 'Rol'),
             _col('cotizaciones', 'Cotizaciones hechas', 'num'), _col('cotizado', 'Monto cotizado', 'dinero'),
             _col('convertidas', 'Convertidas en venta', 'num'), _col('conversion', 'Tasa de conversión', 'semaforo'),
-            _col('dias_cierre', 'Días promedio cotización → PC/factura', 'dias1'), _col('ventas', 'Facturas', 'num'),
+            _col('dias_cierre', 'Días promedio cotización → PV/factura', 'dias1'), _col('ventas', 'Facturas', 'num'),
             _col('venta_sub', 'Vendido sin IGV', 'dinero'), _col('venta', 'Vendido con IGV', 'dinero'),
             _col('ticket', 'Ticket promedio', 'dinero'), _col('clientes', 'Clientes atendidos', 'num'),
             _col('participacion', '% de la venta', 'pct')]
@@ -621,7 +621,7 @@ def rep_kpi(f):
                {'t': 'Conversión del equipo', 'v': _n(tv * 100 / tc, 1) if tc else 0, 'tipo': 'pct'}]
     t = _salida('KPI por colaborador', cols, filas, ['cotizaciones', 'cotizado', 'convertidas', 'ventas', 'venta_sub', 'venta'],
                 resumen, grafico=('colaborador', 'venta'))
-    t['nota'] = ('Cotizaciones: las creadas en el periodo (sin anuladas). Convertida = tiene PC o factura, o está aceptada. '
+    t['nota'] = ('Cotizaciones: las creadas en el periodo (sin anuladas). Convertida = tiene PV o factura, o está aceptada. '
                  'Vendido: facturas emitidas en el periodo cuya cotización es del colaborador '
                  '(si la factura no tiene cotización, cuenta para quien la registró). Solo usuarios del sistema.')
     return t

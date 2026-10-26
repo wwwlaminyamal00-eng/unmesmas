@@ -2,7 +2,7 @@
 # ============================================================
 # CONFIGURACIÓN ▸ CORRELATIVOS (pedido de Erika 21/10/2026 16:35)
 # El administrador ve el último número emitido de cada documento y puede fijar
-# desde qué número siguen los NUEVOS documentos (COT, PC, Guía, Factura/Boleta).
+# desde qué número siguen los NUEVOS documentos (COT, PV, Guía, Factura/Boleta).
 # Nunca se renumera un documento ya emitido y nunca se acepta un número igual o
 # menor al último emitido (chocaría con los índices únicos de la migración 014).
 # La OC se numera por día (OC-AAAAMMDD-NNNN) y solo se muestra.
@@ -29,8 +29,8 @@ SQL_TABLA = """
     )
 """
 
-NOMBRES = {'COT': 'Cotización', 'PC': 'Pedido de compra (PC)', 'GUIA': 'Guía de remisión',
-           'COMPROBANTE': 'Factura / Boleta', 'OC': 'Orden de compra (OC)'}
+NOMBRES = {'COT': 'Cotización', 'PC': 'Pedido de venta (PV)', 'GUIA': 'Guía de remisión',
+           'COMPROBANTE': 'Factura / Boleta', 'OC': 'Orden de compra (Proveedor)'}
 
 _NUM = "NULLIF(regexp_replace({c}::text, '\\D', '', 'g'), '')::bigint"
 
@@ -108,14 +108,14 @@ def listar(cur):
             nota='Una sola numeración para KCF y AGD.')
 
     codigos = [e['codigo'].upper() for e in empresas()]
-    cur.execute(f"""SELECT substring(numero FROM '^PC-([A-Za-z0-9]+)-[0-9]+$') AS cod,
+    cur.execute(f"""SELECT substring(numero FROM '^P[CV]-([A-Za-z0-9]+)-[0-9]+$') AS cod,
                            MAX({_NUM.format(c="substring(numero FROM '-([0-9]+)$')")}) AS ultimo
-                    FROM pedido_compra_pc WHERE numero ~ '^PC-[A-Za-z0-9]+-[0-9]+$' GROUP BY 1""")
+                    FROM pedido_compra_pc WHERE numero ~ '^P[CV]-[A-Za-z0-9]+-[0-9]+$' GROUP BY 1""")
     ult_pc = {(r['cod'] or '').upper(): r['ultimo'] for r in cur.fetchall()}
     for cod in sorted(set(codigos) | set(ult_pc)):
         u = ult_pc.get(cod) or 0
-        agregar('PC', clave_pc(cod), cod, f'PC-{cod}', f'PC-{cod}-{{n}}', u,
-                f"PC-{cod}-{str(u).zfill(6)}" if u else None, nota='Número interno por empresa.')
+        agregar('PC', clave_pc(cod), cod, f'PV-{cod}', f'PV-{cod}-{{n}}', u,
+                f"PV-{cod}-{str(u).zfill(6)}" if u else None, nota='Número interno por empresa (PV = Pedido de venta).')
 
     cur.execute(f"""SELECT DISTINCT ON (empresa_id, serie) empresa_id, serie, {_NUM.format(c='numero')} AS ultimo,
                            numero::text AS txt

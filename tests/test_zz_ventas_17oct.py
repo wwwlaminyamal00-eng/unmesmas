@@ -1,6 +1,6 @@
 """
 Pruebas del pedido de Erika del 16/10/2026 (noche) — Ventas:
-  - V4: el descuento de la cotización pasa a la PC con el precio por producto ya descontado.
+  - V4: el descuento de la cotización pasa a la PV con el precio por producto ya descontado.
 """
 import pytest
 
@@ -31,7 +31,7 @@ def test_descuento_de_cotizacion_pasa_a_la_pc(vendedor, numero, tipo, pct, monto
     productos = d['productos']
     # El precio de lista se conserva (la edición de la cotización lo usa) ...
     assert sorted(p['valorVenta'] for p in productos) == [80.0, 500.0]
-    # ... y la PC recibe el precio ya descontado
+    # ... y la PV recibe el precio ya descontado
     total = sum(p['cantidad'] * p['precio_neto'] for p in productos)
     assert abs(total - neto) < 0.05
     assert abs(d['subtotal_neto'] - neto) < 0.05
@@ -39,7 +39,7 @@ def test_descuento_de_cotizacion_pasa_a_la_pc(vendedor, numero, tipo, pct, monto
 
 
 def test_descuento_guardado_desde_pantalla_no_se_aplica_dos_veces(vendedor):
-    """Una cotización guardada por el ERP ya trae el precio descontado por línea: la PC lo usa tal cual."""
+    """Una cotización guardada por el ERP ya trae el precio descontado por línea: la PV lo usa tal cual."""
     from tests.test_flujos import nueva_cotizacion
     d = nueva_cotizacion(vendedor, descuento_valor=10, descuento_tipo='%').json['data']   # 215.00 - 10 %
     c = vendedor.get(f"/ventas/api/cotizaciones/{d['id']}/completa").json['data']

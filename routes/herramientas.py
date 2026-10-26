@@ -463,7 +463,7 @@ EXPORTABLES = {
     'proveedores': 'Proveedores', 'productos': 'Productos', 'almacenes': 'Sedes / almacenes',
     'cotizaciones': 'Cotizaciones', 'cotizacion_detalle': 'Detalle de cotizaciones',
     'cotizaciones_eliminadas': 'Cotizaciones eliminadas (respaldo)',
-    'pedido_compra_pc': 'Pedidos de compra del cliente (PC)', 'despachos': 'Despachos',
+    'pedido_compra_pc': 'Pedidos de venta (PV)', 'despachos': 'Despachos',
     'guias_remision': 'Guías de remisión', 'comprobantes': 'Facturas y boletas', 'notas_credito': 'Notas de crédito',
     'devoluciones': 'Devoluciones', 'ordenes_compra': 'Órdenes de compra (Proveedor)', 'ordenes_compra_items': 'Ítems de órdenes de compra',
     'solicitudes_compra': 'Solicitudes de compra', 'recepciones_mercaderia': 'Recepciones de mercadería',
@@ -541,7 +541,7 @@ def api_exportar():
 NUMERACIONES = [
     # (código, título, tabla, columna número, columnas que separan la serie, es_fiscal)
     ('cotizaciones', 'Cotizaciones', 'cotizaciones', 'numero_cotizacion', [], False),
-    ('pc', 'Pedidos de compra (PC)', 'pedido_compra_pc', 'numero', [], False),
+    ('pc', 'Pedidos de venta (PV)', 'pedido_compra_pc', 'numero', [], False),
     ('despachos', 'Despachos', 'despachos', 'numero', [], False),
     ('oc', 'Órdenes de compra (Proveedor)', 'ordenes_compra', 'numero_orden', [], False),
     ('guias', 'Guías de remisión', 'guias_remision', 'numero', ['serie', 'empresa_id'], True),
@@ -678,15 +678,15 @@ CHEQUEOS = [
      {'cotizaciones': ['cliente_id'], 'clientes': []},
      "SELECT c.id, c.numero_cotizacion || ' → cliente ' || COALESCE(c.cliente_id::text, '(vacío)') AS texto FROM cotizaciones c "
      "WHERE c.cliente_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM clientes x WHERE x.id = c.cliente_id)"),
-    ('pc_sin_cot', 'PC sin cotización existente', 'Pedidos (PC) que dicen venir de una cotización que no existe.', 'alta',
+    ('pc_sin_cot', 'PV sin cotización existente', 'Pedidos (PV) que dicen venir de una cotización que no existe.', 'alta',
      {'pedido_compra_pc': ['cotizacion_id', 'cotizacion_numero'], 'cotizaciones': []},
      "SELECT p.id, p.numero || ' → ' || COALESCE(p.cotizacion_numero, 'cotización ' || p.cotizacion_id) AS texto FROM pedido_compra_pc p "
      "WHERE (p.cotizacion_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM cotizaciones c WHERE c.id = p.cotizacion_id)) "
      "OR (p.cotizacion_id IS NULL AND COALESCE(p.cotizacion_numero, '') <> '' AND NOT EXISTS "
      "(SELECT 1 FROM cotizaciones c WHERE c.numero_cotizacion = p.cotizacion_numero OR c.codigo_cotizacion = p.cotizacion_numero))"),
-    ('desp_sin_pc', 'Despacho sin PC existente', 'Despachos que dicen venir de un PC que no existe.', 'alta',
+    ('desp_sin_pc', 'Despacho sin PV existente', 'Despachos que dicen venir de un PV que no existe.', 'alta',
      {'despachos': ['pc_id', 'pc_numero'], 'pedido_compra_pc': []},
-     "SELECT d.id, d.numero || ' → ' || COALESCE(d.pc_numero, 'PC ' || d.pc_id) AS texto FROM despachos d "
+     "SELECT d.id, d.numero || ' → ' || COALESCE(d.pc_numero, 'PV ' || d.pc_id) AS texto FROM despachos d "
      "WHERE (d.pc_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pedido_compra_pc p WHERE p.id = d.pc_id)) "
      "OR (d.pc_id IS NULL AND COALESCE(d.pc_numero, '') <> '' AND NOT EXISTS (SELECT 1 FROM pedido_compra_pc p WHERE p.numero = d.pc_numero))"),
     ('despprod_sin_desp', 'Productos de despacho sin despacho', 'Líneas de despacho cuyo despacho no existe.', 'media',

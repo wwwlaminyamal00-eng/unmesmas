@@ -136,7 +136,7 @@
             : m.fotos ? `<button type="button" class="ge-btn" data-fotos="${m.id}">Ver foto (${m.fotos})</button>`
             : (m.comprobante_tipo === 'Planilla de movilidad' ? '<span class="ge-sub">Se firma en la planilla</span>' : '<span class="ge-sin">Falta foto</span>');
         $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó / pagado a</th>
-            <th>Descripción y N° PC / OC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            <th>Descripción y N° PV / OC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
             ${lista.map(m => `<tr class="${m.estado === 'Anulado' ? 'cc-anulado' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
                 <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}</td>
                 <td>${esc(m.rubro || m.tipo)}${m.empresa_gasto && m.empresa_gasto !== empCodigo() ? `<span class="ge-sub">Gasto de ${esc(m.empresa_gasto)}</span>` : ''}</td>
@@ -202,7 +202,7 @@
             <label>Pagado a <small>(transportista, tienda...)</small><input name="pagado_a" maxlength="150" list="ccListaPagados" value="${esc(m.pagado_a || '')}">
                 <datalist id="ccListaPagados">${transportistas.map(p => `<option value="${esc(p.nombre)}">`).join('')}</datalist></label>
             <label style="grid-column:1/-1">Descripción <small>(de dónde a dónde, o para qué)</small><input name="descripcion" required maxlength="500" value="${esc(m.descripcion || '')}" placeholder="Ej.: Pasaje de Oficina a Malvinas para recoger guantes de Prosinfer"></label>
-            <label>N° PC / OC / despacho <small>(si es de un pedido)</small><input name="referencia" maxlength="150" value="${esc(m.referencia || '')}" placeholder="Ej.: PC-KCF-000123"></label>
+            <label>N° PV / OC / despacho <small>(si es de un pedido)</small><input name="referencia" maxlength="150" value="${esc(m.referencia || '')}" placeholder="Ej.: PV-KCF-000123"></label>
             <label>Tipo de comprobante<select name="comprobante_tipo" required>${opciones(OPC.comprobantes, m.comprobante_tipo, 'Elige...')}</select></label>
             <label data-cc="numero">N° de comprobante<input name="comprobante_numero" maxlength="40" value="${esc(m.comprobante_numero || '')}" placeholder="Ej.: F001-000123"></label>
             <label data-cc="ruc">RUC de quien emitió<input name="ruc_emisor" maxlength="11" inputmode="numeric" value="${esc(m.ruc_emisor || '')}"></label>

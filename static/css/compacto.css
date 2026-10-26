@@ -149,7 +149,7 @@
 
 /* N° OC del cliente debajo del N° PC (PC y Entregas, 26/10/2026): rótulo arriba, número abajo, nunca se sale de la celda */
 .oc-cliente-celda{margin-top:3px;font-size:11px;line-height:1.25;color:#334155;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
-.oc-cliente-celda span{display:block;font-size:10px;font-weight:600;color:#64748B;white-space:nowrap}
+.oc-cliente-celda span{display:block;font-size:10px;font-weight:600;color:#64748B;white-space:normal;line-height:1.15}
 .oc-cliente-celda b{font-weight:700;color:#0F172A}
 /* Entregas 26/10/2026: con la columna "Fecha real de entrega" todo un poco más angosto en 1366 px */
 @media (max-width:1450px){
