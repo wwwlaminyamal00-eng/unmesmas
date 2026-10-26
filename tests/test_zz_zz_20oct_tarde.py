@@ -53,7 +53,7 @@ def test_pc_conforme_sin_validar_transporte(vendedor):
 def test_nombres_de_columnas_y_entregas_en_colores():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     assert '<th>Producto</th>' not in js and '<th>Lugar de Entrega</th>' not in js
-    assert "'<span class=\"desp-por\">⏳ Por despachar</span>'" in js and '>Confirmar despacho</button>' in js
+    assert "'<span class=\"desp-por\">⏳ Por despachar</span>'" in js and "'Confirmar despacho'}</button>" in js
     assert "irAPestanaYResaltar('despachar', 'despachoSearch', [nuevoDesp.numero, pc.numero]" in js
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     assert '.desp-hecho{' in html and 'background:#00E676' in html and '.desp-por{' in html
@@ -106,7 +106,7 @@ def test_pantalla_de_entregas_18h():
     tabla = tabla[:tabla.index('</thead>')]
     # 25/10/2026: N° Guía y N° Factura en columnas separadas (Erika: "para poder filtrar y ordenar")
     orden = [tabla.index(f'>{t}</th>') for t in ('N° PC (Pedido de compra)', 'N° cotización', 'Cliente', 'N° Guía', 'N° Factura', 'Distrito',
-                                                   'Estado compra', 'Fecha de cita', 'Acción')]
+                                                   'Estado compra', 'Fecha de cita y entrega real', 'Acción')]
     assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
     assert "qs.get('pc')" in cjs and 'async function abrirCompraDePedido' in cjs

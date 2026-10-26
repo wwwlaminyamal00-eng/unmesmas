@@ -611,6 +611,21 @@ def obtener_comprobantes_db():
                 obs_retencion,
                 sunat_response, cdr_response, creado_por,
                 created_at, updated_at,
+                -- Monto a pagar y N° MIGO en la lista (Erika 26/10/2026)
+                to_jsonb(comprobantes) ->> 'tiene_retencion' AS tiene_retencion,
+                to_jsonb(comprobantes) ->> 'porcentaje_retencion' AS porcentaje_retencion,
+                to_jsonb(comprobantes) ->> 'monto_a_pagar' AS monto_a_pagar,
+                to_jsonb(comprobantes) ->> 'numero_migo' AS numero_migo,
+                (SELECT MAX(a.id) FROM comprobante_archivos a
+                  WHERE a.comprobante_id = comprobantes.id AND a.tipo = 'XML') AS xml_id,
+                -- N° cotización: la guardada; si falta, la del PC vinculado o la de la guía (26/10/2026)
+                COALESCE(NULLIF(documento_asociado, ''),
+                         (SELECT p.cotizacion_numero FROM pedido_compra_pc p
+                           WHERE p.numero = comprobantes.pc_vinculado AND NULLIF(p.cotizacion_numero, '') IS NOT NULL
+                           ORDER BY p.id DESC LIMIT 1),
+                         (SELECT g.documento_asociado FROM guias_remision g
+                           WHERE (g.serie || '-' || g.numero) = comprobantes.guia_vinculada
+                             AND g.documento_asociado LIKE 'COT%%' ORDER BY g.id DESC LIMIT 1)) AS cotizacion_numero,
                 -- N° PC y N° Guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
                 COALESCE(NULLIF(pc_vinculado, ''),
                          (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
@@ -2796,6 +2811,12 @@ def api_guias_eliminar_permanente(id):
 @login_required
 def api_comprobantes_listar():
     try:
+        try:
+            from routes.archivos_factura import asegurar_archivos_factura
+            asegurar_archivos_factura()  # la lista pregunta si la factura ya tiene su XML de SUNAT
+            asegurar_migo()
+        except Exception as e:
+            print(f"⚠️ tablas de la lista de facturas: {e}")
         data = obtener_comprobantes_db()
         data = filtrar_filas('comprobantes', data)  # solo la empresa elegida arriba
         formatted_data = []
@@ -2815,18 +2836,22 @@ def api_comprobantes_listar():
                 'estado': row.get('estado_sunat') or 'Borrador',
                 'ruc': row.get('cliente_numero_doc'),
                 'cliente': row.get('cliente_nombre'),
-                'cotizacion': row.get('documento_asociado'),
+                'cotizacion': row.get('cotizacion_numero') or row.get('documento_asociado'),
                 'pc_numero': row.get('pc_numero') or '',
                 'guia_numero': row.get('guia_numero') or '',
                 'monto': float(row.get('total') or 0),
+                'monto_retenido': float(row.get('monto_retenido') or 0),
+                'monto_a_pagar': float(row.get('monto_a_pagar') or 0),
+                'numero_migo': row.get('numero_migo') or '',
+                'xml_id': row.get('xml_id'),
                 'subtotal': float(row.get('subtotal') or 0),
                 'igv': float(row.get('igv') or 0),
                 # Antes decía siempre 'Contado' aunque la factura fuera a crédito (bug visto por Erika 19/10/2026)
                 'condicion': normalizar_condicion(row.get('condicion_pago')) or 'Contado',
                 'dias_credito': row.get('dias_credito'),
                 'estado_credito': row.get('estado_credito'),
-                'tiene_retencion': row.get('tiene_retencion'),
-                'porcentaje_retencion': row.get('porcentaje_retencion'),
+                'tiene_retencion': str(row.get('tiene_retencion')).lower() == 'true',
+                'porcentaje_retencion': float(row.get('porcentaje_retencion') or 3),
                 'observaciones': row.get('observaciones'),
                 'items': items,
                 **_tiempos(row)
@@ -2987,6 +3012,46 @@ def _condicion_del_cliente(ruc):
     return cond if cond in ('Contado', 'Contra entrega') or cond.startswith('Crédito ') and cond.endswith(' días') else ''
 
 
+def condicion_fija_factura(pc_origen, ruc):
+    """Condición de pago que manda en la factura: la del PC; si no hay PC, la de la ficha del cliente.
+    Devuelve (condición, fuente) o ('', '') si no hay ninguna."""
+    if pc_origen and normalizar_condicion(pc_origen.get('condicion_pago')):
+        return normalizar_condicion(pc_origen.get('condicion_pago')), f"PC {pc_origen.get('numero')}"
+    cond = _condicion_del_cliente(ruc)
+    return (cond, 'ficha del cliente') if cond else ('', '')
+
+
+def _auditar_cambio_condicion(cambio, fila):
+    """Si Erika puso una condición distinta a la del PC o del cliente, queda registrado con fecha y hora."""
+    if not cambio or not fila:
+        return
+    fija, nueva, fuente = cambio
+    from routes.auditoria import registrar_auditoria
+    registrar_auditoria('ACTUALIZAR', 'Ventas', 'comprobantes', fila.get('id'),
+                        antes={'condicion_pago': fija}, despues={'condicion_pago': nueva},
+                        detalle=f"Factura {fila.get('serie')}-{fila.get('numero')}: condición cambiada por Erika de "
+                                f"'{fija}' ({fuente}) a '{nueva}'")
+
+
+def _datos_extra_factura_pdf(comp):
+    """PDF de la factura (26/10/2026): "OC:" es el N° OC del cliente (antes salía el N° de cotización) y, si lo
+    tiene, el N° MIGO de la conformidad. La cotización sale aparte en "COTIZACIÓN"."""
+    try:
+        fila = db_query("""SELECT to_jsonb(c) ->> 'orden_compra_cliente' AS oc, to_jsonb(c) ->> 'numero_migo' AS migo,
+                                  to_jsonb(c) ->> 'pc_vinculado' AS pc
+                           FROM comprobantes c WHERE id = %s""", (comp.get('id'),))
+        f = fila[0] if fila else {}
+        oc = (f.get('oc') or '').strip()
+        if not oc and f.get('pc'):
+            p = db_query("SELECT to_jsonb(p) ->> 'oc_cliente' AS oc FROM pedido_compra_pc p WHERE numero = %s "
+                         "ORDER BY id DESC LIMIT 1", (f.get('pc'),))
+            oc = (p[0].get('oc') or '').strip() if p else ''
+        return {'orden_compra_cliente': oc or '—', 'numero_migo': (f.get('migo') or '').strip()}
+    except Exception as e:
+        print(f"⚠️ datos extra del PDF: {e}")
+        return {}
+
+
 def _pide_migo_seguro(ruc):
     """¿El cliente pide N° MIGO para pagar? (Erika 25/10/2026). Si algo falla, no estorba a la factura."""
     try:
@@ -3053,11 +3118,20 @@ def api_comprobantes_guardar():
                 respaldo=pc_origen, tc_sunat_por_defecto=True)
         except ErrorMoneda as em:
             return jsonify({'success': False, 'error': str(em)}), 400
-        condicion_pago = normalizar_condicion(data.get('condicion') or data.get('condicion_pago'))
-        if not condicion_pago and pc_origen:
-            condicion_pago = normalizar_condicion(pc_origen.get('condicion_pago'))
-        if not condicion_pago:
-            condicion_pago = _condicion_del_cliente(data.get('ruc')) or 'Contado'
+        # REGLA (Erika 26/10/2026): la condición es FIJA, la del PC (Pedido de compra) interno; sin PC, la de la
+        # ficha del cliente. Nadie la cambia (para que nadie ponga 6 meses), solo Erika, y queda en auditoría.
+        condicion_pedida = normalizar_condicion(data.get('condicion') or data.get('condicion_pago'))
+        condicion_fija, fuente_condicion = condicion_fija_factura(pc_origen, data.get('ruc'))
+        cambio_condicion_erika = None
+        if condicion_fija:
+            condicion_pago = condicion_fija
+            if condicion_pedida and condicion_pedida != condicion_fija:
+                from utils import es_duena_reportes
+                if es_duena_reportes():
+                    condicion_pago = condicion_pedida
+                    cambio_condicion_erika = (condicion_fija, condicion_pedida, fuente_condicion)
+        else:
+            condicion_pago = condicion_pedida or 'Contado'
         dias_condicion = dias_de_condicion(condicion_pago)
         if dias_condicion > 0:
             es_credito = True
@@ -3280,6 +3354,7 @@ def api_comprobantes_guardar():
                 db_execute("UPDATE comprobantes SET tipo_cambio = %s WHERE id = %s", (tc_comp, data['id']))
                 if 'numero_migo' in data:
                     guardar_numero_migo(data['id'], data.get('numero_migo'))
+                _auditar_cambio_condicion(cambio_condicion_erika, result[0])
                 return jsonify({'success': True, 'message': 'Comprobante actualizado', 'data': _numero_8(result[0])})
             return jsonify({'success': False, 'error': 'No se pudo actualizar'}), 400
         
@@ -3330,6 +3405,7 @@ def api_comprobantes_guardar():
                                 (limpiar_migo(data.get('numero_migo')), fila['id']))
         result = [_numero_8(dict(fila))] if fila else []
         if result:
+            _auditar_cambio_condicion(cambio_condicion_erika, result[0])
             return jsonify({
                 'success': True,
                 'message': 'Comprobante creado correctamente',
@@ -3912,19 +3988,104 @@ def adivinar_distrito(direccion):
 
 
 def _asegurar_columnas_entrega():
-    """Columnas distrito y comentario en despachos (migración 028; en la base de pruebas se crean aquí)."""
+    """Columnas distrito y comentario (migración 028) y fechas de salida, entrega real y rechazo (migración 032)
+    en despachos; en la base de pruebas se crean aquí."""
     global _entrega_cols_listas
     if _entrega_cols_listas:
         return
     hay = {r['column_name'] for r in db_query(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'despachos' "
-        "AND column_name IN ('distrito', 'comentario')")}
-    if len(hay) < 2:
+        "AND column_name IN ('distrito', 'comentario', 'fecha_salida', 'fecha_entrega_real', 'motivo_rechazo', 'fecha_rechazo')")}
+    if len(hay) < 6:
         with db_tx() as conn:
             cur = conn.cursor()
             cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS distrito VARCHAR(80)")
             cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS comentario VARCHAR(200)")
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS fecha_salida TIMESTAMP")
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS fecha_entrega_real DATE")
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS motivo_rechazo VARCHAR(200)")
+            cur.execute("ALTER TABLE despachos ADD COLUMN IF NOT EXISTS fecha_rechazo TIMESTAMP")
     _entrega_cols_listas = True
+
+
+ESTADO_RECHAZADO = 'Rechazado por el cliente'
+MOTIVO_RECHAZO_MAX = 200
+
+
+@ventas_bp.route('/ventas/api/despachos/<int:did>/entrega', methods=['POST'])
+@login_required
+def api_despacho_entrega(did):
+    """Después de "Despachado" (salió del almacén), Erika 26/10/2026:
+    - accion 'entregar': fecha real en que el cliente recibió → "Entregado". Con la fecha vacía vuelve a "Despachado".
+    - accion 'rechazar': el cliente no lo recibió → "Rechazado por el cliente" con motivo; el stock vuelve al
+      inventario y se puede volver a despachar."""
+    try:
+        _asegurar_columnas_entrega()
+        datos = request.get_json(silent=True) or {}
+        accion = datos.get('accion')
+        filas = db_query("SELECT id, numero, estado, fecha_salida, fecha_entrega_real, motivo_rechazo "
+                         "FROM despachos WHERE id = %s", (did,))
+        if not filas:
+            return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
+        d = filas[0]
+        estado = d.get('estado') or ''
+        if estado not in ('Despachado', 'Entregado'):
+            return jsonify({'success': False, 'error': 'Primero hay que confirmar el despacho (que salga del almacén).'}), 409
+        from routes.auditoria import registrar_auditoria
+        numero = d.get('numero') or did
+        if accion == 'entregar':
+            texto = str(datos.get('fecha_entrega') or '').strip()
+            if not texto:
+                if estado != 'Entregado':
+                    return jsonify({'success': False, 'error': 'Elige la fecha real de entrega'}), 400
+                db_execute("UPDATE despachos SET estado = 'Despachado', fecha_entrega_real = NULL, updated_at = NOW() "
+                           "WHERE id = %s", (did,))
+                registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
+                                    antes={'estado': estado, 'fecha_entrega_real': d.get('fecha_entrega_real')},
+                                    despues={'estado': 'Despachado', 'fecha_entrega_real': None},
+                                    detalle=f"Despacho {numero}: se quitó la fecha real de entrega (vuelve a Despachado)")
+                return jsonify({'success': True, 'data': {'id': did, 'estado': 'Despachado', 'fecha_entrega_real': None}})
+            try:
+                fecha = datetime.fromisoformat(texto[:10]).date()
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Fecha real de entrega no válida'}), 400
+            from routes.exportar import ahora_lima
+            hoy = ahora_lima().date()
+            if fecha > hoy:
+                return jsonify({'success': False, 'error': 'La fecha real de entrega no puede ser futura'}), 400
+            salida = d.get('fecha_salida')
+            if salida and fecha < salida.date():
+                return jsonify({'success': False, 'error': f"La entrega no puede ser antes de la salida del almacén "
+                                                           f"({salida.strftime('%d/%m/%Y')})"}), 400
+            db_execute("UPDATE despachos SET estado = 'Entregado', fecha_entrega_real = %s, updated_at = NOW() "
+                       "WHERE id = %s", (fecha, did))
+            registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
+                                antes={'estado': estado, 'fecha_entrega_real': d.get('fecha_entrega_real')},
+                                despues={'estado': 'Entregado', 'fecha_entrega_real': fecha},
+                                detalle=f"Despacho {numero}: entregado al cliente el {fecha.strftime('%d/%m/%Y')}")
+            return jsonify({'success': True, 'data': {'id': did, 'estado': 'Entregado',
+                                                      'fecha_entrega_real': fecha.isoformat()}})
+        if accion == 'rechazar':
+            motivo = re.sub(r'\s+', ' ', str(datos.get('motivo') or '')).strip()
+            if not motivo:
+                return jsonify({'success': False, 'error': 'Escribe por qué el cliente lo rechazó'}), 400
+            if len(motivo) > MOTIVO_RECHAZO_MAX:
+                return jsonify({'success': False, 'error': f'El motivo es corto: máximo {MOTIVO_RECHAZO_MAX} letras'}), 400
+            from routes.stock_automatico import cambiar_estado_despacho
+            respuesta, codigo = cambiar_estado_despacho(did, ESTADO_RECHAZADO, motivo=f'rechazado por el cliente: {motivo}')
+            if codigo != 200:
+                return jsonify(respuesta), codigo
+            db_execute("UPDATE despachos SET motivo_rechazo = %s, fecha_rechazo = (NOW() AT TIME ZONE 'America/Lima'), fecha_entrega_real = NULL "
+                       "WHERE id = %s", (motivo, did))
+            registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
+                                antes={'estado': estado}, despues={'estado': ESTADO_RECHAZADO, 'motivo_rechazo': motivo},
+                                detalle=f"Despacho {numero}: rechazado por el cliente. Motivo: {motivo}")
+            respuesta['message'] = 'Rechazo registrado.' + respuesta.get('message', '').replace(
+                f'Despacho actualizado a {ESTADO_RECHAZADO}.', '')
+            return jsonify(respuesta), 200
+        return jsonify({'success': False, 'error': 'Acción no válida'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 COMENTARIO_ENTREGA_MAX = 120
@@ -3975,7 +4136,9 @@ def api_despachos_listar():
                 d.cliente, d.ruc, d.comprobante, d.guia, d.origen, d.destino,
                 d.transportista, d.observaciones, d.responsable,
                 d.items_json, d.created_at, d.updated_at, d.fecha_cita,
-                d.distrito, d.comentario
+                d.distrito, d.comentario, d.fecha_salida, d.fecha_entrega_real, d.motivo_rechazo, d.fecha_rechazo,
+                (SELECT to_jsonb(p) ->> 'oc_cliente' FROM pedido_compra_pc p
+                  WHERE p.numero = d.pc_numero ORDER BY p.id DESC LIMIT 1) AS oc_cliente
             FROM despachos d
             ORDER BY d.id DESC
         """
@@ -4104,6 +4267,8 @@ def api_despachos_listar():
                     'estado': row.get('estado'),
                     'pc_id': row.get('pc_id'),
                     'pc_numero': row.get('pc_numero'),
+                    # N° de la orden de compra del cliente, debajo del N° PC en Entregas (26/10/2026)
+                    'oc_cliente': row.get('oc_cliente') or '',
                     'cotizacion_id': row.get('cotizacion_id'),
                     'cotizacion_numero': row.get('cotizacion_numero'),
                     'cliente': row.get('cliente'),
@@ -4123,7 +4288,12 @@ def api_despachos_listar():
                     # Distrito: el que escribió el usuario o, si no, el que se lee en la dirección (23/10/2026)
                     'distrito': row.get('distrito') or adivinar_distrito(row.get('destino')),
                     'distrito_escrito': bool(row.get('distrito')),
-                    'comentario': row.get('comentario') or ''
+                    'comentario': row.get('comentario') or '',
+                    # Salida del almacén, entrega real y rechazo (Erika 26/10/2026)
+                    'fecha_salida': row['fecha_salida'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_salida') else None,
+                    'fecha_entrega_real': row['fecha_entrega_real'].isoformat() if row.get('fecha_entrega_real') else None,
+                    'motivo_rechazo': row.get('motivo_rechazo') or '',
+                    'fecha_rechazo': row['fecha_rechazo'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_rechazo') else None
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")
@@ -4480,13 +4650,19 @@ def api_despachos_toggle(id):
             return jsonify({'success': False, 'error': 'Estado requerido'}), 400
         
         # Validar que el estado sea válido
-        estados_validos = ['Pendiente despacho', 'En preparación', 'Despachado', 'Entregado']
+        # "Entregado" y "Rechazado por el cliente" se ponen con su fecha o motivo en /entrega (26/10/2026)
+        estados_validos = ['Pendiente despacho', 'En preparación', 'Despachado']
         if nuevo_estado not in estados_validos:
             return jsonify({'success': False, 'error': f'Estado inválido. Permitidos: {", ".join(estados_validos)}'}), 400
         
+        _asegurar_columnas_entrega()
+        antes = db_query("SELECT estado FROM despachos WHERE id = %s", (id,))
         # Al despachar se descuenta el stock de la empresa y sede elegidas (routes/stock_automatico.py)
         from routes.stock_automatico import cambiar_estado_despacho
         respuesta, codigo = cambiar_estado_despacho(id, nuevo_estado, data.get('empresa_id'), data.get('almacen_id'))
+        # Fecha y hora en que salió del almacén (también al volver a despachar algo rechazado)
+        if codigo == 200 and nuevo_estado == 'Despachado' and antes and antes[0].get('estado') not in ('Despachado', 'Entregado'):
+            db_execute("UPDATE despachos SET fecha_salida = (NOW() AT TIME ZONE 'America/Lima'), fecha_entrega_real = NULL WHERE id = %s", (id,))
         return jsonify(respuesta), codigo
         
     except Exception as e:
@@ -7846,6 +8022,7 @@ def preview_pdf_comprobante(comp_id):
             'qr_base64': ''
         }
         
+        datos_comprobante.update(_datos_extra_factura_pdf(comp))
         datos_comprobante['empresa_pdf'] = marca_pdf(comp.get('empresa_id'))
         pdf_path = pdf_generator.generar_pdf_universal(datos_comprobante)
         
@@ -8025,6 +8202,7 @@ def generar_pdf_comprobante(comp_id):
         }
         
         # Generar el PDF
+        datos_comprobante.update(_datos_extra_factura_pdf(comp))
         datos_comprobante['empresa_pdf'] = marca_pdf(comp.get('empresa_id'))
         pdf_path = pdf_generator.generar_pdf_universal(datos_comprobante)
         
@@ -8579,3 +8757,42 @@ def api_cotizaciones_rechazar(id):
     except Exception as e:
         print(f"❌ Error en api_cotizaciones_rechazar: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ---------- XML / PDF de SUNAT en la factura (Erika 26/10/2026) ----------
+@ventas_bp.route('/ventas/api/comprobantes/<int:comp_id>/archivos', methods=['GET', 'POST'])
+@login_required
+def api_comprobante_archivos(comp_id):
+    from routes.archivos_factura import asegurar_archivos_factura, guardar_archivo, listar_archivos, ErrorArchivo
+    try:
+        asegurar_archivos_factura()
+        comp = db_query("SELECT id, serie, numero FROM comprobantes WHERE id = %s", (comp_id,))
+        if not comp:
+            return jsonify({'success': False, 'error': 'Factura no encontrada'}), 404
+        if request.method == 'POST':
+            info = guardar_archivo(comp[0], request.files.get('archivo'), session.get('usuario') or '')
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('CREAR', 'Ventas', 'comprobante_archivos', info['id'],
+                                detalle=f"{info['tipo']} de SUNAT subido a la factura {comp[0]['serie']}-{comp[0]['numero']}: "
+                                        f"{info['nombre']}")
+            return jsonify({'success': True, 'data': info})
+        filas = [{**f, 'created_at': f['created_at'].strftime('%d/%m/%Y %H:%M') if f.get('created_at') else ''}
+                 for f in listar_archivos(comp_id)]
+        return jsonify({'success': True, 'data': filas})
+    except ErrorArchivo as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@ventas_bp.route('/ventas/api/comprobantes/archivos/<int:aid>/descargar', methods=['GET'])
+@login_required
+def api_comprobante_archivo_descargar(aid):
+    from flask import Response
+    from routes.archivos_factura import asegurar_archivos_factura, leer_archivo
+    asegurar_archivos_factura()
+    f = leer_archivo(aid)
+    if not f:
+        return jsonify({'success': False, 'error': 'Archivo no encontrado'}), 404
+    nombre = re.sub(r'[^A-Za-z0-9._-]', '_', f['nombre'])
+    return Response(bytes(f['datos']), mimetype=f['mime'],
+                    headers={'Content-Disposition': f'attachment; filename="{nombre}"'})

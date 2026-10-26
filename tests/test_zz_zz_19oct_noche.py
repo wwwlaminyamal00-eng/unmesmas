@@ -116,11 +116,14 @@ def test_factura_toma_la_condicion_del_pc_no_de_la_cotizacion(vendedor):
     # La lista de Facturas muestra la condición real (antes decía siempre "Contado")
     lista = vendedor.get('/ventas/api/comprobantes/listar').json['data']
     assert next(c for c in lista if c['id'] == r.json['data']['id'])['condicion'] == 'Crédito 45 días'
-    # "Credito 30 Dias" escrito distinto ya no cae en "Contado"
+    # 26/10/2026: sin PC manda la ficha del cliente (aquí "Contado"); nadie salvo Erika pone otra condición
     r = vendedor.post('/ventas/api/comprobantes/guardar', json={
         'tipo': 'FACTURA', 'serie': 'F001', 'cliente': 'CLIENTE INDUSTRIAL S.A.C.', 'ruc': '20100070970',
         'total': 118, 'subtotal': 100, 'igv': 18, 'condicion': 'Credito 30 Dias', 'estado': 'Borrador', 'items': []})
-    assert _sql("SELECT condicion_pago, dias_credito FROM comprobantes WHERE id = %s", (r.json['data']['id'],))[0] == ('Crédito 30 días', 30)
+    assert _sql("SELECT condicion_pago FROM comprobantes WHERE id = %s", (r.json['data']['id'],))[0][0] == 'Contado'
+    # "Credito 30 Dias" escrito distinto se sigue entendiendo como "Crédito 30 días"
+    from routes.ventas import normalizar_condicion
+    assert normalizar_condicion('Credito 30 Dias') == 'Crédito 30 días'
 
 
 def test_factura_sin_pc_toma_la_condicion_del_cliente(vendedor, admin):

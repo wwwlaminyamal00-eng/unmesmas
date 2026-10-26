@@ -103,8 +103,10 @@ def test_despachar_descuenta_y_usa_la_separacion_del_cliente(sa, vendedor):
     assert movs[0][3] == 'CONSTRUCTORA ANDINA S.A.C.'
     d = _sql("SELECT estado, stock_estado FROM despachos WHERE id = %s", (sa['desp'],))[0]
     assert d == ('Despachado', 'Descontado')
-    # Pasar a Entregado no vuelve a descontar
-    r = vendedor.put(f"/ventas/api/despachos/{sa['desp']}/toggle", json={'estado': 'Entregado'})
+    # Pasar a Entregado (con su fecha real, 26/10/2026) no vuelve a descontar
+    from datetime import date
+    r = vendedor.post(f"/ventas/api/despachos/{sa['desp']}/entrega",
+                      json={'accion': 'entregar', 'fecha_entrega': date.today().isoformat()})
     assert r.status_code == 200 and _stock(sa, 'SA-001') == 4
 
 

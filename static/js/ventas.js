@@ -176,6 +176,12 @@ function esc(v) {
     }[m]));
 }
 
+// N° de la orden de compra del cliente debajo del N° PC: rótulo claro y número que entra en la celda (26/10/2026)
+function ocClienteHTML(v) {
+    if (!v) return '';
+    return `<div class="oc-cliente-celda" title="N° OC del cliente: ${esc(v)}"><span>N° OC del cliente</span>${numDocCelda(v, 'b')}</div>`;
+}
+
 function sd(v) {
     return (v === undefined || v === null || String(v).trim() === '') ? '-' : esc(v);
 }
@@ -964,7 +970,7 @@ function renderPedidos() {
                 <td>${i + 1}</td>
                 <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
                 <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
-                <td><b>${r.numero || '-'}</b>${r.oc_cliente ? `<div style="font-size:10px;font-weight:800;color:#1D4ED8;white-space:nowrap" title="N° OC del cliente">OC cliente: ${esc(r.oc_cliente)}</div>` : ''}${badgeNuevo(r, 'created_at')}</td>
+                <td><b>${r.numero || '-'}</b>${ocClienteHTML(r.oc_cliente)}${badgeNuevo(r, 'created_at')}</td>
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
                 <td>${r.ruc || '-'}</td>
@@ -1468,7 +1474,33 @@ function citaDespachoHTML(r, cerrado) {
         txt = m ? `${m[3]}/${m[2]}/${m[1]}` : (isNaN(d) ? String(r.fecha_cita) : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
     }
     if (cerrado) return txt ? `<b>${txt}</b>` : '-';
-    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
+    // Lápiz para que logística la ponga o la cambie hasta que se entregue (Erika 26/10/2026)
+    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega: clic para ponerla o cambiarla">${txt ? `📅 ${txt} ✏` : '✏ Poner cita'}</button>`;
+}
+function fechaDMY(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+    if (!m) return '';
+    return `${m[3]}/${m[2]}/${m[1]}` + (m[4] ? ` ${m[4]}:${m[5]}` : '');
+}
+// Fecha real de entrega (Erika 26/10/2026): se pone cuando el cliente ya recibió; recién ahí queda "Entregado"
+function entregaRealHTML(r) {
+    const salida = r.fecha_salida ? `<small class="ent-salida" title="Fecha y hora en que salió del almacén">Salió ${fechaDMY(r.fecha_salida)}</small>` : '';
+    if (r.estado === 'Entregado') {
+        return `<button class="entrega-btn tiene" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Fecha en que el cliente recibió: clic para cambiarla">✔ ${fechaDMY(r.fecha_entrega_real) || 'Sin fecha'} ✏</button>${salida}`;
+    }
+    if (r.estado === 'Despachado') {
+        return `<button class="entrega-btn" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Cuando el cliente ya recibió, pon aquí la fecha real">✏ Poner fecha</button>${salida}`;
+    }
+    if (r.estado === ESTADO_RECHAZADO) {
+        return `<span class="ent-rechazo" title="${sd(r.motivo_rechazo)}">Rechazado ${fechaDMY(r.fecha_rechazo).slice(0, 10)}<br><i>${sd(r.motivo_rechazo)}</i></span>`;
+    }
+    return '';
+}
+// Una sola columna, en orden: arriba la cita con el cliente y debajo la entrega real (así entra sin barra lateral)
+function fechasEntregaHTML(r, cerrado) {
+    const real = entregaRealHTML(r);
+    return `<div class="fechas-ent"><small>Cita</small>${citaDespachoHTML(r, cerrado)}</div>` +
+        (real ? `<div class="fechas-ent fechas-ent-real"><small>Entrega real</small>${real}</div>` : '');
 }
 // PC: "Descripción" = cantidad y producto en una sola casilla (Erika 26/10/2026); la nota del PC va debajo en gris
 function itemsPc(r) {
@@ -1683,15 +1715,73 @@ async function facturaDesdeDespacho(id) {
         showToast('🧾 Factura del despacho ' + (r.numero || '') + ': se puede emitir aunque todavía no haya stock', 'info');
     }, 400);
 }
+// Confirmar entrega (fecha real → "Entregado") o registrar que el cliente lo rechazó (motivo) — Erika 26/10/2026
+function abrirEntregaDespacho(id, modo) {
+    const r = (despachosData || []).find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('entregaDespachoModal')?.remove();
+    const rechazar = modo === 'rechazar';
+    const hoy = isoLima(new Date());
+    const actual = r.fecha_entrega_real ? String(r.fecha_entrega_real).slice(0, 10) : hoy;
+    const minimo = r.fecha_salida ? String(r.fecha_salida).slice(0, 10) : '';
+    const d = document.createElement('div');
+    d.id = 'entregaDespachoModal';
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000002;display:flex;align-items:center;justify-content:center;padding:16px';
+    const btn = 'padding:9px 14px;border-radius:10px;font-weight:900;cursor:pointer';
+    d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+        <div style="font-size:18px;font-weight:900;margin-bottom:4px;color:${rechazar ? '#C2410C' : '#1D4ED8'}">${rechazar ? '↩ Rechazado por el cliente' : '✔ Confirmar entrega al cliente'}</div>
+        <div style="font-size:13px;color:#475569;margin-bottom:12px">${sd(r.numero)} · ${sd(r.cliente)}${r.fecha_salida ? ` · salió ${fechaDMY(r.fecha_salida)}` : ''}</div>
+        ${rechazar ? `
+        <label style="font-size:13px;font-weight:800;color:#334155">¿Por qué lo rechazó?</label>
+        <textarea id="entregaMotivo" maxlength="200" rows="3" placeholder="Ej: producto equivocado, caja dañada, cliente no estaba" style="width:100%;border:2px solid #CBD5E1;border-radius:10px;padding:8px;font-size:14px;margin-top:4px"></textarea>
+        <div style="font-size:12px;color:#9A3412;margin-top:8px">El stock vuelve al inventario y el despacho queda para volver a despacharlo. Si se hizo guía, revisa si hay que anularla.</div>` : `
+        <label style="font-size:13px;font-weight:800;color:#334155">Fecha real en que el cliente recibió</label>
+        <input type="date" id="entregaFecha" value="${actual}" max="${hoy}" ${minimo ? `min="${minimo}"` : ''} style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">`}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+          ${!rechazar && r.estado === 'Entregado' ? `<button type="button" data-acc="quitar" style="${btn};border:1px solid #FCA5A5;background:#fff;color:#B91C1C">Quitar fecha</button>` : ''}
+          <button type="button" data-acc="cancelar" style="${btn};border:1px solid #CBD5E1;background:#fff">Cancelar</button>
+          <button type="button" data-acc="guardar" style="${btn};border:0;color:#fff;background:${rechazar ? '#EA580C' : '#1D4ED8'}">${rechazar ? 'Registrar rechazo' : 'Guardar: Entregado'}</button>
+        </div></div>`;
+    document.body.appendChild(d);
+    const enviar = async cuerpo => {
+        try {
+            const res = await apiFetch(`/ventas/api/despachos/${id}/entrega`, { method: 'POST', body: JSON.stringify(cuerpo) });
+            d.remove();
+            showToast('✅ ' + (res.message || (cuerpo.accion === 'rechazar' ? 'Rechazo registrado' : (cuerpo.fecha_entrega ? 'Entregado' : 'Fecha quitada'))), 'success');
+            await loadDespachos();
+        } catch (e) { showToast('❌ ' + e.message, 'error'); }
+    };
+    d.addEventListener('click', e => {
+        const acc = e.target.dataset && e.target.dataset.acc;
+        if (e.target === d || acc === 'cancelar') d.remove();
+        else if (acc === 'quitar') enviar({ accion: 'entregar', fecha_entrega: '' });
+        else if (acc === 'guardar') {
+            if (rechazar) {
+                const motivo = document.getElementById('entregaMotivo').value.trim();
+                if (!motivo) { showToast('⚠️ Escribe por qué el cliente lo rechazó', 'warning'); return; }
+                enviar({ accion: 'rechazar', motivo });
+            } else {
+                const f = document.getElementById('entregaFecha').value;
+                if (!f) { showToast('⚠️ Elige la fecha real de entrega', 'warning'); return; }
+                enviar({ accion: 'entregar', fecha_entrega: f });
+            }
+        }
+    });
+}
+window.abrirEntregaDespacho = abrirEntregaDespacho;
 window.ponerCitaDespacho = ponerCitaDespacho;
 window.generarCompraDesdeDespacho = generarCompraDesdeDespacho;
 window.facturaDesdeDespacho = facturaDesdeDespacho;
 
-// Entregas (pedido de Erika 20/10/2026): lo pendiente en rojo encendido, lo terminado en verde fluorescente.
-// Solo cambia lo que se ve; en la base el estado sigue siendo "Pendiente despacho" / "Despachado".
+// Entregas (pedido de Erika 20/10/2026): lo pendiente en rojo encendido.
+// 26/10/2026: "Despachado" (salió del almacén) en verde; "Entregado" (el cliente recibió) en azul fuerte;
+// "Rechazado por el cliente" en naranja, porque hay que volver a despacharlo.
+const ESTADO_RECHAZADO = 'Rechazado por el cliente';
 function estadoDespachoHTML(estado) {
     const e = estado || 'Pendiente despacho';
-    if (e === 'Despachado' || e === 'Entregado') return `<span class="desp-hecho">✔ ${e}</span>`;
+    if (e === 'Despachado') return '<span class="desp-hecho">✔ Despachado</span>';
+    if (e === 'Entregado') return '<span class="desp-entregado">✔ Entregado</span>';
+    if (e === ESTADO_RECHAZADO) return '<span class="desp-rechazado">↩ Rechazado por el cliente</span>';
     if (/pendiente/i.test(e)) return '<span class="desp-por">⏳ Por despachar</span>';
     if (/preparaci/i.test(e)) return '<span class="desp-por">📦 En preparación</span>';
     return badgeStatus(e);
@@ -1796,15 +1886,18 @@ function renderDespachos() {
         
         const despachado = r.estado === 'Despachado' || r.estado === 'Entregado';
         const anulado = /anulad/i.test(r.estado || '');
+        const entregado = r.estado === 'Entregado';
+        const rechazado = r.estado === ESTADO_RECHAZADO;
         const compra = ((abastData.despachos || {})[r.id] || {}).estado;
-        // Fila entera: rosado bajito si falta despachar, verde bajito si ya salió (Erika 20/10/2026 18:09)
+        // Fila entera: rosado bajito si falta despachar, verde bajito si ya salió (Erika 20/10/2026 18:09),
+        // celeste si el cliente ya recibió (26/10/2026)
         return `
-        <tr class="${despachado ? 'ent-despachado' : (anulado ? 'ent-anulado' : 'ent-pendiente')}">
+        <tr class="${entregado ? 'ent-entregado' : (despachado ? 'ent-despachado' : (anulado ? 'ent-anulado' : 'ent-pendiente'))}">
             <td>${i + 1}</td>
             <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
             <td>${estadoDespachoHTML(r.estado)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.pc_numero)}</td>
+            <td>${sd(r.pc_numero)}${ocClienteHTML(r.oc_cliente)}</td>
             <td>${sd(r.cotizacion_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${productosDespachoHTML(r)}</td>
@@ -1812,15 +1905,18 @@ function renderDespachos() {
             <td>${facturaDespachoHTML(r)}</td>
             <td>${distritoDespachoHTML(r, anulado)}</td>
             <td>${estadoCompraHTML(r, despachado, anulado)}</td>
-            <td>${citaDespachoHTML(r, despachado || anulado)}</td>
+            <td>${fechasEntregaHTML(r, entregado || anulado)}</td>
             <td>${comentarioDespachoHTML(r)}</td>
             <td><div class="acc-col">
                 ${!despachado && !anulado ? `
                     ${compra === 'Pendiente por compra' && r.pc_numero ? `<button class="btn-generar-compra" onclick="generarCompraDesdeDespacho(${r.id})" title="Lleva a Compras ▸ Pedidos por comprar con las líneas de este pedido sombreadas y marcadas">Generar compra</button>` : ''}
-                    <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">Confirmar despacho</button>
+                    <button class="btn-confirmar-despacho" onclick="marcarDespachado(${r.id})" title="Pendiente: confirma cuando la mercadería ya salió del almacén">${rechazado ? 'Volver a despachar' : 'Confirmar despacho'}</button>
                     ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">Generar factura</button>` : ''}` :
-                  despachado ? `<span class="desp-hecho">${r.estado === 'Entregado' ? 'Entregado' : 'Despachado'}</span>
-                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">Anular</button>` : ''
+                  despachado && !entregado ? `
+                     <button class="btn-confirmar-entrega" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="El cliente ya recibió: pon la fecha real de entrega">Confirmar entrega</button>
+                     <button class="btn-rechazo-desp" onclick="abrirEntregaDespacho(${r.id}, 'rechazar')" title="El cliente no lo recibió: anota el motivo; el stock vuelve al inventario">Rechazado por el cliente</button>
+                     <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">Anular</button>` :
+                  entregado ? `<span class="desp-entregado">Entregado</span>` : ''
                 }
                 ${r.comprobante && !anulado ? `<button class="btn-ver-cobro" onclick="verCobroDespacho(${r.id})" title="Abre Finanzas ▸ Cuentas por cobrar con la factura de esta entrega sombreada: portal, pago programado y retención">Ver cobro</button>` : ''}
                 <button class="btn-rotulo" onclick="imprimirRotulo('despacho', ${r.id})" title="Rótulo para pegar en cada caja, con los datos de la empresa">Generar rótulo</button>
@@ -2163,7 +2259,7 @@ function renderComprobantes() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
         return;
     }
     
@@ -2174,11 +2270,11 @@ function renderComprobantes() {
         const montoAPagar = parseFloat(r.monto_a_pagar || r.monto || 0);
         const porcentajeRetencion = parseFloat(r.porcentaje_retencion || 3.00);
         
-        // Monto mostrado (con retención si aplica)
-        let montoStr = money(r.monto);
-        if (tieneRetencion && montoRetenido > 0) {
-            montoStr = `${money(r.monto)} <small style="color:#DC2626;font-size:8px;">(Ret: ${money(montoRetenido)})</small>`;
-        }
+        // Monto (inc. IGV) y, en su propia columna, el monto a pagar (Erika 26/10/2026)
+        const montoStr = money(r.monto);
+        const aPagar = montoAPagarDe({ total: r.monto, monto_a_pagar: r.monto_a_pagar, tiene_retencion: tieneRetencion, monto_retenido: montoRetenido });
+        const aPagarStr = `<b class="monto-a-pagar">${money(aPagar)}</b>` +
+            (tieneRetencion && montoRetenido > 0 ? `<small class="monto-ret">Retención ${porcentajeRetencion}%: ${money(montoRetenido)}</small>` : '');
         
         // Estado del crédito
         const esCredito = r.condicion && r.condicion.includes('Crédito');
@@ -2215,8 +2311,9 @@ function renderComprobantes() {
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
             <td>${r.guia_numero ? numDocCelda(fmtNumDoc(r.guia_numero), 'span') : '-'}</td>
-            <td>${numDocCelda(numDoc(r.serie, r.numero))}${badgeNuevo(r, 'fecha')}</td>
+            <td>${numDocCelda(numDoc(r.serie, r.numero))}${r.xml_id ? `<small class="xml-lista" title="Ya tiene el XML de SUNAT: ⋮ ▸ Descargar XML">XML ✔</small>` : ''}${r.numero_migo ? `<small class="migo-lista" title="N° MIGO / conformidad del cliente">MIGO ${sd(r.numero_migo)}</small>` : ''}${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
+            <td>${aPagarStr}</td>
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
                     <b style="white-space:nowrap;color:${esCredito ? '#1D4ED8' : '#0F172A'}">${sd(window.normalizarCondicion(r.condicion))}</b>
@@ -3842,7 +3939,11 @@ function renderComprobanteFormContent(isEdit, data) {
                         ${condicionOptions}
                     </select>
                 </div>
-                <div class="form-field col-4" id="compMigoCaja" style="display:none">
+                <div class="form-field col-4">
+                    <label title="Lo que el cliente deposita: el total menos la retención del 3% si la tiene">Monto a pagar</label>
+                    <input id="compAPagarVista" readonly tabindex="-1" class="monto-a-pagar-campo" value="${montoAPagarDe(data).toFixed(2)}">
+                </div>
+                <div class="form-field col-4" id="compMigoCaja">
                     <label title="Este cliente no paga sin el N° MIGO de su conformidad">N° MIGO / conformidad (opcional)</label>
                     <input id="compMigo" maxlength="40" placeholder="Si aún no lo envía, se anota luego en Finanzas" value="${esc(data?.numero_migo || '')}">
                 </div>
@@ -3984,6 +4085,26 @@ function renderComprobanteFormContent(isEdit, data) {
 /**
  * Calcula la retención del IGV (3%) automáticamente
  */
+// Monto a pagar visible siempre (Erika 26/10/2026: "no dice cuánto es el monto a pagar")
+function montoAPagarDe(r) {
+    const total = parseFloat(r?.total ?? r?.monto ?? 0) || 0;
+    const guardado = parseFloat(r?.monto_a_pagar || 0);
+    if (guardado > 0) return guardado;
+    return total - (r?.tiene_retencion ? parseFloat(r?.monto_retenido || 0) : 0);
+}
+function actualizarAPagarVista() {
+    const vista = document.getElementById('compAPagarVista');
+    if (!vista) return;
+    const total = parseFloat(document.getElementById('compMonto')?.value) || 0;
+    const cont = document.getElementById('retencionContent');
+    const activa = cont && cont.style.display !== 'none';
+    const retenido = activa ? (parseFloat(document.getElementById('compMontoRetenido')?.value) || 0) : 0;
+    vista.value = (total - retenido).toFixed(2);
+}
+window.actualizarAPagarVista = actualizarAPagarVista;
+document.addEventListener('input', e => { if (e.target && /^comp(Monto|MontoRetenido|PorcentajeRetencion)$/.test(e.target.id)) setTimeout(actualizarAPagarVista, 0); });
+document.addEventListener('click', e => { if (e.target && e.target.closest && e.target.closest('#btnToggleRetencion')) setTimeout(actualizarAPagarVista, 0); });
+
 function calcularRetencionComprobante() {
     const montoTotal = parseFloat(document.getElementById('compMonto')?.value) || 0;
     const porcentajeRetencion = parseFloat(document.getElementById('compPorcentajeRetencion')?.value) || 3.00;
@@ -4007,7 +4128,12 @@ function calcularRetencionComprobante() {
     
     // Verificar si aplica retención (monto > S/ 700)
     const aplicaRetencion = montoTotal > 700;
-    if (aplicaRetencion && retencionStatusLabel) {
+    const panelRet = document.getElementById('retencionContent');
+    if (retencionStatusLabel && panelRet && panelRet.style.display === 'none') {
+        // Apagada: no decir "Activa" aunque el monto pase de S/ 700 (confundía con el botón "Activar")
+        retencionStatusLabel.textContent = aplicaRetencion ? '⭕ Inactiva (podría aplicar: S/ ' + montoTotal.toFixed(2) + ' > S/ 700)' : '⭕ Inactiva';
+        retencionStatusLabel.style.color = '#64748B';
+    } else if (aplicaRetencion && retencionStatusLabel) {
         retencionStatusLabel.textContent = '✅ Activa (S/ ' + montoTotal.toFixed(2) + ' > S/ 700)';
         retencionStatusLabel.style.color = '#16A34A';
     } else if (!aplicaRetencion && retencionStatusLabel) {
@@ -4017,6 +4143,7 @@ function calcularRetencionComprobante() {
     
     // Calcular fecha de vencimiento
     calcularFechaVencimientoComprobante();
+    actualizarAPagarVista();
     
     console.log(`📊 Retención calculada: ${porcentajeRetencion}% de S/ ${montoTotal.toFixed(2)} = S/ ${montoRetenido.toFixed(2)}. A pagar: S/ ${montoAPagar.toFixed(2)}`);
 }
@@ -4618,6 +4745,8 @@ async function _saveComprobante(estado) {
         
         // Calcular totales
         const montoTotal = parseFloat(document.getElementById('compMonto')?.value || 0);
+        // Sin retención el cliente paga el total (antes se guardaba 0 y la lista no decía cuánto cobrar)
+        if (!tieneRetencion) montoAPagar = montoTotal;
         const subtotalCalc = montoTotal / 1.18;
         const igvCalc = montoTotal - subtotalCalc;
         
@@ -4979,6 +5108,12 @@ async function marcarDespachado(id) {
     const numero = despacho.numero || 'DESP-XXXXXX';
     const cliente = despacho.cliente || 'Cliente';
     
+    // Primero la fecha de cita con el cliente, luego el despacho (Erika 26/10/2026)
+    if (!despacho.fecha_cita) {
+        showToast('📅 Primero pon la fecha de cita con el cliente; luego confirma el despacho', 'warning');
+        ponerCitaDespacho(id);
+        return;
+    }
     // De qué empresa y sede sale la mercadería: el stock se descuenta de ahí (Inventario)
     const ubic = await prepararUbicacionDespacho(id);
     if (!ubic) return;
@@ -11325,6 +11460,22 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
 /**
  * Carga datos desde una guía seleccionada
  */
+// La cotización (y el PC) vinculados se llenan solos al elegir la guía o el PC (Erika 26/10/2026).
+// Solo se llena lo que está vacío y sin volver a cargar productos.
+function ponerVinculoFactura(id, valor) {
+    const sel = document.getElementById(id);
+    if (!sel || !valor || sel.value) return false;
+    if (![...sel.options].some(o => o.value === valor)) sel.add(new Option(valor, valor));
+    sel.value = valor;
+    sel.classList.add('vinculo-auto');
+    setTimeout(() => sel.classList.remove('vinculo-auto'), 2500);
+    return true;
+}
+function cotizacionDePC(numeroPC) {
+    const pc = (typeof pedidosData !== 'undefined' ? pedidosData : []).find(p => p.numero === numeroPC);
+    return pc ? (pc.cotizacion_numero || '') : '';
+}
+
 window.loadComprobanteFromGuia = function(valorSeleccionado) {
     if (!valorSeleccionado) {
         actualizarObservacionesComprobante();
@@ -11336,6 +11487,8 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
         showToast('⚠️ Guía no encontrada', 'warning');
         return;
     }
+    ponerVinculoFactura('compPC', guia.pc_numero);
+    ponerVinculoFactura('compCotizacion', guia.cotizacion || cotizacionDePC(guia.pc_numero));
 
     console.log('📦 Cargando guía:', guia);
 
@@ -11454,6 +11607,7 @@ window.loadComprobanteFromPC = function(numeroPC) {
         showToast('⚠️ PC no encontrado', 'warning');
         return;
     }
+    ponerVinculoFactura('compCotizacion', pc.cotizacion_numero);
 
     console.log('📦 Cargando PC:', pc);
 
@@ -16806,12 +16960,45 @@ function showComprobanteMenu(event, id) {
         <button onclick="openComprobanteModal(${id});this.closest('.menu-pop').remove()">👁 Ver / Editar</button>
         <button onclick="previewComprobantePdf(${id});this.closest('.menu-pop').remove()" style="color:#8B5CF6;font-weight:900;">👁️ Vista Previa</button>
         <button onclick="generateComprobantePdf(${id});this.closest('.menu-pop').remove()">📄 Descargar PDF</button>
+        ${(comprobantesData.find(c => c.id === id) || {}).xml_id
+            ? `<button onclick="descargarXmlFactura(${id});this.closest('.menu-pop').remove()" style="color:#0F766E;font-weight:900;">⬇ Descargar XML (SUNAT)</button>`
+            : ''}
+        <button onclick="subirArchivoFactura(${id});this.closest('.menu-pop').remove()">⬆ Subir XML / PDF de SUNAT</button>
         <button onclick="markComprobanteEmitido(${id});this.closest('.menu-pop').remove()">📄 Emitir</button>
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
         <button class="danger" onclick="deleteComprobante(${id});this.closest('.menu-pop').remove()">🗑 Eliminar</button>
     `;
     document.body.appendChild(pop);
 }
+
+// XML de SUNAT (Erika 26/10/2026: "descargar el XML, que es lo que piden los clientes"). SUNAT lo entrega al
+// emitir; se sube una vez a la factura y luego se descarga desde ⋮.
+function descargarXmlFactura(id) {
+    const r = comprobantesData.find(c => c.id === id);
+    if (!r || !r.xml_id) { showToast('⚠️ Esta factura aún no tiene XML. Súbelo con ⋮ ▸ Subir XML', 'warning'); return; }
+    window.location.href = `/ventas/api/comprobantes/archivos/${r.xml_id}/descargar`;
+}
+function subirArchivoFactura(id) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.xml,.zip,.pdf';
+    inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const fd = new FormData();
+        fd.append('archivo', f);
+        try {
+            const r = await fetch(`/ventas/api/comprobantes/${id}/archivos`, { method: 'POST', body: fd });
+            const j = await r.json().catch(() => ({ success: false, error: 'HTTP ' + r.status }));
+            if (!r.ok || !j.success) { showToast('❌ ' + (j.error || 'No se pudo subir'), 'error'); return; }
+            showToast(`✅ ${j.data.tipo} guardado en la factura. Ya se puede descargar desde ⋮`, 'success');
+            if (typeof loadComprobantes === 'function') await loadComprobantes();
+        } catch (e) { showToast('❌ ' + e.message, 'error'); }
+    };
+    inp.click();
+}
+window.descargarXmlFactura = descargarXmlFactura;
+window.subirArchivoFactura = subirArchivoFactura;
 
 function showNotaMenu(event, id) {
     event.stopPropagation();
@@ -17589,7 +17776,8 @@ window.prepararUbicacionDespacho = prepararUbicacionDespacho;
 async function aplicarCondicionFactura(alGuardar) {
     const sel = document.getElementById('compCondicion');
     if (!sel) return;
-    if (typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value && !alGuardar) return; // factura ya guardada: se respeta
+    // Factura ya guardada: Erika ve lo que quedó guardado; para los demás manda la del PC (igual que en el servidor)
+    if (window.ES_ERIKA && typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value && !alGuardar) return;
     const v = id => (document.getElementById(id)?.value || '').trim();
     const qs = new URLSearchParams({ pc: v('compPC'), guia: v('compGuia'), cotizacion: v('compCotizacion'), ruc: v('compRuc') });
     let j = null;
@@ -17599,6 +17787,8 @@ async function aplicarCondicionFactura(alGuardar) {
     } catch (e) { return; }
     j = j && j.data ? j.data : j;
     if (!j || !j.condicion) {
+        sel.disabled = false;
+        sel.classList.remove('condicion-fija');
         if (!sel.value && v('compRuc')) {
             let aviso = document.getElementById('compCondicionOrigen');
             if (!aviso) { aviso = document.createElement('small'); aviso.id = 'compCondicionOrigen'; sel.insertAdjacentElement('afterend', aviso); }
@@ -17615,6 +17805,9 @@ async function aplicarCondicionFactura(alGuardar) {
     }
     const oc = document.getElementById('compOrdenCompra');
     if (oc && !oc.value.trim() && j.oc_cliente) oc.value = j.oc_cliente;
+    // La cotización del PC se llena sola si falta (Erika 26/10/2026)
+    const pcFinal = (pcSel && pcSel.value) || j.pc;
+    if (pcFinal && typeof ponerVinculoFactura === 'function') ponerVinculoFactura('compCotizacion', cotizacionDePC(pcFinal));
     let nota = document.getElementById('compCondicionOrigen');
     if (!nota) {
         nota = document.createElement('small');
@@ -17623,7 +17816,10 @@ async function aplicarCondicionFactura(alGuardar) {
     }
     nota.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#065F46';
     const fuente = /^PC/i.test(j.fuente || '') ? 'del ' + j.fuente : (j.fuente === 'cliente' ? 'de la ficha del cliente (no hay PC)' : '');
-    nota.textContent = fuente ? '✔ Tomada ' + fuente : '';
+    // REGLA (Erika 26/10/2026): condición FIJA; solo Erika la puede cambiar (el servidor también lo controla)
+    sel.disabled = !window.ES_ERIKA && !!fuente;
+    sel.classList.toggle('condicion-fija', sel.disabled);
+    nota.textContent = fuente ? (sel.disabled ? '🔒 Fija, tomada ' + fuente + '. Solo Erika la puede cambiar.' : '✔ Tomada ' + fuente + (window.ES_ERIKA ? ' (tú puedes cambiarla; queda en auditoría)' : '')) : '';
     if (typeof actualizarEstadoRetencion === 'function') actualizarEstadoRetencion();
     if (typeof calcularRetencionComprobante === 'function') calcularRetencionComprobante();
 }
@@ -17642,7 +17838,13 @@ async function revisarMigoFactura() {
             pide = !!(j && (j.data || j).pide_migo);
         } catch (e) { /* sin red: se deja como está */ }
     }
-    caja.style.display = pide || tiene ? '' : 'none';
+    // Siempre visible (Erika 26/10/2026: "para yo poder facturar ... no figura"); si el cliente lo pide, en rojo
+    caja.style.display = '';
+    const lab = caja.querySelector('label');
+    if (lab) {
+        lab.textContent = pide ? 'N° MIGO / conformidad (este cliente lo pide)' : 'N° MIGO / conformidad (opcional)';
+        lab.style.color = pide && !tiene ? '#B91C1C' : '';
+    }
 }
 window.revisarMigoFactura = revisarMigoFactura;
 ['loadComprobanteFromGuia', 'loadComprobanteFromPC', 'loadComprobanteFromCotizacion', 'cargarProductosComprobanteDesdeCotizacion'].forEach(nombre => {

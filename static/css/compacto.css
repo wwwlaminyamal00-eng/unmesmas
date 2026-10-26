@@ -146,3 +146,22 @@
   #despachoRows td:nth-child(11){font-size:10px !important;max-width:64px}
   #despachar th:nth-child(12), #despachar th:nth-child(13){max-width:70px}
 }
+
+/* N° OC del cliente debajo del N° PC (PC y Entregas, 26/10/2026): rótulo arriba, número abajo, nunca se sale de la celda */
+.oc-cliente-celda{margin-top:3px;font-size:11px;line-height:1.25;color:#334155;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+.oc-cliente-celda span{display:block;font-size:10px;font-weight:600;color:#64748B;white-space:nowrap}
+.oc-cliente-celda b{font-weight:700;color:#0F172A}
+/* Entregas 26/10/2026: con la columna "Fecha real de entrega" todo un poco más angosto en 1366 px */
+@media (max-width:1450px){
+  #despachoRows .oc-cliente-celda span{white-space:normal}
+  #despachoRows .oc-cliente-celda{font-size:10px}
+  #despachoRows .entrega-btn{max-width:62px;font-size:9.5px;padding:3px}
+  #despachoRows .ent-salida{font-size:9px}
+  #despachoRows .ent-rechazo{max-width:70px}
+  #despachoRows td:nth-child(5){max-width:78px}
+  #despachoRows td:nth-child(7){max-width:80px}
+  #despachoRows td:nth-child(14){max-width:58px}
+  #despachoRows .ent-coment{min-width:0}
+  #despachoRows td .acc-col{max-width:84px}
+  #despachar table.master-table :is(th,td){padding-left:3px!important;padding-right:3px!important}
+}

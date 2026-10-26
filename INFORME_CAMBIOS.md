@@ -2390,3 +2390,43 @@ Pedido: "Si Hellen puede aprobar sus propias OC, pero aquellas que el proveedor 
   - "N° OC del cliente" se mantiene: es el número que pone el cliente en su documento.
 - Capturas en `capturas/26oct_*.png`.
 - Pruebas: 305 correctas (base normal) y 303 + 2 omitidas (base reconstruida). Se ajustaron 6 pruebas que buscaban los nombres viejos.
+
+### 24.42 OC impresa con "Adelanto 50%" (Erika, 26/10/2026: "debajo del total debería decir adelanto y pago total al final por 50%")
+- Debajo de TOTAL salen dos líneas en amarillo: "Adelanto 50% (antes de la entrega)" y "Pago al final 50% (con la factura)", cada una con su monto.
+- Solo aparecen cuando la condición de pago es "Adelanto 50%". La pantalla de la OC ya mostraba "Adelanto · Saldo".
+- Captura: `capturas/26oct_oc_adelanto.png`.
+
+### 24.43 "N° OC del cliente" en PC y en Entregas (capturas de Erika, 26/10/2026 18:11)
+- PC (Pedido de compra): debajo del N° PC decía "OC cliente: …" en azul, en una sola línea, y se salía de la celda. Ahora dice "N° OC del cliente" en gris y debajo el número, que nunca se sale de la celda.
+- Entregas ▸ Despachar: debajo del N° PC sale el mismo "N° OC del cliente", leído del PC.
+- Cuentas por cobrar usa el mismo nombre.
+- Capturas: `capturas/26oct_pc_oc_cliente.png` y `capturas/26oct_entregas_oc_cliente.png`.
+- Pruebas: 308 correctas (base normal) y 306 + 2 omitidas (base reconstruida) al entregar 24.43.
+
+### 24.44 Entregas: cita → Despachado → Entregado o Rechazado (Erika, 26/10/2026 18:14)
+- Orden del trabajo:
+  1. **Fecha de cita** con el cliente, con lápiz ✏ para ponerla o cambiarla. "Confirmar despacho" ya no deja seguir sin cita: abre la ventana de la cita.
+  2. **Confirmar despacho**: sale del almacén → **✔ Despachado** en verde, y se guarda la fecha y hora de salida ("Salió dd/mm/aaaa hh:mm").
+  3. **Confirmar entrega** (botón azul): se pone la fecha real en que el cliente recibió → **✔ Entregado** en azul fuerte y fila celeste. La fecha se corrige o se quita con el lápiz (si se quita, vuelve a Despachado). No puede ser futura ni anterior a la salida.
+  4. **Rechazado por el cliente** (botón naranja): pide el motivo, el stock vuelve al inventario y la fila queda "↩ Rechazado por el cliente" con su motivo y el botón **Volver a despachar**. Si ya se hizo la guía, hay que revisar si se anula.
+- Columna "Fecha de cita y entrega real": arriba la cita y debajo la entrega real (en una sola columna para que la tabla entre en pantalla).
+- Filtro de estados: se agregan "Entregado" y "Rechazado por el cliente".
+- "Entregado" ya no se puede poner con el cambio de estado simple: siempre lleva su fecha real.
+- Los 23 despachos que hoy dicen "Despachado" se quedan así; logística les pone la fecha real con "Confirmar entrega".
+- Base: migración `032_entrega_real.sql` aplicada en Supabase el 26/10/2026, con respaldo previo `respaldo_20261026_despachos` (40 filas). Solo agrega 4 columnas vacías: fecha_salida, fecha_entrega_real, motivo_rechazo y fecha_rechazo.
+- Pantalla: a 1600 px entra completa; a 1366 px quedan unos 14 px de más (antes eran unos 20).
+- Capturas: `capturas/26oct_entregas_flujo.png`, `capturas/26oct_entregas_confirmar.png` y `capturas/26oct_entregas_rechazo.png`.
+
+### 24.45 Facturas: monto a pagar, condición fija, cotización automática, N° MIGO y XML (Erika, 26/10/2026 18:32-18:36)
+- **Monto a pagar**: columna nueva en la lista (verde), con "Retención 3%: S/ …" debajo si la tiene. En "Editar comprobante" hay un campo "Monto a pagar" junto a la condición de pago, que se recalcula solo. Antes la lista no traía ese dato y, sin retención, se guardaba 0. Ahora se guarda el total.
+- **Condición de pago FIJA**: sale del PC (Pedido de compra) vinculado; si no hay PC, de la ficha del cliente. Aparece bloqueada con "🔒 Fija, tomada del PC …. Solo Erika la puede cambiar." El servidor también la impone: aunque alguien mande otra (por ejemplo 180 días), se guarda la del PC. Solo el usuario de Erika (eri01kcf) puede poner otra, y queda en Auditoría con la condición anterior y la nueva.
+- **Cotización automática**: al elegir la guía o el PC (o cuando la condición encuentra el PC), se llena sola la cotización vinculada (y el PC de la guía). En la lista, si la factura no tenía cotización, se muestra la del PC o la de la guía.
+- **N° MIGO**: el campo se ve siempre en la factura. Si el cliente lo pide, el rótulo sale en rojo: "(este cliente lo pide)". En el PDF sale "N° MIGO" junto a OC, Guía y Cotización. En la lista sale "MIGO …" debajo del N° de factura.
+- **PDF de la factura**: "OC:" ahora muestra el N° OC del cliente (antes mostraba el N° de cotización por error).
+- **XML de SUNAT**: la factura se emite en SUNAT, que da el XML firmado. El ERP no puede firmarlo, así que se guarda ahí:
+  - ⋮ ▸ "Subir XML / PDF de SUNAT" acepta .xml, .zip o .pdf de hasta 5 MB. Si el XML es de otra factura, lo rechaza y dice de cuál es.
+  - Luego ⋮ ▸ "Descargar XML (SUNAT)" lo baja para mandarlo al cliente. En la lista sale "XML ✔".
+- **Retención**: con el panel apagado ya no dice "Activa"; dice "Inactiva (podría aplicar …)".
+- Base: migración `033_archivos_factura.sql` aplicada en Supabase. Es una tabla nueva, `comprobante_archivos`, con RLS; no toca datos.
+- Capturas: `capturas/26oct_facturas_lista.png`, `capturas/26oct_facturas_menu.png` y `capturas/26oct_facturas_editar.png`.
+- Pruebas (24.44 y 24.45 juntas): 317 correctas (base normal) y 315 + 2 omitidas (base reconstruida). Se ajustaron 4 pruebas viejas (Entregado ahora lleva fecha real; sin PC manda la ficha del cliente).
