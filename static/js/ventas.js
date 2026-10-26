@@ -2312,7 +2312,7 @@ function renderComprobantes() {
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
             <td>${r.guia_numero ? numDocCelda(fmtNumDoc(r.guia_numero), 'span') : '-'}</td>
-            <td>${numDocCelda(numDoc(r.serie, r.numero))}${r.xml_id ? `<small class="xml-lista" title="Ya tiene el XML de SUNAT: ⋮ ▸ Descargar XML">XML ✔</small>` : ''}${r.numero_migo ? `<small class="migo-lista" title="N° MIGO / conformidad del cliente">MIGO ${sd(r.numero_migo)}</small>` : ''}${badgeNuevo(r, 'fecha')}</td>
+            <td>${numDocCelda(numDoc(r.serie, r.numero))}${r.xml_id ? `<small class="xml-lista" title="Ya tiene el XML de SUNAT: ⋮ ▸ Descargar XML">XML ✔</small>` : ''}${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
             <td>${aPagarStr}</td>
             <td>
@@ -3946,10 +3946,6 @@ function renderComprobanteFormContent(isEdit, data) {
                     <label title="Lo que el cliente deposita: el total menos la retención del 3% si la tiene">Monto a pagar</label>
                     <input id="compAPagarVista" readonly tabindex="-1" class="monto-a-pagar-campo" value="${montoAPagarDe(data).toFixed(2)}">
                 </div>
-                <div class="form-field col-4" id="compMigoCaja">
-                    <label title="Este cliente no paga sin el N° MIGO de su conformidad">N° MIGO / conformidad (opcional)</label>
-                    <input id="compMigo" maxlength="40" placeholder="Si aún no lo envía, se anota luego en Finanzas" value="${esc(data?.numero_migo || '')}">
-                </div>
             </div>
         </div>
         
@@ -4755,8 +4751,7 @@ async function _saveComprobante(estado) {
             tipo_cambio: document.getElementById('compMoneda')?.value === 'USD' ? (document.getElementById('compTC')?.value || null) : null,
             // 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
             orden_compra_cliente: document.getElementById('compOrdenCompra')?.value?.trim() || '',
-            ...(document.getElementById('compMigoCaja')?.style.display !== 'none'
-                ? { numero_migo: (document.getElementById('compMigo')?.value || '').trim().toUpperCase() } : {}),
+            // Sin N° MIGO en ningún módulo (Erika 26/10/2026 21:27): no se envía, así lo guardado queda igual en la base
             cliente: document.getElementById('compCliente')?.value || '',
             ruc: document.getElementById('compRuc')?.value || '',
             direccion: document.getElementById('compDireccion')?.value || '',

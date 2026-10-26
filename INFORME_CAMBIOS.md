@@ -2492,3 +2492,8 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Base: migración `034_nota_credito_aprobacion.sql` aplicada en Supabase. Solo agrega columnas vacías y una tabla de evidencias, con RLS; no cambia datos.
 - Capturas: `capturas/26oct_nc_formulario.png`, `26oct_nc_lista.png`, `26oct_nc_revisar.png` y `26oct_nc_documento.png`.
 - Pruebas: 323 correctas (base normal) y 321 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_26oct_nota_credito.py`.
+
+### 24.51 Sin N° MIGO en ningún módulo (Erika, 26/10/2026 21:27)
+- Quitado de la vista: formulario y lista de Facturas, PDF de la factura, ficha del cliente ("Pide N° MIGO") y Finanzas ▸ Cuentas por cobrar ("Falta MIGO" y el campo del ✏️).
+- No se borró nada de la base. Las columnas `numero_migo` y `pide_migo` y sus datos siguen ahí, y las pantallas ya no las tocan al guardar.
+- Pruebas: 323 correctas (base normal) y 321 + 2 omitidas (reconstruida).

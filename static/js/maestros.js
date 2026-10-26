@@ -1348,7 +1348,7 @@ async function saveClient() {
         dias_credito: /cr[eé]dito/i.test(document.getElementById('cli_condicion')?.value || '') ? (document.getElementById('cli_diasCredito')?.value || '') : '0',
         limite_credito: document.getElementById('cli_limiteCredito')?.value?.trim() || '',
         descuento: document.getElementById('cli_descuento')?.value?.trim() || '',
-        pide_migo: !!document.getElementById('cli_pideMigo')?.checked,
+        ...(document.getElementById('cli_pideMigo') ? { pide_migo: !!document.getElementById('cli_pideMigo').checked } : {}),  // MIGO quitado de la vista 26/10/2026
         estado: document.getElementById('cli_estado')?.value || 'Activo',
         observaciones: document.getElementById('cli_obs')?.value?.trim() || '',
         contactos: contacts,

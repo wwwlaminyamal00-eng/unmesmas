@@ -139,19 +139,14 @@
         } else if (x.saldo > 0) {
             l.push('<span class="seg-chip seg-falta" title="Falta ingresar la factura en el portal de proveedores del cliente">✖ Falta portal</span>');
         }
-        // N° MIGO (Erika 25/10/2026): solo para clientes que lo piden (check en su ficha)
-        if (x.numero_migo) {
-            l.push(`<small title="N° MIGO / conformidad del cliente">MIGO <b>${esc(x.numero_migo)}</b></small>`);
-        } else if (x.pide_migo && x.saldo > 0) {
-            l.push('<span class="seg-chip seg-falta" title="Este cliente no paga sin el N° MIGO de su conformidad: pídelo y anótalo con ✏️">✖ Falta MIGO</span>');
-        }
+        // N° MIGO: quitado de todos los módulos (Erika 26/10/2026 21:27); los datos siguen en la base
         if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago programado <b>${fecha(x.fecha_programada)}</b></small>`);
         if (x.retencion_numero) {
             l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Retención <b>${esc(x.retencion_numero)}</b></small>`);
         } else if (x.retencion > 0) {
             l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Retención 3%: falta N°</small>');
         }
-        if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, N° MIGO, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
+        if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
         return l.length ? l.join('') : '<span class="fin-gris">—</span>';
     }
 
@@ -169,7 +164,6 @@
             <div class="seg-sub">${esc(x.documento)} · ${esc(x.tercero)} · ${dinero(x, x.total)}</div>
             <label class="seg-check"><input type="checkbox" id="segPortal" ${x.portal_ingresado ? 'checked' : ''}> Ingresada en el portal del cliente</label>
             <label class="seg-campo" id="segPortalFechaCaja">Fecha de ingreso al portal<input type="date" id="segPortalFecha" value="${x.portal_fecha ? String(x.portal_fecha).slice(0, 10) : ''}"></label>
-            ${x.pide_migo || x.numero_migo ? `<label class="seg-campo">N° MIGO / conformidad<input type="text" id="segMigo" maxlength="40" placeholder="El que envía el cliente" value="${esc(x.numero_migo || '')}"></label>` : ''}
             <label class="seg-campo">Fecha programada de pago<input type="date" id="segProgramada" value="${x.fecha_programada ? String(x.fecha_programada).slice(0, 10) : ''}"></label>
             <div class="seg-grupo">Retención del 3% (comprobante que envía el cliente)</div>
             <label class="seg-campo">N° comprobante de retención<input type="text" id="segRetNum" maxlength="40" placeholder="Ej. R001-00006805" value="${esc(x.retencion_numero || '')}"></label>
