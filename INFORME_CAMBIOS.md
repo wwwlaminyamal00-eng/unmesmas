@@ -2430,3 +2430,7 @@ Pedido: "Si Hellen puede aprobar sus propias OC, pero aquellas que el proveedor 
 - Base: migración `033_archivos_factura.sql` aplicada en Supabase. Es una tabla nueva, `comprobante_archivos`, con RLS; no toca datos.
 - Capturas: `capturas/26oct_facturas_lista.png`, `capturas/26oct_facturas_menu.png` y `capturas/26oct_facturas_editar.png`.
 - Pruebas (24.44 y 24.45 juntas): 317 correctas (base normal) y 315 + 2 omitidas (base reconstruida). Se ajustaron 4 pruebas viejas (Entregado ahora lleva fecha real; sin PC manda la ficha del cliente).
+
+### 24.46 Facturas: sin la pastilla "Pendiente de aprobación" (Erika, 26/10/2026 20:03)
+- Era el "Estado del crédito" antiguo: toda factura a crédito nacía "Pendiente de aprobación" y nadie la aprobaba nunca. No lo usa ningún otro módulo.
+- Como la condición ya viene fija del PC aprobado, la lista ya no lo muestra. Solo aparece si alguien marca el crédito como "Rechazada".
