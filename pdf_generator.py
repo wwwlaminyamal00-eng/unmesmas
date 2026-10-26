@@ -606,12 +606,6 @@ class PDFGenerator:
             <span class="info-label">COTIZACIÓN:</span>
             <span class="info-value">{{ nro_cotizacion or '—' }}</span>
         </div>
-        {% if numero_migo %}
-        <div class="info-item">
-            <span class="info-label">N° MIGO:</span>
-            <span class="info-value">{{ numero_migo }}</span>
-        </div>
-        {% endif %}
     </div>
 
     <div class="seccion">

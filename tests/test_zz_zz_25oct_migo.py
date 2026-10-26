@@ -43,13 +43,16 @@ def test_migo_cliente_factura_y_cobranza(admin, vendedor):
     assert _sql("SELECT pide_migo FROM clientes WHERE id = %s", (cli[0],))[0][0] is False
 
 
-def test_pantallas_tienen_migo():
+def test_pantallas_ya_no_muestran_migo():
+    # Erika 26/10/2026 21:27: "eliminar el MIGO en las facturas y los demás módulos". Solo se quita de la vista;
+    # los datos siguen en la base y las pantallas no los borran al guardar.
     import os
     raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     leer = lambda r: open(os.path.join(raiz, r), encoding='utf-8').read()
-    assert 'id="cli_pideMigo"' in leer('templates/modales/cliente_modal.html')
-    assert 'pide_migo' in leer('static/js/maestros.js')
+    assert 'cli_pideMigo' not in leer('templates/modales/cliente_modal.html')
+    assert "...(document.getElementById('cli_pideMigo') ?" in leer('static/js/maestros.js')
     v = leer('static/js/ventas.js')
-    assert 'id="compMigoCaja"' in v and 'revisarMigoFactura' in v and 'numero_migo' in v
+    assert 'id="compMigoCaja"' not in v and 'class="migo-lista"' not in v
     fz = leer('static/js/finanzas.js')
-    assert '✖ Falta MIGO' in fz and 'segMigo' in fz
+    assert 'Falta MIGO' not in fz and 'id="segMigo"' not in fz
+    assert 'N° MIGO:' not in leer('pdf_generator.py')

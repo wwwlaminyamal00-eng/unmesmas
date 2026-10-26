@@ -83,11 +83,10 @@ def test_pantalla_de_facturas_26oct():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     for t in ('id="compAPagarVista"', 'function montoAPagarDe', 'function ponerVinculoFactura',
               "ponerVinculoFactura('compCotizacion', pc.cotizacion_numero)", 'sel.disabled = !window.ES_ERIKA',
-              'Solo Erika la puede cambiar', 'Descargar XML (SUNAT)', 'Adjuntar XML descargado de SUNAT', 'colspan="14"',
-              'N° MIGO / conformidad (este cliente lo pide)'):
+              'Solo Erika la puede cambiar', 'Descargar XML (SUNAT)', 'Adjuntar XML descargado de SUNAT', 'colspan="14"'):
         assert t in js, t
     pdf = (RAIZ / 'pdf_generator.py').read_text(encoding='utf-8')
-    assert 'N° MIGO:' in pdf
+    assert 'N° MIGO:' not in pdf   # quitado de todos los módulos (Erika 26/10/2026 21:27)
 
 
 def test_retencion_calculada_y_con_candado(vendedor):
