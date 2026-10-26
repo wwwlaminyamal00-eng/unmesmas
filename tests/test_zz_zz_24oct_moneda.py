@@ -140,7 +140,7 @@ def test_finanzas_pago_en_soles_de_factura_en_dolares(usd, admin):
 
 
 def test_documento_de_venta_en_dolares(usd):
-    # Sin moneda en el formulario: la del origen (PC / cotización)
+    # Sin moneda en el formulario: la del origen (PV / cotización)
     assert moneda_documento({}, respaldo={'moneda': 'USD', 'tipo_cambio': '3.7'}) == ('USD', Decimal('3.7000'))
     assert moneda_documento({'moneda': 'Soles (S/)'}, respaldo={'moneda': 'USD', 'tipo_cambio': '3.7'}) == ('PEN', None)
     # Factura: TC SUNAT de la fecha de emisión si no se escribe

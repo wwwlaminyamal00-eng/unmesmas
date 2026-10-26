@@ -34,7 +34,7 @@
         CLIENTES: 'Clientes', PROVEEDORES: 'Proveedores', ALMACENES: 'Almacenes / sedes', CATEGORIAS: 'Categorías',
         MARCAS: 'Marcas', UNIDADES_MEDIDA: 'Unidades de medida',
         PRODUCTOS_LISTADO: 'Lista de productos', PRODUCTOS_FICHA: 'Ficha de producto',
-        COTIZACIONES: 'Cotizaciones', COMPROBANTES_CLIENTE: 'Pedidos (PC), despachos y facturas', GUIAS_CLIENTE: 'Guías de remisión',
+        COTIZACIONES: 'Cotizaciones', COMPROBANTES_CLIENTE: 'Pedidos (PV), despachos y facturas', GUIAS_CLIENTE: 'Guías de remisión',
         NOTAS_CREDITO: 'Notas de crédito', SEGUIMIENTO_COMERCIAL: 'Seguimiento comercial',
         SOLICITUD_COMPRA: 'Pedidos por comprar', COMPARATIVO_PROVEEDORES: 'Comparativo y precios de proveedores',
         ORDEN_COMPRA: 'Órdenes de compra (Proveedor)', COMPROBANTES_PROVEEDOR: 'Facturas de proveedores',

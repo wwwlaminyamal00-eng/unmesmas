@@ -419,7 +419,7 @@ def obtener_guias_db():
                           WHERE c.guia_vinculada = guias_remision.serie || '-' || guias_remision.numero
                             AND COALESCE(UPPER(c.estado_sunat), '') NOT IN ('ANULADO', 'ANULADA')
                           ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada,
-                -- N° PC (19/10/2026): la PC de la misma cotización
+                -- N° PV (19/10/2026): la PV de la misma cotización
                 (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
                   WHERE p.cotizacion_numero = guias_remision.documento_asociado
                     AND NULLIF(p.numero, '') IS NOT NULL
@@ -618,7 +618,7 @@ def obtener_comprobantes_db():
                 to_jsonb(comprobantes) ->> 'numero_migo' AS numero_migo,
                 (SELECT MAX(a.id) FROM comprobante_archivos a
                   WHERE a.comprobante_id = comprobantes.id AND a.tipo = 'XML') AS xml_id,
-                -- N° cotización: la guardada; si falta, la del PC vinculado o la de la guía (26/10/2026)
+                -- N° cotización: la guardada; si falta, la del PV vinculado o la de la guía (26/10/2026)
                 COALESCE(NULLIF(documento_asociado, ''),
                          (SELECT p.cotizacion_numero FROM pedido_compra_pc p
                            WHERE p.numero = comprobantes.pc_vinculado AND NULLIF(p.cotizacion_numero, '') IS NOT NULL
@@ -626,7 +626,7 @@ def obtener_comprobantes_db():
                          (SELECT g.documento_asociado FROM guias_remision g
                            WHERE (g.serie || '-' || g.numero) = comprobantes.guia_vinculada
                              AND g.documento_asociado LIKE 'COT%%' ORDER BY g.id DESC LIMIT 1)) AS cotizacion_numero,
-                -- N° PC y N° Guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
+                -- N° PV y N° Guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
                 COALESCE(NULLIF(pc_vinculado, ''),
                          (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
                            WHERE p.cotizacion_numero = comprobantes.documento_asociado
@@ -816,7 +816,7 @@ def guardar_nota_credito_db(data):
         print(f"❌ Error en guardar_nota_credito_db: {e}")
         raise
 def obtener_pc_db():
-    """Obtiene todos los pedidos de compra con manejo correcto de items"""
+    """Obtiene todos los pedidos de venta con manejo correcto de items"""
     try:
         query = """
             SELECT 
@@ -880,11 +880,11 @@ def obtener_pc_db():
                     else:
                         items = []
                 except Exception as e:
-                    print(f"⚠️ Error parseando items_json para PC {row.get('id')}: {e}")
+                    print(f"⚠️ Error parseando items_json para PV {row.get('id')}: {e}")
                     items = []
             else:
                 # Si items_json es None o está vacío
-                print(f"⚠️ PC {row.get('id')} no tiene items_json")
+                print(f"⚠️ PV {row.get('id')} no tiene items_json")
             
             # ============================================================
             # 🔽 INTENTAR OBTENER PRODUCTOS DE LA COTIZACIÓN ASOCIADA
@@ -916,7 +916,7 @@ def obtener_pc_db():
                                 'precio_pc': float(item.get('precio_venta_unitario', 0)),
                                 'stock': float(item.get('stock', 0))
                             })
-                        print(f"✅ Items cargados desde cotización {cotizacion_id} para PC {row.get('id')}")
+                        print(f"✅ Items cargados desde cotización {cotizacion_id} para PV {row.get('id')}")
                 except Exception as e:
                     print(f"⚠️ Error obteniendo items de cotización: {e}")
             
@@ -936,7 +936,7 @@ def obtener_pc_db():
                     'precio_pc': float(row.get('monto') or 0) if row.get('monto') else 0,
                     'stock': 0
                 }]
-                print(f"⚠️ PC {row.get('id')} sin items, usando item genérico")
+                print(f"⚠️ PV {row.get('id')} sin items, usando item genérico")
             
             row['items'] = items
             # Limpiar el campo original para evitar duplicados
@@ -963,7 +963,7 @@ def obtener_pc_db():
                 else:
                     row['req_compra'] = 'Sí'
         
-        print(f"✅ {len(results)} PCs cargados correctamente")
+        print(f"✅ {len(results)} PVs cargados correctamente")
         return results
         
     except Exception as e:
@@ -973,9 +973,9 @@ def obtener_pc_db():
         return []
 
 def guardar_pc_db(data):
-    """Guarda o actualiza un pedido de compra"""
+    """Guarda o actualiza un pedido de venta"""
     try:
-        print("📝 Guardando PC en BD...")
+        print("📝 Guardando PV en BD...")
         
         from datetime import datetime
         
@@ -1024,9 +1024,9 @@ def guardar_pc_db(data):
         valida_stock = data.get('valida_stock', False)
         valida_entrega = data.get('valida_entrega', False)
         valida_montos = data.get('valida_montos', False)
-        # Transporte ya no es parte de la validación comercial del PC (pedido de Erika 20/10/2026)
+        # Transporte ya no es parte de la validación comercial del PV (pedido de Erika 20/10/2026)
         valida_transporte = data.get('valida_transporte', True)
-        # La pantalla no tiene interruptor de margen: si no se manda, no debe dejar el PC siempre "observado"
+        # La pantalla no tiene interruptor de margen: si no se manda, no debe dejar el PV siempre "observado"
         valida_margen = data.get('valida_margen', True)
         valida_vigencia = data.get('valida_vigencia', False)
         
@@ -1053,7 +1053,7 @@ def guardar_pc_db(data):
         # SI HAY ID, ACTUALIZAR
         # ============================================================
         if pc_id:
-            print(f"🔄 Actualizando PC ID: {pc_id}")
+            print(f"🔄 Actualizando PV ID: {pc_id}")
             
             query = """
                 UPDATE pedido_compra_pc SET
@@ -1133,12 +1133,12 @@ def guardar_pc_db(data):
         # ============================================================
         # SI NO HAY ID, INSERTAR
         # ============================================================
-        print("➕ Insertando nuevo PC...")
+        print("➕ Insertando nuevo PV...")
         
         cotizacion_id = data.get('cotizacion_id')
         if cotizacion_id is None or cotizacion_id == '':
             cotizacion_id = None
-        # El PC queda en la empresa de su cotización (o en la elegida arriba)
+        # El PV queda en la empresa de su cotización (o en la elegida arriba)
         empresa_pc = empresa_para_crear(empresa_de(None, 'cotizaciones', 'id', cotizacion_id)
                                         or empresa_de(None, 'cotizaciones', 'numero_cotizacion', data.get('cotizacion_numero')))
         
@@ -1198,15 +1198,16 @@ def guardar_pc_db(data):
         )
         
         numero_pedido = str(data.get('numero') or '')
-        if numero_pedido.startswith('PC-') and numero_pedido.endswith('-'):
+        if numero_pedido.startswith(('PC-', 'PV-')) and numero_pedido.endswith('-'):
             # N° interno por empresa: se calcula y se guarda en la MISMA transacción con bloqueo,
-            # así dos PC creadas al mismo tiempo nunca reciben el mismo número.
+            # así dos PV creadas al mismo tiempo nunca reciben el mismo número.
             with db_tx() as conn:
                 cur = conn.cursor(cursor_factory=RealDictCursor)
                 bloquear_numeracion(cur, 'pedido_compra_pc:' + numero_pedido)
                 cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::bigint), 0) + 1 AS sig
                                FROM pedido_compra_pc WHERE numero ~ %s""",
-                            (len(numero_pedido) + 1, '^' + numero_pedido + '[0-9]+$'))
+                            # 26/10/2026: PV-KCF-… sigue la numeración de los PC-KCF-… antiguos (mismo largo de prefijo)
+                            (len(numero_pedido) + 1, '^P[CV]' + re.escape(numero_pedido[2:]) + '[0-9]+$'))
                 sig = con_piso(cur, 'PC', clave_pc(numero_pedido[3:-1]), cur.fetchone()['sig'])
                 params = (numero_pedido + str(sig).zfill(6),) + tuple(params[1:])
                 cur.execute(query, params)
@@ -2213,7 +2214,7 @@ def preview_rotulo_guia(guia_id):
 
 
 def _numeros_rotulo(guia=None, despacho=None, pc=None):
-    """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PC, N° Guía y N° Factura. '—' si falta."""
+    """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PV, N° Guía y N° Factura. '—' si falta."""
     def unir(*vals):
         vistos = []
         for v in vals:
@@ -2233,7 +2234,7 @@ def _numeros_rotulo(guia=None, despacho=None, pc=None):
                 desp.append(d['numero'])
                 pcs.append(d['pc_numero'])
         asociado = str(guia.get('documento_asociado') or '')
-        if asociado.upper().startswith('PC'):
+        if asociado.upper().startswith(('PC', 'PV')):
             pcs.append(asociado)
     if despacho:
         desp.append(despacho.get('numero'))
@@ -2252,7 +2253,7 @@ def _numeros_rotulo(guia=None, despacho=None, pc=None):
             'nro_guia': unir(*guias) or '—', 'nro_factura': unir(*facts) or '—'}
 
 # ============================================================
-# RÓTULO DE PC Y DE DESPACHO (pedido de Erika, 15/10/2026)
+# RÓTULO DE PV Y DE DESPACHO (pedido de Erika, 15/10/2026)
 # Mismo diseño que el rótulo de la guía, con el logo, datos y color de la empresa del documento.
 # ============================================================
 @ventas_bp.route('/ventas/api/rotulo/<tipo>/<int:doc_id>', methods=['GET'])
@@ -2376,8 +2377,8 @@ def api_guias_listar():
 
 # ============================================================
 # PREVENCIÓN DE DUPLICADOS (pedido de Erika 20/10/2026 22:54): el servidor es el "policía".
-# Lo anulado no cuenta. Las entregas y facturas parciales de un PC siguen permitidas:
-# solo se bloquea cuando lo nuevo pasaría lo que pidió el PC y ya hay otro documento con ese producto.
+# Lo anulado no cuenta. Las entregas y facturas parciales de un PV siguen permitidas:
+# solo se bloquea cuando lo nuevo pasaría lo que pidió el PV y ya hay otro documento con ese producto.
 # ============================================================
 ANULADOS = ('ANULADO', 'ANULADA')
 
@@ -2395,7 +2396,7 @@ def _cantidades_por_producto(items_json):
 
 
 def _pasa_lo_pedido(pc_items_json, docs, items_nuevos):
-    """Primer producto en que lo ya documentado + lo nuevo pasa lo que pidió el PC (solo si ya había algo)."""
+    """Primer producto en que lo ya documentado + lo nuevo pasa lo que pidió el PV (solo si ya había algo)."""
     pide, _ = _cantidades_por_producto(pc_items_json)
     ya = {}
     for d in docs:
@@ -2419,7 +2420,7 @@ def _pc_activo(*numeros):
 
 
 def _guia_duplicada(data):
-    """Mensaje de bloqueo si la guía nueva repite una guía activa del mismo despacho o PC."""
+    """Mensaje de bloqueo si la guía nueva repite una guía activa del mismo despacho o PV."""
     desp = str(data.get('despacho_numero') or '').strip()
     if desp:
         f = db_query("""SELECT g.serie || '-' || g.numero::text AS num FROM despachos d
@@ -2446,13 +2447,13 @@ def _guia_duplicada(data):
     pasa = _pasa_lo_pedido(pc['items_json'], guias, data.get('items') or [])
     if pasa:
         nums = ', '.join(sorted({g['num'] for g in guias}))
-        return (f"⛔ ERROR: El PC {pc['numero']} ya tiene guía ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+        return (f"⛔ ERROR: El PV {pc['numero']} ya tiene guía ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
                 f"ya hay {pasa['ya']:g} en guías y esta guía agrega {pasa['nuevo']:g}. No se puede duplicar.")
     return None
 
 
 def _despacho_duplicado(data):
-    """Mensaje de bloqueo si el despacho nuevo repite lo que otro despacho activo del mismo PC ya cubre."""
+    """Mensaje de bloqueo si el despacho nuevo repite lo que otro despacho activo del mismo PV ya cubre."""
     pc = _pc_activo(data.get('pc_numero'))
     if not pc:
         return None
@@ -2461,14 +2462,14 @@ def _despacho_duplicado(data):
     pasa = _pasa_lo_pedido(pc['items_json'], desps, data.get('items') or [])
     if pasa:
         nums = ', '.join(sorted({d['num'] for d in desps}))
-        return (f"⛔ ERROR: El PC {pc['numero']} ya tiene despacho ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+        return (f"⛔ ERROR: El PV {pc['numero']} ya tiene despacho ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
                 f"ya hay {pasa['ya']:g} en despachos y este agrega {pasa['nuevo']:g}. No se puede duplicar. "
                 "Búscalo en Ventas ▸ Entregas.")
     return None
 
 
 def _factura_duplicada(data, pc_origen):
-    """Mensaje de bloqueo si la factura nueva repite una factura activa de la misma guía o PC."""
+    """Mensaje de bloqueo si la factura nueva repite una factura activa de la misma guía o PV."""
     guia = str(data.get('guia') or '').strip()
     if guia:
         f = db_query("""SELECT serie || '-' || LPAD(numero::text, 8, '0') AS num FROM comprobantes
@@ -2488,7 +2489,7 @@ def _factura_duplicada(data, pc_origen):
     pasa = _pasa_lo_pedido(pc['items_json'], facs, data.get('items') or [])
     if pasa:
         nums = ', '.join(sorted({f['num'] for f in facs}))
-        return (f"⛔ ERROR: El PC {pc['numero']} ya fue facturado ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
+        return (f"⛔ ERROR: El PV {pc['numero']} ya fue facturado ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
                 f"ya hay {pasa['ya']:g} facturado y esta factura agrega {pasa['nuevo']:g}. No se puede duplicar.")
     return None
 
@@ -2623,7 +2624,7 @@ def api_guias_guardar():
                                 'data': {'id': fila['id'], 'numero': fila['numero']}})
             return jsonify({'success': False, 'error': 'No se pudo actualizar la guía'}), 400
 
-        # La guía queda en la empresa de su despacho / PC / cotización (o la elegida arriba).
+        # La guía queda en la empresa de su despacho / PV / cotización (o la elegida arriba).
         # El remitente es esa empresa (antes siempre salía KCF) y la numeración es por empresa (cada RUC tiene la suya).
         doc = (data.get('documento_asociado') or '').strip()
         empresa_guia = empresa_para_crear(empresa_de(None, 'despachos', 'numero', data.get('despacho_numero'))
@@ -2639,7 +2640,7 @@ def api_guias_guardar():
                 data['remitente_direccion'] = emp.get('direccion_fiscal') or ''
                 if emp.get('ubigeo'):
                     data['remitente_ubigeo'] = emp['ubigeo']
-        # No se repite una guía del mismo despacho o PC (pedido de Erika 20/10/2026 22:54)
+        # No se repite una guía del mismo despacho o PV (pedido de Erika 20/10/2026 22:54)
         duplicada = _guia_duplicada(data)
         if duplicada:
             return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'GUÍA DUPLICADA: NO SE CREÓ', 'error': duplicada}), 409
@@ -2935,8 +2936,8 @@ def _params_insert_comprobante(comprobante_data):
 
 
 def _completar_desc_cliente(items, pc_numero):
-    """24/10/2026 (caso Komatsu): la descripción que el cliente pide en su OC se escribe por línea en el PC.
-    Si la guía o la factura llega sin ella, se toma del PC por código de producto. El catálogo no cambia."""
+    """24/10/2026 (caso Komatsu): la descripción que el cliente pide en su OC se escribe por línea en el PV.
+    Si la guía o la factura llega sin ella, se toma del PV por código de producto. El catálogo no cambia."""
     if not pc_numero or not isinstance(items, list):
         return items
     try:
@@ -2957,7 +2958,7 @@ def _completar_desc_cliente(items, pc_numero):
 
 
 def _pc_de_comprobante(data):
-    """PC de origen de una factura: la vinculada; si no, la de su guía (por la PC anotada en la guía
+    """PV de origen de una factura: la vinculada; si no, la de su guía (por la PV anotada en la guía
     o por el despacho de la guía)."""
     pc = (data.get('pc') or data.get('pc_vinculado') or '').strip()
     filas = []
@@ -2967,7 +2968,7 @@ def _pc_de_comprobante(data):
                             FROM pedido_compra_pc p WHERE numero = %s ORDER BY id DESC LIMIT 1""", (pc,))
     guia = (data.get('guia') or data.get('guia_vinculada') or '').strip()
     if not filas and guia:
-        # La guía guarda su cotización (documento_asociado) y el despacho guarda su PC
+        # La guía guarda su cotización (documento_asociado) y el despacho guarda su PV
         filas = db_query("""
             SELECT p.numero, p.condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente,
                    to_jsonb(p) ->> 'moneda' AS moneda, to_jsonb(p) ->> 'tipo_cambio' AS tipo_cambio
@@ -3013,16 +3014,16 @@ def _condicion_del_cliente(ruc):
 
 
 def condicion_fija_factura(pc_origen, ruc):
-    """Condición de pago que manda en la factura: la del PC; si no hay PC, la de la ficha del cliente.
+    """Condición de pago que manda en la factura: la del PV; si no hay PV, la de la ficha del cliente.
     Devuelve (condición, fuente) o ('', '') si no hay ninguna."""
     if pc_origen and normalizar_condicion(pc_origen.get('condicion_pago')):
-        return normalizar_condicion(pc_origen.get('condicion_pago')), f"PC {pc_origen.get('numero')}"
+        return normalizar_condicion(pc_origen.get('condicion_pago')), f"PV {pc_origen.get('numero')}"
     cond = _condicion_del_cliente(ruc)
     return (cond, 'ficha del cliente') if cond else ('', '')
 
 
 def _auditar_cambio_condicion(cambio, fila):
-    """Si Erika puso una condición distinta a la del PC o del cliente, queda registrado con fecha y hora."""
+    """Si Erika puso una condición distinta a la del PV o del cliente, queda registrado con fecha y hora."""
     if not cambio or not fila:
         return
     fija, nueva, fuente = cambio
@@ -3034,7 +3035,7 @@ def _auditar_cambio_condicion(cambio, fila):
 
 
 def _datos_extra_factura_pdf(comp):
-    """PDF de la factura (26/10/2026): "OC:" es el N° OC del cliente (antes salía el N° de cotización) y, si lo
+    """PDF de la factura (26/10/2026): "OC:" es el N° PC (Pedido del cliente) (antes salía el N° de cotización) y, si lo
     tiene, el N° MIGO de la conformidad. La cotización sale aparte en "COTIZACIÓN"."""
     try:
         fila = db_query("""SELECT to_jsonb(c) ->> 'orden_compra_cliente' AS oc, to_jsonb(c) ->> 'numero_migo' AS migo,
@@ -3065,14 +3066,14 @@ def _pide_migo_seguro(ruc):
 @ventas_bp.route('/ventas/api/comprobantes/condicion-origen', methods=['GET'])
 @login_required
 def api_condicion_origen_factura():
-    """Condición de pago que le corresponde a una factura: la de su PC (o la de la PC de su guía o
-    cotización) y, si no hay PC, la del cliente. Lo usa la pantalla de la factura para llenarla sola."""
+    """Condición de pago que le corresponde a una factura: la de su PV (o la de la PV de su guía o
+    cotización) y, si no hay PV, la del cliente. Lo usa la pantalla de la factura para llenarla sola."""
     try:
         args = request.args
         pc = _pc_de_comprobante({'pc': args.get('pc'), 'guia': args.get('guia'), 'cotizacion': args.get('cotizacion')})
         if pc and normalizar_condicion(pc.get('condicion_pago')):
             return jsonify({'success': True, 'data': {
-                'condicion': normalizar_condicion(pc.get('condicion_pago')), 'fuente': f"PC {pc.get('numero')}",
+                'condicion': normalizar_condicion(pc.get('condicion_pago')), 'fuente': f"PV {pc.get('numero')}",
                 'pc': pc.get('numero'), 'oc_cliente': pc.get('oc_cliente') or '',
                 'pide_migo': _pide_migo_seguro(args.get('ruc'))}})
         cond = _condicion_del_cliente(args.get('ruc'))
@@ -3106,7 +3107,7 @@ def api_comprobantes_guardar():
         obs_retencion = data.get('obs_retencion')
 
         # Condición de pago (pedido de Erika 19/10/2026): la que se elige en la factura; si viene vacía, la del
-        # PC de origen, luego la de la guía (su PC) y al final la del cliente. Nunca la de la cotización.
+        # PV de origen, luego la de la guía (su PV) y al final la del cliente. Nunca la de la cotización.
         pc_origen = _pc_de_comprobante(data)
         items_json = _completar_desc_cliente(items_json, pc_origen.get('numero') if pc_origen else None)
         # 24/10/2026 (Erika): factura en dólares -> TC SUNAT de la fecha de emisión (lo usa el registro de ventas)
@@ -3118,7 +3119,7 @@ def api_comprobantes_guardar():
                 respaldo=pc_origen, tc_sunat_por_defecto=True)
         except ErrorMoneda as em:
             return jsonify({'success': False, 'error': str(em)}), 400
-        # REGLA (Erika 26/10/2026): la condición es FIJA, la del PC (Pedido de compra) interno; sin PC, la de la
+        # REGLA (Erika 26/10/2026): la condición es FIJA, la del PV (Pedido de venta) interno; sin PV, la de la
         # ficha del cliente. Nadie la cambia (para que nadie ponga 6 meses), solo Erika, y queda en auditoría.
         condicion_pedida = normalizar_condicion(data.get('condicion') or data.get('condicion_pago'))
         condicion_fija, fuente_condicion = condicion_fija_factura(pc_origen, data.get('ruc'))
@@ -3140,7 +3141,7 @@ def api_comprobantes_guardar():
             es_credito = False
             dias_credito = None
         
-        # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL (si no se escribe, sale de la PC: N° OC del cliente)
+        # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL (si no se escribe, sale de la PV: N° PC (Pedido del cliente))
         orden_compra_cliente = data.get('orden_compra_cliente', '') or ''
         if not orden_compra_cliente and pc_origen:
             orden_compra_cliente = pc_origen.get('oc_cliente') or ''
@@ -3189,41 +3190,34 @@ def api_comprobantes_guardar():
         # ============================================================
         # 🔽 VALIDAR Y RECALCULAR LA RETENCIÓN
         # ============================================================
-        if tiene_retencion:
-            if monto_total > 700:
-                if monto_retenido == 0:
-                    monto_retenido = (monto_total * porcentaje_retencion) / 100
-                monto_a_pagar = monto_total - monto_retenido
-                if not estado_credito:
-                    estado_credito = 'Pendiente de aprobación'
-                if not fecha_aprobacion:
-                    fecha_aprobacion = datetime.now().date().isoformat()
-                if not dias_credito:
-                    dias_credito = 30
-                if not fecha_vencimiento and dias_credito:
-                    from datetime import timedelta
-                    fecha_aprobacion_dt = datetime.strptime(str(fecha_aprobacion)[:10], '%Y-%m-%d')
-                    fecha_vencimiento_dt = fecha_aprobacion_dt + timedelta(days=int(dias_credito))
-                    fecha_vencimiento = fecha_vencimiento_dt.isoformat()
-                if not obs_retencion:
-                    obs_retencion = f'Retención del {porcentaje_retencion}% por IGV según normativa peruana. Monto: S/ {monto_total:.2f} > S/ 700. Se retiene S/ {monto_retenido:.2f} para la SUNAT.'
-            else:
-                tiene_retencion = False
-                monto_retenido = 0
-                monto_a_pagar = monto_total
-                estado_credito = 'No aplica (monto < S/ 700)'
+        # REGLA (Erika 26/10/2026): la retención es SOLO retención y nadie la escribe a mano. El % es 3 (solo Erika
+        # lo cambia), el retenido y el monto a pagar se calculan y la observación se arma sola. Estado de crédito,
+        # fecha de aprobación, vencimiento y días ya no vienen del formulario: salen de la condición fija del PV.
+        from utils import es_duena_reportes
+        if not es_duena_reportes():
+            porcentaje_retencion = 3.00
+        porcentaje_retencion = min(max(float(porcentaje_retencion or 0), 0.0), 100.0)
+        estado_credito = None
+        fecha_aprobacion = None
+        if tiene_retencion and monto_total > 700:
+            monto_retenido = round(monto_total * porcentaje_retencion / 100, 2)
+            monto_a_pagar = round(monto_total - monto_retenido, 2)
+            pct_txt = f'{porcentaje_retencion:.2f}'.rstrip('0').rstrip('.')
+            obs_retencion = (f'Retención del {pct_txt}% del IGV: monto S/ {monto_total:.2f}, '
+                             f'retenido S/ {monto_retenido:.2f}, a pagar S/ {monto_a_pagar:.2f}.')
         else:
-            # Sin retención el cliente paga el total (antes quedaba en 0 y la cuenta por cobrar no cuadraba)
+            if tiene_retencion:
+                estado_credito = 'No aplica (monto < S/ 700)'
+            tiene_retencion = False
             monto_retenido = 0
             monto_a_pagar = monto_total
-        if es_credito and not fecha_vencimiento:
-            from datetime import timedelta
-            try:
-                dias = int(dias_credito or 30)
-            except (TypeError, ValueError):
-                dias = 30
-            dias_credito = dias
-            fecha_vencimiento = (datetime.now() + timedelta(days=dias)).date().isoformat()
+            obs_retencion = None
+        # Vencimiento = emisión + días de la condición fija (nadie lo edita)
+        from datetime import timedelta
+        if es_credito and dias_credito:
+            fecha_vencimiento = (datetime.now() + timedelta(days=int(dias_credito))).date().isoformat()
+        else:
+            fecha_vencimiento = None
         
         # Preparar datos para guardar
         comprobante_data = {
@@ -3362,11 +3356,11 @@ def api_comprobantes_guardar():
         # CREAR NUEVO COMPROBANTE
         # ============================================================
         numero_enviado = str(comprobante_data['numero'] or '').strip()
-        # No se repite una factura de la misma guía o PC (pedido de Erika 20/10/2026 22:54)
+        # No se repite una factura de la misma guía o PV (pedido de Erika 20/10/2026 22:54)
         duplicada = _factura_duplicada(data, pc_origen)
         if duplicada:
             return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'FACTURA DUPLICADA: NO SE CREÓ', 'error': duplicada}), 409
-        # La factura queda en la empresa de su guía / PC / cotización (o la elegida arriba).
+        # La factura queda en la empresa de su guía / PV / cotización (o la elegida arriba).
         # La numeración es por empresa: cada RUC tiene su propia serie F001.
         empresa_comp = empresa_para_crear(
             empresa_de(None, 'guias_remision', "serie || '-' || numero", comprobante_data.get('guia_vinculada'))
@@ -3692,7 +3686,7 @@ def api_notas_credito_eliminar_permanente(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================
-# PEDIDO COMPRA (PC) - API
+# PEDIDO COMPRA (PV) - API
 # ============================================================
 
 @ventas_bp.route('/ventas/api/pedido-compra/listar', methods=['GET'])
@@ -3709,7 +3703,7 @@ _OC_CLIENTE_LISTA = False
 
 
 def _asegurar_columna_oc_cliente():
-    """N° de la orden de compra del cliente en la PC (migración 011; aquí por si la base aún no la tiene)."""
+    """N° de la orden de compra del cliente en la PV (migración 011; aquí por si la base aún no la tiene)."""
     global _OC_CLIENTE_LISTA
     if not _OC_CLIENTE_LISTA:
         if not db_query("""SELECT 1 FROM information_schema.columns
@@ -3726,7 +3720,7 @@ def api_pedido_compra_guardar():
         usuario_id = session.get('usuario_id')
         data['creado_por'] = usuario_id
 
-        # Condición de pago: SIEMPRE la escribe la persona leyendo la OC del cliente (pedido de Erika 19/10/2026).
+        # Condición de pago: SIEMPRE la escribe la persona leyendo la PC (Pedido del cliente) (pedido de Erika 19/10/2026).
         # No se copia de la cotización: el cliente cotizado a 7 días a veces manda su OC a 120 días.
         condicion = normalizar_condicion(data.get('condicion_pago') or data.get('condicion_atencion'))
         if not condicion:
@@ -3756,9 +3750,9 @@ def api_pedido_compra_guardar():
             check_result = db_query(check_query, (pc_id,))
             
             if not check_result:
-                return jsonify({'success': False, 'error': f'PC con ID {pc_id} no encontrado'}), 404
+                return jsonify({'success': False, 'error': f'PV con ID {pc_id} no encontrado'}), 404
             
-            print(f"✅ PC existente encontrado: {check_result[0]['numero']}")
+            print(f"✅ PV existente encontrado: {check_result[0]['numero']}")
         
         # ============================================================
         # SI VIENE DE UNA COTIZACIÓN, OBTENER DATOS ADICIONALES
@@ -3790,7 +3784,7 @@ def api_pedido_compra_guardar():
             estado_cot = estado_cot[0]['estado'] or ''
             if estado_cot in ('Anulada', 'Rechazada'):
                 return jsonify({'success': False,
-                                'error': f'No se puede registrar un PC sobre una cotización "{estado_cot}"'}), 409
+                                'error': f'No se puede registrar un PV sobre una cotización "{estado_cot}"'}), 409
             if estado_cot in ('Borrador', 'En revisión', 'Por validar') and _requiere_validacion_previa():
                 return jsonify({'success': False,
                                 'error': f'La cotización está en "{estado_cot}". Debe validarse/generarse antes de registrar el pedido del cliente.'}), 409
@@ -3798,7 +3792,7 @@ def api_pedido_compra_guardar():
                                   WHERE cotizacion_id = %s AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')""",
                                (cotizacion_id,))
             if previos:
-                advertencia = ('Atención: esta cotización ya tiene el/los PC ' +
+                advertencia = ('Atención: esta cotización ya tiene el/los PV ' +
                                ', '.join(p['numero'] or '' for p in previos) +
                                '. Verifica que no sea un pedido duplicado.')
 
@@ -3834,15 +3828,15 @@ def api_pedido_compra_guardar():
         # GENERAR NÚMERO SI ES NUEVO Y NO TIENE
         # ============================================================
         if not pc_id and data.get('numero') and db_query("SELECT 1 FROM pedido_compra_pc WHERE numero = %s", (data['numero'],)):
-            print(f"⚠️ Número de PC {data['numero']} ya existe; se asigna uno nuevo")
+            print(f"⚠️ Número de PV {data['numero']} ya existe; se asigna uno nuevo")
             data['numero'] = None
         if not pc_id and not data.get('numero'):
             # N° interno correlativo por empresa: PC-KCF-000001, PC-AGD-000001... (pedido de Erika 19/10/2026).
-            # El número de la OC del cliente (Komatsu: IT40...) va aparte en oc_cliente. Las PC antiguas no se renumeran.
+            # El número de la PC (Pedido del cliente) (Komatsu: IT40...) va aparte en oc_cliente. Las PV antiguas no se renumeran.
             empresa_pc = empresa_para_crear(empresa_de(None, 'cotizaciones', 'id', cotizacion_id)
                                             or empresa_de(None, 'cotizaciones', 'numero_cotizacion', cotizacion_numero))
             codigo_emp = ((empresa_por_id(empresa_pc) or {}).get('codigo') or 'KCF').upper()
-            prefijo = f"PC-{codigo_emp}-"
+            prefijo = f"PV-{codigo_emp}-"  # PV = Pedido de venta (Erika 26/10/2026)
             data['numero'] = prefijo   # guardar_pc_db pone el correlativo dentro de la transacción
         
         # Fecha si no tiene
@@ -3850,9 +3844,9 @@ def api_pedido_compra_guardar():
             data['fecha'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         # ============================================================
-        # GUARDAR EL PC (INSERT O UPDATE)
+        # GUARDAR EL PV (INSERT O UPDATE)
         # ============================================================
-        # 24/10/2026 (Erika): el PC lleva la moneda y el TC de su cotización (o los que se escriban en el PC)
+        # 24/10/2026 (Erika): el PV lleva la moneda y el TC de su cotización (o los que se escriban en el PV)
         try:
             asegurar_moneda()
             cot_m = db_query("SELECT moneda, tipo_cambio FROM cotizaciones WHERE id = %s", (cotizacion_id,)) if cotizacion_id else []
@@ -3874,7 +3868,7 @@ def api_pedido_compra_guardar():
                        (data['oc_cliente'] or None, result['id']))
 
         if result:
-            # 24/10/2026 (Erika): el PC lleva la moneda y el TC de su cotización (o los que se escriban en el PC)
+            # 24/10/2026 (Erika): el PV lleva la moneda y el TC de su cotización (o los que se escriban en el PV)
             db_execute("UPDATE pedido_compra_pc SET moneda = %s, tipo_cambio = %s WHERE id = %s", moneda_pc + (result['id'],))
 
         if result:
@@ -3894,7 +3888,7 @@ def api_pedido_compra_guardar():
             
             return jsonify({
                 'success': True, 
-                'message': 'PC guardado correctamente', 
+                'message': 'PV guardado correctamente', 
                 'data': result,
                 'advertencia': advertencia
             })
@@ -4267,7 +4261,7 @@ def api_despachos_listar():
                     'estado': row.get('estado'),
                     'pc_id': row.get('pc_id'),
                     'pc_numero': row.get('pc_numero'),
-                    # N° de la orden de compra del cliente, debajo del N° PC en Entregas (26/10/2026)
+                    # N° de la orden de compra del cliente, debajo del N° PV en Entregas (26/10/2026)
                     'oc_cliente': row.get('oc_cliente') or '',
                     'cotizacion_id': row.get('cotizacion_id'),
                     'cotizacion_numero': row.get('cotizacion_numero'),
@@ -4312,7 +4306,7 @@ def api_despachos_listar():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def _vincular_despacho_con_pc(data):
-    """Completa pc_id / pc_numero / cotización / items del despacho a partir de su PC o su cotización."""
+    """Completa pc_id / pc_numero / cotización / items del despacho a partir de su PV o su cotización."""
     try:
         pc = None
         if data.get('pc_id'):
@@ -4347,13 +4341,13 @@ def _vincular_despacho_con_pc(data):
             data['items'] = [{
                 'codigo': i.get('codigo') or '',
                 'producto': i.get('producto') or i.get('descripcion') or '',
-                'descripcion_cliente': i.get('descripcion_cliente') or '',   # 24/10/2026: como en la OC del cliente
+                'descripcion_cliente': i.get('descripcion_cliente') or '',   # 24/10/2026: como en la PC (Pedido del cliente)
                 'marca': i.get('marca') or '', 'modelo': i.get('modelo') or '',
                 'cantidad': float(i.get('cantidad_pc') or i.get('cantidad') or 0),
                 'um': i.get('um') or 'NIU',
             } for i in items if isinstance(i, dict)]
     except Exception as e:
-        print(f"⚠️ No se pudo vincular el despacho con su PC: {e}")
+        print(f"⚠️ No se pudo vincular el despacho con su PV: {e}")
 
 
 def _actualizar_despacho(data, fecha_despacho):
@@ -4387,8 +4381,8 @@ def api_despachos_guardar():
         
         print("=" * 80)
         print("🚚 API DESPACHOS GUARDAR")
-        print(f"  - PC ID: {data.get('pc_id')}")
-        print(f"  - PC Número: {data.get('pc_numero')}")
+        print(f"  - PV ID: {data.get('pc_id')}")
+        print(f"  - PV Número: {data.get('pc_numero')}")
         print("=" * 80)
         
         from datetime import datetime, timedelta
@@ -4451,22 +4445,22 @@ def api_despachos_guardar():
         # GUARDAR ITEMS COMO JSON
         # ============================================================
         # ============================================================
-        # VINCULAR CON SU PC (orden: Cotización → PC → Despacho → Guía → Factura)
-        # Si llega solo la cotización (despacho hecho desde Cotizaciones), se busca su PC
-        # para que el despacho lleve PC, productos y empresa, y la guía y la factura lo encuentren.
+        # VINCULAR CON SU PV (orden: Cotización → PV → Despacho → Guía → Factura)
+        # Si llega solo la cotización (despacho hecho desde Cotizaciones), se busca su PV
+        # para que el despacho lleve PV, productos y empresa, y la guía y la factura lo encuentren.
         # ============================================================
         _vincular_despacho_con_pc(data)
 
         if data.get('id'):
             return _actualizar_despacho(data, fecha_despacho)
 
-        # No se repite un despacho del mismo PC (20/10/2026: PC-KCF-000002 quedó con dos despachos de 10 por 10 pedidos)
+        # No se repite un despacho del mismo PV (20/10/2026: PC-KCF-000002 quedó con dos despachos de 10 por 10 pedidos)
         duplicado = _despacho_duplicado(data)
         if duplicado:
             return jsonify({'success': False, 'codigo': 'duplicado', 'titulo': 'DESPACHO DUPLICADO: NO SE CREÓ', 'error': duplicado}), 409
 
         items_json = json.dumps(data.get('items', []))
-        # El despacho queda en la empresa de su PC (o de la cotización, o la elegida arriba)
+        # El despacho queda en la empresa de su PV (o de la cotización, o la elegida arriba)
         empresa_desp = empresa_para_crear(empresa_de(None, 'pedido_compra_pc', 'id', data.get('pc_id'))
                                           or empresa_de(None, 'pedido_compra_pc', 'numero', data.get('pc_numero'))
                                           or empresa_de(None, 'cotizaciones', 'id', data.get('cotizacion_id')))
@@ -4719,7 +4713,7 @@ def api_despachos_obtener(id):
 @ventas_bp.route('/ventas/api/pedido-compra/<int:id>/toggle', methods=['PUT'])
 @login_required
 def api_pedido_compra_toggle(id):
-    """Cambia el estado de un pedido de compra"""
+    """Cambia el estado de un pedido de venta"""
     try:
         data = request.get_json()
         nuevo_estado = data.get('estado')
@@ -4754,11 +4748,11 @@ def api_pedido_compra_toggle(id):
         if result:
             return jsonify({
                 'success': True, 
-                'message': f'PC actualizado a {nuevo_estado}',
+                'message': f'PV actualizado a {nuevo_estado}',
                 'data': result[0]
             })
         
-        return jsonify({'success': False, 'error': 'PC no encontrado'}), 404
+        return jsonify({'success': False, 'error': 'PV no encontrado'}), 404
         
     except Exception as e:
         print(f"❌ Error en api_pedido_compra_toggle: {e}")
@@ -4972,7 +4966,7 @@ def api_devoluciones_toggle(id):
 @ventas_bp.route('/ventas/api/cotizaciones/<int:id>/completa', methods=['GET'])
 @login_required
 def api_cotizaciones_obtener_completa(id):
-    """Obtiene una cotización con sus productos para edición o para crear PC"""
+    """Obtiene una cotización con sus productos para edición o para crear PV"""
     try:
         # Obtener cabecera
         query_cabecera = """
@@ -5085,11 +5079,11 @@ def estado_entrega_valido(valor):
 
 
 def _aplicar_descuento_cotizacion(result):
-    """Reparte el descuento de la cotización en el precio de cada producto (para la PC).
+    """Reparte el descuento de la cotización en el precio de cada producto (para la PV).
 
     El descuento se guarda en la cabecera (descuento_tipo '%' o 'S/', descuento_porcentaje,
     descuento_monto) y, a veces, por línea (descuento_porcentaje / precio_venta_con_descuento).
-    La PC trabaja con precio por producto, así que se le entrega el precio YA descontado en
+    La PV trabaja con precio por producto, así que se le entrega el precio YA descontado en
     precio_neto (valorVenta sigue siendo el precio de lista, que usa la edición de la cotización).
     La suma de cantidad x precio_neto da el subtotal descontado de la cotización (sin IGV).
     """
@@ -5129,7 +5123,7 @@ def _aplicar_descuento_cotizacion(result):
 @ventas_bp.route('/ventas/api/cotizaciones/descuento', methods=['GET'])
 @login_required
 def api_cotizacion_descuento():
-    """Descuento de una cotización por su número, para mostrarlo en el resumen de la PC (pedido de Erika 19/10/2026):
+    """Descuento de una cotización por su número, para mostrarlo en el resumen de la PV (pedido de Erika 19/10/2026):
     precio de lista y precio con descuento de cada producto, tipo (% o S/) y total descontado."""
     numero = (request.args.get('numero') or '').strip()
     if not numero:
@@ -6528,7 +6522,7 @@ def api_clientes_buscar_por_ruc():
 @ventas_bp.route('/ventas/api/cotizaciones/buscar', methods=['GET'])
 @login_required
 def api_cotizaciones_buscar():
-    """Busca cotizaciones por texto (N° cotización, RUC, razón social) para el buscador del modal PC"""
+    """Busca cotizaciones por texto (N° cotización, RUC, razón social) para el buscador del modal PV"""
     try:
         q = request.args.get('q', '').strip()
         if not q or len(q) < 2:
@@ -6604,21 +6598,21 @@ def api_cotizaciones_buscar():
 # ventas.py - Agregar al final del archivo
 
 # ============================================================
-# VALIDACIÓN DE PC - ENDPOINT
+# VALIDACIÓN DE PV - ENDPOINT
 # ============================================================
 
 @ventas_bp.route('/ventas/api/pedido-compra/<int:id>/validar', methods=['POST'])
 @login_required
 def api_pedido_compra_validar(id):
     """
-    Valida un PC contra su cotización asociada.
+    Valida un PV contra su cotización asociada.
     ⚠️ EL STOCK NO BLOQUEA - SOLO INFORMATIVO
     """
     try:
         data = request.get_json()
-        print(f"🔍 Validando PC ID: {id}")
+        print(f"🔍 Validando PV ID: {id}")
         
-        # 1. Obtener el PC
+        # 1. Obtener el PV
         query_pc = """
             SELECT 
                 id, numero, cliente, ruc, monto,
@@ -6633,14 +6627,14 @@ def api_pedido_compra_validar(id):
         pc_result = db_query(query_pc, (id,))
         
         if not pc_result:
-            return jsonify({'success': False, 'error': 'PC no encontrado'}), 404
+            return jsonify({'success': False, 'error': 'PV no encontrado'}), 404
         
         pc = pc_result[0]
         
         # 2. Obtener la cotización asociada
         cotizacion_id = pc.get('cotizacion_id')
         if not cotizacion_id:
-            return jsonify({'success': False, 'error': 'PC no tiene cotización asociada'}), 400
+            return jsonify({'success': False, 'error': 'PV no tiene cotización asociada'}), 400
         
         query_cot = """
             SELECT 
@@ -6660,7 +6654,7 @@ def api_pedido_compra_validar(id):
         
         cotizacion = cot_result[0]
         
-        # 3. Obtener items del PC
+        # 3. Obtener items del PV
         pc_items = []
         if pc.get('items_json'):
             try:
@@ -6800,18 +6794,18 @@ def api_pedido_compra_validar(id):
         if not todas_validas:
             estado = 'PC observado'
             req_compra = 'Bloqueado'
-            mensaje = 'PC con observaciones - requiere corrección'
+            mensaje = 'PV con observaciones - requiere corrección'
         else:
             # ✅ Todas las validaciones OK (excepto stock)
             estado = 'PC conforme'
             if stock_insuficiente:
                 req_compra = 'Sí'  # Requiere compra por falta de stock
-                mensaje = 'PC conforme - requiere compra por falta de stock'
+                mensaje = 'PV conforme - requiere compra por falta de stock'
             else:
                 req_compra = 'No'
-                mensaje = 'PC conforme - listo para despacho'
+                mensaje = 'PV conforme - listo para despacho'
         
-        # 7. Actualizar PC
+        # 7. Actualizar PV
         query_update = """
             UPDATE pedido_compra_pc 
             SET 
@@ -6876,7 +6870,7 @@ def api_pedido_compra_validar(id):
 @ventas_bp.route('/ventas/api/pedido-compra/<int:id>', methods=['GET'])
 @login_required
 def api_pedido_compra_obtener(id):
-    """Obtiene un pedido de compra por su ID con items formateados"""
+    """Obtiene un pedido de venta por su ID con items formateados"""
     try:
         query = """
             SELECT 
@@ -6898,7 +6892,7 @@ def api_pedido_compra_obtener(id):
         result = db_query(query, (id,))
         
         if not result:
-            return jsonify({'success': False, 'error': 'PC no encontrado'}), 404
+            return jsonify({'success': False, 'error': 'PV no encontrado'}), 404
         
         pc = result[0]
         
@@ -6963,7 +6957,7 @@ def api_pedido_compra_obtener(id):
                                 items.append({
                                     'codigo': item.get('codigo', ''),
                                     'producto': item.get('producto', item.get('descripcion', '')),
-                                    'descripcion_cliente': item.get('descripcion_cliente') or '',   # 24/10/2026: como en la OC del cliente
+                                    'descripcion_cliente': item.get('descripcion_cliente') or '',   # 24/10/2026: como en la PC (Pedido del cliente)
                                     'marca': item.get('marca', ''),
                                     'modelo': item.get('modelo', ''),
                                     'cantidad_cotizada': float(item.get('cantidad_cotizada', item.get('cantidad_cot', 0))),
@@ -7023,7 +7017,7 @@ def api_pedido_compra_obtener(id):
                 'precio_pc': float(pc.get('monto', 0)) if pc.get('monto') else 0,
                 'stock': 0
             }]
-            print(f"⚠️ PC {id} sin items, usando item genérico")
+            print(f"⚠️ PV {id} sin items, usando item genérico")
         
         # ============================================================
         # 🔽 FORMATEAR MONTO A 2 DECIMALES
@@ -7811,40 +7805,40 @@ def api_cotizaciones_preview_pdf(id):
 @ventas_bp.route('/ventas/api/pedido-compra/<int:id>', methods=['DELETE'])
 @login_required
 def api_pedido_compra_eliminar(id):
-    """Elimina físicamente un pedido de compra de la base de datos"""
+    """Elimina físicamente un pedido de venta de la base de datos"""
     try:
-        print(f"🗑️ Eliminando físicamente PC ID: {id}")
+        print(f"🗑️ Eliminando físicamente PV ID: {id}")
         
-        # Verificar que el PC existe
+        # Verificar que el PV existe
         query_check = "SELECT id, numero, estado FROM pedido_compra_pc WHERE id = %s"
         result_check = db_query(query_check, (id,))
         
         if not result_check:
-            return jsonify({'success': False, 'error': 'PC no encontrado'}), 404
+            return jsonify({'success': False, 'error': 'PV no encontrado'}), 404
         
         pc = result_check[0]
         estado = pc.get('estado')
         
         # Opcional: Permitir eliminar solo si está anulado
-        # Si quieres permitir eliminar cualquier PC, comenta esta validación
+        # Si quieres permitir eliminar cualquier PV, comenta esta validación
         if estado != 'Anulado':
             return jsonify({
                 'success': False, 
-                'error': f'Solo se pueden eliminar PCs en estado "Anulado". Estado actual: {estado}'
+                'error': f'Solo se pueden eliminar PVs en estado "Anulado". Estado actual: {estado}'
             }), 400
         
-        # Eliminar el PC
+        # Eliminar el PV
         query_delete = "DELETE FROM pedido_compra_pc WHERE id = %s RETURNING id"
         result_delete = db_query(query_delete, (id,))
         
         if result_delete:
             return jsonify({
                 'success': True, 
-                'message': f'PC eliminado correctamente',
+                'message': f'PV eliminado correctamente',
                 'data': {'id': id}
             })
         
-        return jsonify({'success': False, 'error': 'No se pudo eliminar el PC'}), 400
+        return jsonify({'success': False, 'error': 'No se pudo eliminar el PV'}), 400
         
     except Exception as e:
         print(f"❌ Error en api_pedido_compra_eliminar: {e}")
@@ -7853,7 +7847,7 @@ def api_pedido_compra_eliminar(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def obtener_despacho_por_id_db(despacho_id):
-    """Obtiene un despacho con sus items desde el PC asociado"""
+    """Obtiene un despacho con sus items desde el PV asociado"""
     try:
         query = """
             SELECT 
@@ -7870,7 +7864,7 @@ def obtener_despacho_por_id_db(despacho_id):
         
         if result:
             despacho = result[0]
-            # Obtener items del PC si existen
+            # Obtener items del PV si existen
             if despacho.get('pc_items'):
                 try:
                     despacho['items'] = json.loads(despacho['pc_items'])

@@ -1,7 +1,7 @@
 # routes/compras_flujo.py - Compras bajo pedido, multiempresa y multisede
 #
 # Idea central (pensada para personal nuevo):
-#   1. Se compra para un PEDIDO DEL CLIENTE (PC). Comprar "para stock" es la excepción y
+#   1. Se compra para un PEDIDO DEL CLIENTE (PV). Comprar "para stock" es la excepción y
 #      siempre necesita un motivo y la aprobación de una supervisora.
 #   2. Toda orden de compra (OC) dice qué EMPRESA compra (KCF, AGD, ...) y en qué SEDE debe
 #      terminar la mercadería (San Martín de Porres, Breña, ...). Empresas y sedes son datos.
@@ -555,8 +555,8 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
     for eid in {p['empresa_id'] for p in pedidos if p['empresa_id'] is not None}:
         por_empresa[eid] = _stock_libre_empresa(ids, eid)
     # El stock libre se REPARTE entre los pedidos, el más antiguo primero (22/10/2026). Antes cada pedido usaba
-    # todo el stock: con 32 en stock, un PC de 18 y otro de 40, el de 18 salía "cubierto con stock" y el de 40
-    # "comprar 8", pero en total faltan 26 (58 − 32). Ahora al PC más antiguo le tocan 18 y al otro 14.
+    # todo el stock: con 32 en stock, un PV de 18 y otro de 40, el de 18 salía "cubierto con stock" y el de 40
+    # "comprar 8", pero en total faltan 26 (58 − 32). Ahora al PV más antiguo le tocan 18 y al otro 14.
     restante = {}
     for p in sorted(pedidos, key=lambda x: (str(x['fecha'] or ''), x['id'])):
         for it in p['items']:
@@ -1155,7 +1155,7 @@ ESTADOS_OC_ACTIVA = ('Borrador', 'Por aprobar', 'Aprobada', 'Recibida parcial')
 
 def _oc_duplicada(cur, proveedor_id, items, oc_id):
     """Pedido de Erika 20/10/2026 22:54: no se repite una OC. Bloquea si ya hay una OC activa del mismo
-    proveedor para el mismo PC, o con los mismos productos y cantidades. A otro proveedor sí se puede."""
+    proveedor para el mismo PV, o con los mismos productos y cantidades. A otro proveedor sí se puede."""
     cur.execute("SELECT id FROM proveedores WHERE id = %s FOR UPDATE", (proveedor_id,))  # dos personas a la vez: una espera
     pedidos = sorted({i['pedido_id'] for i in items if i['pedido_id']})
     if pedidos:
@@ -1168,7 +1168,7 @@ def _oc_duplicada(cur, proveedor_id, items, oc_id):
         f = cur.fetchone()
         if f:
             raise ErrorCompras(f"⛔ ERROR: Ya existe una Orden de Compra activa para este pedido ({f['numero_orden']}, "
-                               f"PC {f['pcs']}) con este mismo proveedor. No se puede duplicar. "
+                               f"PV {f['pcs']}) con este mismo proveedor. No se puede duplicar. "
                                "Si falta algo, corrige esa orden; si está mal, anúlala primero.")
     firma = sorted((i['producto_id'], str(a_decimal(i['cantidad']).normalize())) for i in items)
     cur.execute("""SELECT oc.id, oc.numero_orden, array_agg(it.producto_id) AS prods, array_agg(it.cantidad) AS cants
@@ -1292,7 +1292,7 @@ def api_orden_guardar():
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s)
                 """, (oc_id, i['producto_id'], i['producto'], i['unidad'], i['cantidad'], i['precio_unitario'], i['total'],
                       i['pedido_id'], i['pedido_numero'], i['cliente'], i.get('cotizacion')))
-            # Vista interna: a qué PC, cotización y cliente corresponde la OC, y el motivo si es sin pedido
+            # Vista interna: a qué PV, cotización y cliente corresponde la OC, y el motivo si es sin pedido
             unir = lambda k: ', '.join(sorted({str(i[k]) for i in items if i.get(k)})) or None
             cur.execute("""UPDATE ordenes_compra SET motivo_compra = %s, pedido_id = %s, pc_numeros = %s,
                                cotizaciones_cliente = %s, clientes_pedido = %s WHERE id = %s""",
@@ -2025,7 +2025,7 @@ def orden_imprimir(oc_id):
                             FROM ordenes_compra_items i
                             LEFT JOIN productos p ON p.id::text = i.producto_id::text
                             WHERE i.orden_compra_id = %s ORDER BY i.id""", (oc_id,))
-        # Pedido de Erika 22/10/2026 (reemplaza el del 20/10): el proveedor no ve el N° PC ni ningún N° interno
+        # Pedido de Erika 22/10/2026 (reemplaza el del 20/10): el proveedor no ve el N° PV ni ningún N° interno
         # Documento para el PROVEEDOR: nunca lleva cliente, cotización del cliente ni motivo interno
         o = {k: v for k, v in dict(o).items() if k not in CAMPOS_CONFIDENCIALES}
         return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},

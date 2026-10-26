@@ -1,8 +1,8 @@
 """
 Pedido de Erika del 19/10/2026 (noche, prompt de Adriel + audio):
-  - PC: N° interno automático por empresa + "N° OC del cliente" opcional; condición de pago en blanco y obligatoria.
+  - PV: N° interno automático por empresa + "N° PC (Pedido del cliente)" opcional; condición de pago en blanco y obligatoria.
   - Cotización: no se guarda sin condición de pago, tiempo de entrega, transporte y parihuela.
-  - Factura: la condición sale del PC (luego guía, luego cliente), nunca de la cotización; observaciones con mayúscula.
+  - Factura: la condición sale del PV (luego guía, luego cliente), nunca de la cotización; observaciones con mayúscula.
   - Clientes: "Crédito aprobado" exige días; "Contado" deja los días en 0.
   - Contraseñas: el administrador asigna una nueva sin pedir la anterior; las antiguas sin cifrar se cifran al entrar.
   - Guía creada desde un despacho queda vinculada a ese despacho.
@@ -41,7 +41,7 @@ def test_normalizar_condicion_escribe_igual_en_todo():
     assert mayuscula_inicial('  pago parcial') == 'Pago parcial'
 
 
-# ---------------------------------------------------------------- PC
+# ---------------------------------------------------------------- PV
 def test_pc_sin_condicion_de_pago_no_se_guarda(vendedor):
     r = _pc(vendedor, numero='PC-ZZN-SINCOND', condicion_pago='')
     assert r.status_code == 400 and r.json['codigo'] == 'falta_condicion'
@@ -53,7 +53,7 @@ def test_pc_numero_interno_automatico_y_oc_del_cliente(vendedor):
     a = _pc(vendedor, numero='', oc_cliente='IT40-123456')
     assert a.status_code == 200, a.json
     na = a.json['data']['numero']
-    assert re.fullmatch(r'PC-[A-Z0-9]+-\d{6}', na), na
+    assert re.fullmatch(r'PV-[A-Z0-9]+-\d{6}', na), na
     b = _pc(vendedor, numero='', oc_cliente='')
     nb = b.json['data']['numero']
     assert nb.rsplit('-', 1)[0] == na.rsplit('-', 1)[0] and int(nb[-6:]) == int(na[-6:]) + 1
@@ -62,7 +62,7 @@ def test_pc_numero_interno_automatico_y_oc_del_cliente(vendedor):
     lista = vendedor.get('/ventas/api/pedido-compra/listar').get_json()
     lista = lista.get('data', lista) if isinstance(lista, dict) else lista
     assert next(p for p in lista if p['numero'] == na)['oc_cliente'] == 'IT40-123456'
-    # La condición de la cotización NO se copia: si no se manda, la PC no se guarda (ya probado arriba)
+    # La condición de la cotización NO se copia: si no se manda, la PV no se guarda (ya probado arriba)
 
 
 def test_pc_numero_no_se_repite_si_se_guardan_a_la_vez(app):
@@ -116,7 +116,8 @@ def test_factura_toma_la_condicion_del_pc_no_de_la_cotizacion(vendedor):
     # La lista de Facturas muestra la condición real (antes decía siempre "Contado")
     lista = vendedor.get('/ventas/api/comprobantes/listar').json['data']
     assert next(c for c in lista if c['id'] == r.json['data']['id'])['condicion'] == 'Crédito 45 días'
-    # 26/10/2026: sin PC manda la ficha del cliente (aquí "Contado"); nadie salvo Erika pone otra condición
+    # 26/10/2026: sin PV manda la ficha del cliente (aquí "Contado"); nadie salvo Erika pone otra condición
+    _sql("UPDATE clientes SET condicion_pago = 'Contado', dias_credito = 0 WHERE numero_documento = '20100070970'", fetch=False)
     r = vendedor.post('/ventas/api/comprobantes/guardar', json={
         'tipo': 'FACTURA', 'serie': 'F001', 'cliente': 'CLIENTE INDUSTRIAL S.A.C.', 'ruc': '20100070970',
         'total': 118, 'subtotal': 100, 'igv': 18, 'condicion': 'Credito 30 Dias', 'estado': 'Borrador', 'items': []})
@@ -207,8 +208,8 @@ def test_pantallas_tienen_las_ayudas_y_los_cambios(vendedor):
     assert "'/ventas/api/comprobantes/condicion-origen?'" in js and 'aplicarCondicionFactura' in js
     # La condición del modal de factura desde cotización ya no se llena con la de la cotización
     assert "cotizacion.condicion_pago === 'Contado' ? 'selected'" not in js
-    # PC: N° interno automático, N° OC del cliente, condición en blanco y obligatoria
-    assert 'id="pcOcCliente"' in html and 'N° PC interno' in html and '— Elegir (leer OC) —' in html
+    # PV: N° interno automático, N° PC (Pedido del cliente), condición en blanco y obligatoria
+    assert 'id="pcOcCliente"' in html and 'N° PV interno' in html and '— Elegir (leer OC) —' in html
     assert 'function pcAvisoCondicion' in html
     assert "numeroPC = 'PC-' + isoLima()" not in js
     base = vendedor.get('/index').get_data(as_text=True)

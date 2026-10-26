@@ -204,7 +204,7 @@ class TestCotizaciones:
 
 
 # ============================================================
-# PEDIDO DEL CLIENTE (PC)
+# PEDIDO DEL CLIENTE (PV)
 # ============================================================
 class TestPedidoCliente:
     def test_pc_requiere_cotizacion_validada(self, vendedor, aprobador):
@@ -219,7 +219,7 @@ class TestPedidoCliente:
         r2 = vendedor.post('/ventas/api/pedido-compra/guardar', json={'cotizacion_id': cid, 'items': [], 'monto': 10, 'condicion_pago': 'Crédito 30 días'})
         assert r2.status_code == 200 and 'ya tiene' in r2.json['advertencia']
         n1, n2 = r1.json['data']['numero'], r2.json['data']['numero']
-        assert n1 != n2 and n1.startswith('PC-')
+        assert n1 != n2 and n1.startswith('PV-')
 
 
 # ============================================================

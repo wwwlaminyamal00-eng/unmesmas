@@ -1,7 +1,7 @@
 """
 Seguimiento comercial (pedido de Erika del 21/10/2026). Cotizaciones inventadas, solo en la base local.
   - Solo gerencia o quien tenga el permiso "Seguimiento".
-  - Sin cerrar = Generada / Enviada sin respuesta; ganada = aceptada, facturada o con PC; perdida = rechazada o "No compró".
+  - Sin cerrar = Generada / Enviada sin respuesta; ganada = aceptada, facturada o con PV; perdida = rechazada o "No compró".
   - Primera llamada a los 3 días; lo que toca hoy o está atrasado sale primero.
   - Tasa de cierre por vendedora.
   - Registrar llamada pide qué dijo el cliente y cuándo volver a llamar; "No compró" pide motivo.
@@ -88,7 +88,7 @@ def test_vigencia():
 def test_situacion_y_llamar_hoy(admin, cots):
     d = _resumen(admin, cots['kcf'])
     ab = _mias(d['abiertas'])
-    assert set(ab) == {'A1', 'A2', 'A5'}                                 # A3 aceptada, A4 con PC, B* no
+    assert set(ab) == {'A1', 'A2', 'A5'}                                 # A3 aceptada, A4 con PV, B* no
     assert ab['A1']['llamar_hoy'] is False and ab['A1']['proxima_llamada'] == (HOY + timedelta(days=2)).isoformat()
     assert ab['A2']['llamar_hoy'] is True and ab['A2']['atraso'] == 7 and ab['A2']['vencida'] is False
     assert ab['A5']['vencida'] is True

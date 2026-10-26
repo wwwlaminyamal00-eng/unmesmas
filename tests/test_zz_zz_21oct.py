@@ -206,7 +206,7 @@ def _hoy_lima():
 
 
 def test_cuentas_con_detalle_oc_pc_productos_estado_y_comentario(admin):
-    """18:38: cada factura dice su OC, su PC, sus productos, si está pendiente / parcial / pagada,
+    """18:38: cada factura dice su OC, su PV, sus productos, si está pendiente / parcial / pagada,
     la fecha real de pago y un comentario de Finanzas."""
     prov = _sql("""INSERT INTO proveedores (razon_social, ruc, direccion, condicion_pago, activo)
                    VALUES ('PROVEEDOR DETALLE ZZ', '20555000111', 'Lima', 'Contado', true) RETURNING id""")[0][0]
@@ -241,7 +241,7 @@ def test_cuentas_con_detalle_oc_pc_productos_estado_y_comentario(admin):
     fila = next(x for x in admin.get('/finanzas/api/cxp?estado=todos').json['data'] if x['id'] == cp)
     assert fila['comentario'] == 'Pagar con la caja de AGD'
     assert admin.post('/finanzas/api/comentario', json={'tipo': 'otro', 'id': cp, 'comentario': 'x'}).status_code == 400
-    # cuentas por cobrar: N° PC y productos de la factura de venta
+    # cuentas por cobrar: N° PV y productos de la factura de venta
     cxc = admin.get('/finanzas/api/cxc?estado=todos').json['data']
     assert all({'estado_pago', 'pc_numero', 'oc_cliente', 'productos', 'fecha_pago_real'} <= set(x) for x in cxc)
     assert all(x['estado_pago'] in ('Por cobrar', 'Cobro parcial', 'Cobrado') for x in cxc)

@@ -46,7 +46,7 @@
         <details class="com-flujo-plegable">
         <summary>ⓘ ¿Cómo es una compra? (7 pasos, del pedido del cliente al inventario)</summary>
         <div class="com-flujo">
-            <div class="com-flujo-paso"><span>1</span><b>Pedido del cliente</b><small>Ventas lo registra (PC)</small></div>
+            <div class="com-flujo-paso"><span>1</span><b>Pedido de venta (PV)</b><small>Ventas lo registra</small></div>
             <div class="com-flujo-paso"><span>2</span><b>Orden de compra (Proveedor)</b><small>Compras: empresa, proveedor y sede</small></div>
             <div class="com-flujo-paso"><span>3</span><b>Aprobación</b><small>Supervisora (no quien la hizo)</small></div>
             <div class="com-flujo-paso"><span>4</span><b>Pago</b><small>Finanzas, solo a la cuenta del proveedor</small></div>
@@ -83,7 +83,7 @@
                 <div>
                     <div class="inv-title">Pedidos de clientes por comprar</div>
                     <div class="inv-help">Marca los productos del <b>mismo proveedor</b> y pulsa "Crear orden de compra".
-                        <b>Compra bajo pedido</b> = PC − lo que ya está en órdenes − el stock asignado a ese PC (el stock se reparte entre los PC, el más antiguo primero, y no se cuenta dos veces).
+                        <b>Compra bajo pedido</b> = PV − lo que ya está en órdenes − el stock asignado a ese PV (el stock se reparte entre los PV, el más antiguo primero, y no se cuenta dos veces).
                         <b>Comprar para stock</b> empieza en 0: comprar de más es una decisión (poca liquidez) y pide motivo.</div>
                 </div>
                 <div class="inv-filters">
@@ -127,7 +127,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° orden de compra (Proveedor)</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC (Pedido de compra)</th><th>N° cotización</th><th>Lugar entrega</th><th>Forma de pago</th><th>Total (inc. IGV)</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <thead><tr><th>N° orden de compra (Proveedor)</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PV (Pedido de venta)</th><th>N° cotización</th><th>Lugar entrega</th><th>Forma de pago</th><th>Total (inc. IGV)</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
                     <tbody id="ocBody"><tr><td colspan="14">Cargando...</td></tr></tbody>
                 </table>
             </div>

@@ -8,10 +8,18 @@
         <div class="modal-body" id="comprobanteForm">
             <!-- Contenido dinámico generado por JavaScript -->
         </div>
-        <div class="modal-foot">
-            <button class="btn btn-secondary" onclick="closeModal('comprobanteModal')">Cancelar</button>
-            <button class="btn btn-soft" onclick="saveComprobante('Borrador')">💾 Guardar borrador</button>
-            <button class="btn btn-green" onclick="saveComprobante('Emitido')">📄 Emitir comprobante</button>
+        <!-- Pie ordenado (Erika 26/10/2026): a la izquierda las descargas para el portal del cliente, a la derecha guardar -->
+        <div class="modal-foot pie-factura">
+            <div class="pie-descargas">
+                <span class="pie-tit">Para el portal del cliente:</span>
+                <button type="button" class="btn btn-soft btn-desc-fac" id="btnFacPdf" onclick="pieDescargarPdf()">⬇ Descargar PDF</button>
+                <button type="button" class="btn btn-soft btn-desc-fac" id="btnFacXml" onclick="pieDescargarXml()">⬇ Descargar XML</button>
+            </div>
+            <div class="pie-guardar">
+                <button class="btn btn-secondary" onclick="closeModal('comprobanteModal')">Cancelar</button>
+                <button class="btn btn-soft" onclick="saveComprobante('Borrador')">💾 Guardar como borrador</button>
+                <button class="btn btn-green" onclick="saveComprobante('Emitido')">📄 Emitir comprobante</button>
+            </div>
         </div>
     </div>
 </div>

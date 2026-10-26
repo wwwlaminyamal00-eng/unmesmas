@@ -43,7 +43,7 @@
     </div>
     <div class="doc"><span class="titulo">{{ 'HOJA DE RECOJO' if hoja == 'recojo' else 'ORDEN DE COMPRA' }}</span><b>{{ o.numero }}</b>{{ o.fecha.strftime('%d/%m/%Y') if o.fecha else '' }}</div>
 </div>
-{# 22/10/2026: el proveedor no ve ningún N° interno (PC, cotización del cliente): solo se ven dentro del sistema #}
+{# 22/10/2026: el proveedor no ve ningún N° interno (PV, cotización del cliente): solo se ven dentro del sistema #}
 
 <div class="grid">
     <div class="caja">

@@ -1,5 +1,5 @@
 """
-Ventas ▸ Facturas (Erika 26/10/2026): monto a pagar en la lista, condición de pago FIJA (la del PC; solo Erika la
+Ventas ▸ Facturas (Erika 26/10/2026): monto a pagar en la lista, condición de pago FIJA (la del PV; solo Erika la
 cambia y queda en auditoría), cotización que se llena sola, N° MIGO a la vista y XML de SUNAT para descargar.
 Datos inventados, solo en la base local.
 """
@@ -21,7 +21,7 @@ def _factura(cliente, **extra):
 
 def test_condicion_fija_del_pc(vendedor):
     assert _pc(vendedor, numero='PC-ZZF-1', cotizacion_numero='COT-ZZF-1', condicion_pago='Crédito 15 días').status_code == 200
-    # Alguien intenta poner 6 meses: el servidor deja la del PC
+    # Alguien intenta poner 6 meses: el servidor deja la del PV
     r = _factura(vendedor, pc='PC-ZZF-1', condicion='Crédito 180 días')
     assert r.status_code == 200, r.json
     fila = _sql("SELECT condicion_pago, dias_credito FROM comprobantes WHERE id = %s", (r.json['data']['id'],))[0]
@@ -83,8 +83,24 @@ def test_pantalla_de_facturas_26oct():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     for t in ('id="compAPagarVista"', 'function montoAPagarDe', 'function ponerVinculoFactura',
               "ponerVinculoFactura('compCotizacion', pc.cotizacion_numero)", 'sel.disabled = !window.ES_ERIKA',
-              'Solo Erika la puede cambiar', 'Descargar XML (SUNAT)', 'Subir XML / PDF de SUNAT', 'colspan="14"',
+              'Solo Erika la puede cambiar', 'Descargar XML (SUNAT)', 'Adjuntar XML descargado de SUNAT', 'colspan="14"',
               'N° MIGO / conformidad (este cliente lo pide)'):
         assert t in js, t
     pdf = (RAIZ / 'pdf_generator.py').read_text(encoding='utf-8')
     assert 'N° MIGO:' in pdf
+
+
+def test_retencion_calculada_y_con_candado(vendedor):
+    # Erika 26/10/2026: el bloque de retención es solo retención; nadie escribe % ni monto ni vencimiento a mano
+    _sql("DELETE FROM pedido_compra_pc WHERE numero = 'PC-ZZR-1'", fetch=False)
+    assert _pc(vendedor, numero='PC-ZZR-1', cotizacion_numero='COT-ZZR-1', condicion_pago='Crédito 7 días').status_code == 200
+    _sql("UPDATE pedido_compra_pc SET condicion_pago = 'Crédito 7 días' WHERE numero = 'PC-ZZR-1'", fetch=False)
+    r = _factura(vendedor, pc='PC-ZZR-1', tiene_retencion=True, porcentaje_retencion=10, monto_retenido=500,
+                 monto_a_pagar=1, dias_credito=120, fecha_vencimiento='2027-12-31', estado_credito='Aceptada en Crédito',
+                 obs_retencion='texto inventado')
+    assert r.status_code == 200, r.json
+    f = _sql("SELECT porcentaje_retencion, monto_retenido, monto_a_pagar, dias_credito, fecha_vencimiento::date - fecha_emision::date, "
+             "estado_credito, obs_retencion FROM comprobantes WHERE id = %s", (r.json['data']['id'],))[0]
+    assert float(f[0]) == 3 and float(f[1]) == 35.4 and float(f[2]) == 1144.6
+    assert f[3] == 7 and f[4] == 7 and f[5] is None, (f, _sql("SELECT condicion_pago, pc_vinculado FROM comprobantes WHERE id = %s", (r.json["data"]["id"],)))
+    assert 'retenido S/ 35.40' in f[6]

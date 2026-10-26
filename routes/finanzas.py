@@ -264,7 +264,7 @@ def _detalle(tipo, f, saldo, abonado):
         estado = 'Por cobrar' if es_cxc else 'Pendiente'
     pc = f.get('pc_numero')
     if not es_cxc and not pc and f.get('oc_numero'):
-        pc = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PC vinculado'
+        pc = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PV vinculado'
     return {'estado_pago': estado, 'pc_numero': pc,
             'fecha_pago_real': _fmt(f.get('ultimo_abono')) if saldo <= 0 and f.get('ultimo_abono') else None,
             'ultimo_abono': _fmt(f.get('ultimo_abono')),
@@ -446,8 +446,8 @@ def api_movimientos():
         tipo = (request.args.get('tipo') or '').upper()
         q = (request.args.get('q') or '').strip()
         sql_emp, par_emp = filtro_sql('fp.empresa_id')
-        # Trazabilidad (Erika 22/10/2026 12:26): cada cobro/pago con su N° OC y N° PC, igual que en CxC/CxP.
-        # Pagos: N° OC + N° PC (o "Compra a stock"). Cobros: N° PC + N° OC del cliente.
+        # Trazabilidad (Erika 22/10/2026 12:26): cada cobro/pago con su N° OC y N° PV, igual que en CxC/CxP.
+        # Pagos: N° OC + N° PV (o "Compra a stock"). Cobros: N° PV + N° PC (Pedido del cliente).
         sql = """
             SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra
             FROM finanzas_pagos fp
@@ -470,7 +470,7 @@ def api_movimientos():
             sql += " AND fp.tipo = %s"
             params.append(tipo)
         if q:
-            # Buscador: documento, cliente / proveedor, RUC, N.º de operación, banco, N° OC o N° PC
+            # Buscador: documento, cliente / proveedor, RUC, N.º de operación, banco, N° OC o N° PV
             sql += (" AND (fp.documento_numero ILIKE %s OR fp.tercero_nombre ILIKE %s OR fp.tercero_documento ILIKE %s"
                     " OR fp.numero_operacion ILIKE %s OR fp.banco ILIKE %s OR x.oc_numero ILIKE %s OR x.pc_numero ILIKE %s"
                     " OR x.oc_cliente ILIKE %s)")
@@ -482,7 +482,7 @@ def api_movimientos():
             item = {k: _fmt(v) for k, v in f.items()}
             item['monto'] = float(f['monto'])
             if f['tipo'] == 'PAGO' and not f.get('pc_numero') and f.get('oc_numero'):
-                item['pc_numero'] = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PC vinculado'
+                item['pc_numero'] = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PV vinculado'
             data.append(item)
         return jsonify({'success': True, 'data': data})
     except Exception as e:

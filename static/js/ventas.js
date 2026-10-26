@@ -93,7 +93,7 @@ function fechaParaInput(v) {
     return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}T${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
 }
 // Elige la condición de pago aunque esté escrita distinto ("Credito 30 Dias" = "Crédito 30 días")
-// El descuento de la cotización se guarda en la cabecera. Para PC, guía y factura se usa el precio
+// El descuento de la cotización se guarda en la cabecera. Para PV, guía y factura se usa el precio
 // por producto YA descontado (precio_neto, calculado en el servidor); la edición de la cotización
 // sigue usando el precio de lista.
 function preciosNetosCotizacion(data) {
@@ -176,10 +176,11 @@ function esc(v) {
     }[m]));
 }
 
-// N° de la orden de compra del cliente debajo del N° PC: rótulo claro y número que entra en la celda (26/10/2026)
+// N° de la orden de compra del cliente debajo del N° PV: rótulo claro y número que entra en la celda (26/10/2026)
 function ocClienteHTML(v) {
-    if (!v) return '';
-    return `<div class="oc-cliente-celda" title="N° OC del cliente: ${esc(v)}"><span>N° OC del cliente</span>${numDocCelda(v, 'b')}</div>`;
+    // Regla de oro (Erika 26/10/2026): PC = Pedido del cliente (su número, opcional). Si no lo envió: "—"
+    if (!v) return '<div class="oc-cliente-celda" title="El cliente no envió N° de pedido"><span>N° PC (Pedido del cliente)</span><b>—</b></div>';
+    return `<div class="oc-cliente-celda" title="N° PC (Pedido del cliente): ${esc(v)}"><span>N° PC (Pedido del cliente)</span>${numDocCelda(v, 'b')}</div>`;
 }
 
 function sd(v) {
@@ -256,7 +257,7 @@ function badgeStatus(s) {
         else clase = 'b-gray';
     }
     
-    return `<span class="badge ${clase}">${estado || 'Sin estado'}</span>`;
+    return `<span class="badge ${clase}">${(estado || 'Sin estado').replace(/^PC /, 'PV ')}</span>`; // estado guardado "PC …" se lee "PV …" (Erika 26/10/2026)
 }
 
 
@@ -766,7 +767,7 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>N° PC (Pedido de compra)</th>
+                        <th>N° PV (Pedido de venta)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -783,7 +784,7 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>N° PC (Pedido de compra)</th>
+                        <th>N° PV (Pedido de venta)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -804,8 +805,8 @@ function renderPedidos() {
         }
         if (tbody) {
             tbody.innerHTML = `<tr><td colspan="19" style="text-align:center;color:#94A3B8;padding:40px;">
-                📭 No hay PC del cliente registrados. 
-                <br><small>Crea un PC desde cotización o directo.</small>
+                📭 No hay PV (Pedido de venta) registrados. 
+                <br><small>Crea un PV desde cotización o directo.</small>
             </td></tr>`;
         }
         return;
@@ -932,7 +933,7 @@ function renderPedidos() {
                 <th>Item</th>
                 <th>Fecha / Hora</th>
                 <th>Estado</th>
-                <th>N° PC (Pedido de compra)</th>
+                <th>N° PV (Pedido de venta)</th>
                 <th>N° cotización</th>
                 <th>Cliente</th>
                 <th>RUC</th>
@@ -946,7 +947,7 @@ function renderPedidos() {
         
         if (list.length === 0) {
             tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#94A3B8;padding:40px;">
-                📭 No hay PC del cliente que coincidan con los filtros.
+                📭 No hay PV (Pedido de venta) que coincidan con los filtros.
                 ${pedidosData.length > 0 ? `(${pedidosData.length} registros cargados)` : ''}
             </td></tr>`;
             return;
@@ -959,8 +960,8 @@ function renderPedidos() {
             const estado = r.estado || 'Pendiente';
             const esObservado = estado === 'PC observado' || estado === 'Bloqueadof' || estado === 'Observado';
             const estadoBadge = esObservado 
-                ? '<span class="badge b-draft">🔴 PC observado</span>' 
-                : '<span class="badge b-ok">🟢 PC conforme</span>';
+                ? '<span class="badge b-draft">🔴 PV observado</span>' 
+                : '<span class="badge b-ok">🟢 PV conforme</span>';
             
             // 🔽 USAR formatearFechaSinZona en lugar de formatearFecha
             const fechaDisplay = formatearFechaSinZona(r.fecha || r.created_at);
@@ -994,7 +995,7 @@ function renderPedidos() {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>N° PC (Pedido de compra)</th>
+            <th>N° PV (Pedido de venta)</th>
             <th>N° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
@@ -1014,7 +1015,7 @@ function renderPedidos() {
     
     if (list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="19" style="text-align:center;color:#94A3B8;padding:40px;">
-            📭 No hay PC del cliente que coincidan con los filtros.
+            📭 No hay PV (Pedido de venta) que coincidan con los filtros.
             ${pedidosData.length > 0 ? `(${pedidosData.length} registros cargados)` : ''}
         </td></tr>`;
         return;
@@ -1028,8 +1029,8 @@ function renderPedidos() {
         const esAnulado = estado === 'Anulado';
         const esObservado = estado === 'PC observado' || estado === 'Bloqueado' || estado === 'Observado';
         const estadoBadge = esObservado 
-            ? '<span class="badge b-draft">🔴 PC observado</span>' 
-            : '<span class="badge b-ok">🟢 PC conforme</span>';
+            ? '<span class="badge b-draft">🔴 PV observado</span>' 
+            : '<span class="badge b-ok">🟢 PV conforme</span>';
         
         const menuHtml = esAnulado 
             ? `<button class="kebab" onclick="showPedidoMenu(event, ${r.id})" disabled style="opacity:0.5;cursor:not-allowed;">⋮</button>`
@@ -1502,7 +1503,7 @@ function fechasEntregaHTML(r, cerrado) {
     return `<div class="fechas-ent"><small>Cita</small>${citaDespachoHTML(r, cerrado)}</div>` +
         (real ? `<div class="fechas-ent fechas-ent-real"><small>Entrega real</small>${real}</div>` : '');
 }
-// PC: "Descripción" = cantidad y producto en una sola casilla (Erika 26/10/2026); la nota del PC va debajo en gris
+// PV: "Descripción" = cantidad y producto en una sola casilla (Erika 26/10/2026); la nota del PV va debajo en gris
 function itemsPc(r) {
     return (Array.isArray(r.items) ? r.items : []).map(it => ({
         cantidad: it.cantidad_pc ?? it.cantidad ?? it.cantidad_cotizada,
@@ -1523,7 +1524,7 @@ function descripcionPcHTML(r) {
     const mas = items.length > max
         ? `<div class="pc-mas" title="${sd(items.slice(max).map(it => it.cantidad + ' × ' + it.producto).join('\n'))}">+${items.length - max} más</div>` : '';
     const nota = (r.descripcion || r.observaciones || '').trim();
-    const notaHtml = nota ? `<div class="pc-nota" title="Nota del PC">${sd(nota)}</div>` : '';
+    const notaHtml = nota ? `<div class="pc-nota" title="Nota del PV">${sd(nota)}</div>` : '';
     return lineas + mas + notaHtml || '-';
 }
 // ---------- Entregas más simple (Erika 23/10/2026 04:35: "aqui es un si") ----------
@@ -1690,7 +1691,7 @@ function ponerCitaDespacho(id) {
 function generarCompraDesdeDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
     if (!r || !r.pc_numero) return;
-    // Lleva a Compras ▸ Pedidos por comprar con las líneas de este PC sombreadas y marcadas (22/10/2026)
+    // Lleva a Compras ▸ Pedidos por comprar con las líneas de este PV sombreadas y marcadas (22/10/2026)
     window.location.href = '/compras?tab=pedidos&pc=' + encodeURIComponent(r.pc_numero) + '&desp=' + encodeURIComponent(r.numero || '');
 }
 async function facturaDesdeDespacho(id) {
@@ -2318,7 +2319,7 @@ function renderComprobantes() {
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
                     <b style="white-space:nowrap;color:${esCredito ? '#1D4ED8' : '#0F172A'}">${sd(window.normalizarCondicion(r.condicion))}</b>
                     ${/* "Pendiente de aprobación" ya no se muestra (Erika 26/10/2026): nadie lo aprobaba y la condición
-                       ya viene fija del PC aprobado. Solo se avisa si alguien marcó el crédito como rechazado. */
+                       ya viene fija del PV aprobado. Solo se avisa si alguien marcó el crédito como rechazado. */
                       esCredito && estadoCredito === 'Rechazada' ? badgeCredito : ''}
                     ${badgeRetencion}
                 </div>
@@ -3156,14 +3157,14 @@ function generateCotizacionPdfAndSend() {
 
 
 // ============================================================
-// SELECCIÓN MÚLTIPLE DE PRODUCTOS PARA PC
+// SELECCIÓN MÚLTIPLE DE PRODUCTOS PARA PV
 // ============================================================
 
 let productSelectorPcData = [];
 let selectedPcProductIds = new Set();
 
 /**
- * Abre el selector múltiple de productos para PC
+ * Abre el selector múltiple de productos para PV
  */
 function openProductSelectorPC() {
     // Si no hay productos maestros, cargarlos primero
@@ -3192,7 +3193,7 @@ function openProductSelectorPC() {
 }
 
 /**
- * Renderiza la tabla de productos del selector de PC
+ * Renderiza la tabla de productos del selector de PV
  */
 function renderProductSelectorPc() {
     const tbody = document.getElementById('productSelectorPcRows');
@@ -3269,7 +3270,7 @@ function renderProductSelectorPc() {
 }
 
 /**
- * Alterna la selección de un producto en el selector de PC
+ * Alterna la selección de un producto en el selector de PV
  */
 function toggleProductSelectionPc(idKey, checked) {
     if (checked) {
@@ -3298,7 +3299,7 @@ function toggleProductSelectionPc(idKey, checked) {
 }
 
 /**
- * Selecciona todos los productos del selector de PC
+ * Selecciona todos los productos del selector de PV
  */
 function selectAllProductsPc() {
     document.querySelectorAll('.product-select-pc-checkbox').forEach(cb => {
@@ -3312,7 +3313,7 @@ function selectAllProductsPc() {
 }
 
 /**
- * Deselecciona todos los productos del selector de PC
+ * Deselecciona todos los productos del selector de PV
  */
 function deselectAllProductsPc() {
     document.querySelectorAll('.product-select-pc-checkbox').forEach(cb => {
@@ -3326,14 +3327,14 @@ function deselectAllProductsPc() {
 }
 
 /**
- * Filtra los productos del selector de PC por búsqueda
+ * Filtra los productos del selector de PV por búsqueda
  */
 function filterProductSelectorPc() {
     renderProductSelectorPc();
 }
 
 /**
- * Agrega los productos seleccionados a la tabla del PC
+ * Agrega los productos seleccionados a la tabla del PV
  */
 function addSelectedProductsPc() {
     if (selectedPcProductIds.size === 0) {
@@ -3365,7 +3366,7 @@ function addSelectedProductsPc() {
         const precio = parseFloat(product.valorVenta) || 0;
         const stock = parseInt(product.stock) || 0;
         
-        // Agregar fila a la tabla del PC
+        // Agregar fila a la tabla del PV
         agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio, stock);
         
         addedCount++;
@@ -3452,7 +3453,7 @@ function agregarItemPCTable(codigo, descripcion, marca, modelo, cantidad, precio
 
 
 /**
- * Alterna todos los checkboxes del selector de PC
+ * Alterna todos los checkboxes del selector de PV
  */
 function toggleAllProductCheckboxesPc(checked) {
     document.querySelectorAll('.product-select-pc-checkbox').forEach(cb => {
@@ -3469,12 +3470,12 @@ function toggleAllProductCheckboxesPc(checked) {
 
 
 // ============================================================
-// FUNCIONES DE GUARDADO PARA PC, DESPACHO, GUÍAS, ETC.
+// FUNCIONES DE GUARDADO PARA PV, DESPACHO, GUÍAS, ETC.
 // ============================================================
 
 async function _savePedidoCompra(estado) {
     try {
-        console.log('🔄 Guardando PC (Pedido de compra)...', { estado });
+        console.log('🔄 Guardando PV (Pedido de venta)...', { estado });
         
         // Obtener validaciones
         const validaciones = {
@@ -3545,27 +3546,27 @@ async function _savePedidoCompra(estado) {
             
         
             const mensaje = hasObservations ? 'guardado con observaciones' : 'guardado correctamente';
-            showToast(`✅ PC ${mensaje}`, 'success');
+            showToast(`✅ PV ${mensaje}`, 'success');
             closeModal('pedidoCompraModal');
             await loadPedidos();
         } else {
             showToast('❌ Error: ' + (response.error || 'No se pudo guardar'), 'error');
         }
     } catch (error) {
-        console.error('❌ Error guardando PC:', error);
-        showToast('❌ Error al guardar el PC: ' + error.message, 'error');
+        console.error('❌ Error guardando PV:', error);
+        showToast('❌ Error al guardar el PV: ' + error.message, 'error');
     }
 }
 
 // Nueva función pública con confirmación - MISMO NOMBRE que usa el botón
 function savePedidoCompra(estado) {
-    const numero = document.getElementById('pcNumero')?.value || 'nuevo PC';
+    const numero = document.getElementById('pcNumero')?.value || 'nuevo PV';
     const cliente = document.getElementById('pcCliente')?.value || 'el cliente';
     const estadoLabel = estado || 'PC conforme';
 
     showConfirmModal(
-        '💾 ¿Guardar Pedido de Compra?',
-        `Vas a guardar el PC <b>${numero}</b> de <b>${cliente}</b> como <b>"${estadoLabel}"</b>.`,
+        '💾 ¿Guardar Pedido de venta?',
+        `Vas a guardar el PV <b>${numero}</b> de <b>${cliente}</b> como <b>"${estadoLabel}"</b>.`,
         '⚠️ Verifica que los datos y validaciones estén correctos antes de continuar.',
         async function() {
             await _savePedidoCompra(estado);
@@ -3802,8 +3803,8 @@ function renderComprobanteFormContent(isEdit, data) {
     const _condFac = window.normalizarCondicion ? window.normalizarCondicion(data?.condicion || data?.condicion_pago || '') : (data?.condicion || '');
     const _opcFac = ['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'];
     if (_condFac && !_opcFac.includes(_condFac)) _opcFac.push(_condFac);
-    // Factura nueva: la condición empieza vacía y se llena sola (PC → guía → cliente); antes quedaba "Contado" sin avisar
-    const condicionOptions = (_condFac ? '' : '<option value="" selected>— Se llena sola: elige PC, guía, cotización o RUC —</option>') +
+    // Factura nueva: la condición empieza vacía y se llena sola (PV → guía → cliente); antes quedaba "Contado" sin avisar
+    const condicionOptions = (_condFac ? '' : '<option value="" selected>— Se llena sola: elige PV, guía, cotización o RUC —</option>') +
         _opcFac.map(o => `<option value="${o}" ${_condFac === o ? 'selected' : ''}>${o}</option>`).join('');
     const _condicionOptionsAntiguas = `
         <option value="Contado" ${data?.condicion === 'Contado' ? 'selected' : ''}>Contado</option>
@@ -3841,7 +3842,7 @@ function renderComprobanteFormContent(isEdit, data) {
         '<div style="padding:20px;text-align:center;color:#94A3B8;">📭 Seleccione una cotización o guía para ver los productos</div>';
     
     return `
-        <!-- SECCIÓN: DOCUMENTOS VINCULADOS (y N° OC del cliente en la misma fila, Erika 25/10/2026: "comprimir") -->
+        <!-- SECCIÓN: DOCUMENTOS VINCULADOS (y N° PC (Pedido del cliente) en la misma fila, Erika 25/10/2026: "comprimir") -->
         <div class="ficha-section">
             <div class="ficha-section-title">🧾 Documentos vinculados</div>
             <div class="ficha-grid">
@@ -3860,14 +3861,14 @@ function renderComprobanteFormContent(isEdit, data) {
                     </select>
                 </div>
                 <div class="form-field col-3">
-                    <label>PC vinculado</label>
+                    <label>PV vinculado</label>
                     <select id="compPC" onchange="loadComprobanteFromPC(this.value); actualizarObservacionesComprobante()">
                         <option value="">-- Ninguno --</option>
-                        ${pcOptions || '<option value="" disabled>Sin PCs</option>'}
+                        ${pcOptions || '<option value="" disabled>Sin PVs</option>'}
                     </select>
                 </div>
                 <div class="form-field col-3">
-                    <label>N° OC del cliente (opcional)</label>
+                    <label>N° PC (Pedido del cliente), opcional</label>
                     <input id="compOrdenCompra" placeholder="Ej: OC-04705 (sale en el PDF)" value="${data?.orden_compra_cliente || ''}">
                 </div>
             </div>
@@ -3900,8 +3901,8 @@ function renderComprobanteFormContent(isEdit, data) {
                 </div>
                 <div class="form-field col-3">
                     <label>Moneda</label>
-                    <select id="compMoneda" title="Vacío = la moneda del PC">
-                        <option value="" ${!data?.moneda ? 'selected' : ''}>Como el PC</option>
+                    <select id="compMoneda" title="Vacío = la moneda del PV">
+                        <option value="" ${!data?.moneda ? 'selected' : ''}>Como el PV</option>
                         <option value="PEN" ${data?.moneda === 'PEN' ? 'selected' : ''}>Soles (S/)</option>
                         <option value="USD" ${data?.moneda === 'USD' ? 'selected' : ''}>Dólares (US$)</option>
                     </select>
@@ -4005,43 +4006,32 @@ function renderComprobanteFormContent(isEdit, data) {
                         ⚠️ La retención está activa pero la condición de pago NO es crédito. Verifica que sea correcto.
                     </div>
                     
-                    <div class="form-field col-3">
-                        <label style="font-weight: 900;">Estado del Crédito</label>
-                        <select id="compEstadoCredito" style="font-weight: 900; border: 2px solid #2563EB;">
-                            ${estadoCreditoOptions}
-                        </select>
+                    <!-- Solo retención (Erika 26/10/2026): sin estado de crédito, fechas ni días; todo calculado y con candado -->
+                    <div class="ret-resumen">
+                        <div class="ret-card">
+                            <span class="ret-tit">Monto total (incluye IGV)</span>
+                            <input id="compRetTotal" class="ret-valor" value="${Number(montoTotal || 0).toFixed(2)}" readonly tabindex="-1">
+                        </div>
+                        <div class="ret-card ret-pct">
+                            <span class="ret-tit">% de retención ${window.ES_ERIKA ? '' : '🔒'}</span>
+                            <input id="compPorcentajeRetencion" class="ret-valor" type="number" value="${Number(data?.porcentaje_retencion || 3).toFixed(2)}" step="0.01" min="0" max="100"
+                                   ${window.ES_ERIKA ? 'onchange="calcularRetencionComprobante()"' : 'readonly tabindex="-1"'}>
+                            <small>${window.ES_ERIKA ? 'Normativa: 3%. Solo tú lo puedes cambiar.' : 'Fijo 3% (normativa SUNAT)'}</small>
+                        </div>
+                        <div class="ret-card ret-retenido">
+                            <span class="ret-tit">Monto retenido</span>
+                            <input id="compMontoRetenido" class="ret-valor" value="${montoRetenidoCalculado.toFixed(2)}" readonly tabindex="-1">
+                            <small>Lo paga el cliente a la SUNAT</small>
+                        </div>
+                        <div class="ret-card ret-pagar">
+                            <span class="ret-tit">Monto a pagar</span>
+                            <input id="compMontoAPagar" class="ret-valor" value="${(montoTotal - montoRetenidoCalculado).toFixed(2)}" readonly tabindex="-1">
+                            <small>Lo que el cliente nos deposita</small>
+                        </div>
                     </div>
-                    <div class="form-field col-2">
-                        <label style="font-weight: 900;">Fecha Aprobación</label>
-                        <input id="compFechaAprobacion" type="date" value="${data?.fecha_aprobacion || today()}" style="font-weight: 800;">
-                    </div>
-                    <div class="form-field col-2">
-                        <label style="font-weight: 900; color: #DC2626;">Fecha Vencimiento</label>
-                        <input id="compFechaVencimiento" type="date" value="${data?.fecha_vencimiento || ''}" style="font-weight: 800; color: #DC2626;" readonly>
-                    </div>
-                    <div class="form-field col-2">
-                        <label style="font-weight: 900; color: #1D4ED8;">Días de Crédito</label>
-                        <input id="compDiasCredito" type="number" value="${data?.dias_credito || 30}" min="1" max="180" style="font-weight: 900; color: #1D4ED8;" 
-                               onchange="calcularFechaVencimientoComprobante(); calcularRetencionComprobante()">
-                    </div>
-                    <div class="form-field col-3">
-                        <label style="font-weight: 900; color: #DC2626;">% Retención</label>
-                        <input id="compPorcentajeRetencion" type="number" value="${data?.porcentaje_retencion || 3.00}" step="0.01" min="0" max="100" style="font-weight: 900; color: #DC2626; border-color: #DC2626;" 
-                               onchange="calcularRetencionComprobante()">
-                        <small style="color: #64748B; font-size: 8px;">Por defecto 3% (normativa peruana)</small>
-                    </div>
-                    <div class="form-field col-3">
-                        <label style="font-weight: 900; color: #DC2626;">Monto Retenido</label>
-                        <input id="compMontoRetenido" type="number" value="${data?.monto_retenido || montoRetenidoCalculado.toFixed(2)}" step="0.01" style="font-weight: 900; color: #DC2626; border-color: #DC2626;" 
-                               onchange="actualizarMontoRetenidoManual()">
-                    </div>
-                    <div class="form-field col-3">
-                        <label style="font-weight: 900; color: #059669;">Monto a Pagar (97%)</label>
-                        <input id="compMontoAPagar" type="number" value="${(montoTotal - (data?.monto_retenido || montoRetenidoCalculado)).toFixed(2)}" step="0.01" style="font-weight: 900; color: #059669; border-color: #059669; background: #F1F5F9;" readonly>
-                    </div>
-                    <div class="form-field col-6">
-                        <label style="font-weight: 900;">Observaciones de Retención</label>
-                        <input id="compObsRetencion" value="${data?.obs_retencion || ''}" placeholder="Ej: Retención del 3% por IGV según normativa..." style="font-weight: 700; border: 1px solid #2563EB;">
+                    <div class="form-field col-12">
+                        <label style="font-weight: 900;">Observación de la retención <small style="font-weight:600;color:#64748B;">(automática)</small></label>
+                        <input id="compObsRetencion" value="${data?.obs_retencion || ''}" readonly tabindex="-1" class="ret-obs">
                     </div>
                 </div>
                 
@@ -4066,9 +4056,10 @@ function renderComprobanteFormContent(isEdit, data) {
         
         <!-- SECCIÓN: OBSERVACIONES -->
         <div class="ficha-section">
+            <div class="ficha-section-title">📝 Observaciones</div>
             <div class="ficha-grid">
                 <div class="form-field col-12">
-                    <label>Observaciones</label>
+                    <label>Observaciones de la factura <small style="font-weight:600;color:#64748B;">(opcional, salen en el PDF)</small></label>
                     <textarea id="compObs" placeholder="Observaciones del comprobante">${data?.observaciones || ''}</textarea>
                 </div>
             </div>
@@ -4112,8 +4103,8 @@ function calcularRetencionComprobante() {
     const porcentajeRetencion = parseFloat(document.getElementById('compPorcentajeRetencion')?.value) || 3.00;
     const diasCredito = parseInt(document.getElementById('compDiasCredito')?.value) || 30;
     
-    // Calcular monto retenido (3% del total)
-    const montoRetenido = (montoTotal * porcentajeRetencion) / 100;
+    // Calcular monto retenido (3% del total, 2 decimales). Nadie lo escribe a mano (Erika 26/10/2026).
+    const montoRetenido = Math.round(montoTotal * porcentajeRetencion) / 100;
     const montoAPagar = montoTotal - montoRetenido;
     
     // Actualizar campos
@@ -4127,6 +4118,10 @@ function calcularRetencionComprobante() {
     if (montoAPagarInput) {
         montoAPagarInput.value = montoAPagar.toFixed(2);
     }
+    const retTotal = document.getElementById('compRetTotal');
+    if (retTotal) retTotal.value = montoTotal.toFixed(2);
+    const obsRet = document.getElementById('compObsRetencion');
+    if (obsRet) obsRet.value = `Retención del ${porcentajeRetencion.toFixed(2).replace(/\.00$/, '')}% del IGV: monto S/ ${montoTotal.toFixed(2)}, retenido S/ ${montoRetenido.toFixed(2)}, a pagar S/ ${montoAPagar.toFixed(2)}.`;
     
     // Verificar si aplica retención (monto > S/ 700)
     const aplicaRetencion = montoTotal > 700;
@@ -4352,7 +4347,7 @@ function toggleRetencion() {
         if (hiddenField) hiddenField.value = 'true';
         
         // Calcular fecha de vencimiento automáticamente
-        calcularFechaVencimientoComprobante();
+        calcularRetencionComprobante();
         
         showToast('🔒 Retención activada', 'success');
     }
@@ -4556,6 +4551,8 @@ async function openComprobanteModal(id = null) {
         cargarDatosComprobante(data);
     }
     
+    actualizarPieFactura();
+    
     // 🔽 AGREGAR CAMPO OCULTO PARA GUARDAR ESTADO DE RETENCIÓN
     let hiddenField = document.getElementById('compTieneRetencion');
     if (!hiddenField) {
@@ -4583,7 +4580,7 @@ async function openComprobanteModal(id = null) {
                 document.getElementById('retencionStatusLabel').textContent = '✅ Activa';
                 document.getElementById('retencionStatusLabel').style.color = '#16A34A';
             }
-            calcularFechaVencimientoComprobante();
+            calcularRetencionComprobante();
         }
         
         // Verificar alerta de condición
@@ -4671,12 +4668,7 @@ function cargarDatosComprobante(data) {
     setTimeout(revisarMigoFactura, 100);
     
     // 🔽 DATOS DE RETENCIÓN
-    setVal('compEstadoCredito', data.estado_credito || 'Pendiente de aprobación');
-    setVal('compFechaAprobacion', data.fecha_aprobacion || today());
-    setVal('compFechaVencimiento', data.fecha_vencimiento || '');
-    setVal('compDiasCredito', data.dias_credito || 30);
-    setVal('compMontoRetenido', data.monto_retenido || 0);
-    setVal('compObsRetencion', data.obs_retencion || '');
+    // Retención: se recalcula sola al abrir (nadie escribe el monto retenido)
     
     // Productos
     const items = data.items_json || data.items || [];
@@ -4709,13 +4701,13 @@ async function _saveComprobante(estado) {
         const hiddenField = document.getElementById('compTieneRetencion');
         const tieneRetencion = hiddenField ? hiddenField.value === 'true' : false;
         
-        // Condición de pago obligatoria: si sigue vacía se intenta llenar (PC → guía → cliente) antes de guardar
+        // Condición de pago obligatoria: si sigue vacía se intenta llenar (PV → guía → cliente) antes de guardar
         if (!document.getElementById('compCondicion')?.value && typeof aplicarCondicionFactura === 'function') {
             await aplicarCondicionFactura(true);
         }
         const condicion = document.getElementById('compCondicion')?.value || '';
         if (!condicion) {
-            showToast('⚠️ Falta la condición de pago. Elige el PC o la guía, o escríbela (el cliente no tiene una registrada).', 'error');
+            showToast('⚠️ Falta la condición de pago. Elige el PV o la guía, o escríbela (el cliente no tiene una registrada).', 'error');
             document.getElementById('compCondicion')?.focus();
             return;
         }
@@ -4735,10 +4727,7 @@ async function _saveComprobante(estado) {
         
         // Solo guardar datos de retención si está activa
         if (tieneRetencion) {
-            estadoCredito = document.getElementById('compEstadoCredito')?.value || 'Pendiente de aprobación';
-            fechaAprobacion = document.getElementById('compFechaAprobacion')?.value || today();
-            fechaVencimiento = document.getElementById('compFechaVencimiento')?.value || '';
-            diasCredito = parseInt(document.getElementById('compDiasCredito')?.value) || 30;
+            // Estado de crédito, fechas y días ya no se piden aquí: el vencimiento sale de la condición fija del PV
             porcentajeRetencion = parseFloat(document.getElementById('compPorcentajeRetencion')?.value) || 3.00;
             montoRetenido = parseFloat(document.getElementById('compMontoRetenido')?.value) || 0;
             montoAPagar = parseFloat(document.getElementById('compMontoAPagar')?.value) || 0;
@@ -5165,7 +5154,7 @@ async function marcarDespachado(id) {
                     items = despacho.items;
                 }
                 
-                // Si no hay items en el despacho, buscar en el PC
+                // Si no hay items en el despacho, buscar en el PV
                 if (items.length === 0 && despacho.pc_id) {
                     try {
                         const pcResponse = await apiFetch(`/ventas/api/pedido-compra/${despacho.pc_id}`);
@@ -5199,7 +5188,7 @@ async function marcarDespachado(id) {
                             }).filter(item => item !== null);
                         }
                     } catch (e) {
-                        console.warn('⚠️ No se pudieron obtener items del PC:', e);
+                        console.warn('⚠️ No se pudieron obtener items del PV:', e);
                     }
                 }
                 
@@ -5782,17 +5771,17 @@ window.createDocFromCotizacion = async function(id, tipo) {
                         break;
                         
                     case 'despacho': {
-                        // Orden del negocio: Cotización → PC → Despacho → Guía → Factura.
-                        // El despacho se hace desde el PC de esta cotización (así lleva PC, productos y empresa,
-                        // y después la guía y la factura lo encuentran). Antes se creaba suelto, sin PC ni productos.
+                        // Orden del negocio: Cotización → PV → Despacho → Guía → Factura.
+                        // El despacho se hace desde el PV de esta cotización (así lleva PV, productos y empresa,
+                        // y después la guía y la factura lo encuentran). Antes se creaba suelto, sin PV ni productos.
                         if (typeof loadPedidos === 'function') {
-                            try { await loadPedidos(); } catch (e) { console.warn('No se pudo leer los PC', e); }
+                            try { await loadPedidos(); } catch (e) { console.warn('No se pudo leer los PV', e); }
                         }
                         const pcsCot = (pedidosData || []).filter(p =>
                             (Number(p.cotizacion_id) === Number(id) || (p.cotizacion_numero && p.cotizacion_numero === cotizacion.numero_cotizacion))
                             && !/anulad/i.test(p.estado || ''));
                         if (pcsCot.length === 0) {
-                            showToast('⚠️ Esta cotización todavía no tiene PC del cliente. Primero registra el PC y luego envíalo a despacho.', 'warning');
+                            showToast('⚠️ Esta cotización todavía no tiene PV (Pedido de venta). Primero registra el PV y luego envíalo a despacho.', 'warning');
                             switchTab('pedido_compra');
                             setTimeout(() => {
                                 openPedidoCompraModalSAP('cot');
@@ -6221,7 +6210,7 @@ async function openComprobanteModalWithData(id, cotizacion) {
                 </select>
             </div>
             <div class="form-field col-4">
-                <label>PC vinculado</label>
+                <label>PV vinculado</label>
                 <select id="compPC" onchange="loadComprobanteFromPC(this.value)">
                     <option value="">-- Ninguno --</option>
                     ${(pedidosData || []).map(p => `<option value="${p.numero}">${p.numero} - ${p.cliente || 'Sin cliente'}</option>`).join('')}
@@ -6279,10 +6268,10 @@ async function openComprobanteModalWithData(id, cotizacion) {
             <div class="form-field col-4">
                 <label>Condición de pago</label>
                 <select id="compCondicion">
-                    <option value="" selected>— Se llena sola desde el PC o el cliente —</option>
+                    <option value="" selected>— Se llena sola desde el PV o el cliente —</option>
                     ${['Contado', 'Contra entrega', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 45 días', 'Crédito 60 días', 'Crédito 90 días', 'Crédito 120 días'].map(o => `<option>${o}</option>`).join('')}
                 </select>
-                <small style="display:block;margin-top:3px;font-size:11px;font-weight:700;color:#92400E">La condición sale del PC del cliente, no de la cotización</small>
+                <small style="display:block;margin-top:3px;font-size:11px;font-weight:700;color:#92400E">La condición sale del PV (Pedido de venta), no de la cotización</small>
             </div>
             <div class="form-field col-12">
                 <label>Observaciones</label>
@@ -6300,7 +6289,7 @@ async function openComprobanteModalWithData(id, cotizacion) {
     
     window._compProductos = productos;
     document.getElementById('comprobanteModal').classList.add('show');
-    // Condición de pago desde el PC de esta cotización (o del cliente); antes quedaba "Contado" (20/10/2026)
+    // Condición de pago desde el PV de esta cotización (o del cliente); antes quedaba "Contado" (20/10/2026)
     if (typeof aplicarCondicionFactura === 'function') setTimeout(aplicarCondicionFactura, 50);
 }
 
@@ -6501,7 +6490,7 @@ window.loadComprobanteFromCotizacion = function(numeroCotizacion) {
                 document.getElementById('compMonto').value = data.total || 0;
                 actualizarObservacionesComprobante();
 
-                // Condición de pago: NO se copia de la cotización; la pone aplicarCondicionFactura (PC → guía → cliente)
+                // Condición de pago: NO se copia de la cotización; la pone aplicarCondicionFactura (PV → guía → cliente)
 
                 // Productos
                 const productos = data.productos || [];
@@ -6532,7 +6521,7 @@ function actualizarObservacionesComprobante() {
     const partes = [];
     if (cot) partes.push(`cotización ${cot}`);
     if (guia) partes.push(`guía ${guia}`);
-    if (pc) partes.push(`PC ${pc}`);
+    if (pc) partes.push(`PV ${pc}`);
 
     const obsEl = document.getElementById('compObs');
     if (obsEl && partes.length > 0) {
@@ -6545,37 +6534,37 @@ function actualizarObservacionesComprobante() {
 
 
 function validatePedidoCompra(id) {
-    // Buscar el PC para mostrar info
+    // Buscar el PV para mostrar info
     const pedido = pedidosData.find(p => p.id === id);
     if (!pedido) {
-        showToast('❌ PC no encontrado', 'error');
+        showToast('❌ PV no encontrado', 'error');
         return;
     }
     
-    const numero = pedido.numero || 'PC-XXXXXX';
+    const numero = pedido.numero || 'PV-XXXXXX';
     const cliente = pedido.cliente || 'Cliente';
     const estado = pedido.estado || 'Desconocido';
     
     // Verificar si ya está validado
     if (estado === 'Validado por Hellen' || estado === 'Validado') {
-        showToast('⚠️ Este PC ya está validado', 'warning');
+        showToast('⚠️ Este PV ya está validado', 'warning');
         return;
     }
     
     // Verificar si está anulado
     if (estado === 'Anulado') {
-        showToast('⚠️ No se puede validar un PC anulado', 'warning');
+        showToast('⚠️ No se puede validar un PV anulado', 'warning');
         return;
     }
     
     showConfirmModal(
-        '✅ ¿Validar PC?',
-        `Estás a punto de marcar el PC <b>${numero}</b> del cliente <b>${cliente}</b> como <b>"Validado por Hellen"</b>.<br><br>Estado actual: <b>${estado}</b>`,
-        '⚠️ Esta acción confirma que el PC ha sido revisado y validado por Hellen. El PC quedará listo para continuar con el proceso.',
+        '✅ ¿Validar PV?',
+        `Estás a punto de marcar el PV <b>${numero}</b> del cliente <b>${cliente}</b> como <b>"Validado por Hellen"</b>.<br><br>Estado actual: <b>${estado}</b>`,
+        '⚠️ Esta acción confirma que el PV ha sido revisado y validado por Hellen. El PV quedará listo para continuar con el proceso.',
         async function() {
             try {
-                console.log(`✅ Validando PC ID: ${id}`);
-                showToast('⏳ Validando PC...', 'info');
+                console.log(`✅ Validando PV ID: ${id}`);
+                showToast('⏳ Validando PV...', 'info');
                 
                 // Cambiar estado a "Validado por Hellen"
                 const response = await apiFetch(`/ventas/api/pedido-compra/${id}/toggle`, {
@@ -6584,7 +6573,7 @@ function validatePedidoCompra(id) {
                 });
                 
                 if (response.success) {
-                    showToast('✅ PC validado por Hellen correctamente', 'success');
+                    showToast('✅ PV validado por Hellen correctamente', 'success');
                     
                     // Recargar datos
                     await loadPedidos();
@@ -6598,11 +6587,11 @@ function validatePedidoCompra(id) {
                     renderPedidos();
                     
                 } else {
-                    showToast('❌ Error: ' + (response.error || 'No se pudo validar el PC'), 'error');
+                    showToast('❌ Error: ' + (response.error || 'No se pudo validar el PV'), 'error');
                 }
             } catch (error) {
-                console.error('❌ Error validando PC:', error);
-                showToast('❌ Error al validar el PC: ' + error.message, 'error');
+                console.error('❌ Error validando PV:', error);
+                showToast('❌ Error al validar el PV: ' + error.message, 'error');
             }
         },
         '✅ Sí, validar'
@@ -6611,15 +6600,15 @@ function validatePedidoCompra(id) {
 
 
 //==========================================================
-//Crear el despacho desde el PC
+//Crear el despacho desde el PV
 //==========================================================
 async function createDespachoFromPedido(id) {
     try {
-        showToast('⏳ Creando despacho desde el PC...', 'info');
+        showToast('⏳ Creando despacho desde el PV...', 'info');
 
         const response = await apiFetch(`/ventas/api/pedido-compra/${id}`);
         if (!response.success) {
-            showToast('❌ No se pudo obtener el PC: ' + (response.error || 'Desconocido'), 'error');
+            showToast('❌ No se pudo obtener el PV: ' + (response.error || 'Desconocido'), 'error');
             return;
         }
         const pc = response.data;
@@ -6635,7 +6624,7 @@ async function createDespachoFromPedido(id) {
             origen: 'ALM-SMP',
             estado: 'Pendiente despacho',
             responsable: pc.responsable || 'Hellen',
-            observaciones: `Generado automáticamente desde PC ${pc.numero || ''}`
+            observaciones: `Generado automáticamente desde PV ${pc.numero || ''}`
         };
 
         const result = await apiFetch('/ventas/api/despachos/guardar', {
@@ -6645,7 +6634,7 @@ async function createDespachoFromPedido(id) {
 
         if (result.success) {
             const nuevoDesp = (Array.isArray(result.data) ? result.data[0] : result.data) || {};  // antes decía "Despacho undefined"
-            showToast(`✅ Despacho ${nuevoDesp.numero || ''} creado desde PC ${pc.numero}`, 'success');
+            showToast(`✅ Despacho ${nuevoDesp.numero || ''} creado desde PV ${pc.numero}`, 'success');
             // Pedido de Erika 20/10/2026: llevar a "Entregas" y resaltar el despacho recién creado
             if (typeof loadDespachos === 'function') await loadDespachos();
             irAPestanaYResaltar('despachar', 'despachoSearch', [nuevoDesp.numero, pc.numero], typeof renderDespachos === 'function' ? renderDespachos : null);
@@ -6660,16 +6649,16 @@ async function createDespachoFromPedido(id) {
 }
 
 //==========================================================
-//Crear la Guia desde el PC
+//Crear la Guia desde el PV
 //==========================================================
 async function createGuiaFromPedido(id) {
     try {
-        showToast('⏳ Creando guía desde el PC...', 'info');
+        showToast('⏳ Creando guía desde el PV...', 'info');
 
-        // 1) Traer los datos completos del PC (mismo endpoint que ya usamos para editar)
+        // 1) Traer los datos completos del PV (mismo endpoint que ya usamos para editar)
         const response = await apiFetch(`/ventas/api/pedido-compra/${id}`);
         if (!response.success) {
-            showToast('❌ No se pudo obtener el PC: ' + (response.error || 'Desconocido'), 'error');
+            showToast('❌ No se pudo obtener el PV: ' + (response.error || 'Desconocido'), 'error');
             return;
         }
         const pc = response.data;
@@ -6686,7 +6675,7 @@ async function createGuiaFromPedido(id) {
         }));
 
         if (items.length === 0) {
-            showToast('⚠️ Este PC no tiene productos, no se puede crear la guía', 'warning');
+            showToast('⚠️ Este PV no tiene productos, no se puede crear la guía', 'warning');
             return;
         }
 
@@ -6699,7 +6688,7 @@ async function createGuiaFromPedido(id) {
             cotizacion_numero: pc.cotizacion_numero || pc.numero || '',
             peso_total: 0,
             items: items,
-            observaciones: `Generado automáticamente desde PC ${pc.numero || ''}`,
+            observaciones: `Generado automáticamente desde PV ${pc.numero || ''}`,
             estado: 'BORRADOR'
         };
 
@@ -6710,7 +6699,7 @@ async function createGuiaFromPedido(id) {
         });
 
         if (result.success) {
-            showToast(`✅ Guía ${result.data.numero} creada desde PC ${pc.numero}`, 'success');
+            showToast(`✅ Guía ${result.data.numero} creada desde PV ${pc.numero}`, 'success');
             if (typeof loadGuias === 'function') loadGuias();
         } else {
             showToast('❌ Error al crear la guía: ' + (result.error || 'Desconocido'), 'error');
@@ -6723,15 +6712,15 @@ async function createGuiaFromPedido(id) {
 }
 
 //==========================================================
-//Crear la factura desde el PC
+//Crear la factura desde el PV
 //==========================================================
 async function createFacturaFromPedido(id) {
     try {
-        showToast('⏳ Creando factura desde el PC...', 'info');
+        showToast('⏳ Creando factura desde el PV...', 'info');
 
         const response = await apiFetch(`/ventas/api/pedido-compra/${id}`);
         if (!response.success) {
-            showToast('❌ No se pudo obtener el PC: ' + (response.error || 'Desconocido'), 'error');
+            showToast('❌ No se pudo obtener el PV: ' + (response.error || 'Desconocido'), 'error');
             return;
         }
         const pc = response.data;
@@ -6749,7 +6738,7 @@ async function createFacturaFromPedido(id) {
         }));
 
         if (items.length === 0) {
-            showToast('⚠️ Este PC no tiene productos, no se puede crear la factura', 'warning');
+            showToast('⚠️ Este PV no tiene productos, no se puede crear la factura', 'warning');
             return;
         }
 
@@ -6760,7 +6749,7 @@ async function createFacturaFromPedido(id) {
         const payload = {
             tipo: 'FACTURA',
             serie: SERIE_FACTURA,
-            moneda: window.Moneda ? Moneda.codigo(pc.moneda) : 'PEN',   // 24/10/2026: la del PC (TC SUNAT de la fecha)
+            moneda: window.Moneda ? Moneda.codigo(pc.moneda) : 'PEN',   // 24/10/2026: la del PV (TC SUNAT de la fecha)
             cliente_tipo_doc: 'RUC',
             ruc: pc.ruc || '',
             cliente: pc.cliente || '',
@@ -6769,7 +6758,7 @@ async function createFacturaFromPedido(id) {
             igv: igv,
             total: total,
             items: items,
-            observaciones: `Generado automáticamente desde PC ${pc.numero || ''}`,
+            observaciones: `Generado automáticamente desde PV ${pc.numero || ''}`,
             estado: 'BORRADOR',
             cotizacion: pc.cotizacion_numero || ''
         };
@@ -6780,7 +6769,7 @@ async function createFacturaFromPedido(id) {
         });
 
         if (result.success) {
-            showToast(`✅ Factura creada desde PC ${pc.numero}`, 'success');
+            showToast(`✅ Factura creada desde PV ${pc.numero}`, 'success');
             if (typeof loadComprobantes === 'function') loadComprobantes();
         } else {
             showToast('❌ Error al crear la factura: ' + (result.error || 'Desconocido'), 'error');
@@ -6793,37 +6782,37 @@ async function createFacturaFromPedido(id) {
 }
 
 function deletePedidoCompra(id) {
-    // Buscar el PC para mostrar info
+    // Buscar el PV para mostrar info
     const pedido = pedidosData.find(p => p.id === id);
     if (!pedido) {
-        showToast('❌ PC no encontrado', 'error');
+        showToast('❌ PV no encontrado', 'error');
         return;
     }
     
-    const numero = pedido.numero || 'PC-XXXXXX';
+    const numero = pedido.numero || 'PV-XXXXXX';
     const cliente = pedido.cliente || 'Cliente';
     const estado = pedido.estado || 'Desconocido';
     
     // Verificar si el estado es 'Anulado' para mostrar mensaje diferente
     const esAnulado = estado === 'Anulado';
     const mensajeAdicional = esAnulado 
-        ? 'El PC ya está anulado y será eliminado permanentemente.'
-        : `⚠️ El PC está en estado "${estado}". Primero será anulado y luego eliminado permanentemente.`;
+        ? 'El PV ya está anulado y será eliminado permanentemente.'
+        : `⚠️ El PV está en estado "${estado}". Primero será anulado y luego eliminado permanentemente.`;
     
     showConfirmModal(
-        '🗑️ ¿Eliminar PC permanentemente?',
-        `Estás a punto de <b>ELIMINAR FÍSICAMENTE</b> el PC <b>${numero}</b> del cliente <b>${cliente}</b>.<br><br>${mensajeAdicional}`,
+        '🗑️ ¿Eliminar PV permanentemente?',
+        `Estás a punto de <b>ELIMINAR FÍSICAMENTE</b> el PV <b>${numero}</b> del cliente <b>${cliente}</b>.<br><br>${mensajeAdicional}`,
         '⚠️ ⚠️ ⚠️ ¡ATENCIÓN! Esta acción es IRREVERSIBLE. El registro será eliminado de la base de datos permanentemente.',
         async function() {
             try {
-                console.log(`🗑️ Eliminando físicamente PC ID: ${id}, estado actual: ${estado}`);
+                console.log(`🗑️ Eliminando físicamente PV ID: ${id}, estado actual: ${estado}`);
                 showToast('⏳ Procesando eliminación...', 'info');
                 
                 let pcId = id;
                 
                 // Si NO está anulado, primero anularlo
                 if (estado !== 'Anulado') {
-                    console.log(`🔄 Anulando PC primero...`);
+                    console.log(`🔄 Anulando PV primero...`);
                     
                     const toggleResponse = await apiFetch(`/ventas/api/pedido-compra/${id}/toggle`, {
                         method: 'PUT',
@@ -6831,11 +6820,11 @@ function deletePedidoCompra(id) {
                     });
                     
                     if (!toggleResponse.success) {
-                        showToast('❌ Error al anular el PC: ' + (toggleResponse.error || 'No se pudo anular'), 'error');
+                        showToast('❌ Error al anular el PV: ' + (toggleResponse.error || 'No se pudo anular'), 'error');
                         return;
                     }
                     
-                    showToast('✅ PC anulado, ahora eliminando...', 'info');
+                    showToast('✅ PV anulado, ahora eliminando...', 'info');
                     
                     // Esperar un momento para que la BD se actualice
                     await new Promise(resolve => setTimeout(resolve, 500));
@@ -6847,7 +6836,7 @@ function deletePedidoCompra(id) {
                 });
                 
                 if (response.success) {
-                    showToast('✅ PC eliminado permanentemente', 'success');
+                    showToast('✅ PV eliminado permanentemente', 'success');
                     
                     // Recargar datos
                     await loadPedidos();
@@ -6864,21 +6853,21 @@ function deletePedidoCompra(id) {
                     // Si el DELETE falla, mostrar el error específico
                     const errorMsg = response.error || 'No se pudo eliminar';
                     if (errorMsg.includes('Anulado')) {
-                        showToast('❌ Solo se pueden eliminar PCs anulados. Intenta nuevamente.', 'error');
+                        showToast('❌ Solo se pueden eliminar PVs anulados. Intenta nuevamente.', 'error');
                     } else {
                         showToast('❌ Error: ' + errorMsg, 'error');
                     }
                 }
             } catch (error) {
-                console.error('❌ Error eliminando PC:', error);
+                console.error('❌ Error eliminando PV:', error);
                 
                 // Mostrar mensaje más descriptivo según el error
                 if (error.message.includes('404')) {
-                    showToast('❌ El PC ya no existe en el servidor', 'error');
+                    showToast('❌ El PV ya no existe en el servidor', 'error');
                 } else if (error.message.includes('400')) {
-                    showToast('❌ Solo se pueden eliminar PCs en estado "Anulado"', 'error');
+                    showToast('❌ Solo se pueden eliminar PVs en estado "Anulado"', 'error');
                 } else {
-                    showToast('❌ Error al eliminar el PC: ' + error.message, 'error');
+                    showToast('❌ Error al eliminar el PV: ' + error.message, 'error');
                 }
             }
         },
@@ -7600,7 +7589,7 @@ function updateQuoteStatusBar(estado) {
 }
 
 // ============================================================
-// INICIALIZACIÓN DE SWITCHES TOGGLE PARA VALIDACIÓN PC
+// INICIALIZACIÓN DE SWITCHES TOGGLE PARA VALIDACIÓN PV
 // ============================================================
 
 
@@ -7716,7 +7705,7 @@ function updateValidationSemaphore() {
                 title.style.color = '#065F46';
             }
             if (subtitle) {
-                subtitle.textContent = 'El PC está conforme y listo para proceder';
+                subtitle.textContent = 'El PV está conforme y listo para proceder';
                 subtitle.style.color = '#065F46';
             }
             if (chips) {
@@ -7761,7 +7750,7 @@ function getValidationValues() {
 document.addEventListener('DOMContentLoaded', function() {
     // Esperar un poco para que el modal se haya renderizado
     setTimeout(function() {
-        // Buscar si existe el modal de PC
+        // Buscar si existe el modal de PV
         const modal = document.getElementById('pedidoCompraModal');
         if (modal) {
             // Inicializar los switches que estén dentro del modal
@@ -8041,7 +8030,7 @@ function actualizarResumenDesdeMontoPC(input) {
             else diferenciaBox.style.color = '#6B7280';
         }
         
-        console.log(`✅ Resumen actualizado desde Monto PC: ${simbolo} ${valor}`);
+        console.log(`✅ Resumen actualizado desde Monto PV: ${simbolo} ${valor}`);
         _timeoutResumen = null;
     }, 100);
 }
@@ -8723,13 +8712,13 @@ async function enviarGuiaSunat() {
 
 
 // ============================================================
-// VALIDACIÓN PC VS COTIZACIÓN - FUNCIÓN COMPLETA Y CORREGIDA
+// VALIDACIÓN PV VS COTIZACIÓN - FUNCIÓN COMPLETA Y CORREGIDA
 // ============================================================
 function renderValidacion() {
     const q = document.getElementById('valSearch')?.value?.toLowerCase() || '';
     const filtro = document.getElementById('valFiltro')?.value || '';
     
-    console.log('🔍 Renderizando validación con', pedidosData?.length || 0, 'PCs');
+    console.log('🔍 Renderizando validación con', pedidosData?.length || 0, 'PVs');
     
     const validaciones = [];
     
@@ -8744,7 +8733,7 @@ function renderValidacion() {
         const validaVigencia = p.valida_vigencia !== undefined ? p.valida_vigencia : true;
         const validaMargen = p.valida_margen !== undefined ? p.valida_margen : true;
         
-        // Obtener items del PC
+        // Obtener items del PV
         let items = p.items || [];
         
         // Si items está vacío pero hay items_json, parsearlo
@@ -8761,7 +8750,7 @@ function renderValidacion() {
             }
         }
         
-        // Si el PC no tiene items, usar datos básicos
+        // Si el PV no tiene items, usar datos básicos
         if (items.length === 0) {
             const estadoPC = p.estado || 'Pendiente';
             // ⚠️ STOCK NO BLOQUEA - solo informativo
@@ -8778,7 +8767,7 @@ function renderValidacion() {
             }
             
             validaciones.push({
-                pc: p.numero || p.pc || 'PC-XXXX',
+                pc: p.numero || p.pc || 'PV-XXXX',
                 cliente: p.cliente || 'Sin cliente',
                 producto: p.descripcion || p.producto || 'Producto sin descripción',
                 precio: validaPrecios ? '✅ Sí' : '❌ No',
@@ -8854,7 +8843,7 @@ function renderValidacion() {
                 const stockDisplay = stockOk ? `✅ Stock: ${stock}` : `⚠️ Falta: ${faltante}`;
                 
                 validaciones.push({
-                    pc: p.numero || p.pc || 'PC-XXXX',
+                    pc: p.numero || p.pc || 'PV-XXXX',
                     cliente: p.cliente || 'Sin cliente',
                     producto: descripcion,
                     precio: precioOk ? '✅ Sí' : '❌ No',
@@ -9092,7 +9081,7 @@ window.previewCotizacionPdf = function(id) {
 
 // Función de validación actualizada - SIN MARGEN (solo muestra toast)
 function validarPCSAP() {
-    console.log('🔍 Validando PC...');
+    console.log('🔍 Validando PV...');
     
     // Obtener valores de validación de los switches
     const validaciones = {
@@ -9113,7 +9102,7 @@ function validarPCSAP() {
     // Verificar si hay items en la tabla
     const itemsCount = document.querySelectorAll('#pcItemsBody tr').length;
     if (itemsCount === 0) {
-        showToast('⚠️ Agrega al menos un producto al PC', 'warning');
+        showToast('⚠️ Agrega al menos un producto al PV', 'warning');
         return;
     }
     
@@ -9168,7 +9157,7 @@ function validarPCSAP() {
         mensaje = `⚠️ Validación con observaciones: ${noCount} punto(s) marcado(s) como "No".\n🔴 ${detalles.join(', ')}`;
         tipo = 'warning';
     } else if (stockAlert) {
-        mensaje = `⚠️ Stock insuficiente: faltan ${stockFaltante} unidades para completar el PC.`;
+        mensaje = `⚠️ Stock insuficiente: faltan ${stockFaltante} unidades para completar el PV.`;
         tipo = 'warning';
     }
     
@@ -9194,7 +9183,7 @@ function validarPCSAP() {
 
 
 // ============================================================
-// OBTENER ITEMS DEL PC - FUNCIÓN AUXILIAR
+// OBTENER ITEMS DEL PV - FUNCIÓN AUXILIAR
 // ============================================================
 
 function obtenerItemsPCSAP() {
@@ -9208,9 +9197,9 @@ function obtenerItemsPCSAP() {
                 inputs[0]?.value || '',      // código
                 inputs[1]?.value || '',      // descripción
                 parseFloat(inputs[2]?.value) || 0,  // cantidad cotizada
-                parseFloat(inputs[3]?.value) || 1,   // cantidad PC
+                parseFloat(inputs[3]?.value) || 1,   // cantidad PV
                 parseFloat(inputs[4]?.value) || 0,   // precio cotizado
-                parseFloat(inputs[5]?.value) || 0,   // precio PC
+                parseFloat(inputs[5]?.value) || 0,   // precio PV
                 parseFloat(inputs[6]?.value) || 0    // stock
             ]);
         }
@@ -9224,25 +9213,25 @@ function obtenerItemsPCSAP() {
 // ACCIONES DE VALIDACIÓN
 // ============================================================
 function solicitarCorreccion(id) {
-    // Buscar el PC para mostrar info
+    // Buscar el PV para mostrar info
     const pedido = pedidosData.find(p => p.id === id);
     if (!pedido) {
-        showToast('❌ PC no encontrado', 'error');
+        showToast('❌ PV no encontrado', 'error');
         return;
     }
     
-    const numero = pedido.numero || 'PC-XXXXXX';
+    const numero = pedido.numero || 'PV-XXXXXX';
     const cliente = pedido.cliente || 'Cliente';
     const estado = pedido.estado || 'Desconocido';
     
     // Mostrar confirmación
     showConfirmModal(
         '📝 Solicitar corrección al cliente',
-        `El PC <b>${numero}</b> del cliente <b>${cliente}</b> tiene observaciones.<br><br>
+        `El PV <b>${numero}</b> del cliente <b>${cliente}</b> tiene observaciones.<br><br>
         Estado actual: <b>${estado}</b><br><br>
-        Se abrirá el PC en modo edición para que puedas revisar y corregir los datos.<br>
-        <span style="color:#DC2626;">⚠️ Después de corregir, deberás guardar nuevamente el PC.</span>`,
-        '⚠️ El PC quedará en estado "En revisión interna" hasta que se complete la corrección.',
+        Se abrirá el PV en modo edición para que puedas revisar y corregir los datos.<br>
+        <span style="color:#DC2626;">⚠️ Después de corregir, deberás guardar nuevamente el PV.</span>`,
+        '⚠️ El PV quedará en estado "En revisión interna" hasta que se complete la corrección.',
         async function() {
             try {
                 // 1. Cambiar estado a "En revisión interna"
@@ -9258,21 +9247,21 @@ function solicitarCorreccion(id) {
                     return;
                 }
                 
-                showToast('✅ PC enviado a revisión interna', 'success');
+                showToast('✅ PV enviado a revisión interna', 'success');
                 
                 // 2. Recargar datos
                 await loadPedidos();
                 renderValidacion();
                 
-                // 3. 🔽 ABRIR EL PC EN MODO EDICIÓN CON TODOS LOS DATOS
+                // 3. 🔽 ABRIR EL PV EN MODO EDICIÓN CON TODOS LOS DATOS
                 setTimeout(() => {
-                    // Cambiar a la pestaña de PC
+                    // Cambiar a la pestaña de PV
                     const tabBtn = document.querySelector('.tab-btn[data-tab="pedido_compra"]');
                     if (tabBtn) tabBtn.click();
                     
                     // Abrir el modal en modo edición
                     setTimeout(() => {
-                        console.log(`📋 Abriendo PC ID: ${id} para corrección`);
+                        console.log(`📋 Abriendo PV ID: ${id} para corrección`);
                         openPedidoCompraModalSAP('editar', id);
                     }, 400);
                 }, 500);
@@ -9290,7 +9279,7 @@ function solicitarCorreccion(id) {
 function generarOrdenCompra(id) {
     showConfirmModal(
         '🛒 Generar orden de compra',
-        `El PC requiere compra de productos por falta de stock.`,
+        `El PV requiere compra de productos por falta de stock.`,
         '⚠️ Se abrirá Compras → Pedidos por comprar, donde está la tabla de lo que falta comprar.',
         async function() {
             window.location.href = '/compras?tab=pedidos';
@@ -9302,36 +9291,36 @@ function generarOrdenCompra(id) {
 async function enviarADespacho(id) {
     const pedido = pedidosData.find(p => p.id === id);
     if (!pedido) {
-        showToast('❌ PC no encontrado', 'error');
+        showToast('❌ PV no encontrado', 'error');
         return;
     }
     
-    const numero = pedido.numero || 'PC-XXXXXX';
+    const numero = pedido.numero || 'PV-XXXXXX';
     const cliente = pedido.cliente || 'Cliente';
     
     showConfirmModal(
         '🚚 Enviar a despacho',
-        `Estás a punto de enviar el PC <b>${numero}</b> del cliente <b>${cliente}</b> a la cola de despacho.`,
-        '⚠️ Esta acción creará un registro de despacho y moverá el PC a "Listo para despacho".',
+        `Estás a punto de enviar el PV <b>${numero}</b> del cliente <b>${cliente}</b> a la cola de despacho.`,
+        '⚠️ Esta acción creará un registro de despacho y moverá el PV a "Listo para despacho".',
         async function() {
             try {
                 showToast('⏳ Procesando envío a despacho...', 'info');
                 
-                // PASO 1: Cambiar el estado del PC
+                // PASO 1: Cambiar el estado del PV
                 const toggleResponse = await apiFetch(`/ventas/api/pedido-compra/${id}/toggle`, {
                     method: 'PUT',
                     body: JSON.stringify({ estado: 'Listo para despacho' })
                 });
                 
                 if (!toggleResponse.success) {
-                    showToast('❌ Error al actualizar PC: ' + (toggleResponse.error || 'Desconocido'), 'error');
+                    showToast('❌ Error al actualizar PV: ' + (toggleResponse.error || 'Desconocido'), 'error');
                     return;
                 }
                 
-                console.log('✅ PC actualizado a "Listo para despacho"');
+                console.log('✅ PV actualizado a "Listo para despacho"');
                 
                 // ============================================================
-                // OBTENER LOS ITEMS DEL PC (PRODUCTOS)
+                // OBTENER LOS ITEMS DEL PV (PRODUCTOS)
                 // ============================================================
                 let items = pedido.items || [];
                 
@@ -9405,7 +9394,7 @@ async function enviarADespacho(id) {
                     origen: 'ALM-SMP',
                     destino: pedido.lugar_entrega || pedido.entrega || '',
                     estado: 'Pendiente despacho',
-                    observaciones: `Despacho automático desde PC ${pedido.numero}`,
+                    observaciones: `Despacho automático desde PV ${pedido.numero}`,
                     responsable: 'Hellen',
                     numero: `DESP-${year}${month}${day}-${String(ahora.getTime()).slice(-4)}`,
                     // 🔽 INCLUIR LOS ITEMS EN EL DESPACHO
@@ -9426,7 +9415,7 @@ async function enviarADespacho(id) {
                 console.log('📦 Respuesta:', despachoResult);
                 
                 if (despachoResult.success) {
-                    showToast('✅ PC enviado a despacho con sus productos', 'success');
+                    showToast('✅ PV enviado a despacho con sus productos', 'success');
                     
                     await loadPedidos();
                     await loadDespachos();
@@ -9451,11 +9440,11 @@ async function enviarADespacho(id) {
 }
 
 // ============================================================
-// LIMPIAR FILTROS DE FECHA - PC
+// LIMPIAR FILTROS DE FECHA - PV
 // ============================================================
 
 function clearPcDateFilter() {
-    console.log('🧹 Limpiando filtros de fecha de PC...');
+    console.log('🧹 Limpiando filtros de fecha de PV...');
     
     const fechaInicio = document.getElementById('pcFechaInicio');
     const fechaFin = document.getElementById('pcFechaFin');
@@ -9480,7 +9469,7 @@ window.clearPcDateFilter = clearPcDateFilter;
 
 // ==
 // ==========================================================
-// FUNCIONES PARA PC PEDIDO COMPRAS - ESTILO SAP
+// FUNCIONES PARA PV PEDIDO COMPRAS - ESTILO SAP
 // ============================================================
 
 let pcModalMode = 'cot';
@@ -9490,14 +9479,14 @@ function openPedidoCompraModal(mode = 'cot') {
     editingId = null;
     
     const isEdit = mode !== 'cot' && mode !== 'directo';
-    const title = isEdit ? 'Editar PC Cliente' : (mode === 'cot' ? 'Crear PC desde cotización' : 'PC directo / sin cotización');
+    const title = isEdit ? 'Editar PV Cliente' : (mode === 'cot' ? 'Crear PV desde cotización' : 'PV directo / sin cotización');
     document.getElementById('pedidoCompraModalTitle').textContent = title;
     
     const formContainer = document.getElementById('pedidoCompraForm');
     if (!formContainer) return;
     
     const modeNote = mode === 'cot' 
-        ? '✅ Recomendado: jalar la cotización, crear PC espejo y validar contra el documento real del cliente.' 
+        ? '✅ Recomendado: jalar la cotización, crear PV espejo y validar contra el documento real del cliente.' 
         : '';
     
     const showCotBlock = mode === 'cot' ? '' : 'style="display:none;"';
@@ -9511,7 +9500,7 @@ function openPedidoCompraModal(mode = 'cot') {
         <div class="form-section">
             <div class="section-title">Resumen de control del documento</div>
             <div class="sap-doc-summary">
-                <div class="sap-doc-box"><small>Documento</small><b>PC Cliente</b></div>
+                <div class="sap-doc-box"><small>Documento</small><b>PV Cliente</b></div>
                 <div class="sap-doc-box"><small>Origen</small><b>${mode === 'cot' ? 'Cotización' : 'Directo'}</b></div>
                 <div class="sap-doc-box"><small>Control</small><b>Validación obligatoria</b></div>
                 <div class="sap-doc-box"><small>Stock</small><b>Reserva / Compra</b></div>
@@ -9540,7 +9529,7 @@ function openPedidoCompraModal(mode = 'cot') {
         </div>
         
         <div class="form-section">
-            <div class="section-title">2. Datos PC Pedido de Compra Cliente</div>
+            <div class="section-title">2. Datos del PV (Pedido de venta)</div>
             <div class="ficha-grid">
                 <div class="form-field col-3">
                     <label>Fecha llegada</label>
@@ -9556,8 +9545,8 @@ function openPedidoCompraModal(mode = 'cot') {
                     </select>
                 </div>
                 <div class="form-field col-3">
-                    <label>N° PC / OC cliente</label>
-                    <input id="pcNumero" placeholder="PC-20260709-0001">
+                    <label>N° PV / PC del cliente</label>
+                    <input id="pcNumero" placeholder="PV-KCF-000001">
                 </div>
                 <div class="form-field col-2">
                     <label>Condición pago</label>
@@ -9595,11 +9584,11 @@ function openPedidoCompraModal(mode = 'cot') {
                     <input id="pcContacto">
                 </div>
                 <div class="form-field col-2">
-                    <label>Monto PC</label>
+                    <label>Monto PV</label>
                     <input id="pcMonto" type="number" step="0.01" value="0">
                 </div>
                 <div class="form-field col-4">
-                    <label>Lugar entrega PC</label>
+                    <label>Lugar entrega PV</label>
                     <input id="pcEntrega">
                 </div>
                 <div class="form-field col-12">
@@ -9610,7 +9599,7 @@ function openPedidoCompraModal(mode = 'cot') {
         </div>
         
         <div class="form-section">
-            <div class="section-title">3. Ítems del PC cliente</div>
+            <div class="section-title">3. Ítems del PV</div>
             <div class="table-scroll">
                 <table class="master-table">
                     <thead>
@@ -9619,9 +9608,9 @@ function openPedidoCompraModal(mode = 'cot') {
                             <th>Código de producto</th>
                             <th>Descripción</th>
                             <th>Cantidad cotizada</th>
-                            <th>Cantidad PC</th>
+                            <th>Cantidad PV</th>
                             <th>Precio cotizado</th>
-                            <th>Precio PC</th>
+                            <th>Precio PV</th>
                             <th>Stock</th>
                             <th>Faltante</th>
                         </tr>
@@ -9711,7 +9700,7 @@ function openPedidoCompraModal(mode = 'cot') {
         </div>
     </div>
     <div id="validationResult" class="mini-note" style="margin-top:10px;">
-        ℹ️ Si algún punto es <b>"No"</b>, el PC quedará <b>observado y bloqueado</b>.
+        ℹ️ Si algún punto es <b>"No"</b>, el PV quedará <b>observado y bloqueado</b>.
     </div>
 </div>
     `;
@@ -9720,7 +9709,7 @@ function openPedidoCompraModal(mode = 'cot') {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     document.getElementById('pcFecha').value = now.toISOString().slice(0, 16);
-    document.getElementById('pcNumero').value = 'PC-' + isoLima().replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
+    document.getElementById('pcNumero').value = 'PV-' + isoLima().replaceAll('-', '') + '-' + String(Date.now()).slice(-4);
     
     // Agregar un ítem por defecto
     addPedidoItem();
@@ -10494,8 +10483,8 @@ function openDespachoModal(id = null) {
     formContainer.innerHTML = `
         <div class="ficha-section">
             <div class="ficha-grid">
-                <div class="form-field col-4"><label>PC vinculado</label>
-                    <select id="despachoPC">${pcOptions || '<option value="">Sin PC</option>'}</select>
+                <div class="form-field col-4"><label>PV vinculado</label>
+                    <select id="despachoPC">${pcOptions || '<option value="">Sin PV</option>'}</select>
                 </div>
                 <div class="form-field col-4"><label>N° Despacho</label>
                     <input id="despachoNumero" value="DESP-${String(Date.now()).slice(-8)}">
@@ -10536,7 +10525,7 @@ function openDespachoModal(id = null) {
         <div class="ficha-section">
             <div class="ficha-section-title">Productos a despachar</div>
             <div id="despachoProducts">
-                <div style="padding:10px;text-align:center;color:#94A3B8;">Seleccione un PC para ver los productos.</div>
+                <div style="padding:10px;text-align:center;color:#94A3B8;">Seleccione un PV para ver los productos.</div>
             </div>
         </div>
     `;
@@ -10551,7 +10540,7 @@ function openDespachoModal(id = null) {
             document.getElementById('despachoDestino').value = p.lugar_entrega || '';
         } else {
             document.getElementById('despachoProducts').innerHTML = `
-                <div style="padding:10px;text-align:center;color:#94A3B8;">No hay productos en este PC.</div>
+                <div style="padding:10px;text-align:center;color:#94A3B8;">No hay productos en este PV.</div>
             `;
         }
     });
@@ -11462,7 +11451,7 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
 /**
  * Carga datos desde una guía seleccionada
  */
-// La cotización (y el PC) vinculados se llenan solos al elegir la guía o el PC (Erika 26/10/2026).
+// La cotización (y el PV) vinculados se llenan solos al elegir la guía o el PV (Erika 26/10/2026).
 // Solo se llena lo que está vacío y sin volver a cargar productos.
 function ponerVinculoFactura(id, valor) {
     const sel = document.getElementById(id);
@@ -11596,7 +11585,7 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
 };
 
 /**
- * Carga datos desde un PC seleccionado
+ * Carga datos desde un PV seleccionado
  */
 window.loadComprobanteFromPC = function(numeroPC) {
     if (!numeroPC) {
@@ -11606,12 +11595,12 @@ window.loadComprobanteFromPC = function(numeroPC) {
 
     const pc = pedidosData.find(p => p.numero === numeroPC);
     if (!pc) {
-        showToast('⚠️ PC no encontrado', 'warning');
+        showToast('⚠️ PV no encontrado', 'warning');
         return;
     }
     ponerVinculoFactura('compCotizacion', pc.cotizacion_numero);
 
-    console.log('📦 Cargando PC:', pc);
+    console.log('📦 Cargando PV:', pc);
 
     // Autocompletar cliente/RUC
     const compCliente = document.getElementById('compCliente');
@@ -11619,10 +11608,10 @@ window.loadComprobanteFromPC = function(numeroPC) {
     if (compCliente && !compCliente.value.trim()) compCliente.value = pc.cliente || '';
     if (compRuc && !compRuc.value.trim()) compRuc.value = pc.ruc || '';
 
-    // 🔽 CARGAR PRODUCTOS DEL PC 🔽
+    // 🔽 CARGAR PRODUCTOS DEL PV 🔽
     let productos = [];
     
-    // Intentar obtener items del PC
+    // Intentar obtener items del PV
     if (pc.items && pc.items.length > 0) {
         productos = pc.items.map(item => {
             // Normalizar item (puede ser objeto o array)
@@ -11699,19 +11688,19 @@ window.loadComprobanteFromPC = function(numeroPC) {
         const total = productos.reduce((sum, p) => sum + (Number(p.cantidad || 0) * Number(p.valorVenta || 0) * 1.18), 0);
         document.getElementById('compMonto').value = total.toFixed(2);
         
-        showToast(`✅ ${productos.length} productos cargados desde PC`, 'success');
+        showToast(`✅ ${productos.length} productos cargados desde PV`, 'success');
     } else {
         // Si no hay productos, mostrar mensaje
         document.getElementById('compProducts').innerHTML = `
             <div style="padding:20px;text-align:center;color:#94A3B8;">
-                📭 Este PC no tiene productos asociados.
+                📭 Este PV no tiene productos asociados.
             </div>
         `;
-        showToast('⚠️ Este PC no tiene productos', 'warning');
+        showToast('⚠️ Este PV no tiene productos', 'warning');
     }
 
     actualizarObservacionesComprobante();
-    showToast(`✅ PC ${pc.numero} vinculado`, 'success');
+    showToast(`✅ PV ${pc.numero} vinculado`, 'success');
 };
 
 /**
@@ -12566,7 +12555,7 @@ function clearDateFilter() {
 function openPedidoCompraModalSAP(mode, id) {
     console.log('📋 openPedidoCompraModalSAP:', mode, id);
     forzarLimpiezaModalPC();
-    // Al editar, guardar sobre ESTE PC (antes quedaba en modo "cotización" y pedía elegir una o creaba otro PC)
+    // Al editar, guardar sobre ESTE PV (antes quedaba en modo "cotización" y pedía elegir una o creaba otro PV)
     const _esEdicionPC = (mode === 'edit' || mode === 'editar' || (mode === 'directo' && id));
     modalMode = _esEdicionPC ? 'editar' : (mode === 'directo' ? 'directo' : 'cot');
     editingId = _esEdicionPC ? id : null;
@@ -12598,7 +12587,7 @@ function openPedidoCompraModalSAP(mode, id) {
     
     // Limpiar dropdowns
     const condicion = document.getElementById('pcCondicion');
-    if (condicion) condicion.value = ''; // se elige leyendo la OC del cliente
+    if (condicion) condicion.value = ''; // se elige leyendo la PC (Pedido del cliente)
     clearElement('pcOcCliente', '');
     
     ponerMonedaPC('PEN', null);
@@ -12666,7 +12655,7 @@ function openPedidoCompraModalSAP(mode, id) {
             searchBtn.style.pointerEvents = 'none';
         }
         
-        // 🔽 CAMPOS DEL PC - EDITABLES
+        // 🔽 CAMPOS DEL PV - EDITABLES
         const camposPC = ['pcFecha', 'pcNumero', 'pcContacto', 'pcMontoPC', 'pcEntrega', 'pcObs'];
         camposPC.forEach(id => {
             const el = document.getElementById(id);
@@ -12694,7 +12683,7 @@ function openPedidoCompraModalSAP(mode, id) {
             productBtn.style.pointerEvents = 'auto';
         }
         
-        // 🔽 CARGAR DATOS DEL PC SI ES EDICIÓN
+        // 🔽 CARGAR DATOS DEL PV SI ES EDICIÓN
         if (id && typeof cargarPCParaEdicion === 'function') {
             cargarPCParaEdicion(id);
         }
@@ -12730,11 +12719,11 @@ function openPedidoCompraModalSAP(mode, id) {
     const sub = document.getElementById('modalSub');
     
     if (title) {
-        title.textContent = esEdicion ? '✏️ Editar PC Cliente' : '📋 Crear PC Cliente';
+        title.textContent = esEdicion ? '✏️ Editar PV Cliente' : '📋 Crear PV Cliente';
     }
     if (sub) {
         sub.textContent = esEdicion 
-            ? 'Edita los datos del Pedido de Compra - campos de cotización en solo lectura' 
+            ? 'Edita los datos del Pedido de venta - campos de cotización en solo lectura' 
             : 'Primero se valida. No comprar ni despachar si existe observación.';
     }
     
@@ -12743,10 +12732,10 @@ function openPedidoCompraModalSAP(mode, id) {
     const btnGreen = document.querySelector('.btn-neon-green');
     
     if (btnYellow) {
-        btnYellow.textContent = esEdicion ? '⚠️ Actualizar PC Observado' : '⚠️ Crear PC Observado';
+        btnYellow.textContent = esEdicion ? '⚠️ Actualizar PV Observado' : '⚠️ Crear PV Observado';
     }
     if (btnGreen) {
-        btnGreen.textContent = esEdicion ? '✅ Actualizar PC Conforme' : '✅ Crear PC Conforme';
+        btnGreen.textContent = esEdicion ? '✅ Actualizar PV Conforme' : '✅ Crear PV Conforme';
     }
     
     // Mostrar modal
@@ -12757,7 +12746,7 @@ function openPedidoCompraModalSAP(mode, id) {
 }
 
 function cargarPCParaEdicion(pcId) {
-    console.log('📋 Cargando PC para edición:', pcId);
+    console.log('📋 Cargando PV para edición:', pcId);
     
     function setValue(id, value, defaultValue = '') {
         const el = document.getElementById(id);
@@ -12775,7 +12764,7 @@ function cargarPCParaEdicion(pcId) {
         .then(result => {
             if (result.success && result.data) {
                 const pc = result.data;
-                console.log('📦 Datos del PC:', pc);
+                console.log('📦 Datos del PV:', pc);
                 
                 // ============================================================
                 // 🔽 BLOQUE 1: Cotización relacionada - SOLO LECTURA
@@ -12798,7 +12787,7 @@ function cargarPCParaEdicion(pcId) {
                 setValue('pcMontoConIgv', montoConIgv.toFixed(2));
                 
                 // ============================================================
-                // 🔽 BLOQUE 2: Datos del PC - EDITABLES
+                // 🔽 BLOQUE 2: Datos del PV - EDITABLES
                 // ============================================================
                 const fechaRecepcion = formatearFecha(pc.fecha_recepcion || pc.fecha);
                 console.log('📅 Fecha recepción formateada:', fechaRecepcion);
@@ -12838,7 +12827,7 @@ function cargarPCParaEdicion(pcId) {
                             );
                         });
                     } else {
-                        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:20px;color:#94A3B8;font-size:12px;">⚠️ Este PC no tiene productos asociados</td></tr>`;
+                        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:20px;color:#94A3B8;font-size:12px;">⚠️ Este PV no tiene productos asociados</td></tr>`;
                     }
                 }
                 
@@ -12871,39 +12860,39 @@ function cargarPCParaEdicion(pcId) {
                 actualizarResumenPC();
                 
                 // ============================================================
-                // 🔽 GUARDAR ID DEL PC PARA ACTUALIZACIÓN
+                // 🔽 GUARDAR ID DEL PV PARA ACTUALIZACIÓN
                 // ============================================================
                 setValue('pcEditId', pc.id);
                 
-                console.log('✅ PC cargado para edición');
-                showToast('✅ PC cargado correctamente', 'success');
+                console.log('✅ PV cargado para edición');
+                showToast('✅ PV cargado correctamente', 'success');
                 
             } else {
-                console.error('❌ Error cargando PC:', result.error);
-                showToast('❌ Error cargando PC: ' + (result.error || 'Desconocido'), 'error');
+                console.error('❌ Error cargando PV:', result.error);
+                showToast('❌ Error cargando PV: ' + (result.error || 'Desconocido'), 'error');
             }
         })
         .catch(error => {
             console.error('❌ Error en fetch:', error);
-            showToast('❌ Error al cargar los datos del PC', 'error');
+            showToast('❌ Error al cargar los datos del PV', 'error');
         });
 }
 
 
 async function cargarPCParaEditar(id) {
     try {
-        console.log('📥 Cargando PC para editar ID:', id);
-        showToast('⏳ Cargando datos del PC...', 'info');
+        console.log('📥 Cargando PV para editar ID:', id);
+        showToast('⏳ Cargando datos del PV...', 'info');
         
         const response = await apiFetch(`/ventas/api/pedido-compra/${id}`);
         
         if (!response.success) {
-            showToast('Error al cargar PC: ' + (response.error || 'Desconocido'), 'error');
+            showToast('Error al cargar PV: ' + (response.error || 'Desconocido'), 'error');
             return;
         }
         
         const pc = response.data;
-        console.log('📦 Datos del PC cargados:', pc);
+        console.log('📦 Datos del PV cargados:', pc);
         
         // ============================================================
         // FUNCIÓN PARA NORMALIZAR ITEMS (con marca y modelo)
@@ -13182,11 +13171,11 @@ async function cargarPCParaEditar(id) {
             updateValidationStatus();
         }, 100);
         
-        showToast('✅ PC cargado para editar', 'success');
+        showToast('✅ PV cargado para editar', 'success');
         
     } catch (error) {
-        console.error('❌ Error cargando PC:', error);
-        showToast('❌ Error al cargar el PC: ' + error.message, 'error');
+        console.error('❌ Error cargando PV:', error);
+        showToast('❌ Error al cargar el PV: ' + error.message, 'error');
     }
 }
 
@@ -13355,7 +13344,7 @@ function loadPedidoCotizacionSAP() {
 
 
 
-// Función para calcular y actualizar el Valor Total PC
+// Función para calcular y actualizar el Valor Total PV
 function actualizarValorTotalPCSAP(input) {
     const row = input.closest('tr');
     if (!row) return;
@@ -15116,15 +15105,15 @@ function seleccionarCotizacionSAP(cotizacionId) {
             // ============================================================
             // ACTUALIZAR CONDICIÓN DE PAGO
             // ============================================================
-            // La condición de la PC NO se copia de la cotización (pedido de Erika 19/10): queda en blanco
-            // y se elige leyendo la OC del cliente. Solo se muestra lo cotizado como referencia.
+            // La condición de la PV NO se copia de la cotización (pedido de Erika 19/10): queda en blanco
+            // y se elige leyendo la PC (Pedido del cliente). Solo se muestra lo cotizado como referencia.
             const condSelect = document.getElementById('pcCondicion');
             if (condSelect) {
                 condSelect.value = '';
                 const aviso = document.getElementById('pcCondicionAviso');
                 if (aviso) {
                     aviso.dataset.cotizada = data.condicion_pago || '';
-                    aviso.textContent = data.condicion_pago ? `Cotizado: ${data.condicion_pago}. Elige la de la OC del cliente` : 'Léela en la OC del cliente';
+                    aviso.textContent = data.condicion_pago ? `Cotizado: ${data.condicion_pago}. Elige la de la PC (Pedido del cliente)` : 'Léela en la PC (Pedido del cliente)';
                 }
                 if (typeof pcAvisoCondicion === 'function') pcAvisoCondicion();
             }
@@ -15241,7 +15230,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
  * Actualiza la moneda en el select y el resumen
  * @param {string} moneda - Valor de la moneda ("S/)" o "$")
  */
-// 24/10/2026 (Erika): moneda y tipo de cambio del PC (heredados de la cotización; se pueden cambiar)
+// 24/10/2026 (Erika): moneda y tipo de cambio del PV (heredados de la cotización; se pueden cambiar)
 function ponerMonedaPC(moneda, tc) {
     if (!window.Moneda || !document.getElementById('pcMoneda')) return;
     Moneda.enlazar('pc', { fecha: () => String(document.getElementById('pcFecha')?.value || '').slice(0, 10) });
@@ -15298,7 +15287,7 @@ function actualizarResumenPC() {
     _actualizandoResumen = true;
     
     try {
-        console.log('🔄 Actualizando resumen lateral del PC...');
+        console.log('🔄 Actualizando resumen lateral del PV...');
         
         // Obtener la moneda seleccionada
         const monedaSelect = document.getElementById('pcMoneda');
@@ -15359,7 +15348,7 @@ function actualizarResumenPC() {
         if (totalEl) totalEl.textContent = formatNum(total);
         if (productosEl) productosEl.textContent = productCount;
         
-        // Actualizar el campo de Monto PC
+        // Actualizar el campo de Monto PV
         const montoPCInput = document.getElementById('pcMontoPC');
         if (montoPCInput) {
             const currentValue = parseFloat(montoPCInput.value) || 0;
@@ -15427,7 +15416,7 @@ function forzarBadgeActivo() {
     });
 }
 function clearPedidoModalSAP() {
-    console.log('🧹 Limpiando modal de PC a estado inicial...');
+    console.log('🧹 Limpiando modal de PV a estado inicial...');
      forzarLimpiezaModalPC();
     // ============================================================
     // FUNCIÓN AUXILIAR PARA LIMPIAR CAMPOS
@@ -15459,7 +15448,7 @@ function clearPedidoModalSAP() {
     // ============================================================
     const title = document.getElementById('pedidoCompraModalTitle');
     if (title) {
-        title.textContent = 'Crear PC Cliente';
+        title.textContent = 'Crear PV Cliente';
     }
     
     const sub = document.getElementById('modalSub');
@@ -15509,7 +15498,7 @@ function clearPedidoModalSAP() {
     }
     
     // ============================================================
-    // 6. LIMPIAR CAMPOS DEL PC (EDITABLES)
+    // 6. LIMPIAR CAMPOS DEL PV (EDITABLES)
     // ============================================================
     setEditableValue('pcFecha', fechaStr);
     setEditableValue('pcNumero', '');
@@ -15524,9 +15513,9 @@ function clearPedidoModalSAP() {
     // ============================================================
     const condSelect = document.getElementById('pcCondicion');
     if (condSelect) {
-        condSelect.value = ''; // en blanco: se elige leyendo la OC del cliente
+        condSelect.value = ''; // en blanco: se elige leyendo la PC (Pedido del cliente)
         const aviso = document.getElementById('pcCondicionAviso');
-        if (aviso) { aviso.dataset.cotizada = ''; aviso.textContent = 'Léela en la OC del cliente'; }
+        if (aviso) { aviso.dataset.cotizada = ''; aviso.textContent = 'Léela en la PC (Pedido del cliente)'; }
         const oc = document.getElementById('pcOcCliente');
         if (oc) oc.value = '';
         condSelect.disabled = false;
@@ -15690,11 +15679,11 @@ function clearPedidoModalSAP() {
             console.log('  ✅ Diferencia forzada a:', diffBox.textContent);
         }
         
-        // Resetear monto PC
+        // Resetear monto PV
         const montoPC = document.getElementById('pcMontoPC');
         if (montoPC) {
             montoPC.value = '';
-            console.log('  ✅ Monto PC limpiado');
+            console.log('  ✅ Monto PV limpiado');
         }
         
         if (typeof actualizarResumenPC === 'function') {
@@ -15708,11 +15697,11 @@ function clearPedidoModalSAP() {
         }
     }, 200);
     
-    console.log('✅ Modal de PC restaurado a estado inicial');
+    console.log('✅ Modal de PV restaurado a estado inicial');
 }
 
 /**
- * Forza la limpieza completa del modal de PC
+ * Forza la limpieza completa del modal de PV
  * Esta función debe llamarse CADA VEZ que se abre el modal
  */
 function forzarLimpiezaModalPC() {
@@ -15721,7 +15710,7 @@ function forzarLimpiezaModalPC() {
     // 1. Limpiar Condición de Pago - Forzar "Contado"
     const condSelect = document.getElementById('pcCondicion');
     if (condSelect) {
-        condSelect.value = ''; // en blanco: se elige leyendo la OC del cliente
+        condSelect.value = ''; // en blanco: se elige leyendo la PC (Pedido del cliente)
         // Asegurar que el select esté habilitado
         condSelect.disabled = false;
         condSelect.style.background = '#FFFFFF';
@@ -15747,11 +15736,11 @@ function forzarLimpiezaModalPC() {
         console.log('✅ Diferencia forzada a: S/ 0.00');
     }
     
-    // 4. Limpiar Monto PC
+    // 4. Limpiar Monto PV
     const montoPC = document.getElementById('pcMontoPC');
     if (montoPC) {
         montoPC.value = '';
-        console.log('✅ Monto PC limpiado');
+        console.log('✅ Monto PV limpiado');
     }
     
     // 5. Limpiar Moneda - Forzar Soles
@@ -15896,7 +15885,7 @@ async function savePedidoCompraSAP(force) {
             { id: 'pcContacto', valor: pcContacto, nombre: 'Comprador' },
             { id: 'pcCondicion', valor: pcCondicion, nombre: 'Condición de pago' },
             { id: 'pcMoneda', valor: pcMoneda, nombre: 'Moneda' },
-            { id: 'pcMontoPC', valor: pcMontoPC, nombre: 'Monto PC' },
+            { id: 'pcMontoPC', valor: pcMontoPC, nombre: 'Monto PV' },
             { id: 'pcEntrega', valor: pcEntrega, nombre: 'Lugar entrega' }
         ];
         
@@ -15977,7 +15966,7 @@ async function savePedidoCompraSAP(force) {
         console.log('📋 Switches inválidos:', invalidSwitches);
         
         // ============================================================
-        // 🔽 SI ES "PC CONFORME" Y HAY SWITCHES INVÁLIDOS, BLOQUEAR
+        // 🔽 SI ES "PV CONFORME" Y HAY SWITCHES INVÁLIDOS, BLOQUEAR
         // ============================================================
         if (force !== 'observado' && invalidSwitches.length > 0) {
             showValidationWarningModal(invalidSwitches);
@@ -16052,13 +16041,13 @@ async function savePedidoCompraSAP(force) {
                     precio_cotizado: Number(inputs[6]?.value || 0),
                     precio_pc: Number(inputs[7]?.value || 0),
                     stock: Number(stockCell?.textContent?.trim() || 0),
-                    // 24/10/2026 (caso Komatsu): descripción tal como la pide la OC del cliente; va al despacho, guía y factura
+                    // 24/10/2026 (caso Komatsu): descripción tal como la pide la PC (Pedido del cliente); va al despacho, guía y factura
                     descripcion_cliente: (row.querySelector('.pc-desc-cliente')?.value || '').trim()
                 });
             }
         });
         
-        console.log('📦 Items del PC:', items);
+        console.log('📦 Items del PV:', items);
         
         // ============================================================
         // 🔽 DETERMINAR ESTADO - SIN BLOQUEAR POR STOCK
@@ -16082,7 +16071,7 @@ async function savePedidoCompraSAP(force) {
         }
         
         // ============================================================
-        // 🔽 OBTENER EL NÚMERO DEL PC
+        // 🔽 OBTENER EL NÚMERO DEL PV
         // ============================================================
         let numeroPC = document.getElementById('pcNumero')?.value || '';
         
@@ -16092,10 +16081,10 @@ async function savePedidoCompraSAP(force) {
                 numeroPC = pedidoExistente.numero;
             }
         } else {
-            numeroPC = ''; // el N° PC interno lo pone el sistema (correlativo por empresa)
+            numeroPC = ''; // el N° PV interno lo pone el sistema (correlativo por empresa)
         }
         
-        console.log(`📋 Número de PC final: ${numeroPC} | editingId: ${editingId} | modalMode: ${modalMode}`);
+        console.log(`📋 Número de PV final: ${numeroPC} | editingId: ${editingId} | modalMode: ${modalMode}`);
         
         // ============================================================
         // 🔽 FECHA CON HORA - FORMATO CORRECTO PARA POSTGRESQL
@@ -16110,7 +16099,7 @@ async function savePedidoCompraSAP(force) {
         
         // ✅ FORMATO PARA POSTGRESQL: YYYY-MM-DD HH:MM:SS (con espacio)
         const fechaDB = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-        console.log(`🕐 Fecha y hora para PC: ${fechaDB}`);
+        console.log(`🕐 Fecha y hora para PV: ${fechaDB}`);
 
         // ============================================================
         // 🔽 PREPARAR DATOS PARA ENVIAR A LA API
@@ -16157,9 +16146,9 @@ async function savePedidoCompraSAP(force) {
         // ============================================================
         const confirmado = await new Promise(resolve => {
             showConfirmModal(
-                '💾 ¿Guardar Pedido de Compra?',
-                `Vas a guardar el PC <b>${pcData.numero || '(N° automático)'}</b> de <b>${pcData.cliente || 'el cliente'}</b> como <b>"${pcData.estado}"</b>.`,
-                '⚠️ Esta acción registrará el PC con las validaciones actuales.',
+                '💾 ¿Guardar Pedido de venta?',
+                `Vas a guardar el PV <b>${pcData.numero || '(N° automático)'}</b> de <b>${pcData.cliente || 'el cliente'}</b> como <b>"${pcData.estado}"</b>.`,
+                '⚠️ Esta acción registrará el PV con las validaciones actuales.',
                 () => resolve(true),
                 '💾 Sí, guardar'
             );
@@ -16169,7 +16158,7 @@ async function savePedidoCompraSAP(force) {
         // ============================================================
         // 🔽 ENVIAR A LA API
         // ============================================================
-        showToast('⏳ Guardando PC...', 'info');
+        showToast('⏳ Guardando PV...', 'info');
         
         const response = await fetch('/ventas/api/pedido-compra/guardar', {
             method: 'POST',
@@ -16184,7 +16173,7 @@ async function savePedidoCompraSAP(force) {
         
         if (result.success) {
             const nroGuardado = (result.data && result.data.numero) || pcData.numero;
-            let mensaje = `✅ PC ${nroGuardado || ''} guardado como: ${estado}`;
+            let mensaje = `✅ PV ${nroGuardado || ''} guardado como: ${estado}`;
             if (estado === 'PC conforme') {
                 const stockFalta = items.some(i => Number(i.cantidad_pc) > Number(i.stock));
                 if (stockFalta) {
@@ -16215,7 +16204,7 @@ async function savePedidoCompraSAP(force) {
         
     } catch (error) {
         console.error('❌ Error en savePedidoCompraSAP:', error);
-        showToast('❌ Error al guardar el PC: ' + error.message, 'error');
+        showToast('❌ Error al guardar el PV: ' + error.message, 'error');
     }
 }
 window.savePedidoCompraSAP = savePedidoCompraSAP;
@@ -16813,7 +16802,7 @@ function showPedidoMenu(event, id) {
     event.stopPropagation();
     document.querySelectorAll('.menu-pop').forEach(el => el.remove());
     
-    // Buscar el PC para ver su estado
+    // Buscar el PV para ver su estado
     const pedido = pedidosData.find(p => p.id === id);
     const estado = pedido?.estado || 'Desconocido';
     const esAnulado = estado === 'Anulado';
@@ -16833,7 +16822,7 @@ function showPedidoMenu(event, id) {
     // Solo mostrar "Validación" si NO está validado
     if (!esValidado && !esAnulado) {
         menuHtml += `
-            <button onclick="validatePedidoCompra(${id});this.closest('.menu-pop').remove()">✅ Validar PC</button>
+            <button onclick="validatePedidoCompra(${id});this.closest('.menu-pop').remove()">✅ Validar PV</button>
         `;
     } else if (esValidado) {
         menuHtml += `
@@ -16875,7 +16864,7 @@ function aplicarEmpresaAlOrigen(origen) {
 window.aplicarEmpresaAlOrigen = aplicarEmpresaAlOrigen;
 
 // ============================================================
-// 🏷️ RÓTULO DE PC Y DESPACHO (con logo, datos y color de la empresa del documento)
+// 🏷️ RÓTULO DE PV Y DESPACHO (con logo, datos y color de la empresa del documento)
 // ============================================================
 function imprimirRotulo(tipo, id) {
     const n = prompt('¿Cuántas cajas o bultos son? Sale una hoja por caja (01/03, 02/03...).', '1');
@@ -16965,7 +16954,7 @@ function showComprobanteMenu(event, id) {
         ${(comprobantesData.find(c => c.id === id) || {}).xml_id
             ? `<button onclick="descargarXmlFactura(${id});this.closest('.menu-pop').remove()" style="color:#0F766E;font-weight:900;">⬇ Descargar XML (SUNAT)</button>`
             : ''}
-        <button onclick="subirArchivoFactura(${id});this.closest('.menu-pop').remove()">⬆ Subir XML / PDF de SUNAT</button>
+        <button onclick="subirArchivoFactura(${id});this.closest('.menu-pop').remove()">📎 Adjuntar XML descargado de SUNAT</button>
         <button onclick="markComprobanteEmitido(${id});this.closest('.menu-pop').remove()">📄 Emitir</button>
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
         <button class="danger" onclick="deleteComprobante(${id});this.closest('.menu-pop').remove()">🗑 Eliminar</button>
@@ -16977,7 +16966,7 @@ function showComprobanteMenu(event, id) {
 // emitir; se sube una vez a la factura y luego se descarga desde ⋮.
 function descargarXmlFactura(id) {
     const r = comprobantesData.find(c => c.id === id);
-    if (!r || !r.xml_id) { showToast('⚠️ Esta factura aún no tiene XML. Súbelo con ⋮ ▸ Subir XML', 'warning'); return; }
+    if (!r || !r.xml_id) { showToast('⚠️ Esta factura aún no tiene el XML de SUNAT. Adjúntalo con ⋮ ▸ Adjuntar XML descargado de SUNAT', 'warning'); return; }
     window.location.href = `/ventas/api/comprobantes/archivos/${r.xml_id}/descargar`;
 }
 function subirArchivoFactura(id) {
@@ -16993,14 +16982,38 @@ function subirArchivoFactura(id) {
             const r = await fetch(`/ventas/api/comprobantes/${id}/archivos`, { method: 'POST', body: fd });
             const j = await r.json().catch(() => ({ success: false, error: 'HTTP ' + r.status }));
             if (!r.ok || !j.success) { showToast('❌ ' + (j.error || 'No se pudo subir'), 'error'); return; }
-            showToast(`✅ ${j.data.tipo} guardado en la factura. Ya se puede descargar desde ⋮`, 'success');
+            showToast(`✅ ${j.data.tipo} guardado en la factura. Ya se puede descargar`, 'success');
             if (typeof loadComprobantes === 'function') await loadComprobantes();
+            actualizarPieFactura();
         } catch (e) { showToast('❌ ' + e.message, 'error'); }
     };
     inp.click();
 }
+// Botones del pie de la factura: Descargar PDF / Descargar XML (para portales como el de Komatsu)
+function actualizarPieFactura() {
+    const pdf = document.getElementById('btnFacPdf');
+    const xml = document.getElementById('btnFacXml');
+    if (!pdf || !xml) return;
+    const r = editingId ? comprobantesData.find(c => c.id === editingId) : null;
+    pdf.disabled = !r;
+    pdf.title = r ? 'Descarga el PDF de esta factura' : 'Primero guarda la factura';
+    xml.disabled = !r;
+    xml.textContent = r && !r.xml_id ? '📎 Adjuntar XML de SUNAT' : '⬇ Descargar XML';
+    xml.title = !r ? 'Primero guarda la factura'
+        : r.xml_id ? 'Descarga el XML que dio SUNAT'
+        : 'SUNAT entrega el XML al emitir: descárgalo de SUNAT y adjúntalo aquí una sola vez';
+}
+function pieDescargarPdf() { if (editingId) generateComprobantePdf(editingId); }
+function pieDescargarXml() {
+    const r = editingId ? comprobantesData.find(c => c.id === editingId) : null;
+    if (!r) return;
+    if (r.xml_id) descargarXmlFactura(editingId); else subirArchivoFactura(editingId);
+}
 window.descargarXmlFactura = descargarXmlFactura;
 window.subirArchivoFactura = subirArchivoFactura;
+window.actualizarPieFactura = actualizarPieFactura;
+window.pieDescargarPdf = pieDescargarPdf;
+window.pieDescargarXml = pieDescargarXml;
 
 function showNotaMenu(event, id) {
     event.stopPropagation();
@@ -17177,7 +17190,7 @@ window.initVentas = async function(tab) {
         cargarClientesMaestros()
     ]);
     
-    // Cargar cotizaciones primero (necesario para PC y validación)
+    // Cargar cotizaciones primero (necesario para PV y validación)
     await loadCotizaciones();
     
     switch(currentModule) {
@@ -17482,7 +17495,7 @@ window.toggleAllProductCheckboxes = toggleAllProductCheckboxes;
 window.togglePagoCampos = togglePagoCampos;
 
 // ============================================================
-// 8. FUNCIONES DE SELECTOR DE PRODUCTOS PC
+// 8. FUNCIONES DE SELECTOR DE PRODUCTOS PV
 // ============================================================
 window.openProductSelectorPC = openProductSelectorPC;
 window.renderProductSelectorPc = renderProductSelectorPc;
@@ -17495,7 +17508,7 @@ window.toggleAllProductCheckboxesPc = toggleAllProductCheckboxesPc;
 window.agregarItemPCTable = agregarItemPCTable;
 
 // ============================================================
-// 9. FUNCIONES DE PC SAP
+// 9. FUNCIONES DE PV SAP
 // ============================================================
 window.openPedidoCompraModalSAP = openPedidoCompraModalSAP;
 window.clearPedidoModalSAP = clearPedidoModalSAP;
@@ -17602,7 +17615,7 @@ console.log('✅ Todas las funciones exportadas al window correctamente');
 // REQUERIMIENTOS DEL EXCEL DE PENDIENTES (14/10/2026)
 // ============================================================
 
-// 1) PC despachado: letras negras con fondo azulito (CSS .fila-despachada en ventas.css)
+// 1) PV despachado: letras negras con fondo azulito (CSS .fila-despachada en ventas.css)
 function pcDespachado(r) {
     return r && (r.despacho_estado === 'Despachado' || r.despacho_estado === 'Entregado');
 }
@@ -17772,13 +17785,13 @@ window.prepararUbicacionDespacho = prepararUbicacionDespacho;
 
 // ============================================================
 // CONDICIÓN DE PAGO DE LA FACTURA (pedido de Erika 19/10/2026)
-// Sale del PC de origen; si no hay PC, de la guía; si no, del cliente. Nunca de la cotización.
-// Antes un PC a 30 días terminaba en factura "Contado".
+// Sale del PV de origen; si no hay PV, de la guía; si no, del cliente. Nunca de la cotización.
+// Antes un PV a 30 días terminaba en factura "Contado".
 // ============================================================
 async function aplicarCondicionFactura(alGuardar) {
     const sel = document.getElementById('compCondicion');
     if (!sel) return;
-    // Factura ya guardada: Erika ve lo que quedó guardado; para los demás manda la del PC (igual que en el servidor)
+    // Factura ya guardada: Erika ve lo que quedó guardado; para los demás manda la del PV (igual que en el servidor)
     if (window.ES_ERIKA && typeof editingId !== 'undefined' && editingId && document.getElementById('compNumero')?.value && !alGuardar) return;
     const v = id => (document.getElementById(id)?.value || '').trim();
     const qs = new URLSearchParams({ pc: v('compPC'), guia: v('compGuia'), cotizacion: v('compCotizacion'), ruc: v('compRuc') });
@@ -17795,7 +17808,7 @@ async function aplicarCondicionFactura(alGuardar) {
             let aviso = document.getElementById('compCondicionOrigen');
             if (!aviso) { aviso = document.createElement('small'); aviso.id = 'compCondicionOrigen'; sel.insertAdjacentElement('afterend', aviso); }
             aviso.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#B91C1C';
-            aviso.textContent = '⚠ Elige la condición: no hay PC y el cliente no tiene una registrada';
+            aviso.textContent = '⚠ Elige la condición: no hay PV y el cliente no tiene una registrada';
         }
         return;
     }
@@ -17807,7 +17820,7 @@ async function aplicarCondicionFactura(alGuardar) {
     }
     const oc = document.getElementById('compOrdenCompra');
     if (oc && !oc.value.trim() && j.oc_cliente) oc.value = j.oc_cliente;
-    // La cotización del PC se llena sola si falta (Erika 26/10/2026)
+    // La cotización del PV se llena sola si falta (Erika 26/10/2026)
     const pcFinal = (pcSel && pcSel.value) || j.pc;
     if (pcFinal && typeof ponerVinculoFactura === 'function') ponerVinculoFactura('compCotizacion', cotizacionDePC(pcFinal));
     let nota = document.getElementById('compCondicionOrigen');
@@ -17817,7 +17830,7 @@ async function aplicarCondicionFactura(alGuardar) {
         sel.insertAdjacentElement('afterend', nota);
     }
     nota.style.cssText = 'display:block;margin-top:3px;font-size:11px;font-weight:800;color:#065F46';
-    const fuente = /^PC/i.test(j.fuente || '') ? 'del ' + j.fuente : (j.fuente === 'cliente' ? 'de la ficha del cliente (no hay PC)' : '');
+    const fuente = /^PV/i.test(j.fuente || '') ? 'del ' + j.fuente : (j.fuente === 'cliente' ? 'de la ficha del cliente (no hay PV)' : '');
     // REGLA (Erika 26/10/2026): condición FIJA; solo Erika la puede cambiar (el servidor también lo controla)
     sel.disabled = !window.ES_ERIKA && !!fuente;
     sel.classList.toggle('condicion-fija', sel.disabled);

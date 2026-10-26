@@ -1,4 +1,4 @@
-"""26/10/2026: el N° OC del cliente se ve completo bajo el N° PC, en PC y en Entregas."""
+"""26/10/2026: el N° PC (Pedido del cliente) se ve completo bajo el N° PV, en PV y en Entregas."""
 import os
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,10 +12,10 @@ def _leer(ruta):
 def test_pc_y_entregas_usan_el_mismo_rotulo():
     js = _leer('static/js/ventas.js')
     assert 'function ocClienteHTML(v)' in js
-    assert '<span>N° OC del cliente</span>' in js
+    assert '<span>N° PC (Pedido del cliente)</span>' in js
     assert '${sd(r.pc_numero)}${ocClienteHTML(r.oc_cliente)}' in js
     assert "${r.numero || '-'}</b>${ocClienteHTML(r.oc_cliente)}" in js
-    assert 'OC cliente: ${esc(r.oc_cliente)}' not in js
+    assert 'PC del cliente: ${esc(r.oc_cliente)}' not in js
 
 
 def test_entregas_trae_oc_cliente_del_pc():

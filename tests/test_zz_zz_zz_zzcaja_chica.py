@@ -189,12 +189,12 @@ def test_importar_historico(admin, base):
     ws.append(['CAJA CHICA'])
     ws.append([])
     ws.append(['N°', 'Fecha', 'Periodo', 'Empresa del gasto', 'Tipo', 'Rubro', 'Quién gastó', 'Pagado a',
-               'Descripción (de dónde a dónde / para qué)', 'N° PC / OC / despacho', 'Tipo de comprobante', 'N° comprobante',
+               'Descripción (de dónde a dónde / para qué)', 'N° PV / OC / despacho', 'Tipo de comprobante', 'N° comprobante',
                '¿Foto?', 'Ingreso (S/)', 'Egreso (S/)', 'Saldo (S/)', 'N° rendición', 'Observación'])
     from datetime import datetime
     ws.append([1, datetime(2025, 12, 29), None, 'AGD', 'Reposición de fondo', None, None, None, 'Saldo inicial', None, None, None, None, 134.61])
     ws.append([2, datetime(2026, 1, 5), None, 'AGD', 'Gasto', 'Flete y transporte de carga', None, 'Felipe Varas',
-               'Entrega a Neuma', 'PC 2040329157', 'No registrado (histórico)', None, 'No', None, 20])
+               'Entrega a Neuma', 'PV 2040329157', 'No registrado (histórico)', None, 'No', None, 20])
     ws.append([3, datetime(2026, 1, 6), None, 'AGD', 'Reposición de fondo', None, None, None, 'Ingreso a caja', None, None, None, None, 500])
     buf = io.BytesIO()
     wb.save(buf)

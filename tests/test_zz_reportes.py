@@ -181,7 +181,7 @@ def test_kpi_por_colaborador(rep, admin):
     v1 = fila['ZZREP_VEND1']
     assert v1['cotizaciones'] == 2 and v1['convertidas'] == 1 and v1['conversion'] == 50.0   # la anulada no cuenta
     assert v1['venta'] == 590.0 and v1['ventas'] == 1 and v1['ticket'] == 590.0
-    assert v1['dias_cierre'] == 2.0                      # cotización hace 6 días, PC hace 4
+    assert v1['dias_cierre'] == 2.0                      # cotización hace 6 días, PV hace 4
     v2 = fila['ZZREP_VEND2']
     assert v2['cotizaciones'] == 1 and v2['convertidas'] == 1 and v2['venta'] == 1180.0
     # Solo personas de la tabla usuarios

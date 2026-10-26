@@ -222,7 +222,7 @@
                     : '<span class="fin-gris">—</span>';
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
                 const vinculo = esCxc
-                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>N° OC del cliente: ${esc(x.oc_cliente)}</small>` : ''}`
+                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>N° PC (Pedido del cliente): ${esc(x.oc_cliente)}</small>` : ''}`
                     : `<b>${esc(x.oc_numero || '—')}</b>${x.pc_numero ? `<small>${esc(x.pc_numero)}</small>` : ''}`;
                 // Cobrar: la retención y la nota de crédito van debajo del monto. Pagar: el adelanto va debajo de lo pagado.
                 const extraMonto = esCxc ? [x.retencion ? `Retención ${dinero(x, x.retencion)}` : '', x.notas_credito ? `N. crédito ${dinero(x, x.notas_credito)}` : '']
@@ -299,12 +299,12 @@
         }
     }
 
-    // N° OC y N° PC de cada cobro/pago, en dos líneas (Erika 22/10/2026: trazabilidad)
+    // N° OC y N° PV de cada cobro/pago, en dos líneas (Erika 22/10/2026: trazabilidad)
     function ocPcMovimiento(m) {
         const linea = (et, v) => v ? `<div><small>${et}</small> <b>${esc(v)}</b></div>` : '';
         const html = m.tipo === 'COBRO'
-            ? linea('N° PC (Pedido de compra)', m.pc_numero) + linea('N° OC del cliente', m.oc_cliente)
-            : linea('N° OC (Proveedor)', m.oc_numero) + linea(/^(Compra a stock|Sin PC)/.test(m.pc_numero || '') ? '' : 'N° PC (Pedido de compra)', m.pc_numero);
+            ? linea('N° PV (Pedido de venta)', m.pc_numero) + linea('N° PC (Pedido del cliente)', m.oc_cliente)
+            : linea('N° OC (Proveedor)', m.oc_numero) + linea(/^(Compra a stock|Sin PV)/.test(m.pc_numero || '') ? '' : 'N° PV (Pedido de venta)', m.pc_numero);
         return html || '<span class="fin-sin">—</span>';
     }
 

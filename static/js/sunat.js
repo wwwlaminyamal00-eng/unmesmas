@@ -106,7 +106,7 @@
     }
 
     const CORTO = { guias: 'Guías entregadas sin factura', despachos: 'Despachos por salir', oc: 'Órdenes de compra (Proveedor) sin factura',
-                    pc: 'PC (Pedido de compra) por comprar', ventas_extra: 'Otras ventas (a mano)', compras_extra: 'Compra para stock (a mano)' };
+                    pc: 'PV (Pedido de venta) por comprar', ventas_extra: 'Otras ventas (a mano)', compras_extra: 'Compra para stock (a mano)' };
 
     // Casillas del PDT 621: ocultas por defecto, se recuerda la elección en este navegador
     function casillasVisibles() {

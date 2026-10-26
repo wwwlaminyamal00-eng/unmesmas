@@ -129,21 +129,21 @@ def test_recibir_con_diferencia_avisa_antes_de_grabar(zz, admin):
 
 
 def test_cobros_y_pagos_muestran_oc_y_pc(admin):
-    # Erika 22/10/2026 12:26: cada pago con su N° OC y N° PC (trazabilidad), y se puede buscar por ellos
+    # Erika 22/10/2026 12:26: cada pago con su N° OC y N° PV (trazabilidad), y se puede buscar por ellos
     pagos = admin.get('/finanzas/api/movimientos?tipo=PAGO').json['data']
     con_oc = [m for m in pagos if m.get('oc_numero')]
     assert con_oc, 'los pagos de las pruebas de Compras deberían tener su OC'
     m = con_oc[0]
-    assert m['pc_numero']           # N° PC, o "Compra a stock" / "Sin PC vinculado"
+    assert m['pc_numero']           # N° PV, o "Compra a stock" / "Sin PV vinculado"
     r = admin.get('/finanzas/api/movimientos', query_string={'q': m['oc_numero']}).json['data']
     assert any(x['id'] == m['id'] for x in r)
     for c in admin.get('/finanzas/api/movimientos?tipo=COBRO').json['data']:
         assert 'pc_numero' in c and 'oc_cliente' in c
-    assert 'N° OC (Proveedor) / N° PC' in admin.get('/finanzas').get_data(as_text=True)
+    assert 'N° OC (Proveedor) / N° PV' in admin.get('/finanzas').get_data(as_text=True)
 
 
 def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):
-    # Erika 22/10/2026 12:34: en 7.2 una tabla integral por OC entre empresas (OC, PC, cotización, cliente,
+    # Erika 22/10/2026 12:34: en 7.2 una tabla integral por OC entre empresas (OC, PV, cotización, cliente,
     # pago, recepción, despacho, facturas). Antes solo veía facturas de venta y la OC no aparecía.
     agd = _sql("SELECT id, ruc FROM erp_empresas WHERE codigo = 'AGD'")
     if not agd:
@@ -172,7 +172,7 @@ def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):
     assert o['siguiente'] == {'codigo': 'despachar', 'quien': 'AGD', 'texto': 'Despacho en AGD (su stock aún no descuenta)'}
     assert o['falta'][-1].startswith('Pagar') and o['estados'] == {'pago': False, 'recibido': False, 'despachado': False,
                                                                     'facturado': False, 'registrado': False}
-    # KCF recibe; AGD hace su PC con "N° OC del cliente" = la OC, despacha y factura
+    # KCF recibe; AGD hace su PV con "N° PC (Pedido del cliente)" = la OC, despacha y factura
     items = admin.get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').json['items']
     r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json={
         'almacen_id': zz['sede'], 'guia_proveedor': 'T001-IC-1', 'traido_por_tipo': 'proveedor',
@@ -216,7 +216,7 @@ def test_banco_siempre_de_la_lista(admin):
 
 
 def test_rotulo_con_los_4_numeros_y_nombre_en_una_linea(app, admin):
-    # Erika 22/10/2026 12:57: N° despacho, N° PC, N° Guía y N° Factura ("—" si falta); sin URL ni redes; nombre sin E.I.R.L.
+    # Erika 22/10/2026 12:57: N° despacho, N° PV, N° Guía y N° Factura ("—" si falta); sin URL ni redes; nombre sin E.I.R.L.
     from routes.ventas import _numeros_rotulo
     from pdf_generator import pdf_generator
     _sql("""INSERT INTO despachos (numero, cliente, ruc, estado, pc_numero, guia)
@@ -230,7 +230,7 @@ def test_rotulo_con_los_4_numeros_y_nombre_en_una_linea(app, admin):
     assert pdf_generator._nombre_rotulo('KCF CORPORACION E.I.R.L.') == 'KCF CORPORACIÓN'
     assert pdf_generator._nombre_rotulo('AGD GROUP S.A.C.') == 'AGD GROUP'
     plantilla = pdf_generator._obtener_template_rotulo_guia()
-    assert 'social-icon">' not in plantilla and 'empresa_web' not in plantilla and 'N° Pedido de compra' in plantilla
+    assert 'social-icon">' not in plantilla and 'empresa_web' not in plantilla and 'N° Pedido de venta' in plantilla
     r = admin.get(f'/ventas/api/rotulo/despacho/{did}')
     assert r.status_code == 200 and r.data[:4] == b'%PDF'
 
@@ -251,7 +251,7 @@ def test_intercompany_reconoce_proveedor_con_ruc_mal_escrito(zz, admin):
 
 
 def test_stock_se_reparte_y_oc_generada_cuenta_como_por_llegar(zz, admin):
-    # Erika 22/10/2026 13:21: stock 32, un PC de 18 (más antiguo) y otro de 40 → faltan 26, no 8 ni 58.
+    # Erika 22/10/2026 13:21: stock 32, un PV de 18 (más antiguo) y otro de 40 → faltan 26, no 8 ni 58.
     # 13:21 urgente: con la OC ya generada (aunque esté en borrador) debe decir "Comprado, por llegar" con su N° de OC.
     import json
     _sql("""INSERT INTO productos (familia, codigo, descripcion, marca, unidad, costo_unitario, precio_unitario, stock, activo)
@@ -323,8 +323,8 @@ def test_monitor_de_errores_en_consola(admin, anonimo):
 def test_compras_terminos_y_orden_global(admin):
     # Erika 22/10/2026 18:13: términos de Compras, colores de la OC, columna Ítem y ayudas con "ⓘ Ver más"
     js = open('static/js/compras_flujo.js', encoding='utf-8').read()
-    assert 'Pedido de Compra del cliente' in js and 'Stock asignado' in js and 'Compra bajo pedido' in js
-    assert 'Stock que le toca' not in js and 'Saldo después de entregar' not in js and 'para PC más antiguos' in js
+    assert 'PV<small>Pedido de venta' in js and 'Stock asignado' in js and 'Compra bajo pedido' in js
+    assert 'Stock que le toca' not in js and 'Saldo después de entregar' not in js and 'para PV más antiguos' in js
     html = admin.get('/compras').get_data(as_text=True)
     assert '<th>Forma de pago</th><th>Total (inc. IGV)</th>' in html and 'com-flujo-plegable' in html
     assert 'orden_pantallas.js' in html

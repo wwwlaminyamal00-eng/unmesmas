@@ -126,7 +126,7 @@
             const ok = o.estados[p[0]];
             const quien = p[1] === 'vende' ? o.vende : o.compra;
             const det = {
-                despachado: ok ? o.despachos : (o.pc_vende ? `PC ${o.pc_vende}` : 'sin PC con esta OC'),
+                despachado: ok ? o.despachos : (o.pc_vende ? `PV ${o.pc_vende}` : 'sin PV con esta OC'),
                 recibido: `${cant(o.recibida)} de ${cant(o.pedida)}`,
                 facturado: ok ? o.factura_venta : '',
                 registrado: ok ? o.factura_compra : '',

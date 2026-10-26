@@ -1,6 +1,6 @@
 """
 Pruebas de los 5 requerimientos obligatorios del Excel de pendientes (14/10/2026).
-  1. Despacho del PC destacado (letras negras, fondo azulito)   -> el PC informa el estado de su despacho
+  1. Despacho del PV destacado (letras negras, fondo azulito)   -> el PV informa el estado de su despacho
   2. Rechazo de Hellen = "Rechazada"                             -> ver tests/test_flujos.py::test_rechazo_requiere_motivo
   3. Orden de botones en Cotizaciones                            -> ver static/js/ventas.js (showCotizacionMenu)
   4. "Pendiente por compra" / "Pendiente por recojo"              -> /api/abastecimiento/*
@@ -84,7 +84,7 @@ def test_con_stock_libre_ya_no_esta_pendiente(ab, vendedor):
 
 
 def test_pc_informa_estado_de_su_despacho(ab, vendedor):
-    """Requerimiento 1: la lista de PC sabe si su despacho ya salió, para pintarlo azulito."""
+    """Requerimiento 1: la lista de PV sabe si su despacho ya salió, para pintarlo azulito."""
     pcs = vendedor.get('/ventas/api/pedido-compra/listar').get_json()
     lista = pcs.get('data', pcs) if isinstance(pcs, dict) else pcs
     fila = next(p for p in lista if p['id'] == ab['pc'])

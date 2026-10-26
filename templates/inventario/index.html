@@ -236,7 +236,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° separación</th><th class="left">Cliente</th><th class="left">Nombre producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>N° PC / cotización</th><th>Vence</th><th>Separó</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>N° separación</th><th class="left">Cliente</th><th class="left">Nombre producto</th><th>Empresa</th><th>Sede</th><th>Cantidad</th><th>N° PV / cotización</th><th>Vence</th><th>Separó</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="sepBody"><tr><td colspan="11">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -387,7 +387,7 @@
             <label id="movDocTipoWrap">Tipo de documento
                 <select id="movDocTipo">
                     <option>Guía de remisión</option><option>Factura</option><option>Boleta</option>
-                    <option>Orden de compra (Proveedor)</option><option>Pedido del cliente (PC)</option><option>Nota de crédito</option><option>Otro</option>
+                    <option>Orden de compra (Proveedor)</option><option>Pedido de venta (PV)</option><option>Nota de crédito</option><option>Otro</option>
                 </select>
             </label>
             <label id="movDocWrap">N° de documento<input type="text" id="movDoc" maxlength="60" placeholder="Ej. T001-00001234"></label>
@@ -495,7 +495,7 @@
             <label>Cantidad<input type="number" id="sepCantidad" min="0" step="any"></label>
             <label>Separar hasta<input type="date" id="sepVence"></label>
             <label>Cliente<input type="text" id="sepCliente" maxlength="255"></label>
-            <label>Pedido o cotización<input type="text" id="sepDoc" maxlength="60" placeholder="Ej. PC-20261013-0001"></label>
+            <label>Pedido o cotización<input type="text" id="sepDoc" maxlength="60" placeholder="Ej. PV-KCF-000001"></label>
             <label class="inv-full">Observaciones<input type="text" id="sepObs" maxlength="300"></label>
             <div class="inv-tip inv-full" id="sepTip"></div>
         </div>

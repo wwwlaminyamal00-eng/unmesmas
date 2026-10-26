@@ -1,4 +1,4 @@
-# routes/abastecimiento.py - "¿Hay stock o falta comprar/recoger?" para productos, cotizaciones, PC y despachos
+# routes/abastecimiento.py - "¿Hay stock o falta comprar/recoger?" para productos, cotizaciones, PV y despachos
 #
 # Regla (requerimiento obligatorio del Excel de pendientes):
 #   Cuando un producto falta (stock 0 o insuficiente) se muestra solo:
@@ -6,12 +6,12 @@
 #     - "Pendiente por recojo": ya se compró (OC aprobada) y nosotros debemos recogerlo del proveedor.
 #     - "Por llegar": ya se compró y el proveedor lo trae a la sede.
 #   Stock que cuenta = stock de todo el grupo (todas las empresas y sedes) menos lo separado para otros clientes.
-#   Para un PC solo cuentan las OC hechas para ese PC; para cotizaciones y productos cuentan todas las OC abiertas.
+#   Para un PV solo cuentan las OC hechas para ese PV; para cotizaciones y productos cuentan todas las OC abiertas.
 # 22/10/2026 (Erika, urgente "sigue diciendo que falta stock después de generar la OC"):
 #   - Una OC cuenta como "comprado, por llegar" desde que se genera (Borrador, Por aprobar o Aprobada), no solo
 #     aprobada. Antes solo contaban las aprobadas, por eso seguía saliendo "Pendiente de compra".
 #   - El stock libre se reparte entre los pedidos (el más antiguo primero) y no se cuenta dos veces: con 32 en stock,
-#     un PC de 18 y otro de 40, al primero le tocan 18 y al segundo 14 (faltan 26), no 32 a cada uno.
+#     un PV de 18 y otro de 40, al primero le tocan 18 y al segundo 14 (faltan 26), no 32 a cada uno.
 #   - Cada estado trae el N° de la OC que lo cubre.
 # No crea tablas ni columnas: solo lee lo que ya registran Inventario y Compras.
 from collections import defaultdict
@@ -127,7 +127,7 @@ def evaluar_documentos(docs, por_pedido=False):
     camino_global = _sumar_global(camino)
     vacio = {'recojo': Decimal('0'), 'llega': Decimal('0'), 'ocs': []}
     # Pedidos: el stock libre se reparte, el pedido más antiguo primero, y no se cuenta dos veces.
-    # Lo que ya está en una OC de ese pedido no necesita stock. Varios despachos del mismo PC comparten su parte.
+    # Lo que ya está en una OC de ese pedido no necesita stock. Varios despachos del mismo PV comparten su parte.
     restante = dict(libre)
     asignado = {}
     if por_pedido:
@@ -168,7 +168,7 @@ def evaluar_documentos(docs, por_pedido=False):
 # ============================================================
 @abastecimiento_bp.route('/pc')
 def api_pc():
-    """Estado de abastecimiento de cada pedido del cliente (PC) abierto."""
+    """Estado de abastecimiento de cada pedido de venta (PV) abierto."""
     from routes.compras_flujo import _items_pedido, ESTADOS_PC_FUERA
     _preparar()
     filas = db_query("""
@@ -200,7 +200,7 @@ def api_cotizaciones():
 
 @abastecimiento_bp.route('/despachos')
 def api_despachos():
-    """Despachos por salir: usan el estado de su PC (o sus propios productos si no tienen PC)."""
+    """Despachos por salir: usan el estado de su PV (o sus propios productos si no tienen PV)."""
     from routes.compras_flujo import _items_pedido
     _preparar()
     filas = db_query("""
@@ -215,7 +215,7 @@ def api_despachos():
 
 @abastecimiento_bp.route('/productos')
 def api_productos():
-    """Por producto: stock libre, lo que piden los PC abiertos y si falta comprar o recoger."""
+    """Por producto: stock libre, lo que piden los PV abiertos y si falta comprar o recoger."""
     from routes.compras_flujo import _pedidos_por_comprar, _stock_libre_grupo
     _preparar()
     demanda = defaultdict(Decimal)

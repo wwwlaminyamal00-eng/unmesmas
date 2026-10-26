@@ -6,12 +6,12 @@
 #      3 días después de hecha. Lo que toca hoy o está atrasado sale en rojo.
 #   2. Registrar llamada: medio (llamada, WhatsApp, correo, visita), qué dijo el cliente y cuándo volver a llamar.
 #      Si el cliente dijo que no, se marca "No compró" con motivo (la cotización en Ventas no cambia).
-#   3. Tasa de cierre por vendedora: de lo cotizado en el periodo, cuánto se ganó (aceptada o con PC),
+#   3. Tasa de cierre por vendedora: de lo cotizado en el periodo, cuánto se ganó (aceptada o con PV),
 #      cuánto se perdió y cuánto sigue abierto, en cantidad y en soles.
 #   4. Historial de gestiones: cada llamada con usuario y fecha y hora de Lima.
 #
 # Reglas:
-#   - Una cotización está "ganada" si está aceptada por el cliente, facturada o tiene un PC.
+#   - Una cotización está "ganada" si está aceptada por el cliente, facturada o tiene un PV.
 #   - "Perdida" si Ventas la rechazó o si aquí se marcó "No compró". Las anuladas no cuentan.
 #   - Acceso: administrador o quien tenga "Ver" en "Seguimiento comercial".
 import re

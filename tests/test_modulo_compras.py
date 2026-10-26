@@ -1,6 +1,6 @@
 """
 Pruebas del módulo de Compras bajo pedido (routes/compras_flujo.py).
-Escenario: KCF y AGD, sedes San Martín de Porres y Breña, un pedido de cliente (PC) con dos productos.
+Escenario: KCF y AGD, sedes San Martín de Porres y Breña, un pedido de cliente (PV) con dos productos.
 """
 import json
 import pytest
