@@ -104,10 +104,10 @@ def test_pantallas_del_20_de_octubre():
     html = _leer('templates/ventas/index.html')
     guias = html[html.index('<div id="guias"'):html.index('<div id="comprobantes"')]
     assert '<th>N° Facturas</th>' in guias
-    assert guias.index('<th>N° cotización</th>') < guias.index('<th>N° PC</th>') < guias.index('<th>N° Facturas</th>')
+    assert guias.index('<th>N° cotización</th>') < guias.index('<th>N° PC (Pedido de compra)</th>') < guias.index('<th>N° Facturas</th>')
     fac = html[html.index('<div id="comprobantes"'):]
     fac = fac[:fac.index('</thead>')]
-    orden = [fac.index(t) for t in ('<th>N° cotización</th>', '<th>N° PC</th>', '<th>N° Guía</th>', '<th>N° Factura</th>')]
+    orden = [fac.index(t) for t in ('<th>N° cotización</th>', '<th>N° PC (Pedido de compra)</th>', '<th>N° Guía</th>', '<th>N° Factura</th>')]
     assert orden == sorted(orden) and '<th>Documento</th>' not in fac
     js = _leer('static/js/ventas.js')
     assert 'function mostrarErrorStockDespacho' in js and "response.codigo === 'falta_stock'" in js

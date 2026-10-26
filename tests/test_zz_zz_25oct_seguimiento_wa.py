@@ -12,7 +12,7 @@ def _leer(ruta):
 def test_js_abre_whatsapp_y_muestra_productos():
     js = _leer('static/js/seguimiento.js')
     assert 'https://wa.me/' in js and 'celularWhatsapp' in js
-    assert 'Sin teléfono' in js and 'No es celular: sin WhatsApp' in js
+    assert 'Sin teléfono' in js and 'Sin WhatsApp' in js
     assert '<th>Cantidad y producto</th>' in js and 'filtrarAbiertas' in js
     assert 'id="segBuscar"' in _leer('templates/seguimiento.html')
 

@@ -30,13 +30,13 @@
 </head>
 <body>
 <h1>🚚 Programa de transporte</h1>
-<div class="sub">Órdenes de compra aprobadas que <b>nosotros recogemos</b> y que aún no llegan completas. Generado el {{ ahora.strftime('%d/%m/%Y %H:%M') }} (hora de Lima).</div>
+<div class="sub">Órdenes de compra (Proveedor) aprobadas que <b>nosotros recogemos</b> y que aún no llegan completas. Generado el {{ ahora.strftime('%d/%m/%Y %H:%M') }} (hora de Lima).</div>
 <div class="acciones no-print">
     <button onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
     <a href="?formato=csv">⬇ Descargar Excel</a>
 </div>
 <table>
-    <thead><tr><th>Fecha prometida</th><th>Responsable de recoger</th><th>Proveedor</th><th>N° orden de compra</th><th>Dirección de recojo</th>
+    <thead><tr><th>Fecha prometida</th><th>Responsable de recoger</th><th>Proveedor</th><th>N° orden de compra (Proveedor)</th><th>Dirección de recojo</th>
         <th>Productos a recoger</th><th>Llevar a</th><th>Estado</th><th class="firma">Firma de quien recoge</th></tr></thead>
     <tbody>
     {% for o in datos %}

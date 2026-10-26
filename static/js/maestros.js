@@ -555,22 +555,22 @@ function renderStatusBoard(m) {
                 <div class="master-status-card active">
                     <span class="master-status-dot msd-active">●</span>
                     <b>${activos}</b>
-                    <small>Act</small>
+                    <small>Activos</small>
                 </div>
                 <div class="master-status-card observed">
                     <span class="master-status-dot msd-observed">●</span>
                     <b>${observados}</b>
-                    <small>Obs</small>
+                    <small>Observados</small>
                 </div>
                 <div class="master-status-card blocked">
                     <span class="master-status-dot msd-blocked">●</span>
                     <b>${bloqueados}</b>
-                    <small>Bloq</small>
+                    <small>Bloqueados</small>
                 </div>
                 <div class="master-status-card total">
                     <span class="master-status-dot msd-total">●</span>
                     <b>${data.length}</b>
-                    <small>Tot</small>
+                    <small>Total</small>
                 </div>
             </div>
         `;
@@ -584,12 +584,12 @@ function renderStatusBoard(m) {
             <div class="master-status-card active">
                 <span class="master-status-dot msd-active">●</span>
                 <b>${activos}</b>
-                <small>Act</small>
+                <small>Activos</small>
             </div>
             <div class="master-status-card total">
                 <span class="master-status-dot msd-total">●</span>
                 <b>${data.length}</b>
-                <small>Tot</small>
+                <small>Total</small>
             </div>
         </div>
     `;
@@ -2914,7 +2914,7 @@ function renderClientesCompleta(list) {
         { key: 'codigo_cliente', label: 'Código de cliente', width: '100px' },
         { key: 'ambito', label: 'Ámbito', width: '90px' },
         { key: 'razon_social', label: 'Razón Social', width: '180px' },
-        { key: 'tipo_documento', label: 'Tipo Doc.', width: '80px' },
+        { key: 'tipo_documento', label: 'Tipo de documento', width: '80px' },
         { key: 'numero_documento', label: 'N° de documento (RUC / DNI)', width: '120px' },
         { key: 'nombre_comercial', label: 'Nombre Comercial', width: '150px' },
         { key: 'direccion_fiscal', label: 'Dirección Fiscal', width: '200px' },

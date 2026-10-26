@@ -698,7 +698,7 @@ def rep_compras(f):
     tot = sum((d['total'] for d in docs), Decimal('0'))
     resumen = [{'t': 'Compras (con IGV)', 'v': _n(tot), 'tipo': 'dinero'},
                {'t': 'Compras sin IGV', 'v': _n(tot_sub), 'tipo': 'dinero'},
-               {'t': 'Órdenes de compra', 'v': len(docs), 'tipo': 'num'},
+               {'t': 'Órdenes de compra (Proveedor)', 'v': len(docs), 'tipo': 'num'},
                {'t': 'Proveedores', 'v': len({d['proveedor'] for d in docs}), 'tipo': 'num'}]
     if ag == 'documento':
         filas = [{'fecha': d['fecha'], 'empresa': d['empresa'], 'documento': d['documento'], 'estado': d['estado'],
@@ -745,7 +745,7 @@ def rep_compras(f):
     orden = sorted(g.items(), key=(lambda kv: kv[0]) if ag == 'mes' else (lambda kv: -kv[1]['total']))
     filas = [{'grupo': x['grupo'], 'ordenes': x['ordenes'], 'subtotal': _n(x['subtotal']), 'total': _n(x['total']),
               'participacion': _n(x['total'] * 100 / tot, 1) if tot else 0} for _, x in orden]
-    cols = [_col('grupo', titulo), _col('ordenes', 'Órdenes de compra', 'num'), _col('subtotal', 'Sin IGV', 'dinero'),
+    cols = [_col('grupo', titulo), _col('ordenes', 'Órdenes de compra (Proveedor)', 'num'), _col('subtotal', 'Sin IGV', 'dinero'),
             _col('total', 'Total', 'dinero'), _col('participacion', '% del total', 'pct')]
     return _salida(f'Compras por {titulo.lower()}', cols, filas, ['ordenes', 'subtotal', 'total'], resumen,
                    grafico=('grupo', 'total'))

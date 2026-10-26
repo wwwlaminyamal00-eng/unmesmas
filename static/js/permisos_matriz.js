@@ -37,7 +37,7 @@
         COTIZACIONES: 'Cotizaciones', COMPROBANTES_CLIENTE: 'Pedidos (PC), despachos y facturas', GUIAS_CLIENTE: 'Guías de remisión',
         NOTAS_CREDITO: 'Notas de crédito', SEGUIMIENTO_COMERCIAL: 'Seguimiento comercial',
         SOLICITUD_COMPRA: 'Pedidos por comprar', COMPARATIVO_PROVEEDORES: 'Comparativo y precios de proveedores',
-        ORDEN_COMPRA: 'Órdenes de compra', COMPROBANTES_PROVEEDOR: 'Facturas de proveedores',
+        ORDEN_COMPRA: 'Órdenes de compra (Proveedor)', COMPROBANTES_PROVEEDOR: 'Facturas de proveedores',
         RECEPCION_MERCADERIA: 'Recibir mercadería (logística)',
         ESTADO_STOCK: 'Stock', KARDEX: 'Kardex', ENTRADAS_SALIDAS: 'Entradas y salidas', TRANSFERENCIAS: 'Traslados entre sedes',
         CUENTAS_COBRAR: 'Cuentas por cobrar', CUENTAS_PAGAR: 'Cuentas por pagar', CAJA_BANCOS: 'Cobros y pagos',

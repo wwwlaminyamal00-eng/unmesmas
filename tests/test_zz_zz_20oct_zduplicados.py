@@ -116,7 +116,7 @@ def test_pantallas_ordenadas_y_ayudas_en_compras():
               'Relacionado al PC:', "cartelSiguiente($('pagoOc').value"):
         assert t in cjs, t
     fl = (RAIZ / 'templates/compras/flujo.html').read_text(encoding='utf-8')
-    assert '<th>N° PC</th><th>N° cotización</th>' in fl
+    assert '<th>N° PC (Pedido de compra)</th><th>N° cotización</th>' in fl
 
 
 def test_despacho_duplicado_del_mismo_pc(vendedor):

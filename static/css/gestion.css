@@ -182,3 +182,18 @@ details.ic-plegable .inv-title small{font-size:12px;color:#64748B;font-weight:80
 .ge-tabla td.ge-prods{text-align:left !important}
 #segAbiertas .ge-btn{white-space:normal;line-height:1.15;padding:5px 8px;min-width:0}
 #segAbiertas{overflow-x:visible}
+/* Seguimiento y demás módulos de gestión más compactos y armoniosos (Erika 26/10/2026: "comprimir que se vea más armonioso") */
+.ge-barra{gap:14px !important;align-items:center !important;margin-bottom:6px !important}
+.ge-barra label{flex-direction:row !important;align-items:center !important;gap:6px !important;font-size:11px !important;white-space:nowrap}
+.ge-barra select,.ge-barra input{height:28px !important;font-size:12px !important;padding:0 8px !important;border-radius:8px !important}
+.ge-kpis{gap:8px !important;margin-bottom:6px !important}
+.ge-kpis .inv-kpi{min-height:44px !important}
+.ge-kpis .inv-kpi b{font-size:16px !important}
+.ge-ayuda{margin-bottom:6px !important}
+.ge-ayuda > summary{padding:5px 12px !important;font-size:12px !important}
+#segAbiertas .ge-tabla :is(th,td){padding:5px 4px !important;font-size:12px}
+#segAbiertas .ge-tabla th{font-size:11px}
+#segAbiertas .ge-tabla td:is(:nth-child(2)){max-width:130px}
+#segAbiertas .ge-tabla td .ge-sub{font-size:10.5px}
+#segAbiertas .ge-btn{font-size:11px;padding:5px 8px;white-space:normal;line-height:1.2;width:100px;display:inline-block}
+#segAbiertas .ge-btn{height:auto !important;min-height:0 !important}

@@ -2886,7 +2886,7 @@
     {% endif %}
     <script>window.PUEDE_VALIDAR_COT = {{ 'true' if puede_validar_ventas else 'false' }};</script>
     <button class="tab-btn" data-tab="pedido_compra">
-        📋 PC Pedido Compras
+        📋 PC (Pedido de compra)
         <span class="tab-badge">📍</span>
     </button>
     <button class="tab-btn" data-tab="despachar">
@@ -2979,7 +2979,7 @@
     <div class="panel">
         <div class="clean-header sap-head">
             <div class="master-title-wrap">
-                <div class="master-title">📋 PC Pedido Compras</div>
+                <div class="master-title">📋 PC (Pedido de compra)</div>
                 <div class="master-subtitle">Aceptación formal del cliente recibida por correo / WhatsApp / plataforma</div>
             </div>
             <div class="search-box" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -3053,7 +3053,7 @@
     <table class="master-table val-table">
         <thead>
             <tr>
-                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">N° PC</th>
+                <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">N° PC (Pedido de compra)</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Cliente</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Nombre producto</th>
                 <th style="padding:4px 6px; font-size:9px; background:#FFF1F2; color:#7F1D1D; border:1px solid #FCA5A5; text-align:center; font-weight:1000;">Precio</th>
@@ -3128,7 +3128,7 @@
                         <th data-ent-orden="fecha" onclick="ordenarEntregas('fecha')" title="Ordenar">Fecha / Hora</th>
                         <th data-ent-orden="estado" onclick="ordenarEntregas('estado')" title="Ordenar">Estado</th>
                         <th data-ent-orden="numero" onclick="ordenarEntregas('numero')" title="Ordenar">N° despacho</th>
-                        <th data-ent-orden="pc_numero" onclick="ordenarEntregas('pc_numero')" title="Ordenar">N° PC</th>
+                        <th data-ent-orden="pc_numero" onclick="ordenarEntregas('pc_numero')" title="Ordenar">N° PC (Pedido de compra)</th>
                         <th data-ent-orden="cotizacion_numero" onclick="ordenarEntregas('cotizacion_numero')" title="Ordenar">N° cotización</th>
                         <th data-ent-orden="cliente" onclick="ordenarEntregas('cliente')" title="Ordenar">Cliente</th>
                         <th>Cantidad y producto</th>
@@ -3192,7 +3192,7 @@
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>N° cotización</th>
-                        <th>N° PC</th>
+                        <th>N° PC (Pedido de compra)</th>
                         <th>N° Facturas</th>
                         <th>Origen</th>
                         <th>Destino</th>
@@ -3250,11 +3250,11 @@
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>N° cotización</th>
-                        <th>N° PC</th>
+                        <th>N° PC (Pedido de compra)</th>
                         <th>N° Guía</th>
                         <th>N° Factura</th>
                         <th title="Total de la factura, con IGV">Monto (inc. IGV)</th>
-                        <th>Cond. Pago</th>
+                        <th>Condición de pago</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -3294,16 +3294,15 @@
             <table class="master-table">
                 <thead>
                     <tr>
-                        <th>Items</th>
-                        <th>Fecha</th>
+                        <th>Ítem</th>
+                        <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>Tipo</th>
                         <th>N° nota de crédito</th>
+                        <th>N° Factura o boleta</th>
                         <th>Cliente</th>
                         <th>RUC</th>
-                        <th>N° Factura o boleta</th>
                         <th>Motivo</th>
-                        <th>Monto</th>
+                        <th title="Monto de la nota de crédito, con IGV">Monto (inc. IGV)</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>

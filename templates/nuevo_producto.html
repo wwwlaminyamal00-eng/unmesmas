@@ -921,7 +921,7 @@
                 <div class="field"><label>Venta mínima <span class="optional">(opcional)</span></label>
                     <div class="input-unit">
                         <input name="venta_minima" type="number" value="{{ producto.venta_minima if producto else 1 }}" min="1" />
-                        <span>Und.</span>
+                        <span>unidades</span>
                     </div>
                 </div>
                 <div class="field"><label>Código de barras <span class="optional">(opcional)</span></label>
@@ -982,7 +982,7 @@
                     <div class="input-unit">
                         <input name="stock_minimo" type="number" placeholder="0" 
                                value="{{ producto.stock_minimo if producto else 0 }}" />
-                        <span>Und.</span>
+                        <span>unidades</span>
                     </div>
                 </div>
                 <div class="field"><label>Fecha de vencimiento <span class="optional">(consumibles, químicos)</span></label>

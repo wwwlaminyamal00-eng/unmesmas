@@ -12,7 +12,7 @@
         comprobantes: 'Ventas - Facturas y boletas', notas_credito: 'Ventas - Notas de crédito',
         devoluciones: 'Ventas - Devoluciones', eliminadas: 'Ventas - Cotizaciones eliminadas', revision: 'Ventas - Revisión',
         solicitud_compra: 'Compras - Solicitudes de compra', comparativo: 'Compras - Cuadros comparativos',
-        orden_compra: 'Compras - Órdenes de compra', comprobante_proveedor: 'Compras - Facturas de proveedor',
+        orden_compra: 'Compras - Órdenes de compra (Proveedor)', comprobante_proveedor: 'Compras - Facturas de proveedor',
         recepcion: 'Compras - Recepciones', productos: 'Productos'
     };
     var COLUMNAS_FUERA = /^(acciones?|opciones|acción|ver|editar|\s*)$/i;

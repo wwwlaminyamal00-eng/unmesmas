@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>{{ 'Hoja de recojo' if hoja == 'recojo' else 'Orden de compra' }} {{ o.numero }}</title>
+<title>{{ 'Hoja de recojo' if hoja == 'recojo' else 'Orden de compra (Proveedor)' }} {{ o.numero }}</title>
 <style>
     /* Pedido de Erika 22/10/2026: hoja vertical (A4), todo en blanco y solo el encabezado de la tabla en gris */
     @page{size:A4 portrait;margin:12mm}
@@ -69,7 +69,7 @@
 
 <table>
     <thead><tr><th>Producto</th><th>Modelo</th><th>Marca</th><th>Unidad de medida</th><th>Cantidad</th>
-        {% if hoja != 'recojo' %}<th>Precio unit. sin IGV</th><th>Total</th>{% else %}<th>Recogido (contar con el proveedor)</th><th>Observación</th>{% endif %}</tr></thead>
+        {% if hoja != 'recojo' %}<th>Precio unitario sin IGV</th><th>Total</th>{% else %}<th>Recogido (contar con el proveedor)</th><th>Observación</th>{% endif %}</tr></thead>
     <tbody>
     {% for i in items %}
     <tr><td>{{ i.producto }}</td><td>{{ i.modelo or '' }}</td><td>{{ i.marca or '' }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>

@@ -760,7 +760,7 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>N° PC (pedido de compra)</th>
+                        <th>N° PC (Pedido de compra)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -777,7 +777,7 @@ function renderPedidos() {
                         <th>Item</th>
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
-                        <th>N° PC (pedido de compra)</th>
+                        <th>N° PC (Pedido de compra)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -785,7 +785,7 @@ function renderPedidos() {
                         <th>Descripción</th>
                         <th>Monto (Sin IGV)</th>
                         <th>Monto (Con IGV)</th>
-                        <th>Cond. Pago</th>
+                        <th>Condición de pago</th>
                         <th>Vendedor</th>
                         <th>Medio</th>
                         <th>Req. Compra</th>
@@ -806,7 +806,7 @@ function renderPedidos() {
     }
     
     const list = pedidosData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.oc_cliente || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.cotizacion_numero || ''}`.toLowerCase();
+        const searchStr = `${r.numero || ''} ${r.oc_cliente || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.cotizacion_numero || ''} ${productosPcTexto(r)} ${r.descripcion || r.observaciones || ''}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         
@@ -926,7 +926,7 @@ function renderPedidos() {
                 <th>Item</th>
                 <th>Fecha / Hora</th>
                 <th>Estado</th>
-                <th>N° PC (pedido de compra)</th>
+                <th>N° PC (Pedido de compra)</th>
                 <th>N° cotización</th>
                 <th>Cliente</th>
                 <th>RUC</th>
@@ -969,7 +969,7 @@ function renderPedidos() {
                 <td class="left"><b>${r.cliente || '-'}</b></td>
                 <td>${r.ruc || '-'}</td>
                 <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
-                <td class="left">${r.descripcion || r.observaciones || '-'}</td>
+                <td class="left pc-desc">${descripcionPcHTML(r)}</td>
                 <td><b>${money(montoSinIgv)}</b></td>
                 <td><b>${money(montoConIgv)}</b></td>
                 <td>
@@ -988,7 +988,7 @@ function renderPedidos() {
             <th>Item</th>
             <th>Fecha / Hora</th>
             <th>Estado</th>
-            <th>N° PC (pedido de compra)</th>
+            <th>N° PC (Pedido de compra)</th>
             <th>N° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
@@ -996,7 +996,7 @@ function renderPedidos() {
             <th>Descripción</th>
             <th>Monto (Sin IGV)</th>
             <th>Monto (Con IGV)</th>
-            <th>Cond. Pago</th>
+            <th>Condición de pago</th>
             <th>Vendedor</th>
             <th>Medio</th>
             <th>Req. Compra</th>
@@ -1056,7 +1056,7 @@ function renderPedidos() {
             <td class="left"><b>${r.cliente || '-'}</b></td>
             <td>${r.ruc || '-'}</td>
             <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
-            <td class="left">${r.descripcion || r.observaciones || '-'}</td>
+            <td class="left pc-desc">${descripcionPcHTML(r)}</td>
             <td><b>${money(montoSinIgv)}</b></td>
             <td><b>${money(montoConIgv)}</b></td>
             <td>${esc(window.normalizarCondicion(r.condicion_pago) || '-')}</td>
@@ -1241,7 +1241,7 @@ if (cotizacionViewMode === 'principal') {
             <th>Descripción principal</th>
             <th>Monto total<br><small>(Sin IGV)</small></th>
             <th>Monto total<br><small>(Incluido IGV)</small></th>
-            <th>Cond. pago</th>
+            <th>Condición de pago</th>
             <th>Acciones</th>
         </tr>
     `;
@@ -1295,7 +1295,7 @@ if (cotizacionViewMode === 'principal') {
             <th>Subtotal</th>
             <th>IGV</th>
             <th>Total<br><small>(Incluido IGV)</small></th>
-            <th>Cond. Pago</th>
+            <th>Condición de pago</th>
             <th>Tiempo Entrega</th>
             <th>Validez</th>
             <th>Lugar entrega</th>
@@ -1406,7 +1406,7 @@ function estadoCompraHTML(r, despachado, anulado) {
         'Con stock': ['compra-ok', '✔ Comprado / en stock'],
         'Por llegar': ['compra-camino', '📦 Comprado, por llegar'],
         'Pendiente por recojo': ['compra-camino', '🚚 Comprado, por recoger'],
-        'Pendiente por compra': ['compra-falta', '🛒 Pendiente de compra']
+        'Pendiente por compra': ['compra-falta', 'Pendiente de compra']
     }[info.estado] || ['compra-camino', info.estado];
     // Con OC generada (aunque esté en borrador o por aprobar) sale "Comprado, por llegar" con su N° de OC (22/10/2026)
     const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? `<small class="compra-ocs">${info.ocs.map(sd).join(', ')}</small>` : '';
@@ -1429,8 +1429,16 @@ function fmtNumDoc(texto) {
 }
 window.numDoc = numDoc;
 window.fmtNumDoc = fmtNumDoc;
-function guiaDespachoHTML(r) { return r.guia ? `<b class="num-doc">${sd(fmtNumDoc(r.guia))}</b>` : '-'; }
-function facturaDespachoHTML(r) { return r.comprobante ? `<b class="num-doc">${sd(fmtNumDoc(r.comprobante))}</b>` : '-'; }
+// Celda de N° de documento: ancho justo al número (Erika 26/10/2026, regla de oro: "la columna guía y factura son muy anchas").
+// E001-00002319 va en una línea; los números internos largos (G-20261023-0465) pueden partirse en el guion.
+function numDocCelda(texto, tag = 'b') {
+    const t = String(texto || '');
+    const largo = t.length > 13;
+    const html = largo ? sd(t).replace(/-/g, '-<wbr>') : sd(t);
+    return `<${tag} class="num-doc${largo ? ' num-doc-largo' : ''}">${html}</${tag}>`;
+}
+function guiaDespachoHTML(r) { return r.guia ? numDocCelda(fmtNumDoc(r.guia)) : '-'; }
+function facturaDespachoHTML(r) { return r.comprobante ? numDocCelda(fmtNumDoc(r.comprobante)) : '-'; }
 // Ordenar Entregas con clic en el encabezado (th con data-ent-orden); segundo clic invierte
 let entOrden = { campo: '', dir: 1 };
 function ordenarEntregas(campo) {
@@ -1461,6 +1469,30 @@ function citaDespachoHTML(r, cerrado) {
     }
     if (cerrado) return txt ? `<b>${txt}</b>` : '-';
     return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega">📅 ${txt || 'Poner cita'}</button>`;
+}
+// PC: "Descripción" = cantidad y producto en una sola casilla (Erika 26/10/2026); la nota del PC va debajo en gris
+function itemsPc(r) {
+    return (Array.isArray(r.items) ? r.items : []).map(it => ({
+        cantidad: it.cantidad_pc ?? it.cantidad ?? it.cantidad_cotizada,
+        producto: it.descripcion_cliente || it.producto || it.descripcion || it.nombre || ''
+    })).filter(it => it.producto);
+}
+function productosPcTexto(r) {
+    return itemsPc(r).map(it => `${it.cantidad} ${it.producto}`).join(' ');
+}
+function descripcionPcHTML(r) {
+    const items = itemsPc(r);
+    const max = 3;
+    const lineas = items.slice(0, max).map(it => {
+        const n = Number(it.cantidad);
+        const cant = isNaN(n) ? sd(it.cantidad) : n.toLocaleString('es-PE', { maximumFractionDigits: 2 });
+        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto)}</div>`;
+    }).join('');
+    const mas = items.length > max
+        ? `<div class="pc-mas" title="${sd(items.slice(max).map(it => it.cantidad + ' × ' + it.producto).join('\n'))}">+${items.length - max} más</div>` : '';
+    const nota = (r.descripcion || r.observaciones || '').trim();
+    const notaHtml = nota ? `<div class="pc-nota" title="Nota del PC">${sd(nota)}</div>` : '';
+    return lineas + mas + notaHtml || '-';
 }
 // ---------- Entregas más simple (Erika 23/10/2026 04:35: "aqui es un si") ----------
 // Cantidad y producto en una sola casilla, una línea por producto
@@ -2182,8 +2214,8 @@ function renderComprobantes() {
             <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
-            <td><span class="num-doc">${sd(fmtNumDoc(r.guia_numero))}</span></td>
-            <td><b class="num-doc">${sd(numDoc(r.serie, r.numero))}</b>${badgeNuevo(r, 'fecha')}</td>
+            <td>${r.guia_numero ? numDocCelda(fmtNumDoc(r.guia_numero), 'span') : '-'}</td>
+            <td>${numDocCelda(numDoc(r.serie, r.numero))}${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
@@ -2262,20 +2294,24 @@ function renderNotas() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay notas de crédito registradas</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay notas de crédito registradas</td></tr>`;
         return;
     }
     
+    // Erika 26/10/2026: un solo "Ítem", fecha dd/mm/aaaa, sin la columna "Tipo" vacía y en el orden de las demás tablas
+    const fechaNota = v => {
+        const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+        return m ? `${m[3]}/${m[2]}/${m[1]}` + (m[4] && `${m[4]}:${m[5]}` !== '00:00' ? `<br>${m[4]}:${m[5]}` : '') : sd(v);
+    };
     tbody.innerHTML = list.map((r, i) => `
         <tr>
             <td>${i + 1}</td>
-            <td class="date-cell">${String(r.fecha || '').replace(' ', '<br>')}${tiemposHTML(r)}</td>
+            <td class="date-cell"><b>${fechaNota(r.fecha)}</b>${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}</td>
-            <td>${sd(r.tipo)}</td>
-            <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
+            <td>${numDocCelda(numDoc(r.serie, r.numero))}${badgeNuevo(r, 'fecha')}</td>
+            <td>${r.comprobante ? numDocCelda(fmtNumDoc(r.comprobante), 'span') : '-'}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${sd(r.ruc)}</td>
-            <td>${sd(r.comprobante)}</td>
             <td>${sd(r.motivo)}</td>
             <td><b>${money(r.monto)}</b></td>
             <td>
@@ -3339,7 +3375,7 @@ function toggleAllProductCheckboxesPc(checked) {
 
 async function _savePedidoCompra(estado) {
     try {
-        console.log('🔄 Guardando PC Pedido Compras...', { estado });
+        console.log('🔄 Guardando PC (Pedido de compra)...', { estado });
         
         // Obtener validaciones
         const validaciones = {
@@ -4101,8 +4137,8 @@ function renderProductosComprobanteHTML(productos) {
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
-                        <th>Cant.</th>
-                        <th>Precio Unit.</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -4235,8 +4271,8 @@ function renderProductosComprobanteHTML(productos) {
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
-                        <th>Cant.</th>
-                        <th>Precio Unit.</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -9445,8 +9481,8 @@ function openPedidoCompraModal(mode = 'cot') {
                             <th>Item</th>
                             <th>Código de producto</th>
                             <th>Descripción</th>
-                            <th>Cant. cotizada</th>
-                            <th>Cant. PC</th>
+                            <th>Cantidad cotizada</th>
+                            <th>Cantidad PC</th>
                             <th>Precio cotizado</th>
                             <th>Precio PC</th>
                             <th>Stock</th>
@@ -10285,7 +10321,7 @@ function productTableHtml(productos) {
             <table class="master-table">
                 <thead><tr>
                     <th>Item</th><th>Código de producto</th><th>Nombre producto</th><th>Marca</th><th>UM SUNAT</th>
-                    <th>Cant.</th><th>Stock</th>
+                    <th>Cantidad</th><th>Stock</th>
                 </tr></thead>
                 <tbody>
                     ${productos.map((p, i) => `
@@ -10488,7 +10524,7 @@ function openGuiaModal(id = null) {
                             <input id="guiaRucRemitente" value="${ORIGEN_FIJO.ruc}" readonly style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#F1F5F9; font-size:9px; padding:0 6px; color:#64748B; cursor:not-allowed;">
                         </div>
                         <div class="form-field">
-                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cód. Anexo</label>
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Código de anexo</label>
                             <input id="guiaRemitenteAnexo" value="0001" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
                         </div>
                     </div>
@@ -10547,7 +10583,7 @@ function openGuiaModal(id = null) {
                             <input id="guiaRuc" placeholder="RUC" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
                         </div>
                         <div class="form-field">
-                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cód. Anexo</label>
+                            <label style="font-size:7px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Código de anexo</label>
                             <input id="guiaDestAnexo" placeholder="0001" style="width:100%; height:20px; border:1px solid #E5E7EB; border-radius:4px; background:#FFFFFF; font-size:9px; padding:0 6px;">
                         </div>
                     </div>
@@ -11240,8 +11276,8 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
                             <th>Marca</th>
                             <th>Modelo</th>
                             <th>Unidad</th>
-                            <th>Cant.</th>
-                            <th>Precio Unit.</th>
+                            <th>Cantidad</th>
+                            <th>Precio unitario</th>
                             <th>Total</th>
                         </tr>
                     </thead>
@@ -11548,8 +11584,8 @@ function renderProductosComprobante(productos) {
                         <th>Marca</th>
                         <th>Modelo</th>
                         <th>Unidad</th>
-                        <th>Cant.</th>
-                        <th>Precio Unit.</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -17389,7 +17425,7 @@ function badgeDespachoPc(r) {
 //    (Inventario) y las órdenes de compra aprobadas (Compras). Ver routes/abastecimiento.py
 const abastData = { pc: {}, cotizaciones: {}, despachos: {} };
 const ABAST_ESTILOS = {
-    'Pendiente por compra': { icono: '🛒', clase: 'abast-compra' },
+    'Pendiente por compra': { icono: '', clase: 'abast-compra' },  // sin carrito (Erika 26/10/2026)
     'Pendiente por recojo': { icono: '🚚', clase: 'abast-recojo' },
     'Por llegar': { icono: '📦', clase: 'abast-llegar' },
     'Con stock': { icono: '✅', clase: 'abast-ok' }
@@ -17407,7 +17443,7 @@ function abastBadge(tipo, id) {
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
     const texto = { 'Por llegar': 'Comprado, por llegar', 'Pendiente por recojo': 'Comprado, por recoger', 'Pendiente por compra': 'Pendiente de compra' }[info.estado] || info.estado;
     const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? ` (${info.ocs.join(', ')})` : '';
-    return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono} ${texto}${ocs.replace(/[<>"&]/g, '')}</span>`;
+    return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono ? est.icono + ' ' : ''}${texto}${ocs.replace(/[<>"&]/g, '')}</span>`;
 }
 async function cargarAbastecimiento() {
     const tipos = ['pc', 'cotizaciones', 'despachos'];

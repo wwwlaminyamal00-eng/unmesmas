@@ -39,7 +39,7 @@ _tabla_lista = False
 
 NOMBRE_TABLA = {'clientes': 'Clientes', 'cotizaciones': 'Cotizaciones', 'cotizacion_detalle': 'Detalle de cotización',
                 'clientes_contactos': 'Contactos del cliente', 'clientes_puntos_entrega': 'Puntos de entrega del cliente',
-                'proveedores': 'Proveedores', 'productos': 'Productos', 'ordenes_compra': 'Órdenes de compra'}
+                'proveedores': 'Proveedores', 'productos': 'Productos', 'ordenes_compra': 'Órdenes de compra (Proveedor)'}
 NOMBRE_CAMPO = {'razon_social': 'Razón social', 'numero_documento': 'RUC/DNI', 'tipo_documento': 'Tipo de documento',
                 'direccion_fiscal': 'Dirección fiscal', 'nombre_contacto': 'Nombre del contacto', 'cliente_id': 'Cliente',
                 'producto_id': 'Producto', 'vendedor_id': 'Vendedor', 'empresa_id': 'Empresa'}

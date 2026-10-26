@@ -110,14 +110,14 @@
     // se dice en grande a dónde ir y qué buscar, con un botón que lleva ahí.
     // ========================================================
     const SIGUIENTE = {
-        enviar: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Revisa la orden y pulsa <b>"Enviar a aprobar"</b>. Está en <b>Compras ▸ Órdenes de compra</b>.' },
-        aprobar: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Ahora la <b>supervisora</b> debe aprobarla en <b>Compras ▸ Órdenes de compra</b> (búscala con el estado "Por aprobar").' },
+        enviar: { tab: 'ordenes', ir: 'Órdenes de compra (Proveedor)', txt: 'Revisa la orden y pulsa <b>"Enviar a aprobar"</b>. Está en <b>Compras ▸ Órdenes de compra (Proveedor)</b>.' },
+        aprobar: { tab: 'ordenes', ir: 'Órdenes de compra (Proveedor)', txt: 'Ahora la <b>supervisora</b> debe aprobarla en <b>Compras ▸ Órdenes de compra (Proveedor)</b> (búscala con el estado "Por aprobar").' },
         pagar: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Es al contado: ve a <b>Compras ▸ Pagos y facturas</b> y pulsa <b>"💸 Pagar"</b> en esta orden.' },
         recibir: { tab: 'recibir', ir: 'Recibir mercadería', txt: 'Cuando llegue la mercadería, ve a <b>Compras ▸ Recibir mercadería</b> y pulsa <b>"📦 Recibir"</b> en esta orden.' },
         factura: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Ve a <b>Compras ▸ Pagos y facturas</b> para registrar la <b>factura del proveedor</b> (botón "🧾 Registrar factura").' },
         pagar_credito: { tab: 'facturas', ir: 'Pagos y facturas', txt: 'Es a crédito: ve a <b>Compras ▸ Pagos y facturas</b> y paga la factura antes de que venza.' },
-        incidencia: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'Hay <b>diferencias</b> (faltó o sobró algo): la supervisora las revisa en <b>Compras ▸ Órdenes de compra</b>.' },
-        listo: { tab: 'ordenes', ir: 'Órdenes de compra', txt: 'La compra está <b>completa</b>. No falta nada. 🎉' },
+        incidencia: { tab: 'ordenes', ir: 'Órdenes de compra (Proveedor)', txt: 'Hay <b>diferencias</b> (faltó o sobró algo): la supervisora las revisa en <b>Compras ▸ Órdenes de compra (Proveedor)</b>.' },
+        listo: { tab: 'ordenes', ir: 'Órdenes de compra (Proveedor)', txt: 'La compra está <b>completa</b>. No falta nada. 🎉' },
         anulada: { tab: 'pedidos', ir: 'Pedidos por comprar', txt: 'Los pedidos de los clientes de esta orden vuelven a <b>Compras ▸ Pedidos por comprar</b>.' }
     };
 
@@ -195,8 +195,9 @@
             $('kpiPagar').textContent = soles(r.kpis.por_pagar);
             $('kpiRecibir').textContent = r.kpis.por_recibir;
             $('kpiInc').textContent = r.kpis.incidencias;
-            $('hoyAlertas').innerHTML = r.alertas.map(a => `<div class="inv-alerta ${a.nivel}">
-                <div>${a.texto}</div>${a.ir ? `<button class="btn-mini sec" data-ir="${a.ir}">Ver ➜</button>` : ''}</div>`).join('');
+            alertasHoy = r.alertas;
+            $('hoyAlertas').innerHTML = r.alertas.map((a, i) => `<div class="inv-alerta ${a.nivel}">
+                <div>${a.texto}</div>${a.ir ? `<button class="btn-mini sec" data-ir="${a.ir}" data-alerta="${i}">Ver ➜</button>` : ''}</div>`).join('');
         } catch (e) { $('hoyAlertas').innerHTML = `<div class="inv-alerta danger">${esc(e.message)}</div>`; }
     }
 
@@ -349,14 +350,34 @@
         return `${esc(o.clientes || o.clientes_pedido || '')}${o.tipo_compra === 'Para stock' ? `<small>+ stock</small>${motivo}` : ''}`;
     }
 
+    // "Ver" de Hoy en Compras: la lista sale solo con las órdenes de esa alerta (Erika 26/10/2026)
+    let alertasHoy = [];
+    let filtroVer = null;   // { tab, ids:Set, filtro }
+    function aplicarFiltroVer(tab, data) {
+        const caja = $('filtroVer-' + tab);
+        if (!filtroVer || filtroVer.tab !== tab) { if (caja) caja.remove(); return data; }
+        const lista = data.filter(o => filtroVer.ids.has(o.id));
+        const seccion = $('sec-' + tab);
+        let c = caja;
+        if (!c && seccion) {
+            c = document.createElement('div');
+            c.id = 'filtroVer-' + tab;
+            c.className = 'com-filtro-ver';
+            seccion.insertBefore(c, seccion.firstChild);
+        }
+        if (c) c.innerHTML = `<span>🔎 Mostrando solo: <b>${esc(filtroVer.filtro)}</b> (${filtroVer.ids.size})</span>
+            <button type="button" class="btn-mini sec" data-quitar-filtro="1">✖ Quitar filtro</button>`;
+        return lista;
+    }
     async function cargarOrdenes() {
         try {
-            const params = new URLSearchParams({ estado: $('ocPaso').value === 'anulada' || $('ocPaso').value === 'listo' ? '' : 'abiertas' });
+            const conFiltro = filtroVer && filtroVer.tab === 'ordenes';
+            const params = new URLSearchParams({ estado: conFiltro || $('ocPaso').value === 'anulada' || $('ocPaso').value === 'listo' ? '' : 'abiertas' });
             if ($('ocEmpresa').value) params.set('empresa_id', $('ocEmpresa').value);
-            if ($('ocPaso').value) params.set('paso', $('ocPaso').value);
+            if ($('ocPaso').value && !conFiltro) params.set('paso', $('ocPaso').value);
             if ($('ocBuscar').value.trim()) params.set('q', $('ocBuscar').value.trim());
             if ($('ocSinPedido') && $('ocSinPedido').checked) params.set('sin_pedido', '1');
-            const { data } = await api('/compras/api/flujo/ordenes?' + params);
+            const data = aplicarFiltroVer('ordenes', (await api('/compras/api/flujo/ordenes?' + params)).data);
             ordenesCache = data;
             $('ocBody').innerHTML = data.length ? data.map(o => `<tr class="com-fila" data-ver="${o.id}">
                 <td><b>${esc(o.numero)}</b>${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
@@ -1085,7 +1106,7 @@
 
     async function cargarRecibir() {
         try {
-            const { data } = await api('/compras/api/flujo/por_recibir');
+            const data = aplicarFiltroVer('recibir', (await api('/compras/api/flujo/por_recibir')).data);
             $('recBodyCom').innerHTML = data.length ? data.map(o => {
                 let accion;
                 if (o.estado === 'Por aprobar') accion = '<span class="inv-tip">Falta aprobar</span>';
@@ -1212,7 +1233,8 @@
     // ========================================================
     async function cargarFacturas() {
         try {
-            const { data } = await api('/compras/api/flujo/ordenes?estado=abiertas');
+            const conFiltro = filtroVer && filtroVer.tab === 'facturas';
+            const data = aplicarFiltroVer('facturas', (await api('/compras/api/flujo/ordenes' + (conFiltro ? '' : '?estado=abiertas'))).data);
             const porPagar = data.filter(o => ['pagar', 'pagar_credito'].includes(o.paso.codigo));
             $('pagBody').innerHTML = porPagar.length ? porPagar.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
@@ -1316,7 +1338,7 @@
             <div class="com-fac-estado ${cuadra ? 'ok' : 'mal'}">${cuadra ? '✔ Cuadra con lo recibido' : `⚠️ Registrada con diferencia: debía ser ${dinero(f.moneda, f.monto_esperado)}`}</div>
             <div class="com-fac-ver">
                 <div><small>N° Factura</small><b>${esc(f.numero)}</b></div>
-                <div><small>N° OC</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
+                <div><small>N° OC (Proveedor)</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
                 <div><small>Proveedor</small><b>${esc(f.proveedor_nombre || '')}</b><br><span>RUC ${esc(f.ruc_proveedor || '—')}</span></div>
                 <div><small>Total con IGV</small><b>${dinero(f.moneda, f.monto)}</b>${f.moneda === 'USD' && f.tipo_cambio ? `<br><span>TC ${Number(f.tipo_cambio).toFixed(3)} ≈ ${soles(Number(f.monto) * Number(f.tipo_cambio))}</span>` : ''}</div>
                 <div><small>Fecha de emisión</small><b>${fecha(String(f.fecha || '').slice(0, 10), false)}</b></div>
@@ -1369,9 +1391,12 @@
     document.addEventListener('click', async e => {
         const t = e.target;
         const tab = t.closest('#tabsRowCom .tab-btn[data-tab]');
-        if (tab) { cambiarTab(tab.dataset.tab); return; }
+        if (tab) { filtroVer = null; cambiarTab(tab.dataset.tab); return; }
+        if (t.closest('[data-quitar-filtro]')) { filtroVer = null; cargadores[tabActual](); return; }
         const ir = t.closest('[data-ir]');
         if (ir) {
+            const al = ir.dataset.alerta !== undefined ? alertasHoy[Number(ir.dataset.alerta)] : null;
+            filtroVer = al && Array.isArray(al.ids) ? { tab: ir.dataset.ir, ids: new Set(al.ids), filtro: al.filtro || 'Alerta' } : null;
             if (ir.dataset.paso) $('ocPaso').value = ir.dataset.paso;
             cambiarTab(ir.dataset.ir);
             return;

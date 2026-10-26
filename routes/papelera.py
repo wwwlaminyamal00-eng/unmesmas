@@ -82,7 +82,7 @@ FUENTES = [
     {'id': 'dev', 'modulo': 'Devoluciones', 'tabla': 'devoluciones', 'numero': ['numero'], 'tercero': ['cliente'],
      'monto': ['monto'], 'estado': 'estado', 'cond': "UPPER(COALESCE(t.estado, '')) LIKE 'ANULAD%%'", 'motivo': ['motivo'],
      'fecha': ['updated_at', 'fecha'], 'no_restaurar': 'Una devolución anulada se vuelve a registrar en Ventas.'},
-    {'id': 'oc', 'modulo': 'Órdenes de compra', 'tabla': 'ordenes_compra', 'numero': ['numero_orden'],
+    {'id': 'oc', 'modulo': 'Órdenes de compra (Proveedor)', 'tabla': 'ordenes_compra', 'numero': ['numero_orden'],
      'tercero': [('(SELECT x.razon_social FROM proveedores x WHERE x.id = t.proveedor_id)', ['proveedor_id'])],
      'monto': ['total'], 'estado': 'estado', 'cond': "UPPER(COALESCE(t.estado, '')) LIKE 'ANULAD%%'",
      'motivo': ['motivo_anulacion'], 'usuario': ['anulado_por'], 'fecha': ['anulado_en', 'updated_at', 'fecha_creacion'],

@@ -780,7 +780,7 @@
                     fijo: true, obs: 'Recepción ' + r.numero_recepcion + ' · ' + r.orden_compra + (r.cliente ? ' · Pedido ' + (r.pedido_numero || '') + ' de ' + r.cliente : '') });
             } else {
                 abrirMovimiento('ENTRADA', { motivo: 'COMPRA', producto_id: r.producto_id_sugerido, texto: r.producto_id_sugerido ? r.producto : '',
-                    cantidad: r.cantidad, documento: r.orden_compra, docTipo: 'Orden de compra', tercero: r.proveedor_nombre,
+                    cantidad: r.cantidad, documento: r.orden_compra, docTipo: 'Orden de compra (Proveedor)', tercero: r.proveedor_nombre,
                     recepcion_id: r.id, obs: 'Recepción ' + r.numero_recepcion });
             }
         } else if (d.stockInicial) {

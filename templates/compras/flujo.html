@@ -31,7 +31,7 @@
     <div class="tabs inv-tabs" id="tabsRowCom">
         <button class="tab-btn active" data-tab="hoy">🔔 Hoy en Compras</button>
         <button class="tab-btn" data-tab="pedidos">🛒 Pedidos por comprar</button>
-        <button class="tab-btn" data-tab="ordenes">📄 Órdenes de compra</button>
+        <button class="tab-btn" data-tab="ordenes">📄 Órdenes de compra (Proveedor)</button>
         <button class="tab-btn" data-tab="recibir">📦 Recibir mercadería</button>
         <button class="tab-btn" data-tab="facturas">💳 Pagos y facturas</button>
         <button class="tab-btn" data-tab="precios">💲 Precios por producto</button>
@@ -47,7 +47,7 @@
         <summary>ⓘ ¿Cómo es una compra? (7 pasos, del pedido del cliente al inventario)</summary>
         <div class="com-flujo">
             <div class="com-flujo-paso"><span>1</span><b>Pedido del cliente</b><small>Ventas lo registra (PC)</small></div>
-            <div class="com-flujo-paso"><span>2</span><b>Orden de compra</b><small>Compras: empresa, proveedor y sede</small></div>
+            <div class="com-flujo-paso"><span>2</span><b>Orden de compra (Proveedor)</b><small>Compras: empresa, proveedor y sede</small></div>
             <div class="com-flujo-paso"><span>3</span><b>Aprobación</b><small>Supervisora (no quien la hizo)</small></div>
             <div class="com-flujo-paso"><span>4</span><b>Pago</b><small>Finanzas, solo a la cuenta del proveedor</small></div>
             <div class="com-flujo-paso"><span>5</span><b>Recepción a ciegas</b><small>Otra persona cuenta en la sede</small></div>
@@ -103,7 +103,7 @@
         <div class="inv-panel">
             <div class="inv-head">
                 <div>
-                    <div class="inv-title">Órdenes de compra</div>
+                    <div class="inv-title">Órdenes de compra (Proveedor)</div>
                     <div class="inv-help">La columna <b>"Siguiente paso"</b> dice qué falta y quién lo hace. Haz clic en una orden para ver todo su historial.</div>
                 </div>
                 <div class="inv-filters">
@@ -121,13 +121,13 @@
                     </select>
                     <input type="search" id="ocBuscar" placeholder="Buscar OC, proveedor, cliente, producto...">
                     <label class="inv-check"><input type="checkbox" id="ocSinPedido"> Solo compras sin pedido</label>
-                    <button type="button" class="btn btn-secondary" onclick="exportarTabla(this, 'Compras - Órdenes de compra')">⬇ Exportar Excel</button>
+                    <button type="button" class="btn btn-secondary" onclick="exportarTabla(this, 'Compras - Órdenes de compra (Proveedor)')">⬇ Exportar Excel</button>
                     <button class="btn btn-primary" id="btnNuevaOC">+ Nueva orden</button>
                 </div>
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° orden de compra</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC</th><th>N° cotización</th><th>Lugar entrega</th><th>Forma de pago</th><th>Total (inc. IGV)</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
+                    <thead><tr><th>N° orden de compra (Proveedor)</th><th>Creada (fecha y hora)</th><th>Empresa</th><th class="left">Proveedor</th><th class="left">Para (cliente)</th><th>N° PC (Pedido de compra)</th><th>N° cotización</th><th>Lugar entrega</th><th>Forma de pago</th><th>Total (inc. IGV)</th><th>Estado</th><th>Llegó mercadería</th><th class="left">Siguiente paso</th><th></th></tr></thead>
                     <tbody id="ocBody"><tr><td colspan="14">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -156,7 +156,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Cómo llega</th><th>Sede</th><th>Fecha prometida</th><th class="left">Para</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>N° OC (Proveedor)</th><th>Empresa</th><th class="left">Proveedor</th><th>Cómo llega</th><th>Sede</th><th>Fecha prometida</th><th class="left">Para</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="recBodyCom"><tr><td colspan="9">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -176,7 +176,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Condición</th><th>Total</th><th>Pagado</th><th>Falta</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>N° OC (Proveedor)</th><th>Empresa</th><th class="left">Proveedor</th><th>Condición</th><th>Total</th><th>Pagado</th><th>Falta</th><th>Acción</th></tr></thead>
                     <tbody id="pagBody"><tr><td colspan="8">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -191,7 +191,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>N° OC</th><th>Empresa</th><th class="left">Proveedor</th><th>Estado</th><th>Recibido</th><th>Facturas</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>N° OC (Proveedor)</th><th>Empresa</th><th class="left">Proveedor</th><th>Estado</th><th>Recibido</th><th>Facturas</th><th>Acción</th></tr></thead>
                     <tbody id="facBody"><tr><td colspan="7">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -290,7 +290,7 @@
                 <div class="com-bloque-tit"><span>3</span> Productos <small>(precios sin IGV)</small></div>
                 <div class="table-wrap">
                     <table class="inv-table com-lineas">
-                        <thead><tr><th class="left" style="min-width:260px">Nombre producto</th><th class="left">Para</th><th>A comprar al proveedor</th><th>Precio unit. sin IGV</th><th>Total</th><th></th></tr></thead>
+                        <thead><tr><th class="left" style="min-width:260px">Nombre producto</th><th class="left">Para</th><th>A comprar al proveedor</th><th>Precio unitario sin IGV</th><th>Total</th><th></th></tr></thead>
                         <tbody id="ocLineas"></tbody>
                     </table>
                 </div>
@@ -330,7 +330,7 @@
 <div class="modal-bg" id="detModal">
     <div class="modal inv-modal inv-modal-lg com-modal-xl">
         <div class="modal-head">
-            <div class="modal-title" id="detTitulo">Orden de compra</div>
+            <div class="modal-title" id="detTitulo">Orden de compra (Proveedor)</div>
             <button class="btn btn-secondary" data-close="detModal">✕</button>
         </div>
         <div class="modal-body" id="detCuerpo"></div>

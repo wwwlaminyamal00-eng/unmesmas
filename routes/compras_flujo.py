@@ -823,8 +823,10 @@ def api_resumen():
         por = lambda c: [o for o in ocs if o['paso']['codigo'] == c]
         alertas = []
 
-        def alerta(nivel, texto, ir=None, cuantos=None):
-            alertas.append({'nivel': nivel, 'texto': texto, 'ir': ir, 'cuantos': cuantos})
+        def alerta(nivel, texto, ir=None, cuantos=None, ids=None, filtro=None):
+            # ids + filtro: el botón "Ver" abre la lista solo con esas órdenes (Erika 26/10/2026)
+            alertas.append({'nivel': nivel, 'texto': texto, 'ir': ir, 'cuantos': cuantos,
+                            'ids': [o['id'] for o in ids] if ids is not None else None, 'filtro': filtro})
 
         if pedidos:
             n = sum(p['por_comprar'] for p in pedidos)
@@ -832,33 +834,36 @@ def api_resumen():
                            'Antes de comprar, mira la columna "Stock libre en el grupo".', 'pedidos', len(pedidos))
         if por('aprobar'):
             alerta('warn', f'<b>{len(por("aprobar"))} orden(es) esperan aprobación.</b> Sin aprobación no se paga ni se recibe.',
-                   'ordenes', len(por('aprobar')))
+                   'ordenes', len(por('aprobar')), por('aprobar'), 'Órdenes que esperan aprobación')
         if por('pagar'):
             monto = sum(o['saldo_pago'] for o in por('pagar'))
             alerta('warn', f'<b>{len(por("pagar"))} orden(es) al contado por pagar</b> (S/ {monto:,.2f}). '
-                           'Finanzas paga solo a la cuenta registrada del proveedor.', 'facturas', len(por('pagar')))
+                           'Finanzas paga solo a la cuenta registrada del proveedor.', 'facturas', len(por('pagar')),
+                   por('pagar'), 'Órdenes al contado por pagar')
         atrasadas = [o for o in ocs if o['atrasada']]
         if atrasadas:
             alerta('danger', f'<b>{len(atrasadas)} orden(es) atrasadas:</b> pasó la fecha prometida y la mercadería no llega completa: '
-                             + ', '.join(o['numero'] for o in atrasadas[:6]) + '. Llama al proveedor.', 'recibir', len(atrasadas))
+                             + ', '.join(o['numero'] for o in atrasadas[:6]) + '. Llama al proveedor.', 'recibir', len(atrasadas),
+                  atrasadas, 'Órdenes atrasadas')
         pagadas_sin_llegar = [o for o in ocs if o['estado'] in ESTADOS_ABIERTOS and a_decimal(o['pagado']) > 0
                               and o['aprobado_en'] and str(o['aprobado_en'])[:10] <= (hoy - timedelta(days=DIAS_AVISO)).isoformat()]
         if pagadas_sin_llegar:
             alerta('danger', f'<b>{len(pagadas_sin_llegar)} orden(es) pagadas y la mercadería aún no llega completa</b> '
                              f'(más de {DIAS_AVISO} días): ' + ', '.join(o['numero'] for o in pagadas_sin_llegar[:6]) + '.',
-                   'recibir', len(pagadas_sin_llegar))
+                   'recibir', len(pagadas_sin_llegar), pagadas_sin_llegar, 'Pagadas y la mercadería aún no llega')
         inc = db_query("SELECT COUNT(*) AS n FROM com_incidencias WHERE estado = 'Abierta'")[0]['n']
         if inc:
             alerta('danger', f'<b>{inc} diferencia(s) abiertas</b> (faltantes, sobrantes, dañados o facturas que no cuadran). '
-                             'Una supervisora debe resolverlas.', 'ordenes', inc)
+                             'Una supervisora debe resolverlas.', 'ordenes', inc,
+                  [o for o in ocs if o.get('incidencias')], 'Órdenes con diferencias abiertas')
         sin_factura = [o for o in ocs if o['estado'] in ('Recibida', 'Recibida parcial') and not o['facturas']]
         if sin_factura:
             alerta('warn', f'<b>{len(sin_factura)} orden(es) recibidas sin factura del proveedor.</b> Pídela y regístrala.',
-                   'facturas', len(sin_factura))
+                   'facturas', len(sin_factura), sin_factura, 'Recibidas sin factura del proveedor')
         pagado_sin_factura = [o for o in ocs if a_decimal(o['pagado']) > 0 and not o['facturas'] and o['estado'] != 'Anulada']
         if pagado_sin_factura:
             alerta('warn', f'<b>{len(pagado_sin_factura)} pago(s) sin factura.</b> Se pagó y todavía no hay factura registrada.',
-                   'facturas', len(pagado_sin_factura))
+                   'facturas', len(pagado_sin_factura), pagado_sin_factura, 'Pagadas sin factura')
         no_ingresadas = db_query("""
             SELECT COUNT(DISTINCT r.com_recepcion_id) AS n FROM recepciones_mercaderia r
             WHERE r.com_recepcion_id IS NOT NULL AND r.fecha < NOW() - INTERVAL '1 day'
@@ -871,7 +876,8 @@ def api_resumen():
         propias = [o for o in ocs if o['aprobado_por_id'] and o['aprobado_por_id'] == o['usuario_id']]
         if propias:
             alerta('info', f'{len(propias)} orden(es) fueron aprobadas por la misma persona que las hizo (solo puede hacerlo un administrador): '
-                           + ', '.join(o['numero'] for o in propias[:6]) + '.', 'ordenes', len(propias))
+                           + ', '.join(o['numero'] for o in propias[:6]) + '.', 'ordenes', len(propias),
+                  propias, 'Aprobadas por quien las hizo')
         cxp = db_query("""
             SELECT COUNT(*) AS n, COALESCE(SUM(monto), 0) AS m FROM comprobantes_proveedor
             WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA', 'PAGADO')

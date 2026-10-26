@@ -105,8 +105,8 @@
         return `<div class="inv-kpi ${clase || ''}"><small>${titulo}</small><b>${valor}</b><span>${pie || ''}</span></div>`;
     }
 
-    const CORTO = { guias: 'Guías entregadas sin factura', despachos: 'Despachos por salir', oc: 'OC sin factura del proveedor',
-                    pc: 'Pedidos (PC) por comprar', ventas_extra: 'Otras ventas (a mano)', compras_extra: 'Compra para stock (a mano)' };
+    const CORTO = { guias: 'Guías entregadas sin factura', despachos: 'Despachos por salir', oc: 'Órdenes de compra (Proveedor) sin factura',
+                    pc: 'PC (Pedido de compra) por comprar', ventas_extra: 'Otras ventas (a mano)', compras_extra: 'Compra para stock (a mano)' };
 
     // Casillas del PDT 621: ocultas por defecto, se recuerda la elección en este navegador
     function casillasVisibles() {

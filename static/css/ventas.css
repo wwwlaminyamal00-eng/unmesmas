@@ -3213,18 +3213,26 @@ body.kcf-theme {
 /* REQUERIMIENTOS DEL EXCEL DE PENDIENTES (14/10/2026)          */
 /* ============================================================ */
 
-/* 1) Despacho / PC despachado: letras negras con fondo azulito */
+/* 1) PC despachado: verde bajito como en Entregas (Erika 26/10/2026: "el celeste confunde ... no se aprecia la raya") */
 tr.fila-despachada > td {
-    background: #CFE7FF !important;
+    background: #E9FBEF !important;
     color: #000000 !important;
     font-weight: 700;
+    border-bottom: 1px solid #CBD5E1 !important;
 }
+#pcRows > tr > td { border-bottom: 1px solid #CBD5E1 !important; }
+#pcRows td.pc-desc { min-width: 150px; font-weight: 400; }
+#pcRows .ent-prod { white-space: normal; text-align: left; font-size: 11px; line-height: 1.3; }
+#pcRows .ent-prod b { display: inline-block; min-width: 20px; text-align: right; color: #0F172A; }
+#pcRows .ent-prod + .ent-prod { border-top: 1px dotted #CBD5E1; margin-top: 2px; padding-top: 2px; }
+#pcRows .pc-mas { font-size: 10px; font-weight: 800; color: #475569; }
+#pcRows .pc-nota { font-size: 10px; color: #64748B; font-weight: 600; margin-top: 3px; font-style: italic; }
 tr.fila-despachada > td b,
 tr.fila-despachada > td .left { color: #000000 !important; }
 .badge.badge-despachado {
-    background: #9CCBFF !important;
-    color: #000000 !important;
-    border: 1px solid #5EA9F5;
+    background: #00E676 !important;
+    color: #003D1A !important;
+    border: 1px solid #00C853;
     font-weight: 900;
 }
 

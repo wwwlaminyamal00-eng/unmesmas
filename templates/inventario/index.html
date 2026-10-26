@@ -207,7 +207,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>Operación</th><th>Fecha</th><th>Vende</th><th>Compra</th><th>Sede</th><th class="left">Nombre producto</th><th>Cantidad</th><th>Precio unit.</th><th>Factura</th><th>Registró</th></tr></thead>
+                    <thead><tr><th>Operación</th><th>Fecha</th><th>Vende</th><th>Compra</th><th>Sede</th><th class="left">Nombre producto</th><th>Cantidad</th><th>Precio unitario</th><th>Factura</th><th>Registró</th></tr></thead>
                     <tbody id="icBody"><tr><td colspan="10">Cargando...</td></tr></tbody>
                 </table>
             </div>
@@ -331,9 +331,9 @@
                     <thead>
                         <tr><th rowspan="2">Fecha</th><th rowspan="2">N° movimiento</th><th rowspan="2">Empresa</th><th rowspan="2">Sede</th><th rowspan="2" class="left">Nombre producto</th><th rowspan="2" class="left">Motivo</th><th rowspan="2">Documento</th>
                             <th colspan="3" class="grp-in">Entradas</th><th colspan="3" class="grp-out">Salidas</th><th colspan="3" class="grp-saldo">Saldo</th><th rowspan="2">Responsable</th></tr>
-                        <tr><th class="grp-in">Cant.</th><th class="grp-in">C. unit.</th><th class="grp-in">Total</th>
-                            <th class="grp-out">Cant.</th><th class="grp-out">C. unit.</th><th class="grp-out">Total</th>
-                            <th class="grp-saldo">Cant.</th><th class="grp-saldo">C. prom.</th><th class="grp-saldo">Total</th></tr>
+                        <tr><th class="grp-in">Cantidad</th><th class="grp-in">Costo unitario</th><th class="grp-in">Total</th>
+                            <th class="grp-out">Cantidad</th><th class="grp-out">Costo unitario</th><th class="grp-out">Total</th>
+                            <th class="grp-saldo">Cantidad</th><th class="grp-saldo">Costo promedio</th><th class="grp-saldo">Total</th></tr>
                     </thead>
                     <tbody id="kdxBody"><tr><td colspan="17">Elige filtros y presiona "Ver kardex".</td></tr></tbody>
                 </table>
@@ -387,7 +387,7 @@
             <label id="movDocTipoWrap">Tipo de documento
                 <select id="movDocTipo">
                     <option>Guía de remisión</option><option>Factura</option><option>Boleta</option>
-                    <option>Orden de compra</option><option>Pedido del cliente (PC)</option><option>Nota de crédito</option><option>Otro</option>
+                    <option>Orden de compra (Proveedor)</option><option>Pedido del cliente (PC)</option><option>Nota de crédito</option><option>Otro</option>
                 </select>
             </label>
             <label id="movDocWrap">N° de documento<input type="text" id="movDoc" maxlength="60" placeholder="Ej. T001-00001234"></label>

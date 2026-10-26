@@ -145,11 +145,11 @@
         } else if (x.pide_migo && x.saldo > 0) {
             l.push('<span class="seg-chip seg-falta" title="Este cliente no paga sin el N° MIGO de su conformidad: pídelo y anótalo con ✏️">✖ Falta MIGO</span>');
         }
-        if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago prog. <b>${fecha(x.fecha_programada)}</b></small>`);
+        if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago programado <b>${fecha(x.fecha_programada)}</b></small>`);
         if (x.retencion_numero) {
-            l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Ret. <b>${esc(x.retencion_numero)}</b></small>`);
+            l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Retención <b>${esc(x.retencion_numero)}</b></small>`);
         } else if (x.retencion > 0) {
-            l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Ret. 3%: falta N°</small>');
+            l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Retención 3%: falta N°</small>');
         }
         if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, N° MIGO, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
         return l.length ? l.join('') : '<span class="fin-gris">—</span>';
@@ -303,8 +303,8 @@
     function ocPcMovimiento(m) {
         const linea = (et, v) => v ? `<div><small>${et}</small> <b>${esc(v)}</b></div>` : '';
         const html = m.tipo === 'COBRO'
-            ? linea('N° PC', m.pc_numero) + linea('N° OC del cliente', m.oc_cliente)
-            : linea('N° OC', m.oc_numero) + linea(/^(Compra a stock|Sin PC)/.test(m.pc_numero || '') ? '' : 'N° PC', m.pc_numero);
+            ? linea('N° PC (Pedido de compra)', m.pc_numero) + linea('N° OC del cliente', m.oc_cliente)
+            : linea('N° OC (Proveedor)', m.oc_numero) + linea(/^(Compra a stock|Sin PC)/.test(m.pc_numero || '') ? '' : 'N° PC (Pedido de compra)', m.pc_numero);
         return html || '<span class="fin-sin">—</span>';
     }
 

@@ -650,7 +650,7 @@ input[type="file"] { display: none; }
         <div class="menu-children">
           <button type="button" class="child-btn" data-screen="solicitud-compra">Solicitud de compra</button>
           <button type="button" class="child-btn" data-screen="comparativo-compras">Comparativo</button>
-          <button type="button" class="child-btn" data-screen="orden-compra">Orden de compra</button>
+          <button type="button" class="child-btn" data-screen="orden-compra">Orden de compra (Proveedor)</button>
           <button type="button" class="child-btn" data-screen="comprobantes-proveedor">Comprobantes proveedor</button>
           <button type="button" class="child-btn" data-screen="recepcion">Recepción</button>
         </div>
@@ -850,7 +850,7 @@ input[type="file"] { display: none; }
               <div class="grid">
                 <div class="field"><label>Presentación proveedor <span class="optional">(opcional)</span></label><input name="presentacion_proveedor" placeholder="Ej. Caja x 12" /></div>
                 <div class="field"><label>Presentación venta <span class="optional">(opcional)</span></label><input name="presentacion_venta" placeholder="Ej. 1 unidad" /></div>
-                <div class="field"><label>Venta mínima <span class="optional">(opcional)</span></label><div class="input-unit"><input name="venta_minima" type="number" value="1" min="1" /><span>Und.</span></div></div>
+                <div class="field"><label>Venta mínima <span class="optional">(opcional)</span></label><div class="input-unit"><input name="venta_minima" type="number" value="1" min="1" /><span>unidades</span></div></div>
               </div>
               <div class="grid">
                 <div class="field"><label>Código de barras <span class="optional">(opcional)</span></label><input name="codigo_barras" placeholder="Ej. 7701234567890" /></div>
@@ -872,7 +872,7 @@ input[type="file"] { display: none; }
                 </div>
               </div>
               <div class="grid">
-                <div class="field"><label>Stock mínimo <span class="optional">(opcional)</span></label><div class="input-unit"><input name="stock_minimo" type="number" placeholder="0" /><span>Und.</span></div></div>
+                <div class="field"><label>Stock mínimo <span class="optional">(opcional)</span></label><div class="input-unit"><input name="stock_minimo" type="number" placeholder="0" /><span>unidades</span></div></div>
                 <div class="field">
                   <label>Transporte <span class="req">*</span></label>
                   <select id="transporteReferencial" name="transporte" required>

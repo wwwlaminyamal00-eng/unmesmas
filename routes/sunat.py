@@ -877,7 +877,7 @@ def proyeccion(e, r):
         p_base = sum((p['costo'] for p in pcs), CERO)
         partes.append({'clave': 'pc', 'tipo': 'compra', 'incluir': False, 'n': len(pcs), 'base': p_base,
                        'igv': redondear(p_base * tasa),
-                       'texto': 'Pedidos (PC) que faltan comprar, si se compran y facturan antes del 31',
+                       'texto': 'PC (Pedido de compra) que falta comprar, si se compra y factura antes del 31',
                        'sin_monto': sum(p['sin_costo'] for p in pcs)})
     for clave, tipo, texto in (('ventas_extra', 'venta', 'Otras ventas que esperas facturar (escrito a mano)'),
                                ('compras_extra', 'compra', 'Compra para stock que estás pensando (escrito a mano)')):
@@ -957,7 +957,7 @@ def plan_accion(e, r, proy):
         if pcs:
             igv_pc = sum((p['igv'] for p in pcs), CERO)
             acc.append({'nivel': 'amarillo', 'grupo': 'Para pagar menos IGV',
-                        'titulo': f'Compra antes del 31 lo que ya vendiste: {len(pcs)} pedidos por comprar',
+                        'titulo': f'Compra antes del 31 lo que ya vendiste: {len(pcs)} PC (Pedido de compra) por comprar',
                         'detalle': (f"Estos pedidos ya están vendidos y hay que comprarlos igual. Si el proveedor te factura "
                                     f"en {MESES[r['hasta'].month - 1].lower()}, su IGV (aprox. S/ {_n(igv_pc):,.2f}) baja tu pago "
                                     f"de este mes. Genera las órdenes en Compras ▸ Pedidos por comprar y pide que la factura "

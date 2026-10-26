@@ -91,7 +91,7 @@
         const texto = `Hola${c.contacto ? ' ' + c.contacto : ''}, le escribimos por la cotización N° ${c.numero}. ¿Pudo revisarla? Quedamos atentos.`;
         const tel = !c.telefono ? '<span class="ge-sin ge-nw">Sin teléfono</span>'
             : wa ? `<a class="ge-nw ge-wa" href="https://wa.me/${wa}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener" title="Abrir WhatsApp con un mensaje sobre esta cotización">🟢 ${esc(c.telefono)}</a>`
-            : `<a class="ge-nw" href="tel:${esc(String(c.telefono).replace(/[^\d+]/g, ''))}">${esc(c.telefono)}</a><span class="ge-sub ge-nw">No es celular: sin WhatsApp</span>`;
+            : `<a class="ge-nw" href="tel:${esc(String(c.telefono).replace(/[^\d+]/g, ''))}">${esc(c.telefono)}</a><span class="ge-sub ge-nw" title="El número no es un celular: no se puede abrir WhatsApp">Sin WhatsApp</span>`;
         return `${c.contacto ? `<b>${esc(c.contacto)}</b><span class="ge-sub">${tel}</span>` : tel}`;
     }
 
@@ -125,7 +125,7 @@
                     : '<span class="ge-sin ge-nw">Nunca se llamó</span>'}</td>
                 <td>${c.llamar_hoy ? `<span class="ge-estado rojo">${c.atraso ? 'Atrasada' : 'Hoy'}</span><span class="ge-sub">${c.atraso ? `desde ${fecha(c.proxima_llamada)} (${c.atraso} días)` : fecha(c.proxima_llamada)}</span>`
                     : `<span class="ge-estado amarillo">${fecha(c.proxima_llamada)}</span>`}</td>
-                <td><button type="button" class="ge-btn verde" data-llamar="${c.id}">Registrar llamada</button></td></tr>`).join('')}
+                <td><button type="button" class="ge-btn verde" data-llamar="${c.id}" title="Anota la llamada: cómo lo contactaste, qué dijo el cliente y cuándo volver a llamar (queda en Historial con fecha y hora)">Registrar llamada y plan</button></td></tr>`).join('')}
             </tbody></table>`;
         filtrarAbiertas();
     }

@@ -139,7 +139,7 @@ def test_cobros_y_pagos_muestran_oc_y_pc(admin):
     assert any(x['id'] == m['id'] for x in r)
     for c in admin.get('/finanzas/api/movimientos?tipo=COBRO').json['data']:
         assert 'pc_numero' in c and 'oc_cliente' in c
-    assert 'N° OC / N° PC' in admin.get('/finanzas').get_data(as_text=True)
+    assert 'N° OC (Proveedor) / N° PC' in admin.get('/finanzas').get_data(as_text=True)
 
 
 def test_intercompany_una_fila_por_oc_de_principio_a_fin(zz, admin):

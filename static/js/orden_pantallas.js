@@ -11,17 +11,25 @@
     window.__ordenPantallas = true;
 
     // ---------- 1. Columna Ítem ----------
-    const YA_NUMERADA = /^(#|ítem|item|n°|nº|no\.?)$/i;
+    const YA_NUMERADA = /^(#|ítems?|items?|n°|nº|no\.?)$/i;  // "Items" también (Erika 26/10/2026: salía doble)
 
     function editable(tabla) {
-        return !!tabla.querySelector('tbody input:not([type=checkbox]):not([type=radio]):not([type=hidden]), tbody select, tbody textarea');
+        // Una lista desplegable sola (p. ej. "quién recoge" en Recibir mercadería) no la vuelve tabla de escribir (26/10/2026)
+        return !!tabla.querySelector('tbody input:not([type=checkbox]):not([type=radio]):not([type=hidden]), tbody textarea');
     }
 
     function aplica(tabla) {
         if (tabla.dataset.sinItem !== undefined || tabla.closest('[data-sin-item], .modal, .modal-content, [role=dialog], .no-print')) return false;
         const cab = tabla.tHead;
         if (!cab || !cab.rows.length || !cab.rows[0].cells.length) return false;
-        if (tabla.dataset.item === 'si') return !editable(tabla);
+        if (tabla.dataset.item === 'si') {
+            if (!editable(tabla)) return true;
+            // Se volvió tabla de escribir: se quita la columna Ítem puesta antes para que no queden columnas corridas
+            tabla.querySelectorAll('[data-item]').forEach(c => { if (c.dataset.item === 'span') { c.colSpan = Math.max(1, c.colSpan - 1); delete c.dataset.item; } else c.remove(); });
+            delete tabla.dataset.item;
+            tabla.classList.remove('con-item');
+            return false;
+        }
         const primera = cab.rows[0].cells[0];
         if (YA_NUMERADA.test((primera.textContent || '').trim())) {
             // Ya tiene su numeración (#, Item, N°): solo se le pone el mismo nombre en todo el sistema

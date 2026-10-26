@@ -317,7 +317,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
     {% if puede_validar_ventas %}<a href="/ventas?tab=validacion" class="child-btn" data-screen="validacion" style="text-decoration:none;">🔍 Validación PC vs Cotización</a>{% endif %}
     <a href="/ventas?tab=guias" class="child-btn" data-screen="guias" style="text-decoration:none;">📦 Guías de remisión cliente</a>
     <a href="/ventas?tab=notas_credito" class="child-btn" data-screen="notas_credito" style="text-decoration:none;">📝 Notas de crédito</a>
-    <a href="/ventas?tab=pedido_compra" class="child-btn" data-screen="pedido_compra" style="text-decoration:none;">📋 PC Pedido Compras</a>
+    <a href="/ventas?tab=pedido_compra" class="child-btn" data-screen="pedido_compra" style="text-decoration:none;">📋 PC (Pedido de compra)</a>
     <a href="/ventas?tab=despachar" class="child-btn" data-screen="despachar" style="text-decoration:none;">🚚 Entregas</a>
     <a href="/ventas?tab=devoluciones" class="child-btn" data-screen="devoluciones" style="text-decoration:none;">🔄 Devoluciones</a>
 </div>
@@ -351,7 +351,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
     <div class="menu-children">
         <a href="/compras?tab=hoy" class="child-btn" data-screen="hoy" style="text-decoration:none;">🔔 Hoy en Compras</a>
         <a href="/compras?tab=pedidos" class="child-btn" data-screen="pedidos" style="text-decoration:none;">🛒 Pedidos por comprar</a>
-        <a href="/compras?tab=ordenes" class="child-btn" data-screen="ordenes" style="text-decoration:none;">📄 Órdenes de compra</a>
+        <a href="/compras?tab=ordenes" class="child-btn" data-screen="ordenes" style="text-decoration:none;">📄 Órdenes de compra (Proveedor)</a>
         <a href="/compras?tab=ordenes&nueva=1" class="child-btn" style="text-decoration:none;">➕ Nueva orden</a>
         <a href="/compras?tab=recibir" class="child-btn" data-screen="recibir" style="text-decoration:none;">📦 Recibir mercadería</a>
         <a href="/compras?tab=facturas" class="child-btn" data-screen="facturas" style="text-decoration:none;">💳 Pagos y facturas</a>
@@ -1537,7 +1537,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 'comprobantes': 'Comprobantes cliente',
                 'guias': 'Guías de remisión cliente',
                 'notas_credito': 'Notas de crédito',
-                'pedido_compra': 'PC Pedido Compras',
+                'pedido_compra': 'PC (Pedido de compra)',
                 'despachar': 'Despachar',
                 'devoluciones': 'Devoluciones'
             };
@@ -1622,7 +1622,7 @@ else if (currentPath.includes('/compras')) {
     const moduleMap = {
         'solicitud_compra': 'Solicitud de compra',
         'comparativo': 'Comparativo',
-        'orden_compra': 'Orden de compra',
+        'orden_compra': 'Orden de compra (Proveedor)',
         'comprobante_proveedor': 'Comprobantes',
         'recepcion': 'Recepción'
     };

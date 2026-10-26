@@ -140,7 +140,7 @@
             if (sentido && sentido !== `${c.vende}>${c.compra}`) return;
             html += `<div class="ic-sentido-tit">${esc(c.vende)} → ${esc(c.compra)} <small>${esc(c.vende)} vende · ${esc(c.compra)} compra · ${ops.length} OC</small></div>`;
             if (!ops.length) { html += `<div class="inv-vacio">${c.ocs ? 'Ninguna operación de este sentido con el filtro elegido.' : 'Sin operaciones en este sentido.'}</div>`; return; }
-            html += `<table class="inv-table ge-tabla ic-ops"><thead><tr><th>N° OC</th><th>Para qué</th><th>Monto</th>
+            html += `<table class="inv-table ge-tabla ic-ops"><thead><tr><th>N° OC (Proveedor)</th><th>Para qué</th><th>Monto</th>
                 ${PASOS.map(p => `<th>${p[2]}<small>${esc(p[1] === 'vende' ? c.vende : c.compra)}</small></th>`).join('')}<th>Siguiente paso</th></tr></thead><tbody>
                 ${ops.map(o => `<tr class="${o.completa ? 'ge-fila-ok' : 'ge-fila-pend'}">
                     <td><b class="ge-nw">${esc(o.oc)}</b><small>${fecha(o.fecha)}</small></td>

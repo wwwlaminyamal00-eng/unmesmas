@@ -573,7 +573,7 @@
 {% block content %}
 <!-- ACCESO DIRECTO A ÓRDENES DE COMPRA (antes solo se llegaba con "Crear orden" desde una solicitud) -->
 <div class="oc-acceso">
-    <span class="oc-acceso-txt">📄 <b>Órdenes de compra</b> · entra directo, sin pasar por una solicitud</span>
+    <span class="oc-acceso-txt">📄 <b>Órdenes de compra (Proveedor)</b> · entra directo, sin pasar por una solicitud</span>
     <a class="btn btn-secondary" href="/compras?tab=ordenes">📋 Ver lista de órdenes</a>
     <a class="btn btn-primary" href="/compras?tab=ordenes&nueva=1">+ Nueva orden de compra</a>
     <button type="button" class="btn btn-soft" onclick="switchTab('orden_compra')">🗂 Órdenes en esta pantalla</button>
@@ -582,7 +582,7 @@
 <div class="tabs" id="tabsRow">
     <button class="tab-btn active" data-tab="solicitud_compra">📋 Solicitud de compra</button>
     <button class="tab-btn" data-tab="comparativo">📊 Comparativo</button>
-    <button class="tab-btn" data-tab="orden_compra">📄 Orden de compra</button>
+    <button class="tab-btn" data-tab="orden_compra">📄 Orden de compra (Proveedor)</button>
     <button class="tab-btn" data-tab="comprobante_proveedor">🧾 Comprobantes</button>
     <button class="tab-btn" data-tab="recepcion">📦 Recepción</button>
 </div>
@@ -716,7 +716,7 @@
     <div class="panel">
         <div class="clean-header">
             <div class="master-title-wrap">
-                <div class="master-title">📄 Orden de compra</div>
+                <div class="master-title">📄 Orden de compra (Proveedor)</div>
                 <div class="master-subtitle">Órdenes emitidas a proveedores</div>
             </div>
             <div class="search-box">
@@ -752,13 +752,13 @@
                         <th>Item</th>
                         <th>Creado</th>
                         <th>Estado</th>
-                        <th>N° orden de compra</th>
+                        <th>N° orden de compra (Proveedor)</th>
                         <th>Para (pedido / motivo)</th>
                         <th>Proveedor</th>
                         <th>RUC</th>
                         <th>Nombre producto</th>
                         <th>Monto</th>
-                        <th>Cond. Pago</th>
+                        <th>Condición de pago</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
