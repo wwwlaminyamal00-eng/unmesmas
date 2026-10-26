@@ -35,7 +35,7 @@ from routes.multiempresa import empresas as lista_empresas, empresa_actual, empr
 sunat_bp = Blueprint('sunat', __name__)
 
 CERO = Decimal('0')
-ANULADOS = ('ANULADO', 'ANULADA', 'ANULADOS', 'BORRADOR', 'RECHAZADO', 'RECHAZADA', 'ELIMINADO', 'ELIMINADA')
+ANULADOS = ('ANULADO', 'ANULADA', 'ANULADOS', 'BORRADOR', 'RECHAZADO', 'RECHAZADA', 'ELIMINADO', 'ELIMINADA', 'POR APROBAR')
 UIT_2026 = Decimal('5500')            # D.S. 301-2025-EF
 BANCARIZACION = Decimal('2000')       # pagos desde S/ 2,000 (o US$ 500) deben ir por banco para usar el crédito fiscal
 MESES = ('Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre',

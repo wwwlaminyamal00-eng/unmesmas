@@ -165,3 +165,11 @@
   #despachoRows td .acc-col{max-width:84px}
   #despachar table.master-table :is(th,td){padding-left:3px!important;padding-right:3px!important}
 }
+
+/* REGLA DE ORO de colores por avance (Erika 26/10/2026): 100% azul eléctrico, 80% verde fluorescente,
+   50% amarillo, 0-25% rojo. La clase la pone static/js/colores_avance.js según el texto del estado. */
+.av-pill.av-100{background:#0057FF!important;color:#FFFFFF!important;border-color:#0041C2!important}
+.av-pill.av-80{background:#39FF14!important;color:#064E00!important;border-color:#22C55E!important}
+.av-pill.av-50{background:#FFD60A!important;color:#5C4500!important;border-color:#E0B400!important}
+.av-pill.av-0{background:#FF1E1E!important;color:#FFFFFF!important;border-color:#C40000!important}
+.av-pill{background-image:none!important;text-shadow:none!important;font-weight:900!important}

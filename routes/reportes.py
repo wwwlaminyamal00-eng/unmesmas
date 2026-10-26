@@ -319,7 +319,7 @@ def _notas_credito(f, desde, hasta):
         cli = ' AND (cliente_nombre ILIKE %s OR cliente_numero_doc ILIKE %s)'
         par = (f"%{f['cliente']}%",) * 2
     r = db_query(f"""SELECT COALESCE(SUM(monto), 0) AS t FROM notas_credito
-                     WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR')
+                     WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR', 'POR APROBAR', 'RECHAZADA')
                        AND fecha_emision >= %s AND fecha_emision < %s::date + 1 {emp_sql}{cli}""",
                  (desde, hasta) + emp_par + par)
     return a_decimal(r[0]['t'])

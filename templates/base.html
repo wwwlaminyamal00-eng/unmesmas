@@ -4724,7 +4724,8 @@ window.bdPorPagina = 20;
         </script>
         {% block extra_js %}{% endblock %}
         <!-- 25/10/2026: pantallas compactas en todos los módulos (va al final para mandar sobre los estilos de cada módulo) -->
-        <link rel="stylesheet" href="/static/css/compacto.css">
+        <link rel="stylesheet" href="/static/css/compacto.css?v=20261026">
+        <script src="/static/js/colores_avance.js?v=20261026"></script>
         <!-- Exportar a Excel la tabla que se ve (va después de los scripts de cada pantalla para reemplazar los botones que no hacían nada) -->
         <script src="{{ url_for('static', filename='js/exportar_tabla.js') }}?v=20261019"></script>
 

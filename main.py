@@ -87,6 +87,7 @@ from routes.bancos import bancos_bp
 from routes.intercompany import intercompany_bp
 from routes.planilla import planilla_bp
 from routes.caja_chica import caja_chica_bp
+from routes.nota_credito import nota_credito_bp
 from routes.seguimiento import seguimiento_bp
 from routes.diagnostico import diagnostico_bp
 from routes.moneda import moneda_bp
@@ -284,6 +285,7 @@ app.register_blueprint(bancos_bp)  # Conciliación bancaria (21/10/2026): gerenc
 app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026): gerencia y permiso propio
 app.register_blueprint(planilla_bp)  # Planilla y RRHH (22/10/2026): gerencia y permiso propio
 app.register_blueprint(caja_chica_bp)  # Caja chica con fondo fijo (22/10/2026): gerencia y permiso propio
+app.register_blueprint(nota_credito_bp)  # Notas de crédito: solo Hellen crea, solo Erika aprueba (26/10/2026)
 app.register_blueprint(seguimiento_bp)  # Seguimiento comercial (22/10/2026): permiso propio
 app.register_blueprint(moneda_bp)  # Soles y dólares con tipo de cambio (24/10/2026)
 app.register_blueprint(diagnostico_bp)  # Errores claros y registro de fallos al guardar (22/10/2026)
