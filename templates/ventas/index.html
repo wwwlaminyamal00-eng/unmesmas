@@ -176,6 +176,28 @@
 /* Entregas (18:09): fila entera rosado bajito si falta despachar, verde bajito si ya salió */
 #despachoRows tr.ent-pendiente>td{background:#FFF0F3!important}
 #despachoRows tr.ent-despachado>td{background:#E9FBEF!important}
+/* 26/10/2026: Despachado = salió del almacén (verde); Entregado = el cliente recibió (azul fuerte); Rechazado = naranja */
+#despachoRows tr.ent-entregado>td{background:#EAF1FF!important}
+.desp-entregado{display:inline-block;padding:5px 12px;border-radius:999px;background:#1D4ED8;color:#fff;font-weight:900;font-size:11px;white-space:nowrap;box-shadow:0 0 0 2px #BFDBFE}
+.desp-rechazado{display:inline-block;padding:5px 10px;border-radius:999px;background:#FFEDD5;color:#9A3412;border:1px solid #EA580C;font-weight:900;font-size:10.5px;line-height:1.2}
+.btn-confirmar-entrega{padding:6px 10px;font-size:11px;border-radius:8px;border:none;background:#1D4ED8;color:#fff;font-weight:900;cursor:pointer}
+.btn-confirmar-entrega:hover{background:#1E40AF}
+.btn-rechazo-desp{padding:4px 9px;font-size:10px;border-radius:8px;border:1px solid #EA580C;background:#fff;color:#C2410C;font-weight:800;cursor:pointer}
+.entrega-btn{padding:3px 4px;border-radius:8px;border:1px dashed #1D4ED8;background:#fff;color:#1D4ED8;font-size:10px;font-weight:800;cursor:pointer;max-width:80px;line-height:1.2}
+.entrega-btn.tiene{border:1px solid #1D4ED8;background:#1D4ED8;color:#fff}
+.ent-salida{display:block;margin-top:3px;font-size:9.5px;color:#475569;line-height:1.2}
+.ent-rechazo{display:inline-block;max-width:96px;font-size:10px;font-weight:800;color:#9A3412;line-height:1.25;white-space:normal}
+.ent-rechazo i{font-weight:600;color:#7C2D12}
+/* Facturas (Erika 26/10/2026): monto a pagar, N° MIGO, condición fija y vínculo automático */
+.monto-a-pagar{color:#047857;font-weight:900;white-space:nowrap}
+.monto-ret{display:block;font-size:9.5px;color:#B91C1C;font-weight:700;white-space:nowrap}
+.migo-lista{display:block;font-size:9.5px;font-weight:800;color:#0F766E;margin-top:2px}
+.xml-lista{display:inline-block;margin-top:2px;padding:0 5px;border-radius:6px;background:#CCFBF1;color:#0F766E;font-size:9.5px;font-weight:900}
+.monto-a-pagar-campo{font-weight:900!important;color:#047857!important;background:#ECFDF5!important;border-color:#10B981!important}
+select.condicion-fija{background:#F1F5F9!important;color:#0F172A!important;cursor:not-allowed;opacity:1!important}
+select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow .3s}
+#despachoRows .fechas-ent small{display:block;font-size:9px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.02em;margin-bottom:1px}
+#despachoRows .fechas-ent-real{margin-top:5px;padding-top:4px;border-top:1px dotted #94A3B8}
 #despachoRows tr.ent-anulado>td{background:#F1F5F9!important;color:#64748B}
 #despachoRows td .acc-col{display:flex;flex-direction:column;align-items:center;gap:4px}
 .btn-generar-compra{padding:6px 10px;font-size:11px;border-radius:8px;border:2px solid #CA8A04;background:#FFD600;color:#3D2E00;font-weight:900;cursor:pointer}
@@ -202,6 +224,9 @@
 #despachar table.master-table th{font-size:10.5px}
 #despachoRows .cita-btn{max-width:72px;line-height:1.2;padding:3px 4px;font-size:10px}
 #despachoRows td .acc-col :is(button,.desp-hecho){font-size:10px!important;padding:3px 5px!important}
+/* Con la columna nueva, la de Acción más angosta: los botones largos pasan a dos líneas */
+#despachoRows td .acc-col{min-width:96px;max-width:104px}
+#despachoRows td .acc-col :is(button,.desp-hecho,.desp-entregado){white-space:normal!important}
 #despachoRows .ent-prod b{display:inline-block;min-width:22px;text-align:right;color:#0F172A}
 #despachoRows .ent-prod + .ent-prod{border-top:1px dotted #CBD5E1;margin-top:2px;padding-top:2px}
 .ent-distrito{font-weight:800;color:#0F172A;cursor:help}
@@ -3116,6 +3141,8 @@
                     <option value="">Todos los estados</option>
                     <option value="Pendiente despacho">Pendiente despacho</option>
                      <option value="Despachado">Despachado</option>
+                    <option value="Entregado">Entregado</option>
+                    <option value="Rechazado por el cliente">Rechazado por el cliente</option>
                 </select>
                 <button class="btn btn-secondary" onclick="exportData('despachos')">📥 Exportar</button>
             </div>
@@ -3136,7 +3163,7 @@
                         <th data-ent-orden="comprobante" onclick="ordenarEntregas('comprobante')" title="Ordenar">N° Factura</th>
                         <th data-ent-orden="distrito" onclick="ordenarEntregas('distrito')" title="Ordenar">Distrito</th>
                         <th>Estado compra</th>
-                        <th data-ent-orden="fecha_cita" onclick="ordenarEntregas('fecha_cita')" title="Ordenar">Fecha de cita</th>
+                        <th data-ent-orden="fecha_cita" onclick="ordenarEntregas('fecha_cita')" title="Ordenar por fecha de cita">Fecha de cita y entrega real</th>
                         <th>Comentario</th>
                         <th>Acción</th>
                     </tr>
@@ -3254,6 +3281,7 @@
                         <th>N° Guía</th>
                         <th>N° Factura</th>
                         <th title="Total de la factura, con IGV">Monto (inc. IGV)</th>
+                        <th title="Lo que el cliente deposita: el total menos la retención del 3% si la tiene">Monto a pagar</th>
                         <th>Condición de pago</th>
                         <th>Acciones</th>
                     </tr>

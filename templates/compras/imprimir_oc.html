@@ -20,6 +20,7 @@
     td{border:1px solid #CBD5E1;padding:6px}
     td.n{text-align:right}
     .tot td{font-weight:bold}
+    .pago-adelanto td{background:#FFF7D6;color:#7C4A03}
     .nota{background:#fff;border:1px solid #CBD5E1;padding:8px 10px;border-radius:6px;margin-top:10px;line-height:1.5}
     .firmas{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:60px;text-align:center}
     .firmas div{border-top:1px solid #0F172A;padding-top:4px;font-size:11px}
@@ -82,6 +83,11 @@
         <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">{{ sim }} {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
         <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">{{ sim }} {{ '%.2f'|format(o.igv|float) }}</td></tr>
         <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">{{ sim }} {{ '%.2f'|format(o.total|float) }}</td></tr>
+        {% if 'delanto' in (o.condicion_pago or '') %}{% set mitad = ((o.total or 0)|float * 0.5)|round(2) %}
+        {# Erika 26/10/2026: con adelanto, debajo del TOTAL van el adelanto y el pago al final #}
+        <tr class="tot pago-adelanto"><td colspan="6" class="n">Adelanto 50% (antes de la entrega)</td><td class="n">{{ sim }} {{ '%.2f'|format(mitad) }}</td></tr>
+        <tr class="tot pago-adelanto"><td colspan="6" class="n">Pago al final 50% (con la factura)</td><td class="n">{{ sim }} {{ '%.2f'|format((o.total or 0)|float - mitad) }}</td></tr>
+        {% endif %}
     </tfoot>
     {% endif %}
 </table>

@@ -222,7 +222,7 @@
                     : '<span class="fin-gris">—</span>';
                 const venc = esCxc ? '' : (PUEDE_OPERAR ? ` <button class="btn-mini sec" title="Cambiar vencimiento" data-venc="${x.id}">📅</button>` : '');
                 const vinculo = esCxc
-                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>OC cliente: ${esc(x.oc_cliente)}</small>` : ''}`
+                    ? `<b>${esc(x.pc_numero || '—')}</b>${x.oc_cliente ? `<small>N° OC del cliente: ${esc(x.oc_cliente)}</small>` : ''}`
                     : `<b>${esc(x.oc_numero || '—')}</b>${x.pc_numero ? `<small>${esc(x.pc_numero)}</small>` : ''}`;
                 // Cobrar: la retención y la nota de crédito van debajo del monto. Pagar: el adelanto va debajo de lo pagado.
                 const extraMonto = esCxc ? [x.retencion ? `Retención ${dinero(x, x.retencion)}` : '', x.notas_credito ? `N. crédito ${dinero(x, x.notas_credito)}` : '']

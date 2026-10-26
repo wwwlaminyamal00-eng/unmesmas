@@ -226,6 +226,8 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
         .menu-group[data-modulo]:not([data-modulo="dashboard"]){% for m in acceso_menu.modulos %}:not([data-modulo="{{ m }}"]){% endfor %}{display:none!important}
         </style>
         {% endif %}
+        <!-- Condición de pago de la factura: solo Erika la cambia (26/10/2026); el servidor también lo controla -->
+        <script>window.ES_ERIKA = {{ 'true' if es_duena_reportes else 'false' }};</script>
         </head>
         <body data-empresa="{{ emp_ctx.codigo if emp_ctx else 'KCF' }}">
 

@@ -142,7 +142,7 @@ def test_entregas_botones_sin_emojis():
     from pathlib import Path
     raiz = Path(__file__).resolve().parent.parent
     vjs = (raiz / 'static/js/ventas.js').read_text(encoding='utf-8')
-    for texto in ('>Generar compra</button>', '>Confirmar despacho</button>', '>Generar factura</button>', '>Generar rótulo</button>'):
+    for texto in ('>Generar compra</button>', "'Confirmar despacho'}</button>", '>Generar factura</button>', '>Generar rótulo</button>'):
         assert texto in vjs
     for viejo in ('>🛒 Generar compra<', '>🚚 Confirmar despacho<', '>🧾 Generar factura<', '>🏷 Generar rótulo<'):
         assert viejo not in vjs

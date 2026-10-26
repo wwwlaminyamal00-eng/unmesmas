@@ -380,6 +380,7 @@ class PDFGenerator:
                 'factura': factura if factura else '—',
                 'nro_cotizacion': nro_cotizacion if nro_cotizacion else '—',
                 'guia_vinculada': guia_vinculada,
+                'numero_migo': (datos_comprobante.get('numero_migo') or '').strip(),
                 'fecha_vencimiento': datos_comprobante.get('fecha_vencimiento', ''),
                 'items': items_formateados,
                 'qr_base64': qr_base64
@@ -605,6 +606,12 @@ class PDFGenerator:
             <span class="info-label">COTIZACIÓN:</span>
             <span class="info-value">{{ nro_cotizacion or '—' }}</span>
         </div>
+        {% if numero_migo %}
+        <div class="info-item">
+            <span class="info-label">N° MIGO:</span>
+            <span class="info-value">{{ numero_migo }}</span>
+        </div>
+        {% endif %}
     </div>
 
     <div class="seccion">
