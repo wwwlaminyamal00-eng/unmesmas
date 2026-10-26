@@ -3075,6 +3075,16 @@ def api_condicion_origen_factura():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def limpiar_pc_cliente(valor):
+    """N° PC (Pedido del cliente): solo el número que manda el cliente (Erika 26/10/2026 21:31).
+    Relleno ("*****", "---") o un N° de OC de proveedor escrito por error (OC-AAAAMMDD-NNNN) quedan en blanco."""
+    texto = ' '.join(str(valor or '').split())
+    if not texto or re.fullmatch(r'[*.\-_\s]+', texto) or re.fullmatch(r'OC-\d{8}-\d{4}', texto, re.I):
+        return ''
+    return texto
+
+
+
 @ventas_bp.route('/ventas/api/comprobantes/guardar', methods=['POST'])
 @login_required
 def api_comprobantes_guardar():
@@ -3134,9 +3144,9 @@ def api_comprobantes_guardar():
             dias_credito = None
         
         # 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL (si no se escribe, sale de la PV: N° PC (Pedido del cliente))
-        orden_compra_cliente = data.get('orden_compra_cliente', '') or ''
+        orden_compra_cliente = limpiar_pc_cliente(data.get('orden_compra_cliente', ''))
         if not orden_compra_cliente and pc_origen:
-            orden_compra_cliente = pc_origen.get('oc_cliente') or ''
+            orden_compra_cliente = limpiar_pc_cliente(pc_origen.get('oc_cliente'))
         
         # ============================================================
         # 🔽 VALIDACIONES DE FACTURACIÓN (cliente, documento, importes, IGV)

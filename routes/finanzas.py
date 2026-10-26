@@ -80,6 +80,8 @@ SQL_DDL_FINANZAS = """
         usuario_nombre VARCHAR(150),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Fecha del comprobante de retención del cliente (Erika 26/10/2026). Migración 035.
+    ALTER TABLE finanzas_seguimiento_cobro ADD COLUMN IF NOT EXISTS retencion_fecha DATE;
 """
 
 
@@ -135,7 +137,8 @@ def _fmt(v):
 # ============================================================
 SQL_CXC = """
     WITH cobros AS (
-        SELECT documento_id, SUM(monto) AS cobrado, MAX(fecha) AS ultimo_abono
+        -- Fecha real de pago del cliente = la de su aviso de pago; si no la hay, la del registro (Erika 26/10/2026)
+        SELECT documento_id, SUM(monto) AS cobrado, MAX(COALESCE(fecha_aviso, fecha)) AS ultimo_abono
         FROM finanzas_pagos
         WHERE documento_tabla = 'comprobantes' AND tipo = 'COBRO' AND estado <> 'Anulado'
         GROUP BY documento_id
@@ -159,14 +162,18 @@ SQL_CXC = """
                 ELSE COALESCE(NULLIF(c.monto_a_pagar, 0), c.total, 0) END AS importe_cobrar,
            COALESCE(c.tiene_retencion, false) AS tiene_retencion, COALESCE(c.monto_retenido, 0) AS retencion_factura,
            COALESCE(sg.portal_ingresado, false) AS portal_ingresado, sg.portal_fecha, sg.fecha_programada,
-           sg.retencion_numero, sg.retencion_monto AS retencion_anotada, sg.usuario_nombre AS seguimiento_por,
+           sg.retencion_numero, sg.retencion_fecha, sg.retencion_monto AS retencion_anotada, sg.usuario_nombre AS seguimiento_por,
            c.numero_migo, EXISTS (SELECT 1 FROM clientes cm WHERE cm.numero_documento = c.cliente_numero_doc
                                   AND COALESCE(cm.pide_migo, false)) AS pide_migo,
            COALESCE(cb.cobrado, 0) AS cobrado,
            COALESCE(nc.monto_nc, 0) AS notas_credito,
            COALESCE(c.estado_sunat, 'Borrador') AS estado_documento,
            cb.ultimo_abono, COALESCE(NULLIF(c.moneda, ''), 'PEN') AS moneda, c.tipo_cambio, c.empresa_id AS empresa_doc,
-           NULLIF(c.pc_vinculado, '') AS pc_numero, NULLIF(c.orden_compra_cliente, '') AS oc_cliente,
+           NULLIF(c.pc_vinculado, '') AS pc_numero,
+           -- N° PC (Pedido del cliente): el de la factura o, si no se escribió, el del PV (Erika 26/10/2026)
+           COALESCE(NULLIF(c.orden_compra_cliente, ''),
+                    (SELECT NULLIF(to_jsonb(p) ->> 'oc_cliente', '') FROM pedido_compra_pc p
+                     WHERE p.numero = c.pc_vinculado ORDER BY p.id DESC LIMIT 1)) AS oc_cliente,
            NULL AS oc_numero, NULL AS tipo_compra, 0 AS adelanto, NULL AS nota_registro,
            c.items_json::text AS items_txt, fc.comentario, fc.usuario_nombre AS comentario_por
     FROM comprobantes c
@@ -449,8 +456,11 @@ def api_movimientos():
         # Trazabilidad (Erika 22/10/2026 12:26): cada cobro/pago con su N° OC y N° PV, igual que en CxC/CxP.
         # Pagos: N° OC + N° PV (o "Compra a stock"). Cobros: N° PV + N° PC (Pedido del cliente).
         sql = """
-            SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra
+            SELECT fp.*, x.oc_numero, x.pc_numero, x.oc_cliente, x.tipo_compra,
+                   sg.retencion_numero, sg.retencion_fecha, sg.retencion_monto
             FROM finanzas_pagos fp
+            LEFT JOIN finanzas_seguimiento_cobro sg ON fp.tipo = 'COBRO' AND fp.documento_tabla = 'comprobantes'
+                                                   AND sg.comprobante_id = fp.documento_id
             LEFT JOIN LATERAL (
                 SELECT COALESCE(cp.orden_compra_numero, ocp.numero_orden, oca.numero_orden) AS oc_numero,
                        COALESCE(NULLIF(c.pc_vinculado, ''), NULLIF(COALESCE(ocp.pc_numeros, oca.pc_numeros), ''),
@@ -481,6 +491,8 @@ def api_movimientos():
         for f in filas:
             item = {k: _fmt(v) for k, v in f.items()}
             item['monto'] = float(f['monto'])
+            if f.get('retencion_monto') is not None:
+                item['retencion_monto'] = float(f['retencion_monto'])
             if f['tipo'] == 'PAGO' and not f.get('pc_numero') and f.get('oc_numero'):
                 item['pc_numero'] = 'Compra a stock' if 'stock' in str(f.get('tipo_compra') or '').lower() else 'Sin PV vinculado'
             data.append(item)
@@ -705,6 +717,69 @@ def _fecha_o_nada(valor, nombre):
         raise ValueError(f'{nombre}: fecha no válida')
 
 
+def _retencion_de(data, doc):
+    """N°, fecha y monto del comprobante de retención que envía el cliente (Erika 23/10 y 26/10/2026)."""
+    from routes.exportar import ahora_lima
+    numero = ' '.join(str(data.get('retencion_numero') or '').split()).upper()[:40] or None
+    fecha_ret = _fecha_o_nada(data.get('retencion_fecha'), 'Fecha de la retención')
+    monto_txt = str(data.get('retencion_monto') if data.get('retencion_monto') is not None else '').strip()
+    monto = None
+    if monto_txt:
+        monto = redondear(a_decimal(monto_txt))
+        if monto < 0 or monto > a_decimal(doc['total']):
+            raise ValueError('El monto de la retención debe estar entre 0 y el total de la factura')
+    emision = doc.get('fecha_emision')
+    if isinstance(emision, datetime):
+        emision = emision.date()
+    if fecha_ret and emision and fecha_ret < emision:
+        raise ValueError('La fecha de la retención no puede ser antes de la emisión de la factura')
+    if fecha_ret and fecha_ret > ahora_lima().date():
+        raise ValueError('La fecha de la retención no puede ser futura')
+    return numero, fecha_ret, monto
+
+
+@finanzas_bp.route('/finanzas/api/retencion_cobro', methods=['POST'])
+def api_retencion_cobro():
+    """Solo el comprobante de retención (al registrar el cobro): no toca portal ni fecha programada."""
+    if not puede_operar_finanzas():
+        return jsonify({'success': False, 'error': 'No tienes permisos para esta acción'}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        doc_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Documento inválido'}), 400
+    try:
+        asegurar_tablas_finanzas()
+        doc = db_query("SELECT id, serie, numero, fecha_emision, COALESCE(total, 0) AS total FROM comprobantes WHERE id = %s",
+                       (doc_id,))
+        if not doc:
+            return jsonify({'success': False, 'error': 'Factura no encontrada'}), 404
+        numero, fecha_ret, monto = _retencion_de(data, doc[0])
+        antes = db_query("SELECT retencion_numero, retencion_fecha, retencion_monto FROM finanzas_seguimiento_cobro "
+                         "WHERE comprobante_id = %s", (doc_id,))
+        db_execute("""INSERT INTO finanzas_seguimiento_cobro (comprobante_id, retencion_numero, retencion_fecha, retencion_monto,
+                                                          usuario_nombre, updated_at)
+                      VALUES (%s, %s, %s, %s, %s, NOW())
+                      ON CONFLICT (comprobante_id) DO UPDATE SET retencion_numero = EXCLUDED.retencion_numero,
+                          retencion_fecha = EXCLUDED.retencion_fecha, retencion_monto = EXCLUDED.retencion_monto,
+                          usuario_nombre = EXCLUDED.usuario_nombre, updated_at = NOW()""",
+                   (doc_id, numero, fecha_ret, monto, session.get('nombre') or session.get('usuario') or ''))
+        despues = {'retencion_numero': numero, 'retencion_fecha': _fmt(fecha_ret),
+                   'retencion_monto': float(monto) if monto is not None else None}
+        try:
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('ACTUALIZAR', 'Finanzas', 'finanzas_seguimiento_cobro', doc_id,
+                                antes={k: _fmt(v) for k, v in antes[0].items()} if antes else None, despues=despues,
+                                detalle=f"Retención de {doc[0].get('serie') or ''}-{doc[0].get('numero') or doc_id}")
+        except Exception as e:
+            print(f"⚠️ Auditoría de retención: {e}")
+        return jsonify({'success': True, 'data': despues, 'message': 'Retención guardada'})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @finanzas_bp.route('/finanzas/api/seguimiento_cobro', methods=['POST'])
 def api_seguimiento_cobro():
     """Seguimiento de una factura por cobrar (Erika 23/10/2026): si ya se ingresó en el portal del cliente,
@@ -726,13 +801,7 @@ def api_seguimiento_cobro():
         portal = bool(data.get('portal_ingresado'))
         portal_fecha = _fecha_o_nada(data.get('portal_fecha'), 'Fecha de ingreso al portal') if portal else None
         programada = _fecha_o_nada(data.get('fecha_programada'), 'Fecha programada de pago')
-        numero_ret = ' '.join(str(data.get('retencion_numero') or '').split()).upper()[:40] or None
-        monto_txt = str(data.get('retencion_monto') if data.get('retencion_monto') is not None else '').strip()
-        monto_ret = None
-        if monto_txt:
-            monto_ret = redondear(a_decimal(monto_txt))
-            if monto_ret < 0 or monto_ret > a_decimal(doc['total']):
-                return jsonify({'success': False, 'error': 'El monto de la retención debe estar entre 0 y el total de la factura'}), 400
+        numero_ret, fecha_ret, monto_ret = _retencion_de(data, doc)
         emision = doc.get('fecha_emision')
         if isinstance(emision, datetime):
             emision = emision.date()
@@ -748,15 +817,17 @@ def api_seguimiento_cobro():
         antes = db_query("SELECT * FROM finanzas_seguimiento_cobro WHERE comprobante_id = %s", (doc_id,))
         db_execute("""INSERT INTO finanzas_seguimiento_cobro
                           (comprobante_id, portal_ingresado, portal_fecha, fecha_programada, retencion_numero, retencion_monto,
-                           usuario_nombre, updated_at)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                           usuario_nombre, updated_at, retencion_fecha)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s)
                       ON CONFLICT (comprobante_id) DO UPDATE SET
                           portal_ingresado = EXCLUDED.portal_ingresado, portal_fecha = EXCLUDED.portal_fecha,
                           fecha_programada = EXCLUDED.fecha_programada, retencion_numero = EXCLUDED.retencion_numero,
-                          retencion_monto = EXCLUDED.retencion_monto, usuario_nombre = EXCLUDED.usuario_nombre, updated_at = NOW()""",
-                   (doc_id, portal, portal_fecha, programada, numero_ret, monto_ret, usuario))
+                          retencion_monto = EXCLUDED.retencion_monto, usuario_nombre = EXCLUDED.usuario_nombre, updated_at = NOW(),
+                          retencion_fecha = EXCLUDED.retencion_fecha""",
+                   (doc_id, portal, portal_fecha, programada, numero_ret, monto_ret, usuario, fecha_ret))
         despues = {'portal_ingresado': portal, 'portal_fecha': _fmt(portal_fecha), 'fecha_programada': _fmt(programada),
-                   'retencion_numero': numero_ret, 'retencion_monto': float(monto_ret) if monto_ret is not None else None}
+                   'retencion_numero': numero_ret, 'retencion_fecha': _fmt(fecha_ret),
+                   'retencion_monto': float(monto_ret) if monto_ret is not None else None}
         if 'numero_migo' in data:
             from routes.migo import limpiar_migo
             despues['numero_migo'] = limpiar_migo(data.get('numero_migo'))
