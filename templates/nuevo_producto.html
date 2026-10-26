@@ -846,8 +846,10 @@
                     <div style="display:flex;gap:4px;">
                         <select id="marcaProducto" name="marca" style="flex:1;">
                             <option value="">Seleccione</option>
+                            {#- 24/10/2026: "-" = sin marca (lo fabrica el proveedor; su nombre NO va como marca en la cotización) #}
+                            <option value="-" {% if producto and producto.marca == '-' %}selected{% endif %}>- (sin marca, lo fabrica el proveedor)</option>
                             {#- Lista base + marcas del maestro + las ya usadas + la del producto (una personalizada no se pierde al reabrir) #}
-                            {% for m in (marcas_opciones or []) %}
+                            {% for m in (marcas_opciones or []) if m != '-' %}
                             <option value="{{ m }}" {% if producto and producto.marca == m %}selected{% endif %}>{{ m }}</option>
                             {% endfor %}
                         </select>

@@ -89,6 +89,7 @@ from routes.planilla import planilla_bp
 from routes.caja_chica import caja_chica_bp
 from routes.seguimiento import seguimiento_bp
 from routes.diagnostico import diagnostico_bp
+from routes.moneda import moneda_bp
 
 
 # ==========================================
@@ -242,7 +243,16 @@ def inject_request():
             acceso_menu = acceso_usuario()
         except Exception:
             acceso_menu = None
-    return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin())
+    # 24/10/2026: Revisión / Validación de Ventas solo para Hellen y administradores
+    try:
+        from utils import es_aprobador
+        puede_validar = 'usuario_id' in session and es_aprobador()
+    except Exception:
+        puede_validar = False
+    # 25/10/2026: regla de oro, el menú 8 Reportes solo lo ve Erika
+    from utils import es_duena_reportes
+    return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin(), puede_validar_ventas=puede_validar,
+                es_duena_reportes='usuario_id' in session and es_duena_reportes())
 
 # ==========================================
 # REGISTRO DE BLUEPRINTS
@@ -275,6 +285,7 @@ app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026)
 app.register_blueprint(planilla_bp)  # Planilla y RRHH (22/10/2026): gerencia y permiso propio
 app.register_blueprint(caja_chica_bp)  # Caja chica con fondo fijo (22/10/2026): gerencia y permiso propio
 app.register_blueprint(seguimiento_bp)  # Seguimiento comercial (22/10/2026): permiso propio
+app.register_blueprint(moneda_bp)  # Soles y dólares con tipo de cambio (24/10/2026)
 app.register_blueprint(diagnostico_bp)  # Errores claros y registro de fallos al guardar (22/10/2026)
 # Empresa activa (KCF / AGD / Todas), filtros y colores por empresa
 from routes import multiempresa

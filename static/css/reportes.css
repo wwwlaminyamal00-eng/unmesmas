@@ -67,3 +67,13 @@
 .rep-barra b{text-align:right;font-variant-numeric:tabular-nums;color:#0F172A}
 
 @media(max-width:900px){.rep-kpi-xl{grid-column:auto}.rep-grid2{grid-template-columns:1fr}.rep-barra{grid-template-columns:110px 1fr 100px}}
+/* Misma paleta que Finanzas (Erika 25/10/2026): fondo suave + borde fuerte. Rojo solo lo vencido. */
+.rep-resumen .inv-kpi.inv-kpi-danger{background:#FFE4E6;border-left-color:#E60023}
+.rep-resumen .inv-kpi.inv-kpi-warn{background:#FEF3C7;border-left-color:#F59E0B}
+.rep-resumen .inv-kpi.inv-kpi-warn b{color:#B45309}
+.rep-resumen .inv-kpi.rep-kpi-ok{background:#DCFCE7;border-left-color:#16A34A}
+.rep-resumen .inv-kpi.rep-kpi-ok b{color:#15803D}
+.inv-kpi.rep-kpi-cobro{background:#CCFBF1;border-left-color:#0D9488}
+.inv-kpi.rep-kpi-cobro b, .inv-kpi.rep-kpi-cobro small{color:#115E59}
+.inv-kpi.rep-kpi-pago{background:#EDE9FE;border-left-color:#7C3AED}
+.inv-kpi.rep-kpi-pago b, .inv-kpi.rep-kpi-pago small{color:#4C1D95}

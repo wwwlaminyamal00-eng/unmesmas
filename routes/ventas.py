@@ -8,7 +8,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
 
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
 from functools import wraps
 from datetime import datetime
 import json
@@ -22,6 +22,8 @@ from database import db_query, db_execute, db_tx, get_connection, buscar_cliente
 from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, empresa_de, marcar_empresa,
                                  empresa_por_id, empresas, datos_empresa_documento, empresa_id_por_ruc,
                                  empresa_por_codigo, marca_pdf)
+from routes.moneda import asegurar_moneda, moneda_documento, codigo_moneda, ErrorMoneda
+from routes.migo import asegurar_migo, guardar_numero_migo, limpiar_migo
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
@@ -86,9 +88,9 @@ def validar_transicion_cotizacion(estado_actual, estado_nuevo):
         return 'La cotización está anulada. Solo un aprobador puede reactivarla como Borrador.'
     if estado_nuevo in ESTADOS_QUE_REQUIEREN_APROBADOR and not es_aprobador():
         return 'Solo un usuario aprobador puede validar cotizaciones.'
-    if estado_nuevo == 'Generada' and not es_aprobador() and _requiere_validacion_previa() \
-            and estado_actual not in ESTADOS_VALIDADOS:
-        return 'La cotización debe estar validada antes de generarse.'
+    if estado_nuevo == 'Generada' and not es_aprobador():
+        # 24/10/2026 (equipo de Erika): el vendedor solo guarda borrador o solicita validación; genera Hellen o un admin
+        return 'Solo Hellen o un administrador puede generar la cotización. Usa "Solicitar validación".'
     if estado_nuevo in ESTADOS_ACEPTADA and estado_actual not in ('Generada', 'Enviada'):
         return 'Solo una cotización generada puede marcarse como aceptada por el cliente.'
     if estado_actual == 'Generada' and estado_nuevo in ('Borrador', 'En revisión', 'Por validar') and not es_aprobador():
@@ -609,7 +611,7 @@ def obtener_comprobantes_db():
                 obs_retencion,
                 sunat_response, cdr_response, creado_por,
                 created_at, updated_at,
-                -- N° PC y N° guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
+                -- N° PC y N° Guía (19/10/2026): lo guardado en la factura; si está vacío, por la misma cotización
                 COALESCE(NULLIF(pc_vinculado, ''),
                          (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
                            WHERE p.cotizacion_numero = comprobantes.documento_asociado
@@ -673,7 +675,7 @@ def guardar_comprobante_db(data):
         
         params = (
             data.get('tipo_comprobante', 'FACTURA'),
-            data.get('serie', 'F001'),
+            str(data.get('serie') or 'E001').strip().upper(),
             data.get('numero'),
             fecha_emision,
             data.get('moneda', 'PEN'),
@@ -1411,6 +1413,10 @@ def guardar_devolucion_db(data):
 @login_required
 def ventas():
     tab = request.args.get('tab', 'cotizaciones')
+    # 24/10/2026: Revisión y Validación solo para Hellen y administradores (también si escriben la dirección)
+    if tab in ('revision', 'validacion') and not es_aprobador():
+        flash('La revisión y validación de cotizaciones es solo para Hellen y los administradores.', 'warning')
+        tab = 'cotizaciones'
     return render_template('ventas/index.html', 
                          active_tab=tab,
                          usuario=session.get('usuario'),
@@ -1552,6 +1558,7 @@ def api_cotizaciones_guardar():
         requerimiento = data.get('requerimiento') or ''
         vendedor = data.get('vendedor') or session.get('nombre_completo') or ''
 
+        asegurar_moneda()   # columnas moneda / tipo_cambio (migración 030)
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -1612,6 +1619,10 @@ def api_cotizaciones_guardar():
                                 'error': 'Productos no encontrados en la base de datos: ' + ', '.join(no_encontrados)}), 400
 
             totales = calcular_totales(lineas, descuento_valor, descuento_tipo)
+            try:
+                moneda_cot = moneda_documento(data)
+            except ErrorMoneda as em:
+                return jsonify({'success': False, 'error': str(em)}), 400
             if data.get('total') is not None and abs(a_decimal(data.get('total')) - totales['total']) > a_decimal('0.05'):
                 print(f"⚠️ Total enviado por el navegador ({data.get('total')}) difiere del calculado "
                       f"({totales['total']}); se guarda el calculado en el servidor.")
@@ -1669,6 +1680,10 @@ def api_cotizaciones_guardar():
                 fila = cur.fetchone()
                 cotizacion_id = fila['id']
                 marcar_empresa(cur, 'cotizaciones', cotizacion_id, empresa_para_crear())
+
+            # 24/10/2026 (Erika): cotización en soles o dólares, con su tipo de cambio
+            cur.execute("UPDATE cotizaciones SET moneda = %s, tipo_cambio = %s WHERE id = %s",
+                        moneda_cot + (cotizacion_id,))
 
             # Registro de quién validó (cuando el aprobador guarda con estado validado)
             if estado_nuevo in ESTADOS_VALIDADOS and estado_actual not in ESTADOS_VALIDADOS:
@@ -2183,7 +2198,7 @@ def preview_rotulo_guia(guia_id):
 
 
 def _numeros_rotulo(guia=None, despacho=None, pc=None):
-    """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PC, N° guía y N° factura. '—' si falta."""
+    """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PC, N° Guía y N° Factura. '—' si falta."""
     def unir(*vals):
         vistos = []
         for v in vals:
@@ -2567,7 +2582,9 @@ def api_guias_guardar():
             RETURNING id, numero
         """
         
-        items_json = json.dumps(data.get('items', []))
+        pc_guia = _pc_de_comprobante({'pc': data.get('pc') or data.get('pc_numero') or data.get('pc_vinculado'),
+                                      'cotizacion': data.get('documento_asociado') or data.get('cotizacion')})
+        items_json = json.dumps(_completar_desc_cliente(data.get('items', []), pc_guia.get('numero') if pc_guia else None))
         serie = (data.get('serie') or 'T001').strip()
         numero = str(data.get('numero') or '').strip()
 
@@ -2892,19 +2909,43 @@ def _params_insert_comprobante(comprobante_data):
     )
 
 
+def _completar_desc_cliente(items, pc_numero):
+    """24/10/2026 (caso Komatsu): la descripción que el cliente pide en su OC se escribe por línea en el PC.
+    Si la guía o la factura llega sin ella, se toma del PC por código de producto. El catálogo no cambia."""
+    if not pc_numero or not isinstance(items, list):
+        return items
+    try:
+        filas = db_query("SELECT items_json FROM pedido_compra_pc WHERE numero = %s ORDER BY id DESC LIMIT 1", (pc_numero,))
+        pc_items = filas[0]['items_json'] if filas else []
+        if isinstance(pc_items, str):
+            pc_items = json.loads(pc_items or '[]')
+    except Exception:
+        return items
+    mapa = {str(i.get('codigo') or '').strip().upper(): (i.get('descripcion_cliente') or '').strip()
+            for i in pc_items or [] if isinstance(i, dict) and (i.get('descripcion_cliente') or '').strip()}
+    for it in items:
+        if isinstance(it, dict) and not (it.get('descripcion_cliente') or '').strip():
+            d = mapa.get(str(it.get('codigo') or '').strip().upper())
+            if d:
+                it['descripcion_cliente'] = d
+    return items
+
+
 def _pc_de_comprobante(data):
     """PC de origen de una factura: la vinculada; si no, la de su guía (por la PC anotada en la guía
     o por el despacho de la guía)."""
     pc = (data.get('pc') or data.get('pc_vinculado') or '').strip()
     filas = []
     if pc:
-        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente,
+                   to_jsonb(p) ->> 'moneda' AS moneda, to_jsonb(p) ->> 'tipo_cambio' AS tipo_cambio
                             FROM pedido_compra_pc p WHERE numero = %s ORDER BY id DESC LIMIT 1""", (pc,))
     guia = (data.get('guia') or data.get('guia_vinculada') or '').strip()
     if not filas and guia:
         # La guía guarda su cotización (documento_asociado) y el despacho guarda su PC
         filas = db_query("""
-            SELECT p.numero, p.condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+            SELECT p.numero, p.condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente,
+                   to_jsonb(p) ->> 'moneda' AS moneda, to_jsonb(p) ->> 'tipo_cambio' AS tipo_cambio
             FROM guias_remision g
             JOIN pedido_compra_pc p ON p.id IN (
                      SELECT d.pc_id FROM despachos d
@@ -2915,7 +2956,8 @@ def _pc_de_comprobante(data):
             ORDER BY p.id DESC LIMIT 1""", (guia, guia))
     cot = (data.get('cotizacion') or data.get('cotizacion_numero') or '').strip()
     if not filas and cot:
-        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+        filas = db_query("""SELECT numero, condicion_pago, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente,
+                   to_jsonb(p) ->> 'moneda' AS moneda, to_jsonb(p) ->> 'tipo_cambio' AS tipo_cambio
                             FROM pedido_compra_pc p WHERE cotizacion_numero = %s
                               AND COALESCE(estado, '') NOT IN ('Anulado', 'Anulada')
                             ORDER BY id DESC LIMIT 1""", (cot,))
@@ -2945,6 +2987,16 @@ def _condicion_del_cliente(ruc):
     return cond if cond in ('Contado', 'Contra entrega') or cond.startswith('Crédito ') and cond.endswith(' días') else ''
 
 
+def _pide_migo_seguro(ruc):
+    """¿El cliente pide N° MIGO para pagar? (Erika 25/10/2026). Si algo falla, no estorba a la factura."""
+    try:
+        from routes.migo import cliente_pide_migo
+        return cliente_pide_migo(ruc)
+    except Exception as e:
+        print(f"⚠️ pide_migo: {e}")
+        return False
+
+
 @ventas_bp.route('/ventas/api/comprobantes/condicion-origen', methods=['GET'])
 @login_required
 def api_condicion_origen_factura():
@@ -2956,10 +3008,11 @@ def api_condicion_origen_factura():
         if pc and normalizar_condicion(pc.get('condicion_pago')):
             return jsonify({'success': True, 'data': {
                 'condicion': normalizar_condicion(pc.get('condicion_pago')), 'fuente': f"PC {pc.get('numero')}",
-                'pc': pc.get('numero'), 'oc_cliente': pc.get('oc_cliente') or ''}})
+                'pc': pc.get('numero'), 'oc_cliente': pc.get('oc_cliente') or '',
+                'pide_migo': _pide_migo_seguro(args.get('ruc'))}})
         cond = _condicion_del_cliente(args.get('ruc'))
         return jsonify({'success': True, 'data': {'condicion': cond, 'fuente': 'cliente' if cond else '',
-                                                  'pc': None, 'oc_cliente': ''}})
+                                                  'pc': None, 'oc_cliente': '', 'pide_migo': _pide_migo_seguro(args.get('ruc'))}})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -2990,6 +3043,16 @@ def api_comprobantes_guardar():
         # Condición de pago (pedido de Erika 19/10/2026): la que se elige en la factura; si viene vacía, la del
         # PC de origen, luego la de la guía (su PC) y al final la del cliente. Nunca la de la cotización.
         pc_origen = _pc_de_comprobante(data)
+        items_json = _completar_desc_cliente(items_json, pc_origen.get('numero') if pc_origen else None)
+        # 24/10/2026 (Erika): factura en dólares -> TC SUNAT de la fecha de emisión (lo usa el registro de ventas)
+        try:
+            asegurar_moneda()
+            asegurar_migo()
+            moneda_comp, tc_comp = moneda_documento(
+                data, fecha=str(data.get('fecha_emision') or '')[:10] or None,
+                respaldo=pc_origen, tc_sunat_por_defecto=True)
+        except ErrorMoneda as em:
+            return jsonify({'success': False, 'error': str(em)}), 400
         condicion_pago = normalizar_condicion(data.get('condicion') or data.get('condicion_pago'))
         if not condicion_pago and pc_origen:
             condicion_pago = normalizar_condicion(pc_origen.get('condicion_pago'))
@@ -3091,10 +3154,10 @@ def api_comprobantes_guardar():
         # Preparar datos para guardar
         comprobante_data = {
             'tipo_comprobante': data.get('tipo', 'FACTURA'),
-            'serie': data.get('serie', 'F001'),
+            'serie': str(data.get('serie') or 'E001').strip().upper(),  # serie electrónica de SUNAT (Erika 25/10/2026)
             'numero': data.get('numero'),
             'fecha_emision': data.get('fecha_emision') or datetime.now().isoformat(), 
-            'moneda': data.get('moneda', 'PEN'),
+            'moneda': moneda_comp,
             'cliente_tipo_doc': data.get('cliente_tipo_doc', 'RUC'),
             'cliente_numero_doc': data.get('ruc'),
             'cliente_nombre': data.get('cliente'),
@@ -3214,6 +3277,9 @@ def api_comprobantes_guardar():
             result = db_query(query, params)
             
             if result:
+                db_execute("UPDATE comprobantes SET tipo_cambio = %s WHERE id = %s", (tc_comp, data['id']))
+                if 'numero_migo' in data:
+                    guardar_numero_migo(data['id'], data.get('numero_migo'))
                 return jsonify({'success': True, 'message': 'Comprobante actualizado', 'data': _numero_8(result[0])})
             return jsonify({'success': False, 'error': 'No se pudo actualizar'}), 400
         
@@ -3258,6 +3324,10 @@ def api_comprobantes_guardar():
             fila = cur.fetchone()
             if fila:
                 marcar_empresa(cur, 'comprobantes', fila['id'], empresa_comp)
+                cur.execute("UPDATE comprobantes SET tipo_cambio = %s WHERE id = %s", (tc_comp, fila['id']))
+                if 'numero_migo' in data:
+                    cur.execute("UPDATE comprobantes SET numero_migo = %s WHERE id = %s",
+                                (limpiar_migo(data.get('numero_migo')), fila['id']))
         result = [_numero_8(dict(fila))] if fila else []
         if result:
             return jsonify({
@@ -3295,12 +3365,13 @@ def api_comprobantes_obtener(id):
                 es_credito, estado_credito, fecha_aprobacion,
                 fecha_vencimiento, dias_credito, 
                 porcentaje_retencion, monto_retenido, monto_a_pagar,
-                obs_retencion,
+                obs_retencion, numero_migo,
                 sunat_response, cdr_response, creado_por,
                 created_at, updated_at
             FROM comprobantes
             WHERE id = %s
         """
+        asegurar_migo()
         result = db_query(query, (id,))
         
         print(f"📊 Resultado de consulta: {result}")
@@ -3705,6 +3776,13 @@ def api_pedido_compra_guardar():
         # ============================================================
         # GUARDAR EL PC (INSERT O UPDATE)
         # ============================================================
+        # 24/10/2026 (Erika): el PC lleva la moneda y el TC de su cotización (o los que se escriban en el PC)
+        try:
+            asegurar_moneda()
+            cot_m = db_query("SELECT moneda, tipo_cambio FROM cotizaciones WHERE id = %s", (cotizacion_id,)) if cotizacion_id else []
+            moneda_pc = moneda_documento(data, respaldo=cot_m[0] if cot_m else None)
+        except ErrorMoneda as em:
+            return jsonify({'success': False, 'error': str(em)}), 400
         result = guardar_pc_db(data)
         
         if result and 'valida_productos' in data:
@@ -3718,6 +3796,10 @@ def api_pedido_compra_guardar():
             _asegurar_columna_oc_cliente()
             db_execute("UPDATE pedido_compra_pc SET oc_cliente = %s WHERE id = %s",
                        (data['oc_cliente'] or None, result['id']))
+
+        if result:
+            # 24/10/2026 (Erika): el PC lleva la moneda y el TC de su cotización (o los que se escriban en el PC)
+            db_execute("UPDATE pedido_compra_pc SET moneda = %s, tipo_cambio = %s WHERE id = %s", moneda_pc + (result['id'],))
 
         if result:
             # Si tiene cotizacion_id y es NUEVO, actualizar estado de la cotización
@@ -4095,6 +4177,7 @@ def _vincular_despacho_con_pc(data):
             data['items'] = [{
                 'codigo': i.get('codigo') or '',
                 'producto': i.get('producto') or i.get('descripcion') or '',
+                'descripcion_cliente': i.get('descripcion_cliente') or '',   # 24/10/2026: como en la OC del cliente
                 'marca': i.get('marca') or '', 'modelo': i.get('modelo') or '',
                 'cantidad': float(i.get('cantidad_pc') or i.get('cantidad') or 0),
                 'um': i.get('um') or 'NIU',
@@ -5139,6 +5222,7 @@ def api_cotizaciones_generar_pdf(id):
                 c.direccion_entrega, c.requerimiento, c.nota_cotizacion,
                 c.descuento_porcentaje, c.descuento_monto, c.descuento_tipo,
                 c.contacto_cliente, c.telefono_cliente, c.email_cliente,
+                to_jsonb(c) ->> 'moneda' AS moneda, to_jsonb(c) ->> 'tipo_cambio' AS tipo_cambio,
                 cl.id as cliente_id,
                 cl.razon_social as cliente_razon_social,
                 cl.numero_documento as cliente_ruc,
@@ -5232,7 +5316,9 @@ def api_cotizaciones_generar_pdf(id):
             'logo_mime': emp['logo_src'][5:emp['logo_src'].find(';')] if logo_base64 else 'image/png',
             'emp_nombre': emp['nombre'], 'emp_ruc': emp['ruc'], 'emp_corto': emp['corto'],
             'emp_telefono': emp['telefono'], 'emp_email': emp['email'], 'emp_web': emp['web'],
-            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': emp.get('cuentas') or [],
+            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': [cb for cb in (emp.get('cuentas') or []) if codigo_moneda(cb.get('moneda')) == 'PEN'],  # Erika 25/10: la cuenta en dólares no va en la cotización
+            # 24/10/2026 (Erika): cotización en dólares -> US$ en el PDF
+            'sim': 'US$' if codigo_moneda(c.get('moneda')) == 'USD' else 'S/',
             'cliente_razon_social': cliente_razon_social,
             'cliente_ruc': cliente_ruc,
             'cliente_direccion': cliente_direccion,
@@ -5697,8 +5783,8 @@ def api_cotizaciones_generar_pdf(id):
                 <th class="col-marca">Marca</th>
                 <th class="col-unidad-medida">Unidad Medida</th>
                 <th class="col-cantidad">Cantidad</th>
-                <th class="col-valor-unitario">Valor Venta Unit S/.</th>
-                <th class="col-valor-total">Valor Venta Total S/.</th>
+                <th class="col-valor-unitario">Valor Venta Unit {{ sim }}</th>
+                <th class="col-valor-total">Valor Venta Total {{ sim }}</th>
             </tr>
         </thead>
         <tbody>
@@ -5728,7 +5814,7 @@ def api_cotizaciones_generar_pdf(id):
     <div class="seccion-aclaratoria">
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
-        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
+        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de {{ sim }} {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
         {% if emp_web %}Para más información visítanos en 
         <a href="{{ emp_web }}" class="web-link">{{ emp_web_corta }}</a>{% endif %}
     </div>
@@ -5737,14 +5823,14 @@ def api_cotizaciones_generar_pdf(id):
     <!-- TOTALES - TOTAL A PAGAR EN AZUL CHIYÓN                      -->
     <!-- ============================================================ -->
     <div class="seccion-totales">
-        <div class="total-line"><span>Subtotal (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta|default(0)) }}</span></div>
+        <div class="total-line"><span>Subtotal ({{ sim }}):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(total_subtotal_venta|default(0)) }}</span></div>
         {% if hay_descuentos %}
-        <div class="total-line"><span>Descuentos aplicados (S/):</span><span class="numero-formateado" style="color:{{ emp_color }};">- S/ {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
+        <div class="total-line"><span>Descuentos aplicados ({{ sim }}):</span><span class="numero-formateado" style="color:{{ emp_color }};">- {{ sim }} {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
         {% endif %}
-        <div class="total-line"><span>Subtotal con descuento (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta_desc|default(0)) }}</span></div>
-        <div class="total-line"><span>IGV (18%):</span><span class="numero-formateado">S/ {{ "%.2f"|format(summary_igv|default(0)) }}</span></div>
+        <div class="total-line"><span>Subtotal con descuento ({{ sim }}):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(total_subtotal_venta_desc|default(0)) }}</span></div>
+        <div class="total-line"><span>IGV (18%):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(summary_igv|default(0)) }}</span></div>
         <!-- ✅ CAMBIO 2: TOTAL A PAGAR en azul chiyón -->
-        <div class="total-line total-final"><span><strong>TOTAL A PAGAR:</strong></span><span class="numero-formateado"><strong>S/ {{ "%.2f"|format(summary_total_venta|default(0)) }}</strong></span></div>
+        <div class="total-line total-final"><span><strong>TOTAL A PAGAR:</strong></span><span class="numero-formateado"><strong>{{ sim }} {{ "%.2f"|format(summary_total_venta|default(0)) }}</strong></span></div>
     </div>
 
     <!-- ============================================================ -->
@@ -5755,15 +5841,15 @@ def api_cotizaciones_generar_pdf(id):
         {% for cb in emp_cuentas %}
         <div class="cuenta-line">
             <span class="banco">🏛️ {{ cb.banco }}</span>
-            <span class="tipo">| {{ cb.tipo_cuenta or 'Cuenta' }}{% if cb.moneda %} ({{ cb.moneda }}){% endif %}</span><br>
-            <span class="numero">Cuenta: {{ cb.numero_cuenta }}</span><br>
+            <span class="tipo">| {% if cb.moneda %}{{ 'Dólares' if cb.moneda|upper in ('USD', 'US$', 'DOLARES', 'DÓLARES') else 'Soles' }}{% endif %}</span><br>
+            <span class="numero">Cuenta Corriente N° {{ cb.numero_cuenta }}</span><br>
             {% if cb.cci %}<span class="cci">CCI: {{ cb.cci }}</span>{% endif %}
         </div>
         {% else %}{% if emp_ruc == '20602095704' %}
         <div class="cuenta-line">
             <span class="banco">🏛️ BBVA</span>
-            <span class="tipo">| Cuenta Corriente empresa</span><br>
-            <span class="numero">Cuenta: 0011-0319-1601-00022197</span><br>
+            <span class="tipo">| Soles</span><br>
+            <span class="numero">Cuenta Corriente N° 0011-0319-1601-00022197</span><br>
             <span class="cci">CCI: 011-319-000100022197-16</span>
         </div>
         {% endif %}{% endfor %}
@@ -6511,7 +6597,7 @@ def api_pedido_compra_validar(id):
         # Validar moneda (si hay campo)
         pc_moneda = pc.get('moneda') or ''
         cot_moneda = cotizacion.get('moneda') or 'Soles (S/)'
-        if pc_moneda and cot_moneda and pc_moneda.strip().lower() != cot_moneda.strip().lower():
+        if pc_moneda and cot_moneda and codigo_moneda(pc_moneda) != codigo_moneda(cot_moneda):
             validaciones['moneda'] = False
         
         # Validar vigencia
@@ -6701,6 +6787,7 @@ def api_pedido_compra_obtener(id):
                                 items.append({
                                     'codigo': item.get('codigo', ''),
                                     'producto': item.get('producto', item.get('descripcion', '')),
+                                    'descripcion_cliente': item.get('descripcion_cliente') or '',   # 24/10/2026: como en la OC del cliente
                                     'marca': item.get('marca', ''),
                                     'modelo': item.get('modelo', ''),
                                     'cantidad_cotizada': float(item.get('cantidad_cotizada', item.get('cantidad_cot', 0))),
@@ -6874,6 +6961,7 @@ def api_cotizaciones_preview_pdf(id):
                 c.direccion_entrega, c.requerimiento, c.nota_cotizacion,
                 c.descuento_porcentaje, c.descuento_monto, c.descuento_tipo,
                 c.contacto_cliente, c.telefono_cliente, c.email_cliente,
+                to_jsonb(c) ->> 'moneda' AS moneda, to_jsonb(c) ->> 'tipo_cambio' AS tipo_cambio,
                 cl.id as cliente_id,
                 cl.razon_social as cliente_razon_social,
                 cl.numero_documento as cliente_ruc,
@@ -6965,7 +7053,9 @@ def api_cotizaciones_preview_pdf(id):
             'logo_mime': emp['logo_src'][5:emp['logo_src'].find(';')] if logo_base64 else 'image/png',
             'emp_nombre': emp['nombre'], 'emp_ruc': emp['ruc'], 'emp_corto': emp['corto'],
             'emp_telefono': emp['telefono'], 'emp_email': emp['email'], 'emp_web': emp['web'],
-            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': emp.get('cuentas') or [],
+            'emp_web_corta': emp['web_corta'], 'emp_color': emp['color'], 'emp_cuentas': [cb for cb in (emp.get('cuentas') or []) if codigo_moneda(cb.get('moneda')) == 'PEN'],  # Erika 25/10: la cuenta en dólares no va en la cotización
+            # 24/10/2026 (Erika): cotización en dólares -> US$ en el PDF
+            'sim': 'US$' if codigo_moneda(c.get('moneda')) == 'USD' else 'S/',
             'cliente_razon_social': cliente_razon_social,
             'cliente_ruc': cliente_ruc,
             'cliente_direccion': cliente_direccion,
@@ -7429,9 +7519,9 @@ def api_cotizaciones_preview_pdf(id):
                 <th class="col-marca">Marca</th>
                 <th class="col-unidad-medida">Unidad Medida</th>
                 <th class="col-cantidad">Cantidad</th>
-                <th class="col-valor-unitario">Valor Venta Unit S/.</th>
+                <th class="col-valor-unitario">Valor Venta Unit {{ sim }}</th>
                 <!-- ✅ CAMBIO 3: encabezado en rojo suave -->
-                <th class="col-valor-total">Valor Venta Total S/.</th>
+                <th class="col-valor-total">Valor Venta Total {{ sim }}</th>
             </tr>
         </thead>
         <tbody>
@@ -7462,7 +7552,7 @@ def api_cotizaciones_preview_pdf(id):
     <div class="seccion-aclaratoria">
         <div class="titulo">📌 NOTA ACLARATORIA</div>
         La validez de esta oferta está sujeta a la disponibilidad de inventario en el momento de la confirmación del pedido.<br>
-        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de S/ {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
+        {% if hay_descuentos %}<strong>Esta oferta incluye un descuento de {{ sim }} {{ '%.2f'|format(total_descuento_subtotal|float) }} aplicado en el valor de venta.</strong><br>{% endif %}
         {% if emp_web %}Para más información visítanos en 
         <a href="{{ emp_web }}" class="web-link">{{ emp_web_corta }}</a>{% endif %}
     </div>
@@ -7471,14 +7561,14 @@ def api_cotizaciones_preview_pdf(id):
     <!-- TOTALES - TOTAL A PAGAR EN AZUL CHIYÓN                     -->
     <!-- ============================================================ -->
     <div class="seccion-totales">
-        <div class="total-line"><span>Subtotal (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta|default(0)) }}</span></div>
+        <div class="total-line"><span>Subtotal ({{ sim }}):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(total_subtotal_venta|default(0)) }}</span></div>
         {% if hay_descuentos %}
-        <div class="total-line"><span>Descuentos aplicados (S/):</span><span class="numero-formateado" style="color:#555555;">- S/ {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
+        <div class="total-line"><span>Descuentos aplicados ({{ sim }}):</span><span class="numero-formateado" style="color:#555555;">- {{ sim }} {{ "%.2f"|format(total_descuento_subtotal|default(0)) }}</span></div>
         {% endif %}
-        <div class="total-line"><span>Subtotal con descuento (S/):</span><span class="numero-formateado">S/ {{ "%.2f"|format(total_subtotal_venta_desc|default(0)) }}</span></div>
-        <div class="total-line"><span>IGV (18%):</span><span class="numero-formateado">S/ {{ "%.2f"|format(summary_igv|default(0)) }}</span></div>
+        <div class="total-line"><span>Subtotal con descuento ({{ sim }}):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(total_subtotal_venta_desc|default(0)) }}</span></div>
+        <div class="total-line"><span>IGV (18%):</span><span class="numero-formateado">{{ sim }} {{ "%.2f"|format(summary_igv|default(0)) }}</span></div>
         <!-- ✅ CAMBIO 2: TOTAL A PAGAR en azul chiyón -->
-        <div class="total-line total-final"><span><strong>TOTAL A PAGAR:</strong></span><span class="numero-formateado"><strong>S/ {{ "%.2f"|format(summary_total_venta|default(0)) }}</strong></span></div>
+        <div class="total-line total-final"><span><strong>TOTAL A PAGAR:</strong></span><span class="numero-formateado"><strong>{{ sim }} {{ "%.2f"|format(summary_total_venta|default(0)) }}</strong></span></div>
     </div>
 
     <!-- ============================================================ -->
@@ -7489,15 +7579,15 @@ def api_cotizaciones_preview_pdf(id):
         {% for cb in emp_cuentas %}
         <div class="cuenta-line">
             <span class="banco">🏛️ {{ cb.banco }}</span>
-            <span class="tipo">| {{ cb.tipo_cuenta or 'Cuenta' }}{% if cb.moneda %} ({{ cb.moneda }}){% endif %}</span><br>
-            <span class="numero">Cuenta: {{ cb.numero_cuenta }}</span><br>
+            <span class="tipo">| {% if cb.moneda %}{{ 'Dólares' if cb.moneda|upper in ('USD', 'US$', 'DOLARES', 'DÓLARES') else 'Soles' }}{% endif %}</span><br>
+            <span class="numero">Cuenta Corriente N° {{ cb.numero_cuenta }}</span><br>
             {% if cb.cci %}<span class="cci">CCI: {{ cb.cci }}</span>{% endif %}
         </div>
         {% else %}{% if emp_ruc == '20602095704' %}
         <div class="cuenta-line">
             <span class="banco">🏛️ BBVA</span>
-            <span class="tipo">| Cuenta Corriente empresa</span><br>
-            <span class="numero">Cuenta: 0011-0319-1601-00022197</span><br>
+            <span class="tipo">| Soles</span><br>
+            <span class="numero">Cuenta Corriente N° 0011-0319-1601-00022197</span><br>
             <span class="cci">CCI: 011-319-000100022197-16</span>
         </div>
         {% endif %}{% endfor %}
@@ -7662,7 +7752,7 @@ def preview_pdf_comprobante(comp_id):
                         items.append({
                             'item': idx,
                             'codigo': item.get('codigo', ''),
-                            'descripcion': item.get('producto', item.get('descripcion', 'Sin descripción')),
+                            'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', 'Sin descripción')),
                             'marca': item.get('marca', ''),          # ← IMPORTANTE
                             'modelo': item.get('modelo', ''),        # ← IMPORTANTE
                             'unidad': item.get('um', 'NIU'),
@@ -7728,10 +7818,10 @@ def preview_pdf_comprobante(comp_id):
         datos_comprobante = {
             'tipo_documento': 'comprobante',
             'tipo': comp.get('tipo_comprobante', 'FACTURA'),
-            'serie': comp.get('serie', 'F001'),
-            'numero': comp.get('numero', ''),
+            'serie': str(comp.get('serie') or 'E001').upper(),
+            'numero': str(comp.get('numero') or '').zfill(8) if str(comp.get('numero') or '').isdigit() else comp.get('numero', ''),  # E001-00002319 (Erika 25/10)
             'fecha_emision': comp.get('fecha_emision'),
-            'moneda': 'S/',
+            'moneda': comp.get('moneda') or 'PEN',
             'condicion_pago': 'Contado',
             'fecha_vencimiento': comp.get('fecha_vencimiento', ''),
             'guia_vinculada': comp.get('guia_vinculada', '—'),
@@ -7819,7 +7909,7 @@ def generar_pdf_comprobante(comp_id):
                         items.append({
                             'item': idx,
                             'codigo': item.get('codigo', ''),
-                            'descripcion': item.get('producto', item.get('descripcion', 'Sin descripción')),
+                            'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', 'Sin descripción')),
                             'marca': item.get('marca', ''),
                             'modelo': item.get('modelo', ''),
                             'unidad': item.get('um', 'NIU'),
@@ -7906,8 +7996,8 @@ def generar_pdf_comprobante(comp_id):
         datos_comprobante = {
             'tipo_documento': 'comprobante',
             'tipo': comp.get('tipo_comprobante', 'FACTURA'),
-            'serie': comp.get('serie', 'F001'),
-            'numero': comp.get('numero', ''),
+            'serie': str(comp.get('serie') or 'E001').upper(),
+            'numero': str(comp.get('numero') or '').zfill(8) if str(comp.get('numero') or '').isdigit() else comp.get('numero', ''),  # E001-00002319 (Erika 25/10)
             'fecha_emision': comp.get('fecha_emision'),
             'fecha_vencimiento': comp.get('fecha_vencimiento', ''),
             'moneda': comp.get('moneda', 'S/'),

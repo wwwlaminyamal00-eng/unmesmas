@@ -172,7 +172,7 @@
     function pintarResumen(cont, items) {
         cont.innerHTML = (items || []).map(x => {
             const val = x.tipo === 'dinero' ? soles(x.v) : x.tipo === 'pct' ? pct(x.v) : numero(x.v);
-            const cls = x.color === 'danger' ? 'inv-kpi-danger' : x.color === 'warn' ? 'inv-kpi-warn' : x.color === 'ok' ? 'rep-kpi-ok' : '';
+            const cls = x.color === 'danger' ? 'inv-kpi-danger' : x.color === 'warn' ? 'inv-kpi-warn' : x.color === 'ok' ? 'rep-kpi-ok' : x.color === 'cobro' ? 'rep-kpi-cobro' : x.color === 'pago' ? 'rep-kpi-pago' : '';
             return `<div class="inv-kpi ${cls}"><small>${esc(x.t)}</small><b>${val}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</div>`;
         }).join('');
     }

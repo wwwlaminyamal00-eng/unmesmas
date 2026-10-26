@@ -216,7 +216,7 @@ def test_banco_siempre_de_la_lista(admin):
 
 
 def test_rotulo_con_los_4_numeros_y_nombre_en_una_linea(app, admin):
-    # Erika 22/10/2026 12:57: N° despacho, N° PC, N° guía y N° factura ("—" si falta); sin URL ni redes; nombre sin E.I.R.L.
+    # Erika 22/10/2026 12:57: N° despacho, N° PC, N° Guía y N° Factura ("—" si falta); sin URL ni redes; nombre sin E.I.R.L.
     from routes.ventas import _numeros_rotulo
     from pdf_generator import pdf_generator
     _sql("""INSERT INTO despachos (numero, cliente, ruc, estado, pc_numero, guia)

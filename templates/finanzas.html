@@ -65,9 +65,9 @@
                         <tr>
                             <th>N°</th><th>{{ t[3] }}</th><th>RUC / DNI</th>
                             {% if t[0] == 'cxc' %}
-                            <th>N° factura de venta</th><th>N° PC<small>N° OC del cliente</small></th>
+                            <th>N° Factura de venta</th><th>N° PC<small>N° OC del cliente</small></th>
                             {% else %}
-                            <th>N° factura del proveedor</th><th>N° OC<small>N° PC relacionado</small></th>
+                            <th>N° Factura del proveedor</th><th>N° OC<small>N° PC relacionado</small></th>
                             {% endif %}
                             <th>Nombre producto</th><th title="Orden: primero lo vencido (más días de atraso arriba), luego lo por vencer y al final lo al día">Vencimiento<small>días</small></th>
                             {% if t[0] == 'cxc' %}
@@ -152,7 +152,13 @@
             <div class="fin-doc" id="pagoDoc"></div>
             <input type="hidden" id="pagoTipo">
             <input type="hidden" id="pagoDocId">
-            <label>Monto (S/)<input type="number" id="pagoMonto" min="0.01" step="0.01"></label>
+            <label id="pagoMonedaWrap" style="display:none">Moneda en que se paga
+                <select id="pagoMonedaPago"><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select>
+                <small class="mon-info" id="pagoMonedaInfo"></small></label>
+            <label id="pagoTCWrap" style="display:none">Tipo de cambio usado
+                <input type="number" id="pagoTC" min="2.5" max="6" step="0.001" placeholder="Ej. 3.750"></label>
+            <label><span id="pagoMontoEt">Monto (S/)</span><input type="number" id="pagoMonto" min="0.01" step="0.01">
+                <small class="mon-info" id="pagoEquiv"></small></label>
             <label>Fecha<input type="date" id="pagoFecha"></label>
             <label>Método
                 <select id="pagoMetodo">

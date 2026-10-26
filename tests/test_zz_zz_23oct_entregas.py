@@ -63,7 +63,7 @@ def test_pantalla_de_entregas_23oct():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     for t in ('function productosDespachoHTML', 'function distritoDespachoHTML', 'title="Dirección: ${dir}"',
               'function comentarioDespachoHTML', "`/ventas/api/despachos/${id}/dato`", 'function pasaFiltroCita',
-              'function llenarFiltroDistrito', 'colspan="14"'):
+              'function llenarFiltroDistrito', 'colspan="15"'):
         assert t in js, t
 
 

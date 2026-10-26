@@ -37,6 +37,16 @@ def es_admin():
     return rol_actual() in ROLES_ADMIN
 
 
+# REGLA DE ORO de Erika (25/10/2026): "este módulo [8 Reportes] debe tener acceso únicamente Erika, nadie más ...
+# nadie puede modificar y ver". Va por usuario (no por rol ni por la matriz de permisos), así otro administrador
+# tampoco entra. Usuario real de Erika: eri01kcf. Solo se cambia con la variable USUARIOS_REPORTES.
+USUARIOS_REPORTES = _lista_env('USUARIOS_REPORTES', 'eri01kcf')
+
+
+def es_duena_reportes():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_REPORTES
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 

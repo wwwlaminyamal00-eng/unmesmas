@@ -22,6 +22,8 @@
     // ---------- utilidades ----------
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const soles = n => 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // 24/10/2026 (Erika): compras en dólares. Muestra US$ o S/ según la moneda del documento
+    const dinero = (m, n) => (window.Moneda && Moneda.codigo(m) === 'USD' ? 'US$ ' : 'S/ ') + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const cant = n => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
     // Fechas del servidor: "2026-10-16" o "2026-10-16T14:47:48" (hora de Lima) -> DD/MM/YYYY [HH:MM]
     const fecha = (v, conHora = true) => {
@@ -167,7 +169,7 @@
         const r = await api('/compras/api/flujo/catalogos');
         Object.assign(cat, { empresas: r.empresas, sedes: r.sedes, proveedores: r.proveedores, usuarios: r.usuarios,
             registro: r.registro_sunat, empresaDefecto: r.empresa_defecto, usuarioId: r.usuario_id, metodos: r.metodos,
-            motivos: r.motivos_sin_pedido || [] });
+            motivos: r.motivos_sin_pedido || [], monedasCuenta: r.monedas_cuenta || {} });
         document.querySelectorAll('select[data-empresas]').forEach(s => {
             s.innerHTML = (s.dataset.todas ? `<option value="">${esc(s.dataset.todas)}</option>` : '')
                 + cat.empresas.map(e => `<option value="${e.id}">${esc(e.nombre)} · ${esc(e.razon_social || '')}</option>`).join('');
@@ -366,14 +368,16 @@
                 <td>${esc(o.cotizaciones_cliente || o.cotizaciones || '—')}</td>
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
-                <td class="num">${soles(o.total)}${o.pagado > 0 ? `<small>Pagado ${soles(o.pagado)}</small>` : ''}</td>
+                <td class="num">${dinero(o.moneda, o.total)}${o.moneda === 'USD' && o.tipo_cambio ? `<small>TC ${Number(o.tipo_cambio).toFixed(3)}</small>` : ''}${o.pagado > 0 ? `<small>Pagado ${dinero(o.moneda, o.pagado)}</small>` : ''}</td>
                 <td>${estadoOC(o.estado)}${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
                 <td><div class="com-barra ${Number(o.avance_recepcion) <= 0 ? 'com-barra-0' : (Number(o.avance_recepcion) >= 100 ? 'com-barra-100' : '')}"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
                 : '<tr><td colspan="14">No hay órdenes con este filtro.</td></tr>';
-            const total = data.filter(o => o.estado !== 'Anulada').reduce((s, o) => s + Number(o.total), 0);
-            $('ocFoot').textContent = `${data.length} orden(es) · Total ${soles(total)}`;
+            const vivas = data.filter(o => o.estado !== 'Anulada');
+            const total = vivas.filter(o => o.moneda !== 'USD').reduce((s, o) => s + Number(o.total), 0);
+            const totalUsd = vivas.filter(o => o.moneda === 'USD').reduce((s, o) => s + Number(o.total), 0);
+            $('ocFoot').textContent = `${data.length} orden(es) · Total ${soles(total)}${totalUsd ? ' + ' + dinero('USD', totalUsd) : ''}`;
         } catch (e) { $('ocBody').innerHTML = `<tr><td colspan="14">${esc(e.message)}</td></tr>`; }
     }
 
@@ -415,6 +419,8 @@
         $('ocNotas').value = oc ? (oc.notas || '') : '';
         $('ocMotivo').value = oc ? (oc.motivo_stock || '') : '';
         $('ocMotivoCompra').value = oc && oc.motivo_compra ? oc.motivo_compra : '';
+        Moneda.enlazar('oc', { fecha: () => hoyISO(), total: totalOC, alCambiar: totales });
+        Moneda.poner('oc', oc ? (oc.moneda || 'PEN') : 'PEN', oc ? oc.tipo_cambio : null);
         $('ocProv').querySelector('.pp-lista').style.display = 'none';
         lineas = oc ? oc.items.map(i => ({ producto_id: i.producto_id, texto: `${i.codigo || ''} · ${i.producto}`, cantidad: i.cantidad,
             precio_unitario: i.precio_unitario, pedido_id: i.pedido_id, para: i.pedido_id ? `${i.pedido_numero} · ${i.cliente || ''}` : '' }))
@@ -434,6 +440,7 @@
         if (!credito) $('ocDias').value = '';
         const ct = $('ocCondTexto');
         if (ct) ct.textContent = credito ? condPagoTexto('Crédito', $('ocDias').value) : '';
+        textoAdelanto();
         $('ocRecojoWrap').style.display = $('ocModalidad').value === 'Nosotros recogemos' ? '' : 'none';
         if ($('ocModalidad').value === 'Nosotros recogemos' && !$('ocRecojo').value && provElegido)
             $('ocRecojo').value = provElegido.lugar_recojo || provElegido.direccion || '';
@@ -779,12 +786,30 @@
         }
     }
 
+    function totalOC() {
+        const sub = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0), 0);
+        return Math.round(sub * 100) / 100 + Math.round(sub * IGV * 100) / 100;
+    }
+
+    // Adelanto 50% (24/10/2026): cuánto se paga antes y cuánto queda para Finanzas
+    function textoAdelanto() {
+        const t = $('ocAdelantoTxt');
+        if (!t) return;
+        if ($('ocCondicion').value !== 'Adelanto 50%') { t.textContent = ''; return; }
+        const m = Moneda.leer('oc').moneda, tot = totalOC(), mitad = Math.round(tot * 50) / 100;
+        t.textContent = `Adelanto: ${dinero(m, mitad)} · Saldo: ${dinero(m, Math.round((tot - mitad) * 100) / 100)}`;
+    }
+
     function totales() {
         const sub = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0), 0);
         const igv = Math.round(sub * IGV * 100) / 100;
-        $('ocSub').textContent = soles(sub);
-        $('ocIgv').textContent = soles(igv);
-        $('ocTot').textContent = soles(Math.round(sub * 100) / 100 + igv);
+        const { moneda, tipo_cambio } = Moneda.leer('oc');
+        $('ocSub').textContent = dinero(moneda, sub);
+        $('ocIgv').textContent = dinero(moneda, igv);
+        $('ocTot').textContent = dinero(moneda, Math.round(sub * 100) / 100 + igv);
+        textoAdelanto();
+        $('ocTotSoles').textContent = moneda === 'USD' && Number(tipo_cambio) > 0
+            ? `≈ ${soles((Math.round(sub * 100) / 100 + igv) * Number(tipo_cambio))} (TC ${Number(tipo_cambio).toFixed(3)})` : '';
     }
 
     async function guardarOC(enviar, btn) {
@@ -792,12 +817,15 @@
         const items = lineas.filter(l => l.producto_id || l.texto).map(l => ({ producto_id: l.producto_id, cantidad: l.cantidad,
             precio_unitario: l.precio_unitario, pedido_id: l.pedido_id }));
         if (items.some(i => !i.producto_id)) { aviso('Hay un producto escrito a mano. Elígelo de la lista que aparece al escribir.', 'error'); return; }
+        const mon = Moneda.leer('oc');
+        if (mon.moneda === 'USD' && !(Number(mon.tipo_cambio) > 0)) { aviso('La orden es en dólares: escribe el tipo de cambio.', 'error'); $('ocTC').focus(); return; }
         const body = {
             id: $('ocId').value || null, empresa_id: $('ocEmp').value, proveedor_id: provElegido.id,
             condicion_pago: $('ocCondicion').value, dias_credito: $('ocDias').value, modalidad_entrega: $('ocModalidad').value,
             direccion_recojo: $('ocRecojo').value, almacen_entrega_id: $('ocSede').value, fecha_compromiso: $('ocFecha').value,
             num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value,
-            motivo_compra: $('ocMotivoCompra').value, motivo_stock: $('ocMotivo').value.trim(), items, enviar
+            motivo_compra: $('ocMotivoCompra').value, motivo_stock: $('ocMotivo').value.trim(), items, enviar,
+            moneda: mon.moneda, tipo_cambio: mon.tipo_cambio
         };
         if (items.some(i => !i.pedido_id)) {
             if (!body.motivo_compra) { aviso('Hay productos SIN pedido de cliente: elige el motivo de la compra.', 'error'); $('ocMotivoCompra').focus(); return; }
@@ -861,7 +889,7 @@
                     <div><small>Tipo</small><b>${esc(o.tipo_compra || '')}</b><span>${esc(o.motivo_stock || '')}</span></div>
                     <div><small>Hizo la orden</small><b>${esc(o.creado_por_nombre || '—')}</b><span>${fecha(o.fecha)}</span></div>
                     <div><small>Aprobó</small><b>${esc(o.aprobado_por || '—')}</b><span>${fecha(o.aprobado_en)}</span></div>
-                    <div><small>Total</small><b>${soles(o.total)}</b><span>Pagado ${soles(o.pagado)} · Facturado ${soles(o.facturado)}</span></div>
+                    <div><small>Total</small><b>${dinero(o.moneda, o.total)}</b><span>Pagado ${dinero(o.moneda, o.pagado)} · Facturado ${dinero(o.moneda, o.facturado)}${o.moneda === 'USD' && o.tipo_cambio ? ` · TC ${Number(o.tipo_cambio).toFixed(3)} ≈ ${soles(Number(o.total) * Number(o.tipo_cambio))}` : ''}</span></div>
                 </div>
                 ${o.notas ? `<div class="inv-tip">📝 ${esc(o.notas)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
@@ -871,8 +899,8 @@
                         <td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
                         <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Stock</span>'}</td>
                         <td class="num">${cant(i.cantidad)} ${esc(i.unidad || '')}</td><td class="num">${cant(i.cantidad_recibida)}</td>
-                        <td class="num">${soles(i.precio_unitario)}</td><td class="num">${soles(i.total)}</td></tr>`).join('')}</tbody>
-                    <tfoot><tr><td colspan="6" class="num">Subtotal ${soles(o.subtotal)} · IGV ${soles(o.igv)} · <b>Total</b></td><td class="num"><b>${soles(o.total)}</b></td></tr></tfoot>
+                        <td class="num">${dinero(o.moneda, i.precio_unitario)}</td><td class="num">${dinero(o.moneda, i.total)}</td></tr>`).join('')}</tbody>
+                    <tfoot><tr><td colspan="6" class="num">Subtotal ${dinero(o.moneda, o.subtotal)} · IGV ${dinero(o.moneda, o.igv)} · <b>Total</b></td><td class="num"><b>${dinero(o.moneda, o.total)}</b></td></tr></tfoot>
                 </table></div>
                 ${o.incidencias.length ? `<div class="inv-subtitulo">Diferencias</div><div class="table-wrap"><table class="inv-table inv-mini">
                     <thead><tr><th>N° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
@@ -881,10 +909,10 @@
                         <td class="left">${esc(i.resolucion || '')}${i.resuelto_por ? `<small>${esc(i.resuelto_por)}</small>` : ''}</td>
                         <td>${i.estado === 'Abierta' && PUEDE.aprobar ? `<button class="btn-mini" data-resolver="${i.id}">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
                 <div class="com-columnas">
-                    <div><div class="inv-subtitulo">Pagos</div>${o.pagos.length ? o.pagos.map(p => `<div class="com-mov">💸 <b>${soles(p.monto)}</b> · ${esc(p.metodo || '')} ${esc(p.banco || '')} · Op. ${esc(p.numero_operacion || '—')}<small>${fecha(p.fecha)} · ${esc(p.usuario_nombre || '')}</small></div>`).join('') : '<div class="inv-tip">Sin pagos.</div>'}
+                    <div><div class="inv-subtitulo">Pagos</div>${o.pagos.length ? o.pagos.map(p => `<div class="com-mov">💸 <b>${dinero(o.moneda, p.monto)}</b>${p.moneda_pago && p.moneda_pago !== (o.moneda || 'PEN') ? ` (pagado ${dinero(p.moneda_pago, p.monto_pagado)} · TC ${Number(p.tipo_cambio).toFixed(3)})` : ''} · ${esc(p.metodo || '')} ${esc(p.banco || '')} · Op. ${esc(p.numero_operacion || '—')}<small>${fecha(p.fecha)} · ${esc(p.usuario_nombre || '')}</small></div>`).join('') : '<div class="inv-tip">Sin pagos.</div>'}
                         ${pd.numero_cuenta || pd.cci ? `<div class="inv-tip">🏦 Cuenta del proveedor: ${esc(pd.banco || '')} ${esc(pd.numero_cuenta || '')} ${pd.cci ? 'CCI ' + esc(pd.cci) : ''}</div>` : ''}</div>
                     <div><div class="inv-subtitulo">Recepciones</div>${o.recepciones.length ? o.recepciones.map(r => `<div class="com-mov">📦 <b>${esc(r.numero)}</b> · Guía ${esc(r.guia_proveedor)} · ${esc(r.sede || '')}${r.con_diferencias ? ' · <b class="neg">con diferencias</b>' : ''}<small>Trajo: ${esc(r.traido_por || '')} · Recibió: ${esc(r.recibido_por || '')} · ${fecha(r.fecha)}</small></div>`).join('') : '<div class="inv-tip">Todavía no llega nada.</div>'}</div>
-                    <div><div class="inv-subtitulo">Facturas</div>${o.facturas.length ? o.facturas.map(f => `<div class="com-mov">🧾 <b>${esc(f.tipo)} ${esc(f.numero)}</b> · ${soles(f.monto)} ${f.cuadra === false ? '<b class="neg">no cuadra</b>' : '✔'}<small>${fecha(f.fecha)} · vence ${fecha(f.fecha_vencimiento)} · ${esc(f.estado || '')}</small></div>`).join('') : '<div class="inv-tip">Sin factura.</div>'}</div>
+                    <div><div class="inv-subtitulo">Facturas</div>${o.facturas.length ? o.facturas.map(f => `<div class="com-mov">🧾 <b>${esc(f.tipo)} ${esc(f.numero)}</b> · ${dinero(f.moneda, f.monto)}${f.moneda === 'USD' && f.tipo_cambio ? ` · TC ${Number(f.tipo_cambio).toFixed(3)}` : ''} ${f.cuadra === false ? '<b class="neg">no cuadra</b>' : '✔'}<small>${fecha(f.fecha)} · vence ${fecha(f.fecha_vencimiento)} · ${esc(f.estado || '')}</small></div>`).join('') : '<div class="inv-tip">Sin factura.</div>'}</div>
                 </div>
                 <div class="inv-subtitulo">Historial (no se puede borrar)</div>
                 <div class="com-historial">${o.historial.map(h => `<div><b>${fecha(h.fecha)}</b> · ${esc(h.usuario || '')} · <b>${esc(h.accion)}</b>${h.detalle ? ' · ' + esc(h.detalle) : ''}</div>`).join('') || '<div class="inv-tip">Orden del sistema anterior: sin historial.</div>'}</div>`;
@@ -903,7 +931,9 @@
         }
         if (v2 && o.estado === 'Por aprobar' && PUEDE.aprobar) {
             b.push(`<button class="btn btn-secondary" data-accion="devolver">↩ Devolver para corregir</button>`);
-            b.push(`<button class="btn btn-primary" data-accion="aprobar">✔ Aprobar</button>`);
+            // Erika 25/10/2026: las OC a crédito solo las aprueba la administradora
+            if (!o.solo_admin_aprueba || PUEDE.admin) b.push(`<button class="btn btn-primary" data-accion="aprobar">✔ Aprobar</button>`);
+            else b.push(`<span class="inv-tip">A crédito: la aprueba Erika</span>`);
         }
         if (v2 && ['pagar', 'pagar_credito'].includes(c) && PUEDE.pagar) b.push(`<button class="btn btn-primary" data-accion="pagar">💸 Registrar pago</button>`);
         if (v2 && c === 'recibir' && PUEDE.recibir) b.push(`<button class="btn btn-primary" data-accion="recibir">📦 Recibir mercadería</button>`);
@@ -957,7 +987,10 @@
         $('pagoOc').value = o.id;
         $('pagoTitulo').textContent = `Registrar pago · ${o.numero}`;
         const p = cat.proveedores.find(x => x.id === o.proveedor_id) || o.proveedor_datos || {};
-        const falta = Math.max(Number(o.total) - Number(o.pagado), 0);
+        let falta = Math.max(Number(o.total) - Number(o.pagado), 0);
+        // Adelanto 50%: primero se sugiere solo lo que falta del adelanto; el saldo se paga con la factura
+        const conAdelanto = /adelanto/i.test(o.condicion_pago || '') && Number(o.falta_adelanto) > 0;
+        if (conAdelanto) falta = Number(o.falta_adelanto);
         // Un dato por línea y siempre en el mismo orden (pedido de Erika 21/10 17:22)
         const fila = (et, val, cls = '') => `<div class="fd-et">${et}</div><div class="fd-val ${cls}">${val}</div>`;
         const tieneCuenta = p.numero_cuenta || p.cci;
@@ -968,17 +1001,63 @@
             ${fila('Banco', esc(p.banco || '—'))}
             ${fila('N° de cuenta', esc(p.numero_cuenta || '—'), 'fd-num')}
             ${fila('CCI', esc(p.cci || '—'), 'fd-num')}
-            ${fila('Monto a pagar (incluye IGV)', soles(o.total), 'fd-monto')}
-            ${fila('Falta pagar', soles(falta), 'fd-monto ' + (falta > 0 ? 'fd-falta' : 'fd-ok'))}
+            ${fila('Monto a pagar (incluye IGV)', dinero(o.moneda, o.total), 'fd-monto')}
+            ${conAdelanto ? fila('Adelanto 50% (pagar ahora)', dinero(o.moneda, o.adelanto), 'fd-monto') : ''}
+            ${fila(conAdelanto ? 'Falta del adelanto' : 'Falta pagar', dinero(o.moneda, falta), 'fd-monto ' + (falta > 0 ? 'fd-falta' : 'fd-ok'))}
             ${cuentaDeRelleno(p.numero_cuenta, p.cci) ? '<div class="fd-nota fd-alerta">⚠️ La cuenta o el CCI parecen de relleno (números repetidos). Confírmalos con el proveedor y corrígelos en Maestros ▸ Proveedores antes de pagar.</div>' : ''}
             ${tieneCuenta ? '<div class="fd-nota">Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</div>'
                 : '<div class="fd-nota fd-alerta">⚠️ El proveedor no tiene cuenta registrada. Regístrala en Maestros ▸ Proveedores antes de pagar.</div>'}
         </div>`;
         $('pagoMonto').value = falta.toFixed(2);
+        prepararMonedaPago(o, falta);
         $('pagoFecha').value = hoyISO();
         $('pagoMetodo').value = 'Transferencia';
         ['pagoBanco', 'pagoOperacion', 'pagoObs'].forEach(i => { $(i).value = ''; });
         abrir('pagoModal');
+    }
+
+    // Pago de una OC en dólares (pedido de Erika 24/10/2026): el proveedor da su tipo de cambio para pagarle en soles.
+    // Solo se puede pagar en dólares si la empresa tiene cuenta en dólares (KCF solo soles; AGD soles y dólares).
+    let pagoDoc = { moneda: 'PEN', falta: 0 };
+    function prepararMonedaPago(o, falta) {
+        const doc = Moneda.codigo(o.moneda);
+        const cuentas = (cat.monedasCuenta || {})[String(o.empresa_id)] || ['PEN'];
+        pagoDoc = { moneda: doc, falta };
+        $('pagoMonedaWrap').style.display = doc === 'USD' ? '' : 'none';
+        const sel = $('pagoMonedaPago');
+        sel.querySelector('option[value="USD"]').disabled = !cuentas.includes('USD');
+        sel.value = 'PEN';
+        $('pagoMonedaInfo').textContent = doc === 'USD' && !cuentas.includes('USD')
+            ? 'Esta empresa no tiene cuenta en dólares: se paga en soles con el TC del proveedor.' : '';
+        $('pagoTC').value = '';
+        pintarMonedaPago(true);
+    }
+    async function pintarMonedaPago(nuevo) {
+        const doc = pagoDoc.moneda, pago = doc === 'USD' ? $('pagoMonedaPago').value : doc;
+        const conTC = pago !== doc;
+        $('pagoTCWrap').style.display = conTC ? '' : 'none';
+        $('pagoMontoEt').textContent = `Monto pagado (${pago === 'USD' ? 'US$' : 'S/'})`;
+        if (conTC && !$('pagoTC').value) {
+            const tc = await Moneda.tcSunat($('pagoFecha').value || hoyISO());
+            if (tc && !$('pagoTC').value) $('pagoTC').value = tc.toFixed(3);
+            nuevo = true;
+        }
+        const tc = Number($('pagoTC').value);
+        if (nuevo) $('pagoMonto').value = (conTC ? (tc > 0 ? pagoDoc.falta * tc : 0) : pagoDoc.falta).toFixed(2);
+        equivPago();
+    }
+    function equivPago() {
+        const doc = pagoDoc.moneda, pago = doc === 'USD' ? $('pagoMonedaPago').value : doc;
+        const tc = Number($('pagoTC').value), m = Number($('pagoMonto').value);
+        $('pagoEquiv').textContent = pago !== doc
+            ? (tc > 0 ? `Se descuenta ${dinero(doc, doc === 'USD' ? m / tc : m * tc)} de la deuda en ${doc === 'USD' ? 'dólares' : 'soles'}.` : 'Escribe el tipo de cambio que te dio el proveedor.')
+            : '';
+    }
+    function montoPagoDoc() {
+        const doc = pagoDoc.moneda, pago = doc === 'USD' ? $('pagoMonedaPago').value : doc;
+        const tc = Number($('pagoTC').value), m = Number($('pagoMonto').value);
+        if (pago === doc) return m;
+        return tc > 0 ? Math.round((doc === 'USD' ? m / tc : m * tc) * 100) / 100 : 0;
     }
 
     // ========================================================
@@ -1138,7 +1217,7 @@
             $('pagBody').innerHTML = porPagar.length ? porPagar.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}</td><td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
-                <td class="num">${soles(o.total)}</td><td class="num">${soles(o.pagado)}</td><td class="num"><b>${soles(o.saldo_pago)}</b></td>
+                <td class="num">${dinero(o.moneda, o.total)}</td><td class="num">${dinero(o.moneda, o.pagado)}</td><td class="num"><b>${dinero(o.moneda, o.saldo_pago)}</b></td>
                 <td>${PUEDE.pagar ? `<button class="btn-mini" data-pagar="${o.id}">💸 Pagar</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="8">No hay órdenes por pagar. 👍</td></tr>';
             // Se espera factura cuando ya llegó mercadería o ya se pagó algo
@@ -1148,7 +1227,7 @@
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}</td><td>${estadoOC(o.estado)}</td>
                 <td><div class="com-barra ${Number(o.avance_recepcion) <= 0 ? 'com-barra-0' : (Number(o.avance_recepcion) >= 100 ? 'com-barra-100' : '')}"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
-                <td>${o.facturas ? `${o.facturas} · ${soles(o.facturado)}${o.cuadra === false ? '<small class="neg">no cuadra</small>' : ''}` : '<span class="inv-tip">Ninguna</span>'}</td>
+                <td>${o.facturas ? `${o.facturas} · ${dinero(o.moneda, o.facturado)}${o.cuadra === false ? '<small class="neg">no cuadra</small>' : ''}` : '<span class="inv-tip">Ninguna</span>'}</td>
                 <td>${PUEDE.facturar ? `<button class="btn-mini" data-factura="${o.id}">🧾 Registrar factura</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="7">No hay facturas pendientes de registrar. 👍</td></tr>';
             ordenesCache = data;
@@ -1161,8 +1240,20 @@
         $('facTipo').value = 'Factura';
         ['facNumero', 'facMonto', 'facObs', 'facMotivoDif'].forEach(i => { $(i).value = ''; });
         $('facFecha').value = hoyISO();
+        // 24/10/2026: factura de una OC en dólares -> total en US$ y TC SUNAT de la fecha de emisión (registro de compras)
+        facMoneda = Moneda.codigo(o.moneda);
+        $('facMontoEt').textContent = `Total de la factura con IGV (${facMoneda === 'USD' ? 'US$' : 'S/'})`;
+        $('facTCWrap').style.display = facMoneda === 'USD' ? '' : 'none';
+        $('facTC').value = '';
+        if (facMoneda === 'USD') proponerTCFactura();
         limpiarNoCuadra();
         abrir('facModal');
+    }
+    let facMoneda = 'PEN';
+    async function proponerTCFactura() {
+        const tc = await Moneda.tcSunat($('facFecha').value);
+        $('facTCInfo').textContent = tc ? 'TC SUNAT de esa fecha. Es el que va al registro de compras.' : 'No se pudo traer el TC SUNAT: escríbelo (va al registro de compras).';
+        if (tc) $('facTC').value = tc.toFixed(3);
     }
 
     // Factura que no cuadra (pedido de Erika 20/10/2026): no se guarda; aviso rojo y a corregir en el momento
@@ -1175,8 +1266,8 @@
     }
     function mostrarNoCuadra(r) {
         $('facNoCuadra').innerHTML = `⛔ <b>La factura NO cuadra. No se guardó.</b><br>
-            Escribiste <b>${soles(r.monto)}</b> y según lo recibido debería ser <b>${soles(r.esperado)}</b>
-            (diferencia ${soles(r.diferencia)}).<br>Revisa el total que copiaste y corrígelo aquí mismo.`;
+            Escribiste <b>${dinero(facMoneda, r.monto)}</b> y según lo recibido debería ser <b>${dinero(facMoneda, r.esperado)}</b>
+            (diferencia ${dinero(facMoneda, r.diferencia)}).<br>Revisa el total que copiaste y corrígelo aquí mismo.`;
         $('facNoCuadra').style.display = '';
         $('facDifWrap').style.display = '';
         $('facMonto').classList.add('com-fac-mal');
@@ -1190,7 +1281,8 @@
         try {
             const body = { tipo: $('facTipo').value, numero: $('facNumero').value, fecha: $('facFecha').value, monto: $('facMonto').value,
                            observaciones: $('facObs').value, aceptar_diferencia: $('facAceptarDif').checked,
-                           motivo_diferencia: $('facMotivoDif').value };
+                           motivo_diferencia: $('facMotivoDif').value, tipo_cambio: facMoneda === 'USD' ? $('facTC').value : null };
+            if (facMoneda === 'USD' && !(Number(body.tipo_cambio) > 0)) throw new Error('La factura es en dólares: escribe el tipo de cambio.');
             const resp = await fetch(`/compras/api/flujo/ordenes/${$('facOc').value}/factura`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: JSON.stringify(body) });
@@ -1221,12 +1313,12 @@
         $('facVerTitulo').textContent = `${f.tipo || 'Factura'} ${f.numero} · ${f.proveedor_nombre || ''}`;
         const cuadra = f.cuadra !== false;
         $('facVerCuerpo').innerHTML = `
-            <div class="com-fac-estado ${cuadra ? 'ok' : 'mal'}">${cuadra ? '✔ Cuadra con lo recibido' : `⚠️ Registrada con diferencia: debía ser ${soles(f.monto_esperado)}`}</div>
+            <div class="com-fac-estado ${cuadra ? 'ok' : 'mal'}">${cuadra ? '✔ Cuadra con lo recibido' : `⚠️ Registrada con diferencia: debía ser ${dinero(f.moneda, f.monto_esperado)}`}</div>
             <div class="com-fac-ver">
-                <div><small>N° factura</small><b>${esc(f.numero)}</b></div>
+                <div><small>N° Factura</small><b>${esc(f.numero)}</b></div>
                 <div><small>N° OC</small><b>${esc(f.orden_compra_numero || '—')}</b></div>
                 <div><small>Proveedor</small><b>${esc(f.proveedor_nombre || '')}</b><br><span>RUC ${esc(f.ruc_proveedor || '—')}</span></div>
-                <div><small>Total con IGV</small><b>${soles(f.monto)}</b></div>
+                <div><small>Total con IGV</small><b>${dinero(f.moneda, f.monto)}</b>${f.moneda === 'USD' && f.tipo_cambio ? `<br><span>TC ${Number(f.tipo_cambio).toFixed(3)} ≈ ${soles(Number(f.monto) * Number(f.tipo_cambio))}</span>` : ''}</div>
                 <div><small>Fecha de emisión</small><b>${fecha(String(f.fecha || '').slice(0, 10), false)}</b></div>
                 <div><small>Vence</small><b>${f.fecha_vencimiento ? fecha(String(f.fecha_vencimiento).slice(0, 10), false) : '—'}</b></div>
                 <div><small>Estado</small><b>${esc(f.estado || '')}</b></div>
@@ -1357,13 +1449,20 @@
         $('ocEnviar').onclick = () => guardarOC(true, $('ocEnviar'));
         $('recTraidoTipo').onchange = ajustarTraido;
         $('pagoGuardar').onclick = () => guardarCon($('pagoGuardar'), async () => {
+            const monPago = pagoDoc.moneda === 'USD' ? $('pagoMonedaPago').value : pagoDoc.moneda;
+            if (monPago !== pagoDoc.moneda && !(Number($('pagoTC').value) > 0)) throw new Error('Escribe el tipo de cambio que te dio el proveedor.');
             const r = await post(`/compras/api/flujo/ordenes/${$('pagoOc').value}/pago`, {
-                monto: $('pagoMonto').value, fecha: $('pagoFecha').value, metodo: $('pagoMetodo').value, banco: $('pagoBanco').value,
+                monto: montoPagoDoc(), monto_pagado: $('pagoMonto').value, moneda_pago: monPago,
+                tipo_cambio: monPago !== pagoDoc.moneda ? $('pagoTC').value : null, fecha: $('pagoFecha').value, metodo: $('pagoMetodo').value, banco: $('pagoBanco').value,
                 numero_operacion: $('pagoOperacion').value, observaciones: $('pagoObs').value });
             aviso(r.message, 'success'); cerrar('pagoModal'); refrescar();
             cartelSiguiente($('pagoOc').value, '✅ ¡Pago registrado!');
         });
         $('facGuardar').onclick = () => guardarFactura($('facGuardar'));
+        $('pagoMonedaPago').onchange = () => { $('pagoTC').value = ''; pintarMonedaPago(true); };
+        $('pagoTC').oninput = () => { $('pagoMonto').value = (pagoDoc.falta * (Number($('pagoTC').value) || 0)).toFixed(2); equivPago(); };
+        $('pagoMonto').addEventListener('input', equivPago);
+        $('facFecha').addEventListener('change', () => { if (facMoneda === 'USD') proponerTCFactura(); });
         $('facMonto').addEventListener('input', () => $('facMonto').classList.remove('com-fac-mal'));
         $('btnVerUltimaFactura').onclick = verUltimaFactura;
     }

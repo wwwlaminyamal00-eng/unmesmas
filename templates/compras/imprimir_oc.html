@@ -33,6 +33,7 @@
 </style>
 </head>
 <body>
+{% set sim = 'US$' if (o.moneda or 'PEN') == 'USD' else 'S/' %}
 <p class="no-print"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></p>
 <div class="cab">
     <div>
@@ -57,7 +58,8 @@
         Fecha: {{ o.fecha_compromiso.strftime('%d/%m/%Y') if o.fecha_compromiso else '' }}
         {% else %}
         <h3>Condiciones</h3>
-        Pago: <b>{{ o.condicion_pago }}</b><br>
+        Pago: <b>{{ o.condicion_pago }}</b>{% if 'delanto' in (o.condicion_pago or '') %}{% set mitad = ((o.total or 0)|float * 0.5)|round(2) %} · Adelanto {{ sim }} {{ '%.2f'|format(mitad) }} · Saldo {{ sim }} {{ '%.2f'|format((o.total or 0)|float - mitad) }}{% endif %}<br>
+        {% if (o.moneda or 'PEN') == 'USD' %}Moneda: <b>Dólares americanos (US$)</b><br>{% endif %}
         Entrega: <b>{{ o.modalidad_entrega }}</b> · Fecha: <b>{{ o.fecha_compromiso.strftime('%d/%m/%Y') if o.fecha_compromiso else '' }}</b><br>
         {% if o.modalidad_entrega == 'Proveedor entrega' %}Entregar en: <b>{{ sede.nombre }}</b> — {{ sede.direccion or '' }}{% else %}Recogemos en: {{ o.direccion_recojo }}{% endif %}<br>
         {% if o.num_cotizacion %}Su cotización: {{ o.num_cotizacion }}{% endif %}
@@ -71,15 +73,15 @@
     <tbody>
     {% for i in items %}
     <tr><td>{{ i.producto }}</td><td>{{ i.modelo or '' }}</td><td>{{ i.marca or '' }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>
-        {% if hoja != 'recojo' %}<td class="n">S/ {{ '%.2f'|format(i.precio_unitario|float) }}</td><td class="n">S/ {{ '%.2f'|format(i.total|float) }}</td>
+        {% if hoja != 'recojo' %}<td class="n">{{ sim }} {{ '%.2f'|format(i.precio_unitario|float) }}</td><td class="n">{{ sim }} {{ '%.2f'|format(i.total|float) }}</td>
         {% else %}<td class="vacio"></td><td></td>{% endif %}</tr>
     {% endfor %}
     </tbody>
     {% if hoja != 'recojo' %}
     <tfoot>
-        <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">S/ {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
-        <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">S/ {{ '%.2f'|format(o.igv|float) }}</td></tr>
-        <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">S/ {{ '%.2f'|format(o.total|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">{{ sim }} {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">{{ sim }} {{ '%.2f'|format(o.igv|float) }}</td></tr>
+        <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">{{ sim }} {{ '%.2f'|format(o.total|float) }}</td></tr>
     </tfoot>
     {% endif %}
 </table>

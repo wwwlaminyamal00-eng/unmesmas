@@ -1,0 +1,110 @@
+/* ============================================================
+   Pantallas compactas en todos los módulos (Erika, 25/10/2026:
+   "quisiera más comprimido y ordenado para que suba más y se vea la data ... aplica para todos los módulos").
+   Se carga al final de base.html: solo achica alturas, márgenes y letra. No cambia colores ni datos.
+   ============================================================ */
+
+/* 1. Cabecera de la página: título y ruta en una línea, descripción corta debajo */
+.topbar{padding:4px 14px !important;margin-bottom:6px !important;min-height:0 !important;align-items:center !important}
+.topbar > div:first-child{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px;row-gap:0;min-width:0}
+.topbar h1, .topbar #pageTitle{order:1;font-size:17px !important;margin:0 !important;line-height:1.25 !important}
+.topbar .breadcrumb{order:2;margin:0 !important}
+.topbar .breadcrumb .crumb-btn, .topbar .breadcrumb span{font-size:10.5px !important;padding:0 !important}
+.topbar .subtitle{order:3;flex-basis:100%;font-size:11px !important;margin:0 !important;line-height:1.3 !important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .top-actions{gap:8px !important}
+.topbar .select-box{padding:3px 8px !important;display:flex;align-items:center;gap:6px}
+.topbar .select-box label{margin:0 !important;font-size:10px !important;white-space:nowrap}
+.topbar .select-box select{height:24px !important;font-size:12px !important}
+.topbar .user-box{height:32px !important;min-height:0 !important;padding:0 10px !important}
+.topbar .user-box .avatar{width:22px !important;height:22px !important;font-size:11px !important}
+
+/* 2. Pestañas */
+.tabs{padding:3px !important;margin-bottom:6px !important;min-height:0 !important;gap:2px !important}
+.tabs .tab-btn{padding:3px 9px !important;min-height:0 !important;height:auto !important;font-size:12px !important;line-height:1.5 !important}
+.tabs .btn, .tabs .exp-tab-btn{height:26px !important;min-height:0 !important;padding:0 10px !important;font-size:12px !important}
+
+/* 3. Título de cada tarjeta / panel */
+.inv-panel{margin-bottom:8px !important}
+.inv-head, .panel-head, .fin-head{padding:6px 12px !important;min-height:0 !important}
+.inv-title{font-size:14px !important}
+.inv-help{font-size:11px !important}
+.btn-mini{height:24px !important}
+
+/* 4. Filtros: una fila baja */
+.rep-filtros, .inv-filters, .fin-filters, .hr-filters, .cc-filtros, .bd-filters, .ent-filtro{
+  padding-top:5px !important;padding-bottom:5px !important;gap:8px !important;row-gap:4px !important;align-items:end}
+.rep-filtros label, .inv-filters label, .fin-filters label, .hr-filters label, .cc-filtros label, .bd-filters label{
+  font-size:10.5px !important;gap:2px !important;margin:0 !important}
+:is(.rep-filtros, .inv-filters, .fin-filters, .hr-filters, .cc-filtros, .bd-filters, .ent-filtro, .fin-head, .inv-head)
+  :is(input:not([type=checkbox]):not([type=radio]), select){height:28px !important;min-height:0 !important;font-size:12px !important;padding-top:0 !important;padding-bottom:0 !important}
+:is(.rep-filtros, .inv-filters, .fin-filters, .hr-filters, .cc-filtros, .bd-filters, .ent-filtro) .btn{height:28px !important;min-height:0 !important;font-size:12px !important}
+
+/* 5. Tarjetas de resumen: franja delgada, todas del mismo alto */
+.inv-kpis, .ge-kpis, .hr-kpis{gap:8px !important;margin-bottom:8px !important}
+.rep-resumen{padding:6px 12px 0 !important}
+.inv-kpi, .hr-kpi{padding:4px 10px !important;min-height:46px !important;border-radius:10px !important;
+  flex-direction:row !important;flex-wrap:wrap !important;align-items:baseline !important;align-content:center !important;
+  column-gap:8px !important;row-gap:0 !important;box-shadow:0 2px 8px rgba(15,23,42,.05) !important}
+.inv-kpi small, .hr-kpi small{flex-basis:100%;font-size:10px !important;line-height:1.3 !important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inv-kpi b, .hr-kpi b, .ge-kpis .inv-kpi b{font-size:16px !important;line-height:1.25 !important}
+.inv-kpi span, .hr-kpi span{font-size:10px !important;line-height:1.25 !important}
+.rep-kpi-xl b{font-size:20px !important}
+.com-flujo-paso{padding:5px 8px !important;min-height:0 !important}
+
+/* 6. Tablas: filas un poco más bajas */
+.inv-table th, .rep-table th, .fin-table th{padding-top:5px !important;padding-bottom:5px !important}
+.inv-table td, .rep-table td, .fin-table td{padding-top:4px !important;padding-bottom:4px !important}
+.rep-tabla-wrap{padding:6px 12px !important}
+.inv-foot{padding:5px 12px !important}
+
+/* 7. Tarjetas de Herramientas: icono al lado, más bajas */
+.hr-cards{gap:8px !important;margin-bottom:8px !important}
+.hr-card{padding:6px 10px !important;border-radius:10px !important;display:grid !important;grid-template-columns:auto 1fr;column-gap:8px;row-gap:0 !important;align-items:center}
+.hr-card span{font-size:18px !important;grid-row:span 2}
+.hr-card b{font-size:13px !important}
+.hr-card small{font-size:10.5px !important}
+
+/* 8. Ventas (Cotizaciones, Entregas, Guías, Facturas...): título y filtros en UNA fila alineada (Erika 25/10) */
+.clean-header{padding:8px 12px !important;gap:10px !important;flex-wrap:nowrap !important;align-items:center !important;min-height:0 !important}
+.clean-header .master-title-wrap{flex:0 0 auto;min-width:0}
+.clean-header .master-title{font-size:16px !important;line-height:1.2 !important}
+.clean-header .master-subtitle{font-size:10.5px !important;margin-top:1px !important}
+.clean-header .search-box{flex:1 1 auto !important;flex-wrap:nowrap !important;min-width:0;gap:6px !important;align-items:center !important}
+.clean-header .search-box > div{flex-wrap:nowrap !important;gap:4px !important;align-items:center !important}
+.clean-header .clean-actions{flex:0 0 auto;flex-wrap:nowrap !important;gap:6px !important;align-items:center !important}
+.clean-header :is(input, select){height:30px !important;min-height:0 !important;font-size:11.5px !important;border-radius:8px !important;
+  padding-top:0 !important;padding-bottom:0 !important;margin:0 !important}
+.clean-header .btn{height:30px !important;min-height:0 !important;font-size:11.5px !important;border-radius:8px !important;padding:0 10px !important;white-space:nowrap}
+.clean-header input[type=date]{width:112px !important;flex:0 0 112px;padding:0 6px !important}
+.clean-header .search-box > input:not([type=date]){flex:1 1 190px !important;min-width:160px !important}
+.clean-header select{flex:0 0 150px !important;width:150px !important;max-width:150px !important;padding:0 6px !important}
+.clean-header .search-box{overflow:visible}
+.cod-cliente-txt{font-weight:900;color:#0F172A}
+@media (max-width:1300px){
+  .clean-header, .clean-header .search-box{flex-wrap:wrap !important}
+}
+
+@media (max-width:900px){
+  .topbar .subtitle{white-space:normal}
+  .inv-kpi small, .hr-kpi small{white-space:normal}
+}
+
+/* Entregas: encabezados que ordenan (Erika 25/10/2026) */
+#despachar th[data-ent-orden]{cursor:pointer;user-select:none}
+#despachar th[data-ent-orden]:hover{text-decoration:underline}
+#despachar th[data-ent-orden]::after{content:attr(data-flecha);margin-left:3px;font-size:9px}
+#despachar th.ent-orden-activo{background:#FEE2E2 !important}
+
+/* Números de documento (E001-00002319, guías) en una sola línea y en mayúsculas (Erika 25/10/2026) */
+.num-doc{white-space:nowrap;text-transform:uppercase}
+
+/* Formularios por secciones (factura, guía, cotización...): más compactos (Erika 25/10/2026: "comprimir") */
+.ficha-section{padding:8px 12px !important;margin-bottom:8px !important;border-radius:10px !important}
+.ficha-section-title{font-size:12px !important;margin-bottom:6px !important;padding-bottom:4px !important}
+.ficha-grid{gap:6px 10px !important;row-gap:6px !important}
+.ficha-grid .form-field label{font-size:10px !important;margin-bottom:2px !important;line-height:1.3 !important}
+.ficha-grid .form-field :is(input:not([type=checkbox]):not([type=radio]), select){height:30px !important;min-height:0 !important;
+  font-size:12px !important;padding-top:0 !important;padding-bottom:0 !important;border-radius:8px !important}
+.ficha-grid .form-field textarea{min-height:48px !important;font-size:12px !important}

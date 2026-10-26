@@ -194,3 +194,19 @@ html[data-empresa] .fin-pagos .fin-table thead th,.fin-pagos .fin-table thead th
 .seg-ayuda{font-size:11.5px;color:#64748B}
 .seg-botones{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 #finanzasApp #sec-cxc .fin-table{font-size:12px}
+
+/* Colores de la fila de resumen (Erika 25/10/2026: "en finanzas debe haber una colorimetría según lo solicitado").
+   Rojo solo lo vencido, ámbar lo que vence en 7 días, verde lo que está al día;
+   el total va en verde azulado en Cobrar y en morado en Pagar. Un estado en cero queda gris. */
+.fin-resumen .res-item{border-width:2px}
+.fin-resumen .res-vencido{background:#FFE4E6;border-color:#E60023;color:#9F0020}
+.fin-resumen .res-vencido b{color:#C80028}
+.fin-resumen .res-porvencer{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
+.fin-resumen .res-porvencer b{color:#B45309}
+.fin-resumen .res-aldia{background:#DCFCE7;border-color:#16A34A;color:#166534}
+.fin-resumen .res-aldia b{color:#15803D}
+.fin-cobros .fin-resumen .res-total{background:var(--cobro-soft);border-color:var(--cobro);color:var(--cobro-dark)}
+.fin-pagos .fin-resumen .res-total{background:var(--pago-soft);border-color:var(--pago);color:var(--pago-dark)}
+.fin-resumen .res-item small{color:inherit;opacity:.8}
+.fin-resumen .res-cero, .fin-resumen .res-cero b{background:#F8FAFC;border-color:#E2E8F0;color:#94A3B8}
+.fin-resumen .res-activo{box-shadow:0 0 0 2px #0F172A33}

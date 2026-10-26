@@ -368,9 +368,12 @@ def _sql_emp(tabla, col, eid):
 # ============================================================
 # DATOS DEL ERP
 # ============================================================
-def _tc(moneda, manual):
+def _tc(moneda, manual, propio=None):
+    """TC para pasar a soles. 24/10/2026: primero el TC guardado en el documento; si no tiene, el TC manual del mes."""
     if (moneda or 'PEN').upper() in ('PEN', 'SOLES', 'S/', ''):
         return Decimal('1'), False
+    if propio and a_decimal(propio) > 0:
+        return a_decimal(propio), False
     tc = a_decimal(manual.get('tipo_cambio'))
     return (tc if tc > 0 else Decimal('1')), tc <= 0
 
@@ -383,7 +386,8 @@ def ventas_erp(eid, desde, hasta, manual=None):
         SELECT id, tipo_comprobante, serie, numero::text AS numero, fecha_emision::date AS fecha, moneda,
                cliente_numero_doc AS ruc, cliente_nombre AS nombre, COALESCE(subtotal, 0) AS base,
                COALESCE(igv, 0) AS igv, COALESCE(total, 0) AS total, COALESCE(tiene_retencion, false) AS tiene_ret,
-               COALESCE(monto_retenido, 0) AS retenido, guia_vinculada, pc_vinculado
+               COALESCE(monto_retenido, 0) AS retenido, guia_vinculada, pc_vinculado,
+               to_jsonb(comprobantes) ->> 'tipo_cambio' AS tc_doc
         FROM comprobantes
         WHERE COALESCE(UPPER(TRIM(estado_sunat)), 'BORRADOR') <> ALL(%s)
           AND fecha_emision >= %s AND fecha_emision < %s::date + 1 {sql_e}
@@ -391,14 +395,15 @@ def ventas_erp(eid, desde, hasta, manual=None):
     docs, sin_tc = [], False
     for f in filas:
         tipo = _tipo_cp(f['tipo_comprobante'])
-        tc, falta = _tc(f['moneda'], manual)
+        tc, falta = _tc(f['moneda'], manual, f.get('tc_doc'))
         sin_tc = sin_tc or falta
         signo = Decimal('-1') if tipo == '07' else Decimal('1')
         base, igv = abs(a_decimal(f['base'])) * tc * signo, abs(a_decimal(f['igv'])) * tc * signo
         docs.append({'origen': 'ERP', 'id': f['id'], 'tipo': tipo, 'serie': f['serie'], 'numero': f['numero'],
                      'fecha': f['fecha'], 'ruc': f['ruc'], 'nombre': f['nombre'], 'base': base, 'igv': igv,
                      'no_gravado': CERO, 'total': base + igv, 'moneda': f['moneda'] or 'PEN',
-                     'retenido': a_decimal(f['retenido']) if f['tiene_ret'] else CERO,
+                     'tipo_cambio': tc if tc != 1 else None,
+                     'retenido': a_decimal(f['retenido']) * tc if f['tiene_ret'] else CERO,
                      'guia': f['guia_vinculada'], 'pc': f['pc_vinculado']})
     # Notas de crédito (tabla propia): el monto incluye IGV
     if _cols('notas_credito'):
@@ -419,12 +424,15 @@ def ventas_erp(eid, desde, hasta, manual=None):
     return docs, sin_tc
 
 
-def compras_erp(eid, desde, hasta):
-    """Facturas de proveedores registradas en Compras. El ERP guarda solo el total: base = total / 1.18."""
+def compras_erp(eid, desde, hasta, manual=None):
+    """Facturas de proveedores registradas en Compras. El ERP guarda solo el total: base = total / 1.18.
+    24/10/2026: las facturas en dólares pasan a soles con su TC (el de la factura o el manual del mes)."""
+    manual = manual or {}
     sql_e, par_e = _sql_emp('comprobantes_proveedor', 'empresa_id', eid)
     filas = db_query(f"""
         SELECT id, COALESCE(tipo, 'Factura') AS tipo, numero, fecha::date AS fecha, COALESCE(monto, 0) AS monto,
-               ruc_proveedor AS ruc, proveedor_nombre AS nombre, orden_compra_id, orden_compra_numero, estado
+               ruc_proveedor AS ruc, proveedor_nombre AS nombre, orden_compra_id, orden_compra_numero, estado,
+               to_jsonb(comprobantes_proveedor) ->> 'moneda' AS moneda, to_jsonb(comprobantes_proveedor) ->> 'tipo_cambio' AS tc_doc
         FROM comprobantes_proveedor
         WHERE COALESCE(UPPER(TRIM(estado)), '') <> ALL(%s)
           AND fecha >= %s AND fecha < %s::date + 1 {sql_e}
@@ -432,7 +440,8 @@ def compras_erp(eid, desde, hasta):
     docs = []
     for f in filas:
         tipo = _tipo_cp(f['tipo'])
-        total = a_decimal(f['monto'])
+        tc, _falta = _tc(f.get('moneda'), manual, f.get('tc_doc'))
+        total = redondear(a_decimal(f['monto']) * tc)
         serie, _, numero = (f['numero'] or '').rpartition('-')
         if tipo == '01' or tipo == '08' or tipo == '07':
             base = redondear(total / (1 + tasa_igv()))
@@ -442,7 +451,8 @@ def compras_erp(eid, desde, hasta):
         signo = Decimal('-1') if tipo == '07' else Decimal('1')
         docs.append({'origen': 'ERP', 'id': f['id'], 'tipo': tipo, 'serie': serie or f['numero'], 'numero': numero,
                      'fecha': f['fecha'], 'ruc': f['ruc'], 'nombre': f['nombre'], 'base': base * signo,
-                     'igv': igv * signo, 'no_gravado': ng * signo, 'total': total * signo, 'moneda': 'PEN',
+                     'igv': igv * signo, 'no_gravado': ng * signo, 'total': total * signo,
+                     'moneda': (f.get('moneda') or 'PEN').upper(), 'tipo_cambio': tc if tc != 1 else None,
                      'oc': f['orden_compra_numero'], 'oc_id': f['orden_compra_id'], 'estado': f['estado']})
     return docs
 
@@ -619,7 +629,7 @@ def calcular(e, anio, mes, corte=None):
     conf = leer_config(eid)
 
     v_erp, sin_tc = ventas_erp(eid, desde, corte, manual)
-    c_erp = compras_erp(eid, desde, corte)
+    c_erp = compras_erp(eid, desde, corte, manual)
     v_imp = [r for r in importados(eid, periodo, 'VENTAS') if not r['fecha'] or r['fecha'] <= corte]
     c_imp = importados(eid, periodo, 'COMPRAS') if corte >= hasta else \
         [r for r in importados(eid, periodo, 'COMPRAS') if not r['fecha'] or r['fecha'] <= corte or r['fecha'] < desde]
@@ -716,7 +726,7 @@ def _saldos_mes_anterior(e, anio, mes):
         desde, hasta = _rango(pa, pm)
         manual = dict(per['manual'] or {})
         v, _ = ventas_erp(e['id'], desde, hasta, manual)
-        c_ = compras_erp(e['id'], desde, hasta)
+        c_ = compras_erp(e["id"], desde, hasta, manual)
         ventas, _ = combinar('VENTAS', v, importados(e['id'], _txt_periodo(pa, pm), 'VENTAS'))
         compras, _ = combinar('COMPRAS', c_, importados(e['id'], _txt_periodo(pa, pm), 'COMPRAS'))
         liq = liquidar(_sumar(ventas)['igv'], _sumar(compras)['igv'], manual)

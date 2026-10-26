@@ -238,6 +238,10 @@ def api_clientes_guardar():
         cur.execute(query, params)
         result = cur.fetchone()
         cliente_id = result[0]
+        if 'pide_migo' in data:  # N° MIGO (Erika 25/10/2026)
+            from routes.migo import asegurar_migo
+            asegurar_migo()
+            cur.execute("UPDATE clientes SET pide_migo = %s WHERE id = %s", (bool(data.get('pide_migo')), cliente_id))
 
         # ==========================================
         # GUARDAR CONTACTOS
@@ -403,6 +407,12 @@ def api_clientes_obtener(id):
         cliente['ambito'] = cliente.get('ambito') or 'COMPARTIDO'
         cliente['observaciones'] = cliente.get('observaciones') or ''
         cliente['ruc'] = cliente.get('numero_documento')
+        try:
+            from routes.migo import leer_pide_migo
+            cliente['pide_migo'] = leer_pide_migo(id)
+        except Exception as e:
+            current_app.logger.warning(f"pide_migo del cliente {id}: {e}")
+            cliente['pide_migo'] = False
         
         return jsonify({"success": True, "data": cliente})
         
@@ -511,6 +521,11 @@ def api_clientes_actualizar(id):
 
         cur.execute(query, params)
         result = cur.fetchone()
+
+        if 'pide_migo' in data:  # N° MIGO (Erika 25/10/2026)
+            from routes.migo import asegurar_migo
+            asegurar_migo()
+            cur.execute("UPDATE clientes SET pide_migo = %s WHERE id = %s", (bool(data.get('pide_migo')), id))
 
         # 2. Reemplazar contactos (solo si la pantalla los manda: la cotización no los manda)
         if 'contactos' in data:

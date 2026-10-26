@@ -166,6 +166,19 @@ def _pc_por_cotizacion(ids):
     return {r['cotizacion_id']: r['numeros'] for r in filas}
 
 
+def _productos(ids):
+    """Cantidad y nombre de cada producto de la cotización, en el orden en que se cotizaron."""
+    if not ids:
+        return {}
+    filas = db_query("""SELECT d.cotizacion_id, d.cantidad, COALESCE(NULLIF(TRIM(p.descripcion), ''), 'Producto sin nombre') AS descripcion
+                        FROM cotizacion_detalle d LEFT JOIN productos p ON p.id = d.producto_id
+                        WHERE d.cotizacion_id = ANY(%s) ORDER BY d.cotizacion_id, d.id""", (list(ids),))
+    salida = {}
+    for r in filas:
+        salida.setdefault(r['cotizacion_id'], []).append({'cantidad': _n(r['cantidad']), 'descripcion': r['descripcion']})
+    return salida
+
+
 def _gestiones(ids):
     if not ids:
         return {}
@@ -202,6 +215,7 @@ def cotizaciones(e, desde=None, hasta=None):
     ids = [f['id'] for f in filas]
     pcs = _pc_por_cotizacion(ids)
     ges = _gestiones(ids)
+    prods = _productos(ids)
     hoy = _ahora().date()
     codigos = {str(x['id']): x['codigo'] for x in lista_empresas()}
     salida = []
@@ -236,7 +250,7 @@ def cotizaciones(e, desde=None, hasta=None):
             'pc': pc, 'dias': (hoy - creada).days, 'vence': _f(vence), 'vencida': bool(vence and vence < hoy),
             'proxima_llamada': _f(proxima), 'llamar_hoy': bool(proxima and proxima <= hoy),
             'atraso': (hoy - proxima).days if proxima and proxima < hoy else 0,
-            'gestiones': len(g),
+            'gestiones': len(g), 'productos': prods.get(f['id'], []),
             'ultima': {'medio': ult['medio'], 'comentario': ult['comentario'], 'por': ult['creado_por'],
                        'en': _f(ult['creado_en'])} if ult else None,
             'motivo_perdida': (cerrada_aqui['motivo_cierre'] if cerrada_aqui else None) or (

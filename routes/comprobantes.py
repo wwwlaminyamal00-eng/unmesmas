@@ -145,7 +145,7 @@ def guardar_comprobante():
             return jsonify({'success': False, 'error': 'Debe agregar al menos un producto'})
         
         # Generar número de comprobante automático
-        serie = data.get('serie', 'F001' if tipo == 'FACTURA' else 'B001')
+        serie = str(data.get('serie') or ('E001' if tipo == 'FACTURA' else 'B001')).strip().upper()
         
         query_max = """
             SELECT COALESCE(MAX(numero), 0) + 1 as next_num
@@ -226,7 +226,7 @@ def enviar_sunat():
             return jsonify({'success': False, 'error': 'Debe agregar al menos un producto'})
         
         # Generar número de comprobante
-        serie = data.get('serie', 'F001' if tipo == 'FACTURA' else 'B001')
+        serie = str(data.get('serie') or ('E001' if tipo == 'FACTURA' else 'B001')).strip().upper()
         
         query_max = """
             SELECT COALESCE(MAX(numero), 0) + 1 as next_num

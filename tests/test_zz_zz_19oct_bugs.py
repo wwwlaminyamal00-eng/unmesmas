@@ -211,7 +211,7 @@ def test_listas_traen_fecha_de_creacion_y_modificacion(admin):
         assert data, url
         assert 'creado_en' in data[0] and 'modificado_en' in data[0], url
     html = admin.get('/ventas').get_data(as_text=True)
-    assert '<th>N° cotización</th>' in html and '<th>N° despacho</th>' in html and '<th>Comprobante</th>' not in html
+    assert '>N° cotización</th>' in html and '>N° despacho</th>' in html and '<th>Comprobante</th>' not in html
     base = admin.get('/inventario', follow_redirects=True).get_data(as_text=True)
     assert 'window.tiemposHTML' in base and 'window.condPagoTexto' in base
 

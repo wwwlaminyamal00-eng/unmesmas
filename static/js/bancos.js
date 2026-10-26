@@ -88,12 +88,12 @@
         const lado = m.monto > 0 ? 'cobro' : 'pago';
         if (o.tipo === 'movimiento') {
             return `<div class="ge-op ${o.exacto ? 'exacta' : ''}">
-                <span><b>${lado === 'cobro' ? 'Cobro' : 'Pago'} registrado</b> · ${esc(o.tercero || '')} · N° factura ${esc(o.documento || '—')} · ${soles(o.monto)}${o.numero_operacion ? ' · N° op. ' + esc(o.numero_operacion) : ''} · ${fecha(o.fecha)}</span>
+                <span><b>${lado === 'cobro' ? 'Cobro' : 'Pago'} registrado</b> · ${esc(o.tercero || '')} · N° Factura ${esc(o.documento || '—')} · ${soles(o.monto)}${o.numero_operacion ? ' · N° op. ' + esc(o.numero_operacion) : ''} · ${fecha(o.fecha)}</span>
                 <button type="button" class="ge-btn verde" data-unir="${m.id}" data-pago="${o.id}">Unir</button></div>`;
         }
         const boton = FINANZAS ? `<button type="button" class="ge-btn amarillo" data-registrar="${m.id}" data-doc="${o.id}">Registrar ${lado}</button>` : '';
         return `<div class="ge-op">
-            <span><b>Factura por ${lado === 'cobro' ? 'cobrar' : 'pagar'}</b> · ${esc(o.tercero || '')} · N° factura ${esc(o.documento)} · saldo ${soles(o.monto)}</span>${boton}</div>`;
+            <span><b>Factura por ${lado === 'cobro' ? 'cobrar' : 'pagar'}</b> · ${esc(o.tercero || '')} · N° Factura ${esc(o.documento)} · saldo ${soles(o.monto)}</span>${boton}</div>`;
     }
 
     function pintarPendBanco() {
@@ -121,7 +121,7 @@
             return;
         }
         $('#banPendErp').innerHTML = `<table class="inv-table ge-tabla"><thead><tr>
-            <th>Fecha</th><th>Cliente / Proveedor</th><th>RUC / DNI</th><th>N° factura</th><th>Tipo</th><th>Banco</th>
+            <th>Fecha</th><th>Cliente / Proveedor</th><th>RUC / DNI</th><th>N° Factura</th><th>Tipo</th><th>Banco</th>
             <th>N° operación</th><th>Monto (S/)</th><th>Registrado por</th></tr></thead><tbody>
             ${filas.map(p => `<tr class="ge-fila-pend">
                 <td class="ge-nw">${fecha(p.fecha)}</td><td>${esc(p.tercero || '')}</td><td class="ge-nw">${esc(p.ruc || '')}</td><td>${esc(p.documento || '')}</td>
@@ -142,7 +142,7 @@
         if (!filas.length) { $('#banConciliados').innerHTML = '<div class="inv-vacio">Aún no hay movimientos conciliados en este mes.</div>'; return; }
         $('#banConciliados').innerHTML = `<table class="inv-table ge-tabla"><thead><tr>
             <th>Fecha</th><th>Banco</th><th>N° operación</th><th>Descripción del banco</th><th>Entra (S/)</th><th>Sale (S/)</th>
-            <th>Cliente / Proveedor</th><th>RUC / DNI</th><th>N° factura</th><th>Estado</th><th>Por</th><th>Acciones</th></tr></thead><tbody>
+            <th>Cliente / Proveedor</th><th>RUC / DNI</th><th>N° Factura</th><th>Estado</th><th>Por</th><th>Acciones</th></tr></thead><tbody>
             ${filas.map(m => `<tr class="ge-fila-ok">
                 <td class="ge-nw">${fecha(m.fecha)}</td><td>${esc(m.banco)}</td><td>${esc(m.numero_operacion || '—')}</td>
                 <td class="ge-desc">${esc(m.descripcion || '')}</td><td class="ge-entra">${entra(m)}</td><td class="ge-sale">${sale(m)}</td>
@@ -217,7 +217,7 @@
                 const tipo = m.monto > 0 ? 'COBRO' : 'PAGO';
                 abrirModal(`Registrar ${tipo === 'COBRO' ? 'cobro' : 'pago'} y conciliar`,
                     `<div class="ge-ficha"><span>Cliente / Proveedor: <b>${esc(o.tercero)}</b></span><span>RUC / DNI: <b>${esc(o.ruc || '—')}</b></span>
-                     <span>N° factura: <b>${esc(o.documento)}</b></span><span>Saldo de la factura: <b>${soles(o.monto)}</b></span>
+                     <span>N° Factura: <b>${esc(o.documento)}</b></span><span>Saldo de la factura: <b>${soles(o.monto)}</b></span>
                      <span>En el banco: <b>${fecha(m.fecha)} · ${esc(m.banco)} · ${soles(Math.abs(m.monto))}</b></span></div>`,
                     `<label>Monto (S/)<input name="monto" type="number" step="0.01" min="0.01" value="${Math.min(Math.abs(m.monto), o.monto).toFixed(2)}" required></label>
                      <label>N° de operación<input name="op" maxlength="80" value="${esc(m.numero_operacion || '')}" placeholder="Del extracto"></label>`,

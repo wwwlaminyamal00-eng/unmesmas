@@ -24,6 +24,8 @@ if 'supabase' in TEST_DB:
 
 os.environ['DATABASE_URL'] = TEST_DB
 os.environ.setdefault('SECRET_KEY', 'clave-solo-para-pruebas')
+# En pruebas el usuario 'admin' hace de Erika para Reportes (en la base real es solo eri01kcf)
+os.environ.setdefault('USUARIOS_REPORTES', 'eri01kcf,admin')
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ESQUEMA = os.environ.get('TEST_ESQUEMA', 'real')
 ARCHIVO_ESQUEMA = 'schema_pruebas.sql' if ESQUEMA == 'reconstruido' else 'schema_supabase_real.sql'

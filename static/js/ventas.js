@@ -1261,7 +1261,7 @@ if (cotizacionViewMode === 'principal') {
             <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
+            <td><b class="cod-cliente-txt">${sd(r.cod_cliente)}</b></td>
             <td class="left"><b>${sd(r.razon)}</b></td>
             <td>${sd(r.ruc)}</td>
             <td class="left">${sd(getDescripcionPrincipal(r))}</td>
@@ -1324,7 +1324,7 @@ if (cotizacionViewMode === 'principal') {
             <td class="date-cell">${formatFecha(r.fecha)}${tiemposHTML(r)}</td>
             <td>${badgeStatus(r.estado)}${cotAceptadaCliente(r) ? abastBadge('cotizaciones', r.id) : ''}</td>
             <td class="quote-number-cell"><b>${sd(r.numero)}</b></td>
-            <td><span class="code-pill">${sd(r.cod_cliente)}</span></td>
+            <td><b class="cod-cliente-txt">${sd(r.cod_cliente)}</b></td>
             <td class="left"><b>${sd(r.razon)}</b></td>
             <td>${sd(r.ruc)}</td>
             <td>${sd(r.contacto || r.cliente_contacto || r.contacto_cliente)}</td>
@@ -1411,6 +1411,40 @@ function estadoCompraHTML(r, despachado, anulado) {
     // Con OC generada (aunque esté en borrador o por aprobar) sale "Comprado, por llegar" con su N° de OC (22/10/2026)
     const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? `<small class="compra-ocs">${info.ocs.map(sd).join(', ')}</small>` : '';
     return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>${ocs}`;
+}
+// Erika 25/10/2026: "N° Guía / N° Factura esto debe estar en cada columna para poder filtrar y ordenar"
+// Erika 25/10/2026: sus facturas son como E001-00002319: serie en mayúscula y número de 8 cifras con ceros.
+// Solo cambia cómo se ve; el número guardado no se toca.
+const SERIE_FACTURA = 'E001';
+function numDoc(serie, numero) {
+    const s = String(serie || '').trim().toUpperCase();
+    let n = String(numero ?? '').trim();
+    if (/^\d+$/.test(n) && n.length < 8) n = n.padStart(8, '0');
+    return s && n ? `${s}-${n}` : (s || n.toUpperCase());
+}
+function fmtNumDoc(texto) {
+    const t = String(texto || '').trim();
+    const m = t.match(/^([A-Za-z0-9]{4})-(\d{1,8})$/);
+    return m ? numDoc(m[1], m[2]) : t.toUpperCase();
+}
+window.numDoc = numDoc;
+window.fmtNumDoc = fmtNumDoc;
+function guiaDespachoHTML(r) { return r.guia ? `<b class="num-doc">${sd(fmtNumDoc(r.guia))}</b>` : '-'; }
+function facturaDespachoHTML(r) { return r.comprobante ? `<b class="num-doc">${sd(fmtNumDoc(r.comprobante))}</b>` : '-'; }
+// Ordenar Entregas con clic en el encabezado (th con data-ent-orden); segundo clic invierte
+let entOrden = { campo: '', dir: 1 };
+function ordenarEntregas(campo) {
+    entOrden = entOrden.campo === campo ? { campo, dir: -entOrden.dir } : { campo, dir: 1 };
+    document.querySelectorAll('#despachar th[data-ent-orden]').forEach(th => {
+        th.classList.toggle('ent-orden-activo', th.dataset.entOrden === entOrden.campo);
+        th.dataset.flecha = th.dataset.entOrden === entOrden.campo ? (entOrden.dir > 0 ? '▲' : '▼') : '';
+    });
+    renderDespachos();
+}
+function valorOrdenEntrega(r, campo) {
+    if (campo === 'fecha') return String(r.created_at || r.fecha || '');
+    if (campo === 'fecha_cita') return String(r.fecha_cita || '9999');
+    return String(r[campo] || '').toUpperCase();
 }
 function guiaFacturaDespachoHTML(r) {
     const g = r.guia ? `<div><small>Guía</small><br><b>${sd(r.guia)}</b></div>` : '';
@@ -1649,7 +1683,7 @@ function renderDespachos() {
     
     const list = despachosData.filter(r => {
         const prods = (Array.isArray(r.items) ? r.items : []).map(it => it.producto || '').join(' ');
-        const searchStr = `${r.numero || ''} ${r.cliente || ''} ${r.pc_numero || ''} ${r.destino || ''} ${r.distrito || ''} ${r.comentario || ''} ${prods}`.toLowerCase();
+        const searchStr = `${r.numero || ''} ${r.cliente || ''} ${r.pc_numero || ''} ${r.cotizacion_numero || ''} ${r.guia || ''} ${r.comprobante || ''} ${r.destino || ''} ${r.distrito || ''} ${r.comentario || ''} ${prods}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         if (distritoSel && (distritoSel === '__sin' ? !!r.distrito : r.distrito !== distritoSel)) return false;
@@ -1695,11 +1729,14 @@ function renderDespachos() {
         return matchText && matchStatus && matchFecha;
     });
     
+    if (entOrden.campo) {
+        list.sort((a, b) => valorOrdenEntrega(a, entOrden.campo).localeCompare(valorOrdenEntrega(b, entOrden.campo), 'es', { numeric: true }) * entOrden.dir);
+    }
     const tbody = document.getElementById('despachoRows');
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
         return;
     }
     
@@ -1739,7 +1776,8 @@ function renderDespachos() {
             <td>${sd(r.cotizacion_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${productosDespachoHTML(r)}</td>
-            <td>${guiaFacturaDespachoHTML(r)}</td>
+            <td>${guiaDespachoHTML(r)}</td>
+            <td>${facturaDespachoHTML(r)}</td>
             <td>${distritoDespachoHTML(r, anulado)}</td>
             <td>${estadoCompraHTML(r, despachado, anulado)}</td>
             <td>${citaDespachoHTML(r, despachado || anulado)}</td>
@@ -2047,7 +2085,7 @@ function renderComprobantes() {
     const fechaFin = document.getElementById('comprobanteFechaFin')?.value || '';
     
     const list = comprobantesData.filter(r => {
-        const searchStr = `${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.condicion || ''} ${r.cotizacion || ''} ${r.pc_numero || ''} ${r.guia_numero || ''}`.toLowerCase();
+        const searchStr = `${numDoc(r.serie, r.numero)} ${r.numero || ''} ${r.serie || ''} ${r.cliente || ''} ${r.ruc || ''} ${r.condicion || ''} ${r.cotizacion || ''} ${r.pc_numero || ''} ${r.guia_numero || ''}`.toLowerCase();
         const matchText = !q || searchStr.includes(q);
         const matchStatus = !st || r.estado === st;
         
@@ -2144,8 +2182,8 @@ function renderComprobantes() {
             <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
-            <td>${sd(r.guia_numero)}</td>
-            <td><b>${sd(r.serie)}-${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
+            <td><span class="num-doc">${sd(fmtNumDoc(r.guia_numero))}</span></td>
+            <td><b class="num-doc">${sd(numDoc(r.serie, r.numero))}</b>${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
             <td>
                 <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
@@ -2528,6 +2566,8 @@ async function guardarCotizacion(estado) {
             motivo: document.getElementById('fMotivo')?.value || 'Solicitud única del cliente',
             transporte: document.getElementById('fTransporte')?.value || 'Seleccione',
             parihuela: document.getElementById('fParihuela')?.value || 'Seleccione',
+            moneda: document.getElementById('fMoneda')?.value || 'Soles (S/.)',
+            tipo_cambio: window.Moneda ? Moneda.leer('f').tipo_cambio : null,
             nota_interna: document.getElementById('fNotaInterna')?.value?.trim() || '',
             requerimiento: document.getElementById('fReq')?.value?.trim() || '',
             productos: quoteProducts.map(p => ({
@@ -3058,8 +3098,8 @@ function renderProductSelectorPc() {
             </td>
             <td style="font-weight:900; color:#0F172A;">${p.codigo || '-'}</td>
             <td style="text-align:left; font-weight:800;">${p.producto || p.descripcion || 'Sin nombre'}</td>
-            <td>${p.marca || '-'}</td>
             <td>${p.modelo || '-'}</td>
+            <td>${p.marca || '-'}</td>
             <td>${p.um || 'NIU'}</td>
             <td>${p.stock || 0}</td>
             <td style="font-weight:900; color:#059669;">S/ ${valorVenta.toFixed(2)}</td>
@@ -3348,6 +3388,7 @@ async function _savePedidoCompra(estado) {
             fecha: document.getElementById('pcFecha')?.value || '',
             contacto: document.getElementById('pcContacto')?.value || '',
             moneda: document.getElementById('pcMoneda')?.value || 'Soles (S/)',
+            tipo_cambio: window.Moneda ? Moneda.leer('pc').tipo_cambio : null,
             condicion_pago: getPcCondicionValue(),
             lugar_entrega: document.getElementById('pcEntrega')?.value || '',
             observaciones: document.getElementById('pcObs')?.value || '',
@@ -3665,48 +3706,39 @@ function renderComprobanteFormContent(isEdit, data) {
         '<div style="padding:20px;text-align:center;color:#94A3B8;">📭 Seleccione una cotización o guía para ver los productos</div>';
     
     return `
-        <!-- SECCIÓN: DOCUMENTOS VINCULADOS -->
+        <!-- SECCIÓN: DOCUMENTOS VINCULADOS (y N° OC del cliente en la misma fila, Erika 25/10/2026: "comprimir") -->
         <div class="ficha-section">
             <div class="ficha-section-title">🧾 Documentos vinculados</div>
             <div class="ficha-grid">
-                <div class="form-field col-4">
+                <div class="form-field col-3">
                     <label>Cotización vinculada</label>
                     <select id="compCotizacion" onchange="cargarProductosComprobanteDesdeCotizacion(this.value)">
                         <option value="">-- Ninguna --</option>
                         ${cotOptions || '<option value="" disabled>Sin cotizaciones</option>'}
                     </select>
                 </div>
-                <div class="form-field col-4">
+                <div class="form-field col-3">
                     <label>Guía de Remisión vinculada</label>
                     <select id="compGuia" onchange="loadComprobanteFromGuia(this.value); actualizarObservacionesComprobante()">
                         <option value="">-- Ninguna --</option>
                         ${guiaOptions || '<option value="" disabled>Sin guías</option>'}
                     </select>
                 </div>
-                <div class="form-field col-4">
+                <div class="form-field col-3">
                     <label>PC vinculado</label>
                     <select id="compPC" onchange="loadComprobanteFromPC(this.value); actualizarObservacionesComprobante()">
                         <option value="">-- Ninguno --</option>
                         ${pcOptions || '<option value="" disabled>Sin PCs</option>'}
                     </select>
                 </div>
-            </div>
-        </div>
-
-        <!-- ============================================================ -->
-        <!-- 🔽 NUEVA SECCIÓN: ORDEN DE COMPRA MANUAL (OPCIONAL)        -->
-        <!-- ============================================================ -->
-        <div class="ficha-section">
-            <div class="ficha-grid">
-                <div class="form-field col-12">
-                    <label>N° Orden de Compra (opcional)</label>
-                    <input id="compOrdenCompra" 
-                           placeholder="Ej: OC-04705 (se mostrará en el PDF si lo ingresas)" 
-                           value="${data?.orden_compra_cliente || ''}">
+                <div class="form-field col-3">
+                    <label>N° OC del cliente (opcional)</label>
+                    <input id="compOrdenCompra" placeholder="Ej: OC-04705 (sale en el PDF)" value="${data?.orden_compra_cliente || ''}">
                 </div>
             </div>
         </div>
-        
+
+
         <!-- SECCIÓN: DATOS DEL COMPROBANTE -->
         <div class="ficha-section">
             <div class="ficha-grid">
@@ -3719,17 +3751,30 @@ function renderComprobanteFormContent(isEdit, data) {
                 </div>
                 <div class="form-field col-3">
                     <label>Serie</label>
-                    <input id="compSerie" value="${data?.serie || 'F001'}">
+                    <input id="compSerie" value="${data?.serie || SERIE_FACTURA}" style="text-transform:uppercase">
                 </div>
                 <div class="form-field col-3">
                     <label>Número</label>
-                    <input id="compNumero" value="${data?.numero || ''}" placeholder="Automático">
+                    <input id="compNumero" value="${data?.numero || ''}" placeholder="El que dio SUNAT (vacío = siguiente)">
                 </div>
                 <div class="form-field col-3">
                     <label>Estado</label>
                     <select id="compEstado">
                         ${['Borrador','Emitido','Enviado','Pagado','Anulado'].map(s => `<option value="${s}" ${data?.estado === s ? 'selected' : ''}>${s}</option>`).join('')}
                     </select>
+                </div>
+                <div class="form-field col-3">
+                    <label>Moneda</label>
+                    <select id="compMoneda" title="Vacío = la moneda del PC">
+                        <option value="" ${!data?.moneda ? 'selected' : ''}>Como el PC</option>
+                        <option value="PEN" ${data?.moneda === 'PEN' ? 'selected' : ''}>Soles (S/)</option>
+                        <option value="USD" ${data?.moneda === 'USD' ? 'selected' : ''}>Dólares (US$)</option>
+                    </select>
+                </div>
+                <div class="form-field col-3" id="compTCWrap" style="${data?.moneda === 'USD' ? '' : 'display:none'}">
+                    <label>Tipo de cambio</label>
+                    <input id="compTC" type="number" step="0.001" min="2.5" max="6" value="${data?.tipo_cambio ? Number(data.tipo_cambio).toFixed(3) : ''}" placeholder="TC SUNAT del día">
+                    <small class="mon-info" id="compTCInfo">Vacío = TC SUNAT de la fecha de emisión</small>
                 </div>
                 <div class="form-field col-4">
                     <label>Cliente</label>
@@ -3760,6 +3805,10 @@ function renderComprobanteFormContent(isEdit, data) {
                     <select id="compCondicion" onchange="actualizarEstadoRetencion(); calcularRetencionComprobante()">
                         ${condicionOptions}
                     </select>
+                </div>
+                <div class="form-field col-4" id="compMigoCaja" style="display:none">
+                    <label title="Este cliente no paga sin el N° MIGO de su conformidad">N° MIGO / conformidad (opcional)</label>
+                    <input id="compMigo" maxlength="40" placeholder="Si aún no lo envía, se anota luego en Finanzas" value="${esc(data?.numero_migo || '')}">
                 </div>
             </div>
         </div>
@@ -4453,6 +4502,8 @@ function cargarDatosComprobante(data) {
     
     // 🔽 NUEVO CAMPO: ORDEN DE COMPRA
     setVal('compOrdenCompra', data.orden_compra_cliente || '');
+    setVal('compMigo', data.numero_migo || '');
+    setTimeout(revisarMigoFactura, 100);
     
     // 🔽 DATOS DE RETENCIÓN
     setVal('compEstadoCredito', data.estado_credito || 'Pendiente de aprobación');
@@ -4538,14 +4589,18 @@ async function _saveComprobante(estado) {
             id: editingId,
             estado: estado || 'Borrador',
             tipo: document.getElementById('compTipo')?.value || 'Factura',
-            serie: document.getElementById('compSerie')?.value || 'F001',
+            serie: (document.getElementById('compSerie')?.value || SERIE_FACTURA).trim().toUpperCase(),
             numero: document.getElementById('compNumero')?.value?.trim() || '',  // vacío = el servidor asigna el siguiente correlativo
             fecha_emision: new Date().toISOString(),
             cotizacion: document.getElementById('compCotizacion')?.value || '',
             guia: document.getElementById('compGuia')?.value || '',
             pc: document.getElementById('compPC')?.value || '',
+            moneda: document.getElementById('compMoneda')?.value || undefined,
+            tipo_cambio: document.getElementById('compMoneda')?.value === 'USD' ? (document.getElementById('compTC')?.value || null) : null,
             // 🔽 NUEVO CAMPO: ORDEN DE COMPRA MANUAL
             orden_compra_cliente: document.getElementById('compOrdenCompra')?.value?.trim() || '',
+            ...(document.getElementById('compMigoCaja')?.style.display !== 'none'
+                ? { numero_migo: (document.getElementById('compMigo')?.value || '').trim().toUpperCase() } : {}),
             cliente: document.getElementById('compCliente')?.value || '',
             ruc: document.getElementById('compRuc')?.value || '',
             direccion: document.getElementById('compDireccion')?.value || '',
@@ -4948,6 +5003,7 @@ async function marcarDespachado(id) {
                                     return {
                                         codigo: item.codigo || '',
                                         producto: item.producto || item.descripcion || 'Sin descripción',
+                                        descripcion_cliente: item.descripcion_cliente || '',
                                         marca: item.marca || '',
                                         modelo: item.modelo || '',
                                         cantidad: parseFloat(item.cantidad_pc || item.cantidad || 1),
@@ -5090,6 +5146,7 @@ async function marcarDespachado(id) {
                     items: items.map(item => ({
                         codigo: item.codigo || '',
                         producto: item.producto || 'Sin descripción',
+                        descripcion_cliente: item.descripcion_cliente || '',
                         marca: item.marca || '',
                         modelo: item.modelo || '',
                         cantidad: parseFloat(item.cantidad || 1),
@@ -6010,11 +6067,11 @@ async function openComprobanteModalWithData(id, cotizacion) {
             </div>
             <div class="form-field col-3">
                 <label>Serie</label>
-                <input id="compSerie" value="F001">
+                <input id="compSerie" value="E001" style="text-transform:uppercase">
             </div>
             <div class="form-field col-3">
                 <label>Número</label>
-                <input id="compNumero" value="" placeholder="Automático">
+                <input id="compNumero" value="" placeholder="El que dio SUNAT (vacío = siguiente)">
             </div>
             <div class="form-field col-3">
                 <label>Estado</label>
@@ -6447,6 +6504,7 @@ async function createGuiaFromPedido(id) {
         const items = (pc.items || []).map(it => ({
             codigo: it.codigo || '',
             producto: it.producto || '',
+            descripcion_cliente: it.descripcion_cliente || '',
             descripcion: it.producto || '',
             marca: it.marca || '',
             modelo: it.modelo || '',
@@ -6508,6 +6566,7 @@ async function createFacturaFromPedido(id) {
         const items = (pc.items || []).map(it => ({
             codigo: it.codigo || '',
             producto: it.producto || '',
+            descripcion_cliente: it.descripcion_cliente || '',
             descripcion: it.producto || '',
             marca: it.marca || '',
             modelo: it.modelo || '',
@@ -6527,8 +6586,8 @@ async function createFacturaFromPedido(id) {
 
         const payload = {
             tipo: 'FACTURA',
-            serie: 'F001',
-            moneda: 'PEN',
+            serie: SERIE_FACTURA,
+            moneda: window.Moneda ? Moneda.codigo(pc.moneda) : 'PEN',   // 24/10/2026: la del PC (TC SUNAT de la fecha)
             cliente_tipo_doc: 'RUC',
             ruc: pc.ruc || '',
             cliente: pc.cliente || '',
@@ -7023,7 +7082,9 @@ function renderCotizacionFooter(esEdicion = false) {
     if (!footer) return;
     
     const rol = getUsuarioRol();
-    const isAdminOrHellen = rol === 'admin' || rol === 'hellen' || rol === 'administrador' || rol === 'superadmin';
+    // 24/10/2026: lo decide el servidor (Hellen y administradores); el rol del navegador queda de respaldo
+    const isAdminOrHellen = typeof window.PUEDE_VALIDAR_COT === 'boolean' ? window.PUEDE_VALIDAR_COT
+        : (rol === 'admin' || rol === 'hellen' || rol === 'administrador' || rol === 'superadmin');
     
     console.log('👤 Rol del usuario:', rol, '| Es Admin/Hellen:', isAdminOrHellen);
     
@@ -7059,9 +7120,8 @@ function renderCotizacionFooter(esEdicion = false) {
             
             <!-- 🔽 NUEVO: Solicitar Validación - Amarillo -->
             <button class="btn btn-warning" style="padding:4px 14px;font-size:0.8rem;line-height:1.2;min-height:30px;border-radius:8px;border:1px solid #F59E0B;background:#F59E0B;color:#fff;font-weight:900;cursor:pointer;box-shadow:0 0 15px rgba(245,158,11,0.3);" onclick="solicitarValidacion()">⭐ Solicitar Validación</button>
-            
-            <!-- Generar - Verde Fluorescente NEON -->
-            <button class="btn btn-green" style="padding:4px 14px;font-size:0.8rem;line-height:1.2;min-height:30px;border-radius:8px;border:1px solid #00FF41;background:#00FF41;color:#000;font-weight:900;cursor:pointer;box-shadow:0 0 25px rgba(0,255,65,0.5);" onclick="generateCotizacionPdfAndSend()">📄 Generar</button>
+            
+            <!-- 24/10/2026: el vendedor NO genera; Hellen o un administrador la generan después de validarla -->
         `;
     }
     
@@ -7276,6 +7336,7 @@ if (c.direccion_entrega) {
         ponerValor('fTransporte', c.transporte);
         ponerValor('fParihuela', c.parihuela);
         ponerValor('fNotaInterna', c.nota_interna);
+        if (window.Moneda) Moneda.poner('f', c.moneda || 'PEN', c.tipo_cambio);   // 24/10/2026: soles o dólares + TC
 
         // Punto 3 del resumen: descuento en % o en S/ (antes se perdía al reabrir)
         const tipoDesc = (c.descuento_tipo === 'S/' || c.descuento_tipo === 'monto') ? 'S/' : '%';
@@ -9122,6 +9183,7 @@ async function enviarADespacho(id) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin descripción',
+                            descripcion_cliente: item.descripcion_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             cantidad: parseFloat(item.cantidad_pc || item.cantidad || 1),
@@ -9350,6 +9412,11 @@ function openPedidoCompraModal(mode = 'cot') {
                         <option>Dólares ($)</option>
                     </select>
                 </div>
+                <div class="form-field col-2" id="pcTCWrap" style="display:none">
+                    <label>Tipo de cambio</label>
+                    <input id="pcTC" type="number" step="0.001" min="2.5" max="6" placeholder="Ej. 3.750">
+                    <small class="mon-info" id="pcTCInfo"></small>
+                </div>
                 <div class="form-field col-2">
                     <label>Contacto</label>
                     <input id="pcContacto">
@@ -9506,7 +9573,7 @@ function loadPedidoCotizacion() {
     document.getElementById('pcRuc').value = cotizacion.ruc || '';
     document.getElementById('pcCliente').value = cotizacion.razon || '';
     document.getElementById('pcContacto').value = cotizacion.contacto || '';
-    document.getElementById('pcMoneda').value = cotizacion.moneda || 'Soles (S/)';
+    ponerMonedaPC(cotizacion.moneda, cotizacion.tipo_cambio);
     document.getElementById('pcEntrega').value = cotizacion.direccion_entrega || '';
     // monto de la cotización ya incluye IGV: base sin IGV = total - igv (evita doble IGV)
     const _pcConIgv = Number(cotizacion.total || cotizacion.monto || 0);
@@ -9665,10 +9732,10 @@ function renderQuoteProducts() {
                     ${SUNAT_UNIDADES.map(u => `<option value="${u.codigo}" ${p.um === u.codigo || p.um === u.nombre ? 'selected' : ''}>${u.codigo}</option>`).join('')}
                 </select>
             </td>
-            <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);renderQuoteProducts();calcQuote();"></td>
-            <td class="col-price"><input style="width:90px;text-align:right" value="${Number(p.valorVenta || 0).toFixed(2)}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Math.round(Number(this.value)*100)/100;renderQuoteProducts();calcQuote();"></td>
-            <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
             <td class="col-stock">${stockVivo(p.codigo, p.stock)}</td>
+            <td class="col-price"><input style="width:90px;text-align:right" value="${Number(p.valorVenta || 0).toFixed(2)}" type="number" step="0.01" onchange="quoteProducts[${i}].valorVenta=Math.round(Number(this.value)*100)/100;renderQuoteProducts();calcQuote();"></td>
+            <td class="col-qty"><input style="width:70px;text-align:right" value="${p.cantidad || 1}" type="number" min="1" onchange="quoteProducts[${i}].cantidad=Number(this.value);renderQuoteProducts();calcQuote();"></td>
+            <td class="col-total"><b>${money(valorTotalSinIgv)}</b></td>
             <td class="col-delivery">
                 <select class="entrega-select ${p.estado_entrega === 'Entregado' ? 'entrega-ok' : 'entrega-pend'}" title="Estado de entrega de este producto"
                         onchange="quoteProducts[${i}].estado_entrega=this.value;this.className='entrega-select '+(this.value==='Entregado'?'entrega-ok':'entrega-pend');">
@@ -9782,6 +9849,7 @@ window._ultimoCliente = cliente; // ← para poder inspeccionarlo en consola
             if (fEmailAsesor) fEmailAsesor.value = CONFIG.emailAsesorDefault;
             if (fTelefonoAsesor) fTelefonoAsesor.value = CONFIG.telefonoAsesorDefault;
             if (fMoneda) fMoneda.value = 'Soles (S/.)';
+            if (window.Moneda) Moneda.poner('f', 'PEN', null);
             
             // Dirección de entrega
             let direccionEntrega = '';
@@ -11252,6 +11320,7 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || item.descripcion || 'Sin nombre',
+                    descripcion_cliente: item.descripcion_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     um: item.um || 'NIU',
@@ -11284,6 +11353,7 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin nombre',
+                            descripcion_cliente: item.descripcion_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             um: item.um || 'NIU',
@@ -11368,6 +11438,7 @@ window.loadComprobanteFromPC = function(numeroPC) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || item.descripcion || 'Sin nombre',
+                    descripcion_cliente: item.descripcion_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     um: item.um || 'NIU',
@@ -11400,6 +11471,7 @@ window.loadComprobanteFromPC = function(numeroPC) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin nombre',
+                            descripcion_cliente: item.descripcion_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             um: item.um || 'NIU',
@@ -12337,8 +12409,7 @@ function openPedidoCompraModalSAP(mode, id) {
     if (condicion) condicion.value = ''; // se elige leyendo la OC del cliente
     clearElement('pcOcCliente', '');
     
-    const moneda = document.getElementById('pcMoneda');
-    if (moneda) moneda.value = 'S/)';
+    ponerMonedaPC('PEN', null);
     
     // Limpiar tabla de productos
     const tbody = document.getElementById('pcItemsBody');
@@ -12545,7 +12616,7 @@ function cargarPCParaEdicion(pcId) {
                 setValue('pcFecha', fechaParaInput(pc.fecha || pc.fecha_recepcion));
                 setCondicionPagoPC(pc.condicion_pago || pc.condicion_atencion || '');
                 setValue('pcOcCliente', pc.oc_cliente || '');
-                setValue('pcMoneda', pc.moneda || 'S/)');
+                ponerMonedaPC(pc.moneda, pc.tipo_cambio);
                 setValue('pcMontoPC', montoSinIgv.toFixed(2));
                 setValue('pcEntrega', pc.lugar_entrega || pc.entrega || '');
                 setValue('pcObs', pc.observaciones || '');
@@ -12656,6 +12727,7 @@ async function cargarPCParaEditar(id) {
                     return {
                         codigo: item.codigo || '',
                         producto: item.producto || item.descripcion || '',
+                        descripcion_cliente: item.descripcion_cliente || '',
                         marca: item.marca || '',
                         modelo: item.modelo || '',
                         cantidad_cotizada: parseFloat(item.cantidad_cotizada || item.cantidad_cot || 0),
@@ -12685,6 +12757,7 @@ async function cargarPCParaEditar(id) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || '',
+                    descripcion_cliente: item.descripcion_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     cantidad_cotizada: parseFloat(item.cantidad_cotizada || item.cantidad || 0),
@@ -12811,6 +12884,7 @@ async function cargarPCParaEditar(id) {
                             <input value="${esc(producto)}" 
                                    style="width:100%; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; font-weight:800;"
                                    readonly>
+                            ${descClienteHTML(item.descripcion_cliente)}
                         </td>
                         <td style="padding:2px 3px;">
                             <input value="${esc(modelo)}" 
@@ -12950,6 +13024,14 @@ function actualizarFaltanteDesdeInput(input) {
 // ============================================================
 // FUNCIÓN PARA AGREGAR ITEM SAP - AHORA actualizarFaltanteDesdeInput YA EXISTE
 // ============================================================
+// 24/10/2026 (Hellen, caso Komatsu): el cliente pide en su OC otra descripción. Se escribe aquí, por línea, sin tocar el
+// catálogo; sale en el despacho, la guía y la factura. La OC al proveedor sigue con el nombre del catálogo.
+function descClienteHTML(valor) {
+    return `<textarea class="pc-desc-cliente" rows="1" maxlength="300"
+        placeholder="✏ Descripción del cliente (como dice su OC)"
+        title="Descripción que pide el cliente en su OC. Sale en el despacho, la guía y la factura. Vacío = el nombre del catálogo.">${esc(valor || '')}</textarea>`;
+}
+
 function addPedidoItemSAP() {
     const tbody = document.getElementById('pcItemsBody');
     if (!tbody) return;
@@ -12969,6 +13051,7 @@ function addPedidoItemSAP() {
         <td style="padding:2px 3px;">
             <input type="text" placeholder="Descripción" 
                    style="width:100%; border:none; background:transparent; font-size:9px; padding:0; outline:none;">
+            ${descClienteHTML('')}
         </td>
         <td style="padding:2px 3px;">
             <input type="text" placeholder="Modelo" 
@@ -13975,6 +14058,10 @@ function renderCotizacionFormContent(isEdit) {
                     <option value="Soles (S/.)" selected>Soles (S/.)</option>
                     <option value="Dólares ($)">Dólares ($)</option>
                 </select>
+                <div id="fTCWrap" style="display:none;margin-top:2px;">
+                    <input id="fTC" type="number" step="0.001" min="2.5" max="6" placeholder="TC (S/ por US$)" title="Tipo de cambio de la cotización en dólares" style="width:100%;height:22px;border:1px solid #E5E7EB;border-radius:5px;background:#FFFFFF;outline:none;color:#0F172A;font-size:10px;padding:0 5px;">
+                    <small class="mon-info" id="fTCInfo"></small>
+                </div>
             </div>
             <div class="form-field">
                 <label style="display:block;font-size:7.5px;font-weight:950;color:#334155;margin-bottom:1px;text-transform:uppercase;">Condición de Pago <span style="color:#DC2626;font-weight:900;">*</span></label>
@@ -14136,18 +14223,18 @@ function renderCotizacionFormContent(isEdit) {
             <table style="width:100%;border-collapse:collapse;font-size:10px;min-width:1100px;">
                 <thead>
                     <tr>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:35px;">Item</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:80px;">Código Producto</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;"> Descripción</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:35px;">Ítem</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:80px;">Código de producto</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;">Nombre producto</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:80px;">Modelo</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:75px;">Marca</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:55px;">Unidad</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:50px;">Cant</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:90px;">Valor Venta Unitario S/.</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:100px;">Valor Total S/.</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:55px;">Stock</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:90px;">Precio (sin IGV)</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:50px;">Cantidad</th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:100px;">Valor total (sin IGV)</th>
                         <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:70px;">Estado entrega</th>
-                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:40px;">Acciones </th>
+                        <th style="padding:5px 6px;font-size:9px;background:#FFF1F2;color:#7F1D1D;border:1px solid #FCA5A5;text-align:center;font-weight:1000;width:40px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="quoteProductRows">
@@ -14829,28 +14916,10 @@ function seleccionarCotizacionSAP(cotizacionId) {
             // ============================================================
             // 🔽 ACTUALIZAR LA MONEDA 🔽
             // ============================================================
-            const monedaCotizacion = data.moneda || data.moneda_cotizacion || 'Soles (S/)';
-            let monedaValue = 'S/)'; // Valor por defecto
-            
-            if (monedaCotizacion.includes('$') || monedaCotizacion.includes('Dólar') || monedaCotizacion.includes('USD')) {
-                monedaValue = '$';
-            } else {
-                monedaValue = 'S/)';
-            }
-            
-            // Actualizar el select de moneda
-            const monedaSelect = document.getElementById('pcMoneda');
-            if (monedaSelect) {
-                for (let opt of monedaSelect.options) {
-                    if (opt.value === monedaValue) {
-                        opt.selected = true;
-                        break;
-                    }
-                }
-            }
-            
-            // Actualizar el resumen con la nueva moneda
-            actualizarMonedaSelect(monedaValue);
+            // 24/10/2026: la moneda y el TC vienen de la cotización (PEN / USD)
+            const monedaCotizacion = data.moneda || data.moneda_cotizacion || 'PEN';
+            ponerMonedaPC(monedaCotizacion, data.tipo_cambio);
+            actualizarMonedaSelect(window.Moneda && Moneda.codigo(monedaCotizacion) === 'USD' ? '$' : 'S/)');
             
             // ============================================================
             // ACTUALIZAR CONDICIÓN DE PAGO
@@ -14914,6 +14983,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
                     <td style="padding:2px 3px;">
                         <input value="${esc(p.producto || p.descripcion || 'Sin descripción')}" 
                                style="width:100%; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; font-weight:800; cursor:not-allowed;" readonly>
+                        ${descClienteHTML(p.descripcion_cliente)}
                     </td>
                     <td style="padding:2px 3px;">
                         <input value="${esc(p.modelo || '')}" 
@@ -14979,6 +15049,13 @@ function seleccionarCotizacionSAP(cotizacionId) {
  * Actualiza la moneda en el select y el resumen
  * @param {string} moneda - Valor de la moneda ("S/)" o "$")
  */
+// 24/10/2026 (Erika): moneda y tipo de cambio del PC (heredados de la cotización; se pueden cambiar)
+function ponerMonedaPC(moneda, tc) {
+    if (!window.Moneda || !document.getElementById('pcMoneda')) return;
+    Moneda.enlazar('pc', { fecha: () => String(document.getElementById('pcFecha')?.value || '').slice(0, 10) });
+    Moneda.poner('pc', moneda || 'PEN', tc);
+}
+
 function actualizarMonedaSelect(moneda) {
     console.log('💰 Actualizando moneda a:', moneda);
     
@@ -15782,7 +15859,9 @@ async function savePedidoCompraSAP(force) {
                     cantidad_pc: Number(inputs[5]?.value || 1),
                     precio_cotizado: Number(inputs[6]?.value || 0),
                     precio_pc: Number(inputs[7]?.value || 0),
-                    stock: Number(stockCell?.textContent?.trim() || 0)
+                    stock: Number(stockCell?.textContent?.trim() || 0),
+                    // 24/10/2026 (caso Komatsu): descripción tal como la pide la OC del cliente; va al despacho, guía y factura
+                    descripcion_cliente: (row.querySelector('.pc-desc-cliente')?.value || '').trim()
                 });
             }
         });
@@ -17103,6 +17182,7 @@ window.loadDevoluciones = loadDevoluciones;
 window.renderCotizaciones = renderCotizaciones;
 window.renderPedidos = renderPedidos;
 window.renderDespachos = renderDespachos;
+window.ordenarEntregas = ordenarEntregas;
 window.renderGuias = renderGuias;
 window.renderComprobantes = renderComprobantes;
 window.renderNotas = renderNotas;
@@ -17512,12 +17592,29 @@ async function aplicarCondicionFactura(alGuardar) {
     if (typeof calcularRetencionComprobante === 'function') calcularRetencionComprobante();
 }
 window.aplicarCondicionFactura = aplicarCondicionFactura;
+// N° MIGO (Erika 25/10/2026): el campo solo aparece si el cliente lo pide (check en su ficha) o si ya tiene número
+async function revisarMigoFactura() {
+    const caja = document.getElementById('compMigoCaja');
+    if (!caja) return;
+    const ruc = (document.getElementById('compRuc')?.value || '').trim();
+    const tiene = !!(document.getElementById('compMigo')?.value || '').trim();
+    let pide = false;
+    if (ruc) {
+        try {
+            const r = await fetch('/ventas/api/comprobantes/condicion-origen?' + new URLSearchParams({ ruc }));
+            const j = await r.json();
+            pide = !!(j && (j.data || j).pide_migo);
+        } catch (e) { /* sin red: se deja como está */ }
+    }
+    caja.style.display = pide || tiene ? '' : 'none';
+}
+window.revisarMigoFactura = revisarMigoFactura;
 ['loadComprobanteFromGuia', 'loadComprobanteFromPC', 'loadComprobanteFromCotizacion', 'cargarProductosComprobanteDesdeCotizacion'].forEach(nombre => {
     const original = window[nombre];
     if (typeof original !== 'function' || original._conCondicion) return;
     const envuelta = function () {
         const r = original.apply(this, arguments);
-        Promise.resolve(r).finally(() => setTimeout(aplicarCondicionFactura, 150));
+        Promise.resolve(r).finally(() => { setTimeout(aplicarCondicionFactura, 150); setTimeout(revisarMigoFactura, 700); });
         return r;
     };
     envuelta._conCondicion = true;
@@ -17527,6 +17624,7 @@ window.aplicarCondicionFactura = aplicarCondicionFactura;
 document.addEventListener('change', e => {
     const id = e.target && e.target.id;
     if (id === 'compRuc' || (id === 'compCotizacion' && !e.target.getAttribute('onchange'))) setTimeout(aplicarCondicionFactura, 150);
+    if (['compRuc', 'compCotizacion', 'compGuia', 'compPC'].includes(id)) setTimeout(revisarMigoFactura, 700);
 });
 // Observaciones de la factura: primera letra en mayúscula
 document.addEventListener('focusout', e => {

@@ -141,3 +141,28 @@ def modulo_de_ruta(ruta, metodo):
                 return modulo
             return None
     return None
+
+
+_cache_flags = {}
+
+
+def tiene_permiso(codigo, flag='puede_aprobar'):
+    """24/10/2026: un permiso puntual de la matriz (ej. ORDEN_COMPRA + puede_aprobar para que Hellen apruebe OC)."""
+    auth = session.get('auth_user_id')
+    if not auth:
+        return False
+    empresa = (session.get('empresa') or 'KCF').upper()
+    llave = (str(auth), empresa)
+    guardado = _cache_flags.get(llave)
+    if not guardado or time.time() - guardado[0] >= _TTL:
+        from routes.configuracion_seguridad import _empresas_del_usuario, _permisos_efectivos
+        try:
+            accesos = _empresas_del_usuario(auth)
+            ids = [a['empresa_id'] for a in accesos if a['empresa_id']
+                   and (empresa == 'TODAS' or (a['empresa_codigo'] or '').upper() == empresa)]
+            efectivos = _permisos_efectivos(auth, ids)[0] if ids else {}
+        except Exception:
+            efectivos = {}
+        guardado = (time.time(), efectivos)
+        _cache_flags[llave] = guardado
+    return bool((guardado[1].get(codigo) or {}).get(flag))

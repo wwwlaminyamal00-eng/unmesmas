@@ -161,7 +161,7 @@
             $('#icVentas').innerHTML = '<div class="inv-vacio">No hay ventas entre las empresas en este mes (ni en Ventas ni en lo subido del SIRE).</div>';
             return;
         }
-        $('#icVentas').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>Fecha</th><th>Vende</th><th>Compra</th><th>N° factura</th>
+        $('#icVentas').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>Fecha</th><th>Vende</th><th>Compra</th><th>N° Factura</th>
             <th>Sin IGV (S/)</th><th>IGV (S/)</th><th>Total (S/)</th><th>Registrada como compra</th></tr></thead><tbody>
             ${v.map(x => `<tr class="${x.registrada_en_compras ? 'ge-fila-ok' : 'ge-fila-pend'}">
                 <td class="ge-nw">${fecha(x.fecha)}</td><td><b>${esc(x.vende)}</b></td><td><b>${esc(x.compra)}</b></td><td class="ge-nw">${esc(x.documento)}</td>
@@ -175,7 +175,7 @@
         const d = datos.deudas;
         if (!d.detalle.length) { $('#icDeudas').innerHTML = '<div class="ge-todo-ok">✔ Las empresas no se deben nada</div>'; return; }
         const netos = d.netos.map(n => `<div class="ge-neto"><b>${esc(n.deudor)}</b> le debe a <b>${esc(n.acreedor)}</b>: <span>${soles(n.saldo)}</span></div>`).join('');
-        $('#icDeudas').innerHTML = netos + `<table class="inv-table ge-tabla"><thead><tr><th>Debe</th><th>A</th><th>N° factura</th><th>Fecha</th>
+        $('#icDeudas').innerHTML = netos + `<table class="inv-table ge-tabla"><thead><tr><th>Debe</th><th>A</th><th>N° Factura</th><th>Fecha</th>
             <th>Vence</th><th>Total (S/)</th><th>Saldo (S/)</th><th>Estado</th></tr></thead><tbody>
             ${d.detalle.map(x => `<tr class="${x.dias_vencido ? 'ge-fila-pend' : ''}"><td><b>${esc(x.deudor)}</b></td><td><b>${esc(x.acreedor)}</b></td>
                 <td class="ge-nw">${esc(x.documento)}</td><td class="ge-nw">${fecha(x.fecha)}</td><td class="ge-nw">${fecha(x.vence)}</td>

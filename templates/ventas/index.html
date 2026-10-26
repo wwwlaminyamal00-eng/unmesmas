@@ -2878,9 +2878,13 @@
         📋 Cotizaciones
         <span class="tab-badge">📍</span>
     </button>
-     <button class="tab-btn" data-tab="revision">
+    {% if puede_validar_ventas %}
+    <button class="tab-btn" data-tab="revision">
     🔍 Revisión
     <span class="tab-badge">📍</span>
+    </button>
+    {% endif %}
+    <script>window.PUEDE_VALIDAR_COT = {{ 'true' if puede_validar_ventas else 'false' }};</script>
     <button class="tab-btn" data-tab="pedido_compra">
         📋 PC Pedido Compras
         <span class="tab-badge">📍</span>
@@ -3121,17 +3125,18 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Fecha / Hora</th>
-                        <th>Estado</th>
-                        <th>N° despacho</th>
-                        <th>N° PC</th>
-                        <th>N° cotización</th>
-                        <th>Cliente</th>
+                        <th data-ent-orden="fecha" onclick="ordenarEntregas('fecha')" title="Ordenar">Fecha / Hora</th>
+                        <th data-ent-orden="estado" onclick="ordenarEntregas('estado')" title="Ordenar">Estado</th>
+                        <th data-ent-orden="numero" onclick="ordenarEntregas('numero')" title="Ordenar">N° despacho</th>
+                        <th data-ent-orden="pc_numero" onclick="ordenarEntregas('pc_numero')" title="Ordenar">N° PC</th>
+                        <th data-ent-orden="cotizacion_numero" onclick="ordenarEntregas('cotizacion_numero')" title="Ordenar">N° cotización</th>
+                        <th data-ent-orden="cliente" onclick="ordenarEntregas('cliente')" title="Ordenar">Cliente</th>
                         <th>Cantidad y producto</th>
-                        <th>N° guía / N° factura</th>
-                        <th>Distrito</th>
+                        <th data-ent-orden="guia" onclick="ordenarEntregas('guia')" title="Ordenar">N° Guía</th>
+                        <th data-ent-orden="comprobante" onclick="ordenarEntregas('comprobante')" title="Ordenar">N° Factura</th>
+                        <th data-ent-orden="distrito" onclick="ordenarEntregas('distrito')" title="Ordenar">Distrito</th>
                         <th>Estado compra</th>
-                        <th>Fecha de cita</th>
+                        <th data-ent-orden="fecha_cita" onclick="ordenarEntregas('fecha_cita')" title="Ordenar">Fecha de cita</th>
                         <th>Comentario</th>
                         <th>Acción</th>
                     </tr>
@@ -3183,7 +3188,7 @@
                         <th>Item</th>
                         <th>Fecha</th>
                         <th>Estado</th>
-                        <th>N° guía</th>
+                        <th>N° Guía</th>
                         <th>Cliente</th>
                         <th>RUC</th>
                         <th>N° cotización</th>
@@ -3246,9 +3251,9 @@
                         <th>RUC</th>
                         <th>N° cotización</th>
                         <th>N° PC</th>
-                        <th>N° guía</th>
-                        <th>N° factura</th>
-                        <th>Monto</th>
+                        <th>N° Guía</th>
+                        <th>N° Factura</th>
+                        <th title="Total de la factura, con IGV">Monto (inc. IGV)</th>
                         <th>Cond. Pago</th>
                         <th>Acciones</th>
                     </tr>
@@ -3296,7 +3301,7 @@
                         <th>N° nota de crédito</th>
                         <th>Cliente</th>
                         <th>RUC</th>
-                        <th>N° factura o boleta</th>
+                        <th>N° Factura o boleta</th>
                         <th>Motivo</th>
                         <th>Monto</th>
                         <th>Acciones</th>
@@ -3344,8 +3349,8 @@
                         <th>N° devolución</th>
                         <th>Cliente</th>
                         <th>RUC</th>
-                        <th>N° factura</th>
-                        <th>N° guía</th>
+                        <th>N° Factura</th>
+                        <th>N° Guía</th>
                         <th>Motivo</th>
                         <th>Acciones</th>
                     </tr>

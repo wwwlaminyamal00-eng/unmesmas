@@ -199,22 +199,23 @@
     };
 
     // ---------- 5. Stock ----------
-    async function recalcular(cuerpo, texto) {
-        if (!await confirmar('Recalcular stock', texto, 'Sí, recalcular')) return;
+    // Solo lectura (Erika 25/10/2026): muestra diferencias, no cambia ningún stock
+    async function revisarStock(codigo) {
         const el = $('stkResultado');
-        cargando(el, 'Recalculando...');
+        cargando(el, 'Revisando...');
         try {
-            const d = await api('/herramientas/api/recalcular_stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
-            el.innerHTML = '<div class="hr-aviso ' + (d.cambiados.length ? 'warn' : 'ok') + '">' + esc(d.message) + '</div>' +
-                (d.cambiados.length ? '<table class="hr-table"><thead><tr><th>Nombre producto</th><th>Stock antes</th><th>Stock ahora</th></tr></thead><tbody>' +
-                    d.cambiados.map(c => '<tr><td class="hr-mono">' + esc(c.codigo) + '</td><td class="num">' + c.antes + '</td><td class="num"><b>' + c.despues + '</b></td></tr>').join('') + '</tbody></table>' : '');
+            const d = await api('/herramientas/api/revisar_stock' + (codigo ? '?codigo=' + encodeURIComponent(codigo) : ''));
+            el.innerHTML = '<div class="hr-aviso ' + (d.diferencias.length ? 'warn' : 'ok') + '">' + esc(d.message) + '</div>' +
+                (d.diferencias.length ? '<table class="hr-table"><thead><tr><th>Código de producto</th><th>Nombre producto</th><th>Stock en Productos</th><th>Stock en Inventario</th></tr></thead><tbody>' +
+                    d.diferencias.map(c => '<tr><td class="hr-mono">' + esc(c.codigo) + '</td><td>' + esc(c.nombre) + '</td><td class="num">' + c.productos + '</td><td class="num"><b>' + c.inventario + '</b></td></tr>').join('') +
+                    '</tbody></table><p class="hr-nota">Avísale a sistemas (Adriel). Si el conteo físico está mal, se corrige en Inventario ▸ Conteos.</p>' : '');
         } catch (e) { el.innerHTML = '<div class="hr-aviso danger">' + esc(e.message) + '</div>'; }
     }
-    $('stkTodos').onclick = () => recalcular({}, 'Se revisarán todos los productos que están en Inventario.');
+    $('stkTodos').onclick = () => revisarStock('');
     $('stkUno').onclick = () => {
         const c = $('stkCodigo').value.trim();
         if (!c) { aviso('Escribe el código del producto.', 'error'); return; }
-        recalcular({ codigo: c }, 'Se recalculará el producto <b>' + esc(c) + '</b>.');
+        revisarStock(c);
     };
 
     // ---------- 6. Caché ----------

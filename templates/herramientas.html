@@ -17,7 +17,7 @@
         <button class="hr-card" data-sec="exportar"><span>📤</span><b>Exportar / respaldo</b><small>Descargar una tabla en Excel o CSV</small></button>
         <button class="hr-card" data-sec="correlativos"><span>🔢</span><b>Revisar numeraciones</b><small>Huecos y números repetidos</small></button>
         <button class="hr-card" data-sec="integridad"><span>🩺</span><b>Verificar integridad</b><small>Datos huérfanos, duplicados, stock</small></button>
-        <button class="hr-card" data-sec="stock"><span>📦</span><b>Recalcular stock</b><small>Que el stock cuadre con Inventario</small></button>
+        <button class="hr-card" data-sec="stock"><span>📦</span><b>Revisar stock</b><small>Solo mira si cuadra con Inventario</small></button>
         <button class="hr-card" data-sec="cache"><span>🧹</span><b>Limpiar caché</b><small>Si algo no se actualiza en pantalla</small></button>
         <button class="hr-card" data-sec="logs"><span>📜</span><b>Registro de errores</b><small>Ver y rotar los últimos errores</small></button>
         <button class="hr-card" data-sec="salud"><span>🔌</span><b>Conexión a la base</b><small>Velocidad, versión, tamaño</small></button>
@@ -146,16 +146,16 @@
         <div class="hr-panel">
             <div class="hr-head">
                 <div>
-                    <div class="hr-title">📦 Recalcular stock</div>
-                    <div class="hr-help">Vuelve a poner en cada producto el stock que dice Inventario (la suma de todas las empresas y sedes). Solo toca productos que ya están en Inventario.</div>
+                    <div class="hr-title">📦 Revisar stock</div>
+                    <div class="hr-help">Compara el stock de Productos con el de Inventario (suma de todas las empresas y sedes). <b>Solo mira: no cambia ningún stock.</b> El conteo físico se corrige únicamente en Inventario ▸ Conteos.</div>
                 </div>
             </div>
             <div class="hr-body">
                 <div class="hr-filters">
-                    <button class="hr-btn" id="stkTodos">↻ Recalcular TODOS</button>
+                    <button class="hr-btn" id="stkTodos">🔍 Revisar todos</button>
                     <span class="hr-nota">o solo uno:</span>
                     <input type="search" id="stkCodigo" placeholder="Código del producto (ej. PRD-0001)">
-                    <button class="hr-btn sec" id="stkUno">↻ Recalcular este</button>
+                    <button class="hr-btn sec" id="stkUno">🔍 Revisar este</button>
                 </div>
                 <div id="stkResultado" style="margin-top:12px"></div>
             </div>

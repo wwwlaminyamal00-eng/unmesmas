@@ -468,9 +468,11 @@ def guardar_extracto(e, banco, cuenta, moneda, archivo, movimientos):
 # CRUCE CON FINANZAS
 # ============================================================
 def _pagos_libres(eid):
-    """Cobros y pagos de Finanzas (no anulados, no en efectivo) que aún no están unidos a un movimiento del banco."""
+    """Cobros y pagos de Finanzas (no anulados, no en efectivo) que aún no están unidos a un movimiento del banco.
+    monto = lo que entró o salió del banco (monto_pagado, en moneda_pago); un pago antiguo sin moneda = soles."""
     return db_query("""
-        SELECT f.id, f.tipo, f.fecha, f.fecha_aviso, f.monto, f.metodo, f.banco, f.numero_operacion,
+        SELECT f.id, f.tipo, f.fecha, f.fecha_aviso, COALESCE(f.monto_pagado, f.monto) AS monto,
+               COALESCE(NULLIF(f.moneda_pago, ''), 'PEN') AS moneda_pago, f.metodo, f.banco, f.numero_operacion,
                f.documento_tabla, f.documento_id, f.documento_numero, f.tercero_nombre, f.tercero_documento,
                f.usuario_nombre, f.created_at
         FROM finanzas_pagos f
@@ -489,6 +491,12 @@ def _signo_ok(monto, pago):
     return (monto > 0 and pago['tipo'] == 'COBRO') or (monto < 0 and pago['tipo'] == 'PAGO')
 
 
+def _misma_moneda(mov, pago):
+    """Un movimiento de la cuenta en dólares solo se une a lo pagado en dólares (y soles con soles)."""
+    from routes.moneda import codigo_moneda
+    return codigo_moneda(mov.get('moneda')) == codigo_moneda(pago.get('moneda_pago'))
+
+
 def _mismo_banco(mov, pago):
     b = _norm(pago.get('banco'))
     return not b or _norm(mov['banco']) in b or b in _norm(mov['banco'])
@@ -496,7 +504,7 @@ def _mismo_banco(mov, pago):
 
 def conciliar_automatico(eid):
     """Une solo lo seguro. Devuelve cuántos movimientos se conciliaron."""
-    pendientes = db_query("""SELECT id, fecha, monto, numero_operacion, banco, descripcion FROM bancos_movimientos
+    pendientes = db_query("""SELECT id, fecha, monto, moneda, numero_operacion, banco, descripcion FROM bancos_movimientos
                              WHERE empresa_id = %s AND estado = 'Pendiente'
                                AND NOT historial @> '[{"accion": "Deshecho"}]'::jsonb
                              ORDER BY fecha, id""", (eid,))
@@ -507,7 +515,7 @@ def conciliar_automatico(eid):
     # 1) Mismo monto y mismo N° de operación
     for m in pendientes:
         for p in libres:
-            if p['id'] in usados or not _signo_ok(m['monto'], p):
+            if p['id'] in usados or not _signo_ok(m['monto'], p) or not _misma_moneda(m, p):
                 continue
             if abs(abs(m['monto']) - p['monto']) <= TOLERANCIA and _misma_operacion(m['numero_operacion'], p['numero_operacion']):
                 pares.append((m['id'], p['id'], 'Automático: monto y N° de operación'))
@@ -519,7 +527,7 @@ def conciliar_automatico(eid):
     for m in pendientes:
         if m.get('_listo'):
             continue
-        candidatos[m['id']] = [p for p in libres if p['id'] not in usados and _signo_ok(m['monto'], p)
+        candidatos[m['id']] = [p for p in libres if p['id'] not in usados and _signo_ok(m['monto'], p) and _misma_moneda(m, p)
                                and abs(abs(m['monto']) - p['monto']) <= TOLERANCIA and _cerca(m['fecha'], p)
                                and _mismo_banco(m, p)]
     por_pago = defaultdict(list)
@@ -547,7 +555,8 @@ def conciliar_automatico(eid):
 
 def _facturas_con_saldo(eid, tipo):
     """CxC (tipo COBRO) o CxP (tipo PAGO) de la empresa con saldo pendiente, para sugerir 'Registrar cobro/pago'."""
-    from routes.finanzas import SQL_CXC, SQL_CXP
+    from routes.finanzas import SQL_CXC, SQL_CXP, asegurar_tablas_finanzas
+    asegurar_tablas_finanzas()
     if tipo == 'COBRO':
         sql = SQL_CXC + (" AND COALESCE(UPPER(c.estado_sunat), 'BORRADOR') <> 'BORRADOR'"
                          " AND (c.empresa_id IS NULL OR c.empresa_id::text = %s)")
@@ -558,7 +567,7 @@ def _facturas_con_saldo(eid, tipo):
         saldo = redondear(a_decimal(f['importe_cobrar']) - a_decimal(f['cobrado']) - a_decimal(f['notas_credito']))
         if saldo > 0:
             salida.append({'id': f['id'], 'documento': f['documento'], 'tercero': f['tercero'], 'ruc': f['ruc'],
-                           'saldo': saldo, 'total': redondear(f['importe_cobrar'])})
+                           'saldo': saldo, 'total': redondear(f['importe_cobrar']), 'moneda': f.get('moneda') or 'PEN'})
     return salida
 
 
@@ -573,7 +582,7 @@ def sugerencias(eid, mov, libres, facturas):
     monto = abs(a_decimal(mov['monto']))
     opciones = []
     for p in libres:
-        if not _signo_ok(mov['monto'], p):
+        if not _signo_ok(mov['monto'], p) or not _misma_moneda(mov, p):
             continue
         dif = abs(monto - p['monto'])
         if dif > max(TOLERANCIA, monto * Decimal('0.02')):
@@ -587,6 +596,8 @@ def sugerencias(eid, mov, libres, facturas):
                          'exacto': dif <= TOLERANCIA})
     lado = 'COBRO' if mov['monto'] > 0 else 'PAGO'
     for f in facturas.get(lado, []):
+        if not _misma_moneda(mov, {'moneda_pago': f['moneda']}):
+            continue
         if abs(monto - f['saldo']) <= TOLERANCIA or abs(monto - f['total']) <= TOLERANCIA:
             opciones.append({'tipo': 'factura', 'id': f['id'], 'puntos': 1 + _parecido_nombre(mov['descripcion'], f['tercero']),
                              'tercero': f['tercero'], 'ruc': f['ruc'], 'documento': f['documento'], 'monto': _n(f['saldo']),
@@ -620,7 +631,8 @@ def resumen(e, mes_txt=None, banco=None):
     params = [eid, desde, hasta] + ([banco] if banco else [])
     movs = db_query(f"""
         SELECT b.*, f.tipo AS pago_tipo, f.fecha AS pago_fecha, f.tercero_nombre, f.tercero_documento,
-               f.documento_numero, f.numero_operacion AS pago_operacion, f.monto AS pago_monto, f.usuario_nombre AS pago_usuario
+               f.documento_numero, f.numero_operacion AS pago_operacion,
+               COALESCE(f.monto_pagado, f.monto) AS pago_monto, f.usuario_nombre AS pago_usuario
         FROM bancos_movimientos b
         LEFT JOIN finanzas_pagos f ON f.id = b.finanzas_pago_id
         WHERE b.empresa_id = %s AND b.fecha BETWEEN %s AND %s {filtro_banco}
@@ -681,6 +693,10 @@ def resumen(e, mes_txt=None, banco=None):
 # ============================================================
 # ACCIONES
 # ============================================================
+def _simbolo(mov):
+    return 'US$' if mov.get('moneda') == 'USD' else 'S/'
+
+
 def _mov(cur, mov_id, eid):
     cur.execute("SELECT * FROM bancos_movimientos WHERE id = %s AND empresa_id = %s FOR UPDATE", (mov_id, eid))
     m = cur.fetchone()
@@ -702,13 +718,19 @@ def conciliar_manual(eid, mov_id, pago_id, nota=None):
             raise ErrorBancos('El cobro o pago de Finanzas no existe, está anulado o es de otra empresa.')
         if not _signo_ok(m['monto'], p):
             raise ErrorBancos('No coincide: un abono del banco solo se une a un cobro, y un cargo solo a un pago.')
+        p['moneda_pago'] = p.get('moneda_pago') or 'PEN'
+        if not _misma_moneda(m, p):
+            raise ErrorBancos('No coincide la moneda: este movimiento es de la cuenta en '
+                              f"{'dólares' if m['moneda'] == 'USD' else 'soles'} y el pago se hizo en "
+                              f"{'dólares' if p['moneda_pago'] == 'USD' else 'soles'}.")
+        p['monto'] = p['monto_pagado'] if p.get('monto_pagado') is not None else p['monto']
         cur.execute("SELECT id FROM bancos_movimientos WHERE finanzas_pago_id = %s", (pago_id,))
         if cur.fetchone():
             raise ErrorBancos('Ese cobro o pago ya está unido a otro movimiento del banco.')
         diferencia = abs(abs(m['monto']) - p['monto'])
         if diferencia > TOLERANCIA and not (nota or '').strip():
-            raise ErrorBancos(f'Los montos no son iguales (diferencia S/ {diferencia:.2f}). Escribe una nota para explicarlo.')
-        forma = 'Manual' + (f' (diferencia S/ {diferencia:.2f})' if diferencia > TOLERANCIA else '')
+            raise ErrorBancos(f'Los montos no son iguales (diferencia {_simbolo(m)} {diferencia:.2f}). Escribe una nota para explicarlo.')
+        forma = 'Manual' + (f' (diferencia {_simbolo(m)} {diferencia:.2f})' if diferencia > TOLERANCIA else '')
         cur.execute("""UPDATE bancos_movimientos SET estado = 'Conciliado', finanzas_pago_id = %s, forma = %s, nota = %s,
                        conciliado_por = %s, conciliado_en = NOW() WHERE id = %s""",
                     (pago_id, forma, (nota or '').strip() or None, _usuario(), mov_id))

@@ -1,6 +1,6 @@
 """
 Pedido de Erika del 19/10/2026: panel "Resumen de abastecimiento" en el formulario de OC
-(stock actual · pedido del cliente por cubrir · sugerido a comprar) y columnas N° PC / N° guía
+(stock actual · pedido del cliente por cubrir · sugerido a comprar) y columnas N° PC / N° Guía
 en las tablas de Guías y Facturas. Datos inventados, solo en la base local de pruebas.
 """
 import json
@@ -92,7 +92,7 @@ def test_guias_y_facturas_traen_pc_y_guia(admin):
 
 def test_pantallas_tienen_columnas_y_colores(admin):
     html = admin.get('/ventas').get_data(as_text=True)
-    assert html.count('<th>N° PC</th>') >= 2 and html.count('<th>N° factura</th>') >= 2 and '<th>N° guía</th>' in html
+    assert html.count('<th>N° PC</th>') >= 2 and html.count('<th>N° Factura</th>') >= 2 and '<th>N° Guía</th>' in html
     assert '<th>Comprobante</th>\r\n                        <th>Origen</th>' not in html
     flujo = admin.get('/compras').get_data(as_text=True)
     assert 'id="ocAbast"' in flujo and 'A comprar al proveedor' in flujo

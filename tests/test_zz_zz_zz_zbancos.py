@@ -230,3 +230,29 @@ def test_quitar_extracto_solo_admin(admin, vendedor, datos):
     # Los cobros y pagos de Finanzas no se tocan
     assert sql("SELECT COUNT(*) FROM finanzas_pagos WHERE id IN %s AND estado <> 'Anulado'",
                ((datos['c1'], datos['c2'], datos['c4'], datos['p1']),))[0][0] == 4
+
+
+def test_deuda_en_dolares_pagada_en_soles(admin, base):
+    """24/10: una deuda de US$ 100 pagada con S/ 380 (TC del proveedor 3.80) se concilia con el cargo de S/ 380
+    del banco en soles, no con US$ 100. Un movimiento de la cuenta en dólares no se une a un pago en soles."""
+    eid = base['emp']['KCF']
+    cp = sql("""INSERT INTO comprobantes_proveedor (tipo, numero, fecha, monto, ruc_proveedor, proveedor_nombre, estado,
+                    empresa_id, moneda, tipo_cambio)
+                VALUES ('Factura', 'FP-USD-1', '2026-10-02', 100, '20600011111', 'PROVEEDOR ACEROS S.A.C.', 'Pendiente', %s,
+                        'USD', 3.80) RETURNING id""", (eid,))[0][0]
+    r = admin.post('/finanzas/api/movimientos', json={
+        'tipo': 'PAGO', 'documento_id': cp, 'monto_pagado': 380, 'moneda_pago': 'PEN', 'tipo_cambio': 3.80,
+        'fecha': '2026-10-05', 'metodo': 'Transferencia', 'banco': 'BCP', 'numero_operacion': '880088'})
+    assert r.status_code == 200, r.json
+    pid = r.json['data']['id']
+    assert sql("SELECT monto, monto_pagado FROM finanzas_pagos WHERE id = %s", (pid,))[0] == (Decimal('100'), Decimal('380'))
+    csv = ("Fecha;Descripción operación;Monto;Operación - Número\n"
+           "05/10/2026;PAGO PROVEEDOR ACEROS;-380.00;880088\n").encode()
+    r = _subir(admin, eid, csv, nombre='bcp_oct_usd.csv')
+    assert r.status_code == 200, r.json
+    mov = sql("SELECT estado, finanzas_pago_id FROM bancos_movimientos WHERE numero_operacion = '880088'")[0]
+    assert mov == ('Conciliado', pid)
+    # La misma cifra en la cuenta en dólares no se une a un pago hecho en soles
+    from routes.bancos import _misma_moneda
+    assert _misma_moneda({'moneda': 'USD'}, {'moneda_pago': 'PEN'}) is False
+    assert _misma_moneda({'moneda': 'PEN'}, {'moneda_pago': None}) is True

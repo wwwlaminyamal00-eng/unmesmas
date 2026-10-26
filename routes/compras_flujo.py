@@ -35,6 +35,7 @@ from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, 
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
 from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
 from routes.multiempresa import filtrar_filas, filtro_sql, empresa_para_crear, empresa_filtro, empresa_id_por_ruc
+from routes.moneda import ErrorMoneda, moneda_y_tc, simbolo, en_soles, pago_en_moneda, codigo_moneda, monedas_de_cuentas
 
 compras_flujo_bp = Blueprint('compras_flujo', __name__)
 
@@ -54,7 +55,23 @@ TOLERANCIA_FACTURA = a_decimal(os.environ.get('COMPRAS_TOLERANCIA_FACTURA', '1.0
 # Días para avisar: pagado y la mercadería no llega / recibido y la factura no llega
 DIAS_AVISO = int(os.environ.get('COMPRAS_DIAS_AVISO', '3'))
 
-CONDICIONES = ('Contado', 'Contra entrega', 'Crédito')
+CONDICIONES = ('Contado', 'Contra entrega', 'Crédito', 'Adelanto 50%')
+# 24/10/2026 (equipo de Erika): hay proveedores a los que se paga el 50% antes y el saldo después (lo ve Finanzas)
+PORC_ADELANTO = Decimal('0.5')
+
+
+def es_adelanto(condicion):
+    return 'adelanto' in str(condicion or '').lower()
+
+
+def es_credito(condicion):
+    # Erika 25/10/2026: "las que el proveedor nos da al crédito deben pasar por mi aprobación, caso contrario no tienen validez"
+    c = str(condicion or '').lower()
+    return 'crédito' in c or 'credito' in c
+
+
+def monto_adelanto(total):
+    return redondear(a_decimal(total) * PORC_ADELANTO)
 MODALIDADES = ('Proveedor entrega', 'Nosotros recogemos')
 ESTADOS_ABIERTOS = ('Aprobada', 'Recibida parcial')
 ESTADOS_PC_FUERA = ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA', 'CERRADO', 'CERRADA')
@@ -229,7 +246,9 @@ def puede_comprar():
 
 
 def puede_aprobar():
-    return es_admin() or es_aprobador()
+    # 24/10/2026: también quien tiene "Aprobar" en Orden de compra en Usuarios y permisos (Hellen)
+    from routes.acceso import tiene_permiso
+    return es_admin() or es_aprobador() or tiene_permiso('ORDEN_COMPRA', 'puede_aprobar')
 
 
 def puede_pagar():
@@ -253,7 +272,7 @@ def _no_autorizado(msg):
 
 
 def _respuesta_error(e):
-    if isinstance(e, ErrorCompras):
+    if isinstance(e, (ErrorCompras, ErrorMoneda)):
         return jsonify({'success': False, 'error': str(e)}), 400
     if isinstance(e, PermissionError):
         return jsonify({'success': False, 'error': str(e)}), 403
@@ -658,7 +677,7 @@ SQL_OC_LISTA = """
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
            oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, oc.num_cotizacion, oc.notas,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
-           oc.subtotal, oc.igv, oc.total, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
+           oc.subtotal, oc.igv, oc.total, COALESCE(oc.moneda, 'PEN') AS moneda, oc.tipo_cambio, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
            oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at, oc.updated_at,
            oc.responsable_recojo_id, oc.responsable_recojo, oc.responsable_recojo_por, oc.responsable_recojo_en,
            COALESCE(it.pedidos, oc.pc_numeros) AS pc_numeros, COALESCE(it.cotizaciones, oc.cotizaciones_cliente) AS cotizaciones_cliente,
@@ -706,6 +725,9 @@ def _paso(o):
         return {'codigo': 'aprobar', 'texto': 'Aprobar', 'quien': 'Supervisora'}
     if estado in ESTADOS_ABIERTOS and contado and pagado < total:
         return {'codigo': 'pagar', 'texto': 'Pagar al proveedor (es al contado)', 'quien': 'Finanzas'}
+    if estado in ESTADOS_ABIERTOS and es_adelanto(o.get('condicion_pago')) and pagado < monto_adelanto(total) \
+            and not _es_intercompany(o.get('ruc')):
+        return {'codigo': 'pagar', 'texto': 'Pagar el adelanto del 50% (el saldo lo paga Finanzas después)', 'quien': 'Finanzas'}
     if estado in ESTADOS_ABIERTOS:
         texto = 'Recibir lo que falta' if estado == 'Recibida parcial' else (
             'Recoger y recibir en sede' if o.get('modalidad_entrega') == 'Nosotros recogemos' else 'Recibir en sede')
@@ -723,6 +745,10 @@ def _oc_dict(o):
     d = _fila(o)
     d['paso'] = _paso(o)
     d['saldo_pago'] = float(max(a_decimal(o['total']) - a_decimal(o['pagado']), 0))
+    if es_adelanto(o.get('condicion_pago')):
+        d['adelanto'] = float(monto_adelanto(o['total']))
+        d['falta_adelanto'] = float(max(monto_adelanto(o['total']) - a_decimal(o['pagado']), 0))
+    d['solo_admin_aprueba'] = es_credito(o.get('condicion_pago'))
     d['intercompany'] = _es_intercompany(o.get('ruc'))
     d['falta_pago_intercompany'] = bool(d['intercompany'] and (o.get('condicion_pago') or '').startswith('Contado')
                                         and d['saldo_pago'] > 0)
@@ -778,7 +804,9 @@ def api_catalogos():
                         'proveedores': [_fila(p) for p in proveedores], 'usuarios': [_fila(u) for u in usuarios],
                         'registro_sunat': [_fila(r) for r in registro], 'usuario_id': session.get('usuario_id'),
                         'metodos': list(METODOS_PAGO), 'alerta_precio_pct': float(ALERTA_PRECIO_PCT),
-                        'motivos_sin_pedido': list(MOTIVOS_SIN_PEDIDO)})
+                        'motivos_sin_pedido': list(MOTIVOS_SIN_PEDIDO),
+                        # 24/10/2026: monedas de las cuentas de cada empresa (KCF solo soles; AGD soles y dólares)
+                        'monedas_cuenta': {str(e['id']): monedas_de_cuentas(e['id']) for e in empresas}})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1028,14 +1056,16 @@ def api_orden_detalle(oc_id):
             FROM com_recepciones r LEFT JOIN almacenes a ON a.id = r.almacen_id WHERE r.orden_compra_id = %s ORDER BY r.id
         """, (oc_id,))]
         o['pagos'] = [_fila(p) for p in db_query("""
-            SELECT fecha, monto, metodo, banco, numero_operacion, usuario_nombre, documento_numero FROM finanzas_pagos
+            SELECT fecha, monto, metodo, banco, numero_operacion, usuario_nombre, documento_numero,
+                   moneda_pago, tipo_cambio, monto_pagado FROM finanzas_pagos
             WHERE tipo = 'PAGO' AND estado <> 'Anulado' AND ((documento_tabla = 'ordenes_compra' AND documento_id = %s)
                OR (documento_tabla = 'comprobantes_proveedor' AND documento_id IN
                    (SELECT id FROM comprobantes_proveedor WHERE orden_compra_id = %s)))
             ORDER BY fecha, id
         """, (oc_id, oc_id))]
         o['facturas'] = [_fila(f) for f in db_query("""
-            SELECT id, tipo, numero, fecha, monto, monto_esperado, cuadra, estado, fecha_vencimiento
+            SELECT id, tipo, numero, fecha, monto, monto_esperado, cuadra, estado, fecha_vencimiento,
+                   COALESCE(moneda, 'PEN') AS moneda, tipo_cambio
             FROM comprobantes_proveedor WHERE orden_compra_id = %s ORDER BY id
         """, (oc_id,))]
         o['incidencias'] = [_fila(i) for i in db_query("""
@@ -1158,7 +1188,7 @@ def api_orden_guardar():
         almacen_id = _entero(d.get('almacen_entrega_id'), 'la sede donde debe terminar la mercadería')
         condicion = d.get('condicion_pago') or ''
         if condicion not in CONDICIONES:
-            raise ErrorCompras('Elige la condición de pago: Contado, Contra entrega o Crédito.')
+            raise ErrorCompras('Elige la condición de pago: Contado, Contra entrega, Crédito o Adelanto 50%.')
         dias = int(a_decimal(d.get('dias_credito') or 0))
         if condicion == 'Crédito' and dias <= 0:
             raise ErrorCompras('Escribe los días de crédito que da el proveedor.')
@@ -1178,6 +1208,9 @@ def api_orden_guardar():
             raise ErrorCompras('Escribe la fecha en que el proveedor entrega o tiene lista la mercadería.')
         enviar = bool(d.get('enviar'))
         oc_id = d.get('id') or None
+        # Moneda de la OC (24/10/2026): los precios se escriben en la moneda que vende el proveedor
+        moneda, tc = moneda_y_tc(d)
+        sim = simbolo(moneda)
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SELECT id FROM erp_empresas WHERE id = %s", (empresa_id,))
@@ -1224,7 +1257,7 @@ def api_orden_guardar():
                 """, valores + (oc_id,))
                 oc = cur.fetchone()
                 cur.execute("DELETE FROM ordenes_compra_items WHERE orden_compra_id = %s", (oc_id,))
-                _historial(cur, oc_id, 'Corregida', f"Total S/ {totales['total']}")
+                _historial(cur, oc_id, 'Corregida', f"Total {sim} {totales['total']}")
             else:
                 prefijo = f"OC-{datetime.now().strftime('%Y%m%d')}-"
                 bloquear_numeracion(cur, 'ordenes_compra:' + prefijo)
@@ -1243,7 +1276,9 @@ def api_orden_guardar():
                 """, valores + (numero, numero, int(numero[-4:]), uid, unom, almacen_id, str(fecha_compromiso)))
                 oc = cur.fetchone()
                 oc_id = oc['id']
-                _historial(cur, oc_id, 'Creada', f"{tipo} · Total S/ {totales['total']}")
+                _historial(cur, oc_id, 'Creada', f"{tipo} · Total {sim} {totales['total']}"
+                                                 + (f" (TC {tc})" if moneda == 'USD' else ''))
+            cur.execute("UPDATE ordenes_compra SET moneda = %s, tipo_cambio = %s WHERE id = %s", (moneda, tc, oc_id))
             for i in items:
                 cur.execute("""
                     INSERT INTO ordenes_compra_items (orden_compra_id, producto_id, producto, unidad, cantidad, precio_unitario,
@@ -1260,7 +1295,7 @@ def api_orden_guardar():
             alertas = _alertas_precio(cur, oc_id, items)
             mensaje = f"Orden {oc['numero_orden']} guardada como borrador."
             if enviar:
-                mensaje = _enviar(cur, oc_id, totales['total'], tipo, alertas)
+                mensaje = _enviar(cur, oc_id, en_soles(totales['total'], moneda, tc), tipo, alertas)
         return jsonify({'success': True, 'id': oc_id, 'numero': oc['numero_orden'], 'message': mensaje, 'alertas': alertas})
     except Exception as e:
         return _respuesta_error(e)
@@ -1286,7 +1321,7 @@ def api_orden_enviar(oc_id):
     try:
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SELECT estado, flujo, total, tipo_compra FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            cur.execute("SELECT estado, flujo, total, tipo_compra, moneda, tipo_cambio FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
             oc = cur.fetchone()
             if not oc or oc['flujo'] != 'v2':
                 raise ErrorCompras('La orden no existe.')
@@ -1294,7 +1329,7 @@ def api_orden_enviar(oc_id):
                 raise ErrorCompras('Solo se envían órdenes en Borrador.')
             cur.execute("SELECT producto_id, producto AS descripcion, precio_unitario FROM ordenes_compra_items WHERE orden_compra_id = %s", (oc_id,))
             alertas = _alertas_precio(cur, oc_id, cur.fetchall())
-            msg = _enviar(cur, oc_id, oc['total'], oc['tipo_compra'], alertas)
+            msg = _enviar(cur, oc_id, en_soles(oc['total'], oc['moneda'], oc['tipo_cambio']), oc['tipo_compra'], alertas)
         return jsonify({'success': True, 'message': msg})
     except Exception as e:
         return _respuesta_error(e)
@@ -1311,15 +1346,16 @@ def api_orden_aprobar(oc_id):
         uid, unom = _usuario()
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SELECT numero_orden, estado, flujo, usuario_id FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
+            cur.execute("SELECT numero_orden, estado, flujo, usuario_id, condicion_pago FROM ordenes_compra WHERE id = %s FOR UPDATE", (oc_id,))
             oc = cur.fetchone()
             if not oc or oc['flujo'] != 'v2':
                 raise ErrorCompras('La orden no existe.')
             if oc['estado'] != 'Por aprobar':
                 raise ErrorCompras(f'La orden está "{oc["estado"]}": no está esperando aprobación.')
             if aprobar:
-                if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
-                    raise PermissionError('No puedes aprobar una orden que tú misma hiciste. Pídele a otra supervisora.')
+                # Erika 25/10/2026: Hellen sí aprueba sus propias OC; las de crédito solo las aprueba la administradora
+                if es_credito(oc['condicion_pago']) and not es_admin():
+                    raise PermissionError('Esta orden es a crédito: solo Erika (administradora) puede aprobarla. Sin su aprobación no tiene validez.')
                 cur.execute("""UPDATE ordenes_compra SET estado = 'Aprobada', aprobado_por_id = %s, aprobado_por = %s,
                                aprobado_en = NOW(), updated_at = NOW() WHERE id = %s""", (uid, unom, oc_id))
                 _historial(cur, oc_id, 'Aprobada', motivo or None)
@@ -1377,8 +1413,7 @@ def api_orden_pago(oc_id):
         return _no_autorizado('Solo Finanzas o una supervisora registra pagos.')
     d = request.get_json(silent=True) or {}
     try:
-        monto = redondear(d.get('monto'))
-        if monto <= 0:
+        if a_decimal(d.get('monto_pagado') if d.get('monto_pagado') not in (None, '') else d.get('monto')) <= 0:
             raise ErrorCompras('El monto debe ser mayor que 0.')
         metodo = d.get('metodo') or 'Transferencia'
         if metodo not in METODOS_PAGO:
@@ -1397,10 +1432,17 @@ def api_orden_pago(oc_id):
         uid, unom = _usuario()
         with db_tx() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("""SELECT oc.numero_orden, oc.estado, oc.flujo, oc.usuario_id, oc.total, p.razon_social, p.ruc
+            cur.execute("""SELECT oc.numero_orden, oc.estado, oc.flujo, oc.usuario_id, oc.total, p.razon_social, p.ruc,
+                                  COALESCE(oc.moneda, 'PEN') AS moneda, oc.empresa_id
                            FROM ordenes_compra oc LEFT JOIN proveedores p ON p.id = oc.proveedor_id
                            WHERE oc.id = %s FOR UPDATE OF oc""", (oc_id,))
             oc = cur.fetchone()
+            # OC en dólares pagada en soles con el TC que da el proveedor (24/10/2026): la deuda baja en dólares
+            if oc:
+                monto, moneda_pago, tc_pago, monto_pagado = pago_en_moneda(oc['moneda'], d, oc['empresa_id'])
+                if monto <= 0:
+                    raise ErrorCompras('El monto debe ser mayor que 0.')
+            sim = simbolo(oc['moneda'] if oc else 'PEN')
             if not oc or oc['flujo'] != 'v2':
                 raise ErrorCompras('La orden no existe.')
             if oc['estado'] in ('Borrador', 'Por aprobar', 'Anulada'):
@@ -1408,8 +1450,10 @@ def api_orden_pago(oc_id):
             if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
                 raise PermissionError('Quien hizo la orden no puede registrar su pago. Lo hace Finanzas.')
             saldo = redondear(a_decimal(oc['total']) - _pagado_oc(oc_id))
+            if moneda_pago != oc['moneda'] and Decimal('0') < monto - saldo <= Decimal('0.02'):
+                monto = saldo     # redondeo del tipo de cambio: paga el saldo exacto
             if monto > saldo:
-                raise ErrorCompras(f'El monto (S/ {monto}) supera lo que falta pagar de la orden (S/ {max(saldo, 0)}).')
+                raise ErrorCompras(f'El monto ({sim} {monto}) supera lo que falta pagar de la orden ({sim} {max(saldo, 0)}).')
             cur.execute("""
                 INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre,
                     tercero_documento, fecha, monto, metodo, banco, numero_operacion, observaciones, usuario_id, usuario_nombre)
@@ -1419,12 +1463,14 @@ def api_orden_pago(oc_id):
                   normalizar_banco(d.get('banco')), operacion or None, (d.get('observaciones') or '').strip() or None,
                   uid, unom))
             # El pago queda en la empresa de la orden de compra
-            cur.execute("UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM ordenes_compra WHERE id = %s) WHERE id = %s",
-                        (oc_id, cur.fetchone()['id']))
-            _historial(cur, oc_id, 'Pago registrado', f'S/ {monto} · {metodo} · Op. {operacion or "-"}')
+            cur.execute("""UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM ordenes_compra WHERE id = %s),
+                                  moneda_pago = %s, tipo_cambio = %s, monto_pagado = %s WHERE id = %s""",
+                        (oc_id, moneda_pago, tc_pago, monto_pagado, cur.fetchone()['id']))
+            pagado_txt = f'{sim} {monto}' + (f' (pagado {simbolo(moneda_pago)} {monto_pagado} con TC {tc_pago})' if tc_pago else '')
+            _historial(cur, oc_id, 'Pago registrado', f'{pagado_txt} · {metodo} · Op. {operacion or "-"}')
         resto = saldo - monto
-        return jsonify({'success': True, 'message': f'Pago registrado. ' + (
-            f'Falta pagar S/ {resto}.' if resto > 0 else 'La orden quedó pagada: ya se puede recoger o recibir.')})
+        return jsonify({'success': True, 'message': f'Pago registrado: {pagado_txt}. ' + (
+            f'Falta pagar {sim} {resto}.' if resto > 0 else 'La orden quedó pagada: ya se puede recoger o recibir.')})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1606,6 +1652,10 @@ def api_orden_recibir(oc_id):
                     and _pagado_oc(oc_id) < a_decimal(oc['total'])):
                 raise ErrorCompras('Esta orden es al contado y Finanzas todavía no registra el pago completo. '
                                    'Si el proveedor entregó sin pago, avisa a tu supervisora.')
+            if (es_adelanto(oc['condicion_pago']) and not _es_intercompany(oc.get('proveedor_ruc'))
+                    and _pagado_oc(oc_id) < monto_adelanto(oc['total'])):
+                raise ErrorCompras('Esta orden es con adelanto del 50% y Finanzas todavía no registra el adelanto. '
+                                   'Si el proveedor entregó sin adelanto, avisa a tu supervisora.')
             cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s AND guia_proveedor = %s", (oc_id, guia))
             if cur.fetchone():
                 raise ErrorCompras(f'La guía {guia} ya se registró en esta orden.')
@@ -1842,6 +1892,9 @@ def api_orden_factura(oc_id):
                 raise ErrorCompras('La orden no existe.')
             if oc['estado'] in ('Borrador', 'Por aprobar', 'Anulada'):
                 raise ErrorCompras(f'La orden está "{oc["estado"]}". La factura se registra cuando la orden está aprobada.')
+            # La factura viene en la moneda de la OC; en dólares lleva el TC SUNAT de su fecha (para el registro de compras)
+            moneda_f, tc_f = moneda_y_tc({'moneda': oc.get('moneda') or 'PEN', 'tipo_cambio': d.get('tipo_cambio')})
+            sim = simbolo(moneda_f)
             ruc = (oc['ruc'] or '').strip()
             cur.execute("""SELECT 1 FROM comprobantes_proveedor WHERE numero = %s AND COALESCE(ruc_proveedor, '') = %s
                            AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA')""", (numero, ruc))
@@ -1865,8 +1918,8 @@ def api_orden_factura(oc_id):
             if not cuadra and not d.get('aceptar_diferencia'):
                 return jsonify({'success': False, 'codigo': 'no_cuadra', 'esperado': float(esperado), 'monto': float(monto),
                                 'diferencia': float(redondear(monto - esperado)),
-                                'error': f'La factura no cuadra: escribiste S/ {monto} y según lo recibido debería ser '
-                                         f'S/ {esperado} (diferencia S/ {redondear(monto - esperado)}). Revisa el total y corrígelo.'}), 409
+                                'error': f'La factura no cuadra: escribiste {sim} {monto} y según lo recibido debería ser '
+                                         f'{sim} {esperado} (diferencia {sim} {redondear(monto - esperado)}). Revisa el total y corrígelo.'}), 409
             if not cuadra and len(motivo_dif) < 5:
                 raise ErrorCompras('Escribe por qué registras la factura con diferencia (por ejemplo: "el proveedor cobró flete").')
             dias_oc = int(oc['dias_credito'] or 0)
@@ -1883,6 +1936,7 @@ def api_orden_factura(oc_id):
                                          f'Registrada con diferencia: {motivo_dif}' if not cuadra else '') if x) or None,
                   uid, oc['empresa_id'], vence, esperado, cuadra))
             cp_id = cur.fetchone()['id']
+            cur.execute("UPDATE comprobantes_proveedor SET moneda = %s, tipo_cambio = %s WHERE id = %s", (moneda_f, tc_f, cp_id))
             # Los pagos adelantados de la OC pasan a esta factura (así Cuentas por pagar muestra el saldo real)
             cur.execute("""SELECT id, monto FROM finanzas_pagos WHERE documento_tabla = 'ordenes_compra' AND documento_id = %s
                            AND tipo = 'PAGO' AND estado <> 'Anulado' ORDER BY fecha, id FOR UPDATE""", (oc_id,))
@@ -1897,15 +1951,16 @@ def api_orden_factura(oc_id):
                 cur.execute("UPDATE comprobantes_proveedor SET estado = 'Pagado' WHERE id = %s", (cp_id,))
             if not cuadra:
                 _incidencia(cur, oc_id, 'Factura no cuadra',
-                            f'La factura {numero} dice S/ {monto} y según lo recibido debería ser S/ {esperado} '
-                            f'(diferencia S/ {redondear(monto - esperado)}). Pide la corrección o una nota de crédito.',
+                            f'La factura {numero} dice {sim} {monto} y según lo recibido debería ser {sim} {esperado} '
+                            f'(diferencia {sim} {redondear(monto - esperado)}). Pide la corrección o una nota de crédito.',
                             comprobante_id=cp_id, monto=redondear(monto - esperado))
-            _historial(cur, oc_id, 'Factura registrada', f'{tipo} {numero} · S/ {monto}' + ('' if cuadra else f' · NO CUADRA (esperado S/ {esperado})'))
+            _historial(cur, oc_id, 'Factura registrada', f'{tipo} {numero} · {sim} {monto}' + (f' · TC {tc_f}' if tc_f else '')
+                       + ('' if cuadra else f' · NO CUADRA (esperado {sim} {esperado})'))
             _intentar_cerrar(cur, oc_id)
         msg = f'Factura {numero} registrada.'
-        msg += ' Cuadra con lo recibido. ✔' if cuadra else f' OJO: no cuadra, debería ser S/ {esperado}. Quedó como diferencia por resolver.'
+        msg += ' Cuadra con lo recibido. ✔' if cuadra else f' OJO: no cuadra, debería ser {sim} {esperado}. Quedó como diferencia por resolver.'
         if aplicado:
-            msg += f' Se le aplicó el pago adelantado de S/ {aplicado}.'
+            msg += f' Se le aplicó el pago adelantado de {sim} {aplicado}.'
         return jsonify({'success': True, 'message': msg, 'cuadra': cuadra, 'esperado': float(esperado), 'id': cp_id})
     except Exception as e:
         return _respuesta_error(e)
@@ -1914,6 +1969,7 @@ def api_orden_factura(oc_id):
 def _factura_proveedor(where, params):
     filas = db_query(f"""
         SELECT cp.id, cp.tipo, cp.numero, cp.fecha, cp.monto, cp.monto_esperado, cp.cuadra, cp.estado,
+               COALESCE(cp.moneda, 'PEN') AS moneda, cp.tipo_cambio,
                cp.fecha_vencimiento, cp.observaciones, cp.created_at, cp.ruc_proveedor, cp.proveedor_nombre,
                cp.orden_compra_id, cp.orden_compra_numero, u.nombre_completo AS registrado_por
         FROM comprobantes_proveedor cp LEFT JOIN usuarios u ON u.id::text = cp.creado_por::text
@@ -1982,10 +2038,11 @@ def api_ordenes_exportar():
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=';')
         w.writerow(['OC', 'Fecha', 'Empresa', 'Sede', 'Proveedor', 'RUC', 'Tipo', 'Pedidos', 'Clientes', 'Condición',
-                    'Total', 'Pagado', 'Estado', 'Siguiente paso', 'Diferencias abiertas'])
+                    'Moneda', 'Tipo de cambio', 'Total', 'Pagado', 'Estado', 'Siguiente paso', 'Diferencias abiertas'])
         for o in datos:
             w.writerow([o['numero'], o['fecha'], o['empresa'], o['sede'], o['proveedor'], o['ruc'], o['tipo_compra'],
-                        o['pedidos'], o['clientes'], o['condicion_pago'], o['total'], o['pagado'], o['estado'],
+                        o['pedidos'], o['clientes'], o['condicion_pago'], o.get('moneda') or 'PEN', o.get('tipo_cambio') or '',
+                        o['total'], o['pagado'], o['estado'],
                         o['paso']['texto'], o['incidencias']])
         return Response('﻿' + buf.getvalue(), mimetype='text/csv',
                         headers={'Content-Disposition': f'attachment; filename=ordenes_compra_{date.today():%Y%m%d}.csv'})

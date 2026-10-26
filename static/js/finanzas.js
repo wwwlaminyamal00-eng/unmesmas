@@ -112,7 +112,8 @@
     }
 
     // Monto con su moneda (S/ o $), como en el Excel de Erika
-    const dinero = (x, v) => x.moneda === 'USD' ? '$ ' + Number(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : soles(v);
+    const dinero = (x, v) => x.moneda === 'USD' ? 'US$ ' + Number(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : soles(v);
+    const dineroM = (m, v) => dinero({ moneda: m }, v);
 
     function celdaProductos(x) {
         const p = x.productos || [];
@@ -138,13 +139,19 @@
         } else if (x.saldo > 0) {
             l.push('<span class="seg-chip seg-falta" title="Falta ingresar la factura en el portal de proveedores del cliente">✖ Falta portal</span>');
         }
+        // N° MIGO (Erika 25/10/2026): solo para clientes que lo piden (check en su ficha)
+        if (x.numero_migo) {
+            l.push(`<small title="N° MIGO / conformidad del cliente">MIGO <b>${esc(x.numero_migo)}</b></small>`);
+        } else if (x.pide_migo && x.saldo > 0) {
+            l.push('<span class="seg-chip seg-falta" title="Este cliente no paga sin el N° MIGO de su conformidad: pídelo y anótalo con ✏️">✖ Falta MIGO</span>');
+        }
         if (x.fecha_programada) l.push(`<small title="Fecha en que el cliente programó el pago">Pago prog. <b>${fecha(x.fecha_programada)}</b></small>`);
         if (x.retencion_numero) {
             l.push(`<small title="Comprobante de retención del cliente: ${esc(x.retencion_numero)} por ${dinero(x, x.retencion)}">Ret. <b>${esc(x.retencion_numero)}</b></small>`);
         } else if (x.retencion > 0) {
             l.push('<small class="seg-pend" title="Esta factura tiene retención del 3%: anota el N° del comprobante de retención cuando el cliente lo envíe">Ret. 3%: falta N°</small>');
         }
-        if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
+        if (PUEDE_OPERAR) l.push(`<button class="btn-mini sec" title="Portal, N° MIGO, fecha programada de pago y retención" data-seg="${x.id}">✏️</button>`);
         return l.length ? l.join('') : '<span class="fin-gris">—</span>';
     }
 
@@ -162,6 +169,7 @@
             <div class="seg-sub">${esc(x.documento)} · ${esc(x.tercero)} · ${dinero(x, x.total)}</div>
             <label class="seg-check"><input type="checkbox" id="segPortal" ${x.portal_ingresado ? 'checked' : ''}> Ingresada en el portal del cliente</label>
             <label class="seg-campo" id="segPortalFechaCaja">Fecha de ingreso al portal<input type="date" id="segPortalFecha" value="${x.portal_fecha ? String(x.portal_fecha).slice(0, 10) : ''}"></label>
+            ${x.pide_migo || x.numero_migo ? `<label class="seg-campo">N° MIGO / conformidad<input type="text" id="segMigo" maxlength="40" placeholder="El que envía el cliente" value="${esc(x.numero_migo || '')}"></label>` : ''}
             <label class="seg-campo">Fecha programada de pago<input type="date" id="segProgramada" value="${x.fecha_programada ? String(x.fecha_programada).slice(0, 10) : ''}"></label>
             <div class="seg-grupo">Retención del 3% (comprobante que envía el cliente)</div>
             <label class="seg-campo">N° comprobante de retención<input type="text" id="segRetNum" maxlength="40" placeholder="Ej. R001-00006805" value="${esc(x.retencion_numero || '')}"></label>
@@ -183,7 +191,8 @@
                 await api('/finanzas/api/seguimiento_cobro', { method: 'POST', body: JSON.stringify({
                     id: x.id, portal_ingresado: chk.checked, portal_fecha: d.querySelector('#segPortalFecha').value,
                     fecha_programada: d.querySelector('#segProgramada').value, retencion_numero: d.querySelector('#segRetNum').value,
-                    retencion_monto: d.querySelector('#segRetMonto').value }) });
+                    retencion_monto: d.querySelector('#segRetMonto').value,
+                    ...(d.querySelector('#segMigo') ? { numero_migo: d.querySelector('#segMigo').value } : {}) }) });
                 d.remove();
                 aviso('Seguimiento guardado', 'success');
                 cargarCuentas('cxc');
@@ -277,7 +286,8 @@
                 <td>${esc(m.documento_numero)}</td>
                 <td class="fin-ocpc">${ocPcMovimiento(m)}</td>
                 <td class="left">${esc(m.tercero_nombre)}</td>
-                <td class="num">${soles(m.monto)}</td>
+                <td class="num">${m.moneda_pago && m.moneda_pago !== 'PEN' || (m.monto_pagado && Number(m.monto_pagado) !== Number(m.monto))
+                    ? `${dineroM(m.moneda_pago, m.monto_pagado)}${m.tipo_cambio ? `<small>TC ${Number(m.tipo_cambio).toFixed(3)}</small>` : ''}` : soles(m.monto)}</td>
                 <td>${esc(m.metodo)}</td>
                 <td>${esc([m.banco, m.numero_operacion ? 'Op. ' + m.numero_operacion : '', m.fecha_aviso ? 'Avisó ' + fecha(m.fecha_aviso) : ''].filter(Boolean).join(' · ')) || '—'}</td>
                 <td>${esc(m.usuario_nombre || '')}</td>
@@ -348,10 +358,11 @@
                 fila('CCI', esc(doc.cci || '—'), 'fd-num');
         }
         ficha += fila(`N° ${esc((doc.tipo_comprobante || 'documento').toLowerCase())}`, esc(doc.documento || '—'), 'fd-num') +
-            fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', soles(doc.total), 'fd-monto');
-        if (esCxc && doc.retencion) ficha += fila('Retención', soles(doc.retencion));
-        if (doc.notas_credito) ficha += fila('Nota de crédito', soles(doc.notas_credito));
-        ficha += fila(esCxc ? 'Falta cobrar' : 'Falta pagar', soles(doc.saldo), 'fd-monto ' + (doc.saldo > 0 ? 'fd-falta' : 'fd-ok'));
+            fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', dinero(doc, doc.total), 'fd-monto');
+        if (esCxc && doc.retencion) ficha += fila('Retención', dinero(doc, doc.retencion));
+        if (doc.notas_credito) ficha += fila('Nota de crédito', dinero(doc, doc.notas_credito));
+        ficha += fila(esCxc ? 'Falta cobrar' : 'Falta pagar', dinero(doc, doc.saldo), 'fd-monto ' + (doc.saldo > 0 ? 'fd-falta' : 'fd-ok'));
+        if (doc.moneda === 'USD' && doc.tipo_cambio) ficha += fila('Tipo de cambio del documento', Number(doc.tipo_cambio).toFixed(3), 'fd-num');
         if (!esCxc) {
             if (cuentaDeRelleno(doc.numero_cuenta, doc.cci)) {
                 ficha += '<div class="fd-nota fd-alerta">⚠️ La cuenta o el CCI parecen de relleno (números repetidos). Confírmalos con el proveedor y corrígelos en Maestros ▸ Proveedores antes de pagar.</div>';
@@ -365,6 +376,14 @@
         cajaDoc.innerHTML = ficha;
         document.getElementById('pagoMonto').value = doc.saldo.toFixed(2);
         document.getElementById('pagoMonto').max = doc.saldo.toFixed(2);
+        // 24/10/2026 (Erika): factura en dólares que se paga o cobra en soles con el tipo de cambio
+        pagoDoc = { moneda: doc.moneda === 'USD' ? 'USD' : 'PEN', saldo: doc.saldo };
+        document.getElementById('pagoMonedaWrap').style.display = pagoDoc.moneda === 'USD' ? '' : 'none';
+        document.getElementById('pagoMonedaPago').value = pagoDoc.moneda;
+        document.getElementById('pagoMonedaInfo').textContent = pagoDoc.moneda === 'USD'
+            ? 'Solo AGD tiene cuenta en dólares. Si se paga en soles, escribe el tipo de cambio (el del proveedor, si te dio uno).' : '';
+        document.getElementById('pagoTC').value = doc.tipo_cambio ? Number(doc.tipo_cambio).toFixed(3) : '';
+        pintarMonedaPago();
         document.getElementById('pagoFecha').value = hoyISO();
         ['pagoBanco', 'pagoOperacion', 'pagoAviso', 'pagoObs'].forEach(i => { document.getElementById(i).value = ''; });
         document.getElementById('pagoAvisoTip').style.display = esCxc ? '' : 'none';
@@ -375,12 +394,50 @@
         abrir('pagoModal');
     }
 
+    let pagoDoc = { moneda: 'PEN', saldo: 0 };
+    const monPago = () => pagoDoc.moneda === 'USD' ? document.getElementById('pagoMonedaPago').value : 'PEN';
+    function montoEnDoc() {
+        const m = parseFloat(document.getElementById('pagoMonto').value), tc = parseFloat(document.getElementById('pagoTC').value);
+        if (monPago() === pagoDoc.moneda) return m;
+        return tc > 0 ? Math.round(m / tc * 100) / 100 : NaN;
+    }
+    function equivPago() {
+        const eq = document.getElementById('pagoEquiv');
+        if (monPago() === pagoDoc.moneda) { eq.textContent = ''; return; }
+        const v = montoEnDoc();
+        eq.textContent = v > 0 ? `Se descuenta ${dineroM('USD', v)} del saldo en dólares.` : 'Escribe el tipo de cambio.';
+    }
+    async function pintarMonedaPago(cambio) {
+        const otra = monPago() !== pagoDoc.moneda;
+        document.getElementById('pagoTCWrap').style.display = otra ? '' : 'none';
+        document.getElementById('pagoMontoEt').textContent = `Monto (${monPago() === 'USD' ? 'US$' : 'S/'})`;
+        const inpTC = document.getElementById('pagoTC'), inpM = document.getElementById('pagoMonto');
+        if (otra && !inpTC.value && window.Moneda) {
+            const tc = await Moneda.tcSunat(document.getElementById('pagoFecha').value || hoyISO());
+            if (tc && !inpTC.value) inpTC.value = tc.toFixed(3);
+        }
+        const tc = parseFloat(inpTC.value);
+        if (cambio !== false) {
+            inpM.value = (otra ? (tc > 0 ? pagoDoc.saldo * tc : 0) : pagoDoc.saldo).toFixed(2);
+            inpM.max = otra ? (tc > 0 ? (pagoDoc.saldo * tc + 0.05).toFixed(2) : '') : pagoDoc.saldo.toFixed(2);
+        }
+        equivPago();
+    }
+    document.addEventListener('change', e => { if (e.target.id === 'pagoMonedaPago') pintarMonedaPago(); });
+    document.addEventListener('input', e => {
+        if (e.target.id === 'pagoTC') pintarMonedaPago();
+        else if (e.target.id === 'pagoMonto') equivPago();
+    });
+
     async function guardarPago() {
         const btn = document.getElementById('pagoGuardar');
         const monto = parseFloat(document.getElementById('pagoMonto').value);
         const max = parseFloat(document.getElementById('pagoMonto').max);
+        const otra = monPago() !== pagoDoc.moneda;
         if (!(monto > 0)) { aviso('Ingresa un monto mayor a 0', 'warning'); return; }
-        if (monto > max + 0.001) { aviso('El monto no puede superar el saldo pendiente', 'warning'); return; }
+        if (otra && !(parseFloat(document.getElementById('pagoTC').value) > 0)) { aviso('Escribe el tipo de cambio', 'warning'); return; }
+        if (!otra && monto > max + 0.001) { aviso('El monto no puede superar el saldo pendiente', 'warning'); return; }
+        if (otra && montoEnDoc() > pagoDoc.saldo + 0.02) { aviso('El monto no puede superar el saldo pendiente', 'warning'); return; }
         const conBanco = ['Transferencia', 'Depósito', 'Yape/Plin'].includes(document.getElementById('pagoMetodo').value);
         if (document.getElementById('pagoTipo').value === 'COBRO' && conBanco &&
             !document.getElementById('pagoOperacion').value.trim() && !document.getElementById('pagoAviso').value) {
@@ -394,7 +451,8 @@
                 body: JSON.stringify({
                     tipo: document.getElementById('pagoTipo').value,
                     documento_id: document.getElementById('pagoDocId').value,
-                    monto,
+                    monto: otra ? montoEnDoc() : monto, monto_pagado: monto, moneda_pago: monPago(),
+                    tipo_cambio: otra ? document.getElementById('pagoTC').value : null,
                     fecha: document.getElementById('pagoFecha').value,
                     metodo: document.getElementById('pagoMetodo').value,
                     banco: document.getElementById('pagoBanco').value,

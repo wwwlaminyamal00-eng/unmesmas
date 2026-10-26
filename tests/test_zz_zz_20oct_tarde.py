@@ -99,12 +99,13 @@ def test_fecha_de_cita_del_despacho(vendedor):
 def test_pantalla_de_entregas_18h():
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     for t in ('ent-pendiente', 'ent-despachado', 'function estadoCompraHTML', '🛒 Pendiente de compra', '>Generar compra</button>',
-              "'/compras?tab=pedidos&pc='", '>Generar factura</button>', 'function ponerCitaDespacho', 'N° guía / N° factura' if False else 'guiaFacturaDespachoHTML'):
+              "'/compras?tab=pedidos&pc='", '>Generar factura</button>', 'function ponerCitaDespacho', 'function guiaDespachoHTML', 'function facturaDespachoHTML', 'function ordenarEntregas'):
         assert t in js, t
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     tabla = html[html.index('<div id="despachar"'):]
     tabla = tabla[:tabla.index('</thead>')]
-    orden = [tabla.index(f'<th>{t}</th>') for t in ('N° PC', 'N° cotización', 'Cliente', 'N° guía / N° factura', 'Distrito',
+    # 25/10/2026: N° Guía y N° Factura en columnas separadas (Erika: "para poder filtrar y ordenar")
+    orden = [tabla.index(f'>{t}</th>') for t in ('N° PC', 'N° cotización', 'Cliente', 'N° Guía', 'N° Factura', 'Distrito',
                                                    'Estado compra', 'Fecha de cita', 'Acción')]
     assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')

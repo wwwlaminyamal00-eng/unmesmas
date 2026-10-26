@@ -140,9 +140,10 @@ class TestCotizaciones:
         assert aprobador.get('/ventas/api/cotizaciones/revision').json['data']
         r = aprobador.post(f'/ventas/api/cotizaciones/{cid}/validar')
         assert r.status_code == 200
-        # el aprobador la marca validada y luego el vendedor la genera
+        # el aprobador la marca validada; desde el 24/10 solo Hellen o un administrador la genera (pedido de Adriel)
         assert aprobador.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Validado por Hellen'}).status_code == 200
-        assert vendedor.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Generada'}).status_code == 200
+        assert vendedor.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Generada'}).status_code == 409
+        assert aprobador.put(f'/ventas/api/cotizaciones/{cid}/toggle', json={'estado': 'Generada'}).status_code == 200
         # una cotización generada ya no se edita
         r = nueva_cotizacion(vendedor, id=cid)
         assert r.status_code == 409

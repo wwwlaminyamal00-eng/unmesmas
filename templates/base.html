@@ -16,6 +16,7 @@
             <script src="/static/js/monitor_consola.js?v=20261022"></script>
             <!-- Columna "Ítem" en todas las tablas y ayudas cortas con "ⓘ Ver más" (Erika, 22/10/2026 18:13) -->
             <script src="/static/js/orden_pantallas.js?v=20261022"></script>
+            <script src="/static/js/moneda.js?v=20261024"></script>
             <!-- Letra distinta por empresa (KCF: Montserrat, AGD: Roboto Slab) para no confundirse de empresa -->
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Roboto+Slab:wght@400;600;700;800&display=swap">
@@ -50,6 +51,7 @@
                 var s = String(texto || '').trim(), n = parseInt(dias, 10);
                 var m = s.match(/\d+/);
                 if (!n && m) n = parseInt(m[0], 10);
+                if (/adelanto/i.test(s)) return { tipo: 'Adelanto 50%', dias: 0 };   // 24/10/2026: 50% antes, saldo a Finanzas
                 if (/contra/i.test(s)) return { tipo: 'Contra entrega', dias: 0 };
                 if (/cr[eé]d/i.test(s) || /^\d+\s*(d[ií]as?)?$/i.test(s)) return { tipo: 'Crédito', dias: n || 0 };
                 return { tipo: s ? 'Contado' : '', dias: 0 };
@@ -312,7 +314,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
             <div class="menu-children">
             <a href="/ventas?tab=cotizaciones" class="child-btn" data-screen="cotizaciones" style="text-decoration:none;">📄 Cotizaciones</a>
-    <a href="/ventas?tab=validacion" class="child-btn" data-screen="validacion" style="text-decoration:none;">🔍 Validación PC vs Cotización</a>
+    {% if puede_validar_ventas %}<a href="/ventas?tab=validacion" class="child-btn" data-screen="validacion" style="text-decoration:none;">🔍 Validación PC vs Cotización</a>{% endif %}
     <a href="/ventas?tab=guias" class="child-btn" data-screen="guias" style="text-decoration:none;">📦 Guías de remisión cliente</a>
     <a href="/ventas?tab=notas_credito" class="child-btn" data-screen="notas_credito" style="text-decoration:none;">📝 Notas de crédito</a>
     <a href="/ventas?tab=pedido_compra" class="child-btn" data-screen="pedido_compra" style="text-decoration:none;">📋 PC Pedido Compras</a>
@@ -459,7 +461,8 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
                 </div>
 
-                <!-- REPORTES -->
+                <!-- REPORTES: regla de oro de Erika (25/10/2026), solo ella lo ve -->
+                {% if es_duena_reportes %}
                 <div class="menu-group" data-modulo="reportes">
                     <div class="menu-header-wrapper">
                         <a href="/reportes" class="menu-header" style="text-decoration:none;flex:1;">
@@ -476,6 +479,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <a href="/reportes?tab=cxp" class="child-btn" style="text-decoration:none;">📑 Por pagar (finanzas)</a>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- SUNAT E IMPUESTOS (21/10/2026): módulo propio, solo gerencia y permiso SUNAT -->
                 <div class="menu-group" data-modulo="sunat">
@@ -507,7 +511,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <a href="/herramientas?sec=exportar" class="child-btn" style="text-decoration:none;">📤 Exportar / respaldo</a>
                         <a href="/herramientas?sec=correlativos" class="child-btn" style="text-decoration:none;">🔢 Revisar numeraciones</a>
                         <a href="/herramientas?sec=integridad" class="child-btn" style="text-decoration:none;">🩺 Verificar integridad</a>
-                        <a href="/herramientas?sec=stock" class="child-btn" style="text-decoration:none;">📦 Recalcular stock</a>
+                        <a href="/herramientas?sec=stock" class="child-btn" style="text-decoration:none;">📦 Revisar stock</a>
                         <a href="/herramientas?sec=cache" class="child-btn" style="text-decoration:none;">🧹 Limpiar caché</a>
                         <a href="/herramientas?sec=logs" class="child-btn" style="text-decoration:none;">📜 Registro de errores</a>
                         <a href="/herramientas?sec=salud" class="child-btn" style="text-decoration:none;">🔌 Conexión a la base</a>
@@ -4717,6 +4721,8 @@ window.bdPorPagina = 20;
 
         </script>
         {% block extra_js %}{% endblock %}
+        <!-- 25/10/2026: pantallas compactas en todos los módulos (va al final para mandar sobre los estilos de cada módulo) -->
+        <link rel="stylesheet" href="/static/css/compacto.css">
         <!-- Exportar a Excel la tabla que se ve (va después de los scripts de cada pantalla para reemplazar los botones que no hacían nada) -->
         <script src="{{ url_for('static', filename='js/exportar_tabla.js') }}?v=20261019"></script>
 

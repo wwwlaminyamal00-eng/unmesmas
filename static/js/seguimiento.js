@@ -80,18 +80,45 @@
     const colEmpresa = () => verTodas() ? '<th>Empresa</th>' : '';
     const celEmpresa = c => verTodas() ? `<td><b>${esc(c.empresa)}</b></td>` : '';
     const linkPdf = c => `<a href="/ventas/api/cotizaciones/${c.id}/pdf/preview" target="_blank" rel="noopener">${esc(c.numero)}</a>`;
+    // Celular peruano (9 dígitos que empiezan en 9, con o sin 51) -> número para WhatsApp; si no, null.
+    function celularWhatsapp(t) {
+        let d = String(t || '').replace(/\D/g, '');
+        if (d.length === 11 && d.startsWith('51')) d = d.slice(2);
+        return /^9\d{8}$/.test(d) ? '51' + d : null;
+    }
     function contacto(c) {
-        const tel = c.telefono ? `<a class="ge-nw" href="tel:${esc(String(c.telefono).replace(/[^\d+]/g, ''))}">${esc(c.telefono)}</a>` : '<span class="ge-sin ge-nw">Sin teléfono</span>';
+        const wa = celularWhatsapp(c.telefono);
+        const texto = `Hola${c.contacto ? ' ' + c.contacto : ''}, le escribimos por la cotización N° ${c.numero}. ¿Pudo revisarla? Quedamos atentos.`;
+        const tel = !c.telefono ? '<span class="ge-sin ge-nw">Sin teléfono</span>'
+            : wa ? `<a class="ge-nw ge-wa" href="https://wa.me/${wa}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener" title="Abrir WhatsApp con un mensaje sobre esta cotización">🟢 ${esc(c.telefono)}</a>`
+            : `<a class="ge-nw" href="tel:${esc(String(c.telefono).replace(/[^\d+]/g, ''))}">${esc(c.telefono)}</a><span class="ge-sub ge-nw">No es celular: sin WhatsApp</span>`;
         return `${c.contacto ? `<b>${esc(c.contacto)}</b><span class="ge-sub">${tel}</span>` : tel}`;
+    }
+
+    const cantidad = v => num(v).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+    const celProductos = c => !(c.productos || []).length ? '<span class="ge-sin">Sin productos</span>'
+        : c.productos.map(p => `<span class="ge-prod">${cantidad(p.cantidad)} × ${esc(p.descripcion)}</span>`).join('');
+
+    function filtrarAbiertas() {
+        const q = ($('#segBuscar')?.value || '').trim().toLowerCase();
+        let vistas = 0;
+        $$('#segAbiertas tbody tr').forEach(tr => {
+            const ok = !q || tr.textContent.toLowerCase().includes(q);
+            tr.hidden = !ok;
+            if (ok) vistas++;
+        });
+        const n = $('#segBuscarN');
+        if (n) n.textContent = q ? `${vistas} de ${datos.abiertas.length}` : '';
     }
 
     function pintarAbiertas() {
         const l = datos.abiertas;
         if (!l.length) { $('#segAbiertas').innerHTML = '<div class="ge-todo-ok">✔ No hay cotizaciones esperando respuesta</div>'; return; }
-        $('#segAbiertas').innerHTML = `<table class="inv-table ge-tabla"><thead><tr>${colEmpresa()}<th>Cliente</th><th>RUC</th><th>N° cotización</th><th>Fecha</th>
+        $('#segAbiertas').innerHTML = `<table class="inv-table ge-tabla"><thead><tr>${colEmpresa()}<th>Cliente</th><th>RUC</th><th>N° cotización</th><th>Cantidad y producto</th><th>Fecha</th>
             <th>Total (S/)</th><th>Vendedora</th><th>Contacto</th><th>Última llamada</th><th>Próxima llamada</th><th>Acciones</th></tr></thead><tbody>
             ${l.map(c => `<tr class="${c.llamar_hoy ? 'ge-fila-pend' : ''}">${celEmpresa(c)}
                 <td><b>${esc(c.cliente)}</b></td><td class="ge-nw">${esc(c.ruc || '')}</td><td class="ge-nw">${linkPdf(c)}</td>
+                <td class="ge-desc ge-prods">${celProductos(c)}</td>
                 <td>${fecha(c.fecha)}<span class="ge-sub">hace ${c.dias} días</span>${c.vence ? (c.vencida ? `<span class="ge-estado rojo">Vencida</span><span class="ge-sub">el ${fecha(c.vence)}</span>` : `<span class="ge-sub">Vence ${fecha(c.vence)}</span>`) : ''}</td>
                 <td class="ge-nw"><b>${soles(c.total)}</b></td><td>${esc(c.vendedor)}</td><td>${contacto(c)}</td>
                 <td class="ge-ultima">${c.ultima ? `<b>${esc(c.ultima.medio)}</b> · ${fecha(String(c.ultima.en).slice(0, 10))} · ${esc(c.ultima.por)}<span class="ge-sub">${esc(c.ultima.comentario)}</span>`
@@ -100,6 +127,7 @@
                     : `<span class="ge-estado amarillo">${fecha(c.proxima_llamada)}</span>`}</td>
                 <td><button type="button" class="ge-btn verde" data-llamar="${c.id}">Registrar llamada</button></td></tr>`).join('')}
             </tbody></table>`;
+        filtrarAbiertas();
     }
 
     function pintarPorEnviar() {
@@ -179,6 +207,7 @@
         irA(new URLSearchParams(location.search).get('tab') || 'llamar');
         $('#segEmpresa').addEventListener('change', cargar);
         $('#segDias').addEventListener('change', cargar);
+        $('#segBuscar').addEventListener('input', filtrarAbiertas);
         $('#segModalCancelar').addEventListener('click', cerrar);
         $('#segModalForm').no_compro.addEventListener('change', ajustar);
         $('#segModalForm').addEventListener('submit', async ev => {

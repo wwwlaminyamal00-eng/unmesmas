@@ -196,7 +196,7 @@ def test_herramientas_solo_admin(vend, adm):
     assert vend.get('/herramientas').status_code == 302
     for url in ('/herramientas/api/salud', '/herramientas/api/integridad', '/herramientas/api/exportar?tabla=clientes'):
         assert vend.get(url).status_code == 403
-    assert vend.post('/herramientas/api/recalcular_stock', json={}).status_code == 403
+    assert vend.get('/herramientas/api/revisar_stock').status_code == 403
     assert adm.get('/herramientas').status_code == 200
 
 
@@ -281,11 +281,14 @@ def test_revisar_numeraciones_no_renumera(adm, vend):
     assert sql("SELECT numero::int FROM comprobantes WHERE serie = 'F950' ORDER BY id") == [(5,), (9,)]
 
 
-def test_recalcular_stock_cache_logs_y_salud(adm):
-    r = adm.post('/herramientas/api/recalcular_stock', json={})
+def test_revisar_stock_cache_logs_y_salud(adm):
+    # 25/10/2026: "Revisar stock" solo mira; ya no existe la ruta que escribía
+    antes = sql("SELECT id, COALESCE(stock, 0) FROM productos ORDER BY id")
+    r = adm.get('/herramientas/api/revisar_stock')
     assert r.status_code == 200, r.json
-    r = adm.post('/herramientas/api/recalcular_stock', json={'codigo': 'NO-EXISTE'})
-    assert r.status_code == 404
+    assert 'diferencias' in r.json and sql("SELECT id, COALESCE(stock, 0) FROM productos ORDER BY id") == antes
+    assert adm.get('/herramientas/api/revisar_stock?codigo=NO-EXISTE').json['revisados'] == 0
+    assert adm.post('/herramientas/api/recalcular_stock', json={}).status_code in (404, 405)
     r = adm.post('/herramientas/api/cache/limpiar')
     assert r.status_code == 200 and r.json['limpiado']
     assert adm.get('/index').status_code == 200  # el sistema sigue funcionando tras limpiar

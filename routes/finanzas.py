@@ -9,6 +9,7 @@ import json
 import os
 import threading
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from flask import Blueprint, render_template, request, jsonify, session
 from psycopg2.extras import RealDictCursor
@@ -16,6 +17,8 @@ from psycopg2.extras import RealDictCursor
 from database import db_query, db_execute, db_tx
 from utils import a_decimal, redondear, es_admin, es_aprobador, normalizar_banco
 from routes.multiempresa import filtro_sql
+from routes.moneda import (ErrorMoneda, codigo_moneda, simbolo, pago_en_moneda, tc_referencia,
+                           sql_monto_soles)
 
 finanzas_bp = Blueprint('finanzas', __name__)
 
@@ -93,6 +96,12 @@ def asegurar_tablas_finanzas():
             # Bloqueo para que varias peticiones simultáneas no intenten crear la tabla a la vez
             cur.execute("SELECT pg_advisory_xact_lock(hashtext('finanzas_ddl'))")
             cur.execute(SQL_DDL_FINANZAS)
+        # Moneda y tipo de cambio de los documentos y pagos (24/10/2026)
+        from routes.moneda import asegurar_moneda
+        asegurar_moneda()
+        # N° MIGO del cliente y de la factura (25/10/2026, migración 031)
+        from routes.migo import asegurar_migo
+        asegurar_migo()
         _tablas_listas = True
 
 
@@ -151,10 +160,12 @@ SQL_CXC = """
            COALESCE(c.tiene_retencion, false) AS tiene_retencion, COALESCE(c.monto_retenido, 0) AS retencion_factura,
            COALESCE(sg.portal_ingresado, false) AS portal_ingresado, sg.portal_fecha, sg.fecha_programada,
            sg.retencion_numero, sg.retencion_monto AS retencion_anotada, sg.usuario_nombre AS seguimiento_por,
+           c.numero_migo, EXISTS (SELECT 1 FROM clientes cm WHERE cm.numero_documento = c.cliente_numero_doc
+                                  AND COALESCE(cm.pide_migo, false)) AS pide_migo,
            COALESCE(cb.cobrado, 0) AS cobrado,
            COALESCE(nc.monto_nc, 0) AS notas_credito,
            COALESCE(c.estado_sunat, 'Borrador') AS estado_documento,
-           cb.ultimo_abono, COALESCE(NULLIF(c.moneda, ''), 'PEN') AS moneda,
+           cb.ultimo_abono, COALESCE(NULLIF(c.moneda, ''), 'PEN') AS moneda, c.tipo_cambio, c.empresa_id AS empresa_doc,
            NULLIF(c.pc_vinculado, '') AS pc_numero, NULLIF(c.orden_compra_cliente, '') AS oc_cliente,
            NULL AS oc_numero, NULL AS tipo_compra, 0 AS adelanto, NULL AS nota_registro,
            c.items_json::text AS items_txt, fc.comentario, fc.usuario_nombre AS comentario_por
@@ -174,9 +185,9 @@ SQL_CXP = """
            cp.numero AS documento,
            cp.proveedor_nombre AS tercero, cp.ruc_proveedor AS ruc,
            cp.fecha AS fecha_emision, oc.condicion_pago, NULL::boolean AS es_credito,
-           NULLIF(regexp_replace(COALESCE(oc.condicion_pago, ''), '\\D', '', 'g'), '')::int AS dias_credito,
+           NULLIF(regexp_replace(CASE WHEN strpos(lower(COALESCE(oc.condicion_pago, '')), 'adelanto') > 0 THEN '' ELSE COALESCE(oc.condicion_pago, '') END, '\\D', '', 'g'), '')::int AS dias_credito,
            COALESCE(cp.fecha_vencimiento,
-                    cp.fecha::date + COALESCE(NULLIF(regexp_replace(COALESCE(oc.condicion_pago, ''), '\\D', '', 'g'), '')::int, 0)
+                    cp.fecha::date + COALESCE(NULLIF(regexp_replace(CASE WHEN strpos(lower(COALESCE(oc.condicion_pago, '')), 'adelanto') > 0 THEN '' ELSE COALESCE(oc.condicion_pago, '') END, '\\D', '', 'g'), '')::int, 0)
            ) AS fecha_vencimiento,
            COALESCE(cp.monto, 0) AS total,
            0 AS retencion,
@@ -186,7 +197,8 @@ SQL_CXP = """
            COALESCE(cp.estado, 'Pendiente') AS estado_documento,
            COALESCE(cp.orden_compra_numero, oc.numero_orden) AS orden_compra,
            pr.banco, pr.numero_cuenta, pr.cci,
-           pg.ultimo_abono, 'PEN' AS moneda,
+           pg.ultimo_abono, COALESCE(NULLIF(cp.moneda, ''), oc.moneda, 'PEN') AS moneda,
+           COALESCE(cp.tipo_cambio, oc.tipo_cambio) AS tipo_cambio, cp.empresa_id AS empresa_doc,
            COALESCE(NULLIF(oc.pc_numeros, ''),
                     (SELECT string_agg(DISTINCT i.pedido_numero, ', ') FROM ordenes_compra_items i
                       WHERE i.orden_compra_id = cp.orden_compra_id AND COALESCE(i.pedido_numero, '') <> '')) AS pc_numero, NULL AS oc_cliente,
@@ -270,6 +282,7 @@ def _cuentas(tipo, incluir_borradores=False):
     filas = db_query(sql + sql_emp + " ORDER BY 1 DESC", par_emp)
     hoy = date.today()
     resultado = []
+    tc_ref = None
     for f in filas:
         importe = a_decimal(f['importe_cobrar'])
         abonado = a_decimal(f['cobrado']) + a_decimal(f['notas_credito'])
@@ -281,7 +294,16 @@ def _cuentas(tipo, incluir_borradores=False):
         dias_vencido = (hoy - (venc.date() if isinstance(venc, datetime) else venc)).days if venc and semaforo == 'Vencido' else 0
         item = {k: _fmt(v) for k, v in f.items()}
         item.update(_detalle(tipo, f, saldo, abonado))
+        # 24/10/2026 (Erika): documentos en dólares. Los totales y el flujo suman en soles con el TC del documento
+        moneda = codigo_moneda(f.get('moneda'))
+        tc = f.get('tipo_cambio')
+        if moneda == 'USD' and not tc:
+            tc_ref = tc_ref if tc_ref is not None else (tc_referencia(hoy) or 0)
+            tc = tc_ref or None
         item.update({
+            'moneda': moneda,
+            'tipo_cambio': float(tc) if tc else None,
+            'saldo_soles': float(redondear(saldo * a_decimal(tc))) if moneda == 'USD' and tc else (float(saldo) if moneda == 'PEN' else None),
             'total': float(redondear(f['total'])),
             'retencion': float(redondear(f['retencion'])),
             'importe': float(redondear(importe)),
@@ -315,12 +337,12 @@ def api_resumen():
         inicio_mes = hoy.replace(day=1)
         sql_emp, par_emp = filtro_sql('empresa_id')
         mov = db_query("""
-            SELECT tipo, COALESCE(SUM(monto), 0) AS total FROM finanzas_pagos
+            SELECT tipo, COALESCE(SUM(""" + sql_monto_soles('finanzas_pagos') + """), 0) AS total FROM finanzas_pagos
             WHERE estado <> 'Anulado' AND fecha >= %s""" + sql_emp + " GROUP BY tipo", (inicio_mes,) + par_emp)
         mov = {m['tipo']: float(m['total']) for m in mov}
 
         def suma(lista, cond=lambda x: True):
-            return round(sum(x['saldo'] for x in lista if cond(x)), 2)
+            return round(sum(_saldo_soles(x) for x in lista if cond(x)), 2)
 
         return jsonify({'success': True, 'data': {
             'por_cobrar': suma(cxc),
@@ -386,10 +408,18 @@ def ordenar_cxp(lista):
     return sorted(lista, key=clave)
 
 
+def _saldo_soles(x):
+    """Saldo en soles (los documentos en dólares, con su tipo de cambio)."""
+    v = x.get('saldo_soles')
+    return x['saldo'] if v is None and x.get('moneda', 'PEN') == 'PEN' else (v or 0)
+
+
 def totales_cxp(lista):
     def suma(cond):
-        return round(sum(x['saldo'] for x in lista if cond(x)), 2)
-    return {'vencido': suma(lambda x: x['semaforo'] == 'Vencido'),
+        return round(sum(_saldo_soles(x) for x in lista if cond(x)), 2)
+    usd = round(sum(x['saldo'] for x in lista if x.get('moneda') == 'USD'), 2)
+    return {
+            'usd': usd, 'docs_usd': sum(1 for x in lista if x.get('moneda') == 'USD' and x['saldo'] > 0),'vencido': suma(lambda x: x['semaforo'] == 'Vencido'),
             'por_vencer': suma(lambda x: x['semaforo'] == 'Por vencer'),
             'al_dia': suma(lambda x: x['semaforo'] == 'Al día'),
             'total': suma(lambda x: True),
@@ -475,7 +505,7 @@ def api_registrar_movimiento():
             documento_id = int(data.get('documento_id'))
         except (TypeError, ValueError):
             return jsonify({'success': False, 'error': 'Documento inválido'}), 400
-        monto = redondear(data.get('monto'))
+        monto = redondear(data.get('monto_pagado') if data.get('monto_pagado') not in (None, '') else data.get('monto'))
         if monto <= 0:
             return jsonify({'success': False, 'error': 'El monto debe ser mayor a 0'}), 400
         try:
@@ -515,9 +545,18 @@ def api_registrar_movimiento():
             saldo = redondear(a_decimal(doc['importe_cobrar']) - a_decimal(doc['cobrado']) - a_decimal(doc['notas_credito']))
             if saldo <= 0:
                 return jsonify({'success': False, 'error': 'El documento ya no tiene saldo pendiente'}), 409
+            # 24/10/2026 (Erika): documento en dólares pagado/cobrado en soles con el TC (o al revés)
+            doc_moneda = codigo_moneda(doc.get('moneda'))
+            try:
+                monto, moneda_pago, tc_pago, monto_pagado = pago_en_moneda(doc_moneda, data, doc.get('empresa_doc'))
+            except ErrorMoneda as em:
+                return jsonify({'success': False, 'error': str(em)}), 400
+            sim = simbolo(doc_moneda)
+            if moneda_pago != doc_moneda and Decimal('0') < monto - saldo <= Decimal('0.02'):
+                monto = saldo     # redondeo del tipo de cambio
             if monto > saldo:
                 return jsonify({'success': False,
-                                'error': f'El monto (S/ {monto:.2f}) supera el saldo pendiente (S/ {saldo:.2f})'}), 400
+                                'error': f'El monto ({sim} {monto:.2f}) supera el saldo pendiente ({sim} {saldo:.2f})'}), 400
             cur.execute("""
                 INSERT INTO finanzas_pagos (tipo, documento_tabla, documento_id, documento_numero, tercero_nombre,
                     tercero_documento, fecha, monto, metodo, banco, numero_operacion, fecha_aviso, observaciones,
@@ -530,8 +569,9 @@ def api_registrar_movimiento():
                   session.get('usuario_id'), session.get('nombre_completo')))
             nuevo_id = cur.fetchone()['id']
             # El cobro/pago queda en la empresa del documento
-            cur.execute(f"UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM {tabla} WHERE id = %s) WHERE id = %s",
-                        (documento_id, nuevo_id))
+            cur.execute(f"""UPDATE finanzas_pagos SET empresa_id = (SELECT empresa_id FROM {tabla} WHERE id = %s),
+                               moneda_pago = %s, tipo_cambio = %s, monto_pagado = %s WHERE id = %s""",
+                        (documento_id, moneda_pago, tc_pago, monto_pagado, nuevo_id))
             saldo_final = saldo - monto
             if saldo_final <= 0:
                 if tipo == 'COBRO':
@@ -541,7 +581,7 @@ def api_registrar_movimiento():
                     cur.execute("UPDATE comprobantes_proveedor SET estado = 'Pagado', updated_at = NOW() WHERE id = %s",
                                 (documento_id,))
         return jsonify({'success': True,
-                        'message': f"{'Cobro' if tipo == 'COBRO' else 'Pago'} registrado. Saldo pendiente: S/ {saldo_final:.2f}",
+                        'message': f"{'Cobro' if tipo == 'COBRO' else 'Pago'} registrado. Saldo pendiente: {sim} {saldo_final:.2f}",
                         'data': {'id': nuevo_id, 'saldo': float(saldo_final)}})
     except Exception as e:
         print(f"❌ Error registrando movimiento: {e}")
@@ -699,6 +739,12 @@ def api_seguimiento_cobro():
         if programada and emision and programada < emision:
             return jsonify({'success': False, 'error': 'La fecha programada de pago no puede ser antes de la emisión de la factura'}), 400
         usuario = session.get('nombre') or session.get('usuario') or ''
+        # N° MIGO / conformidad (25/10/2026): se guarda en la factura; se puede anotar después de emitirla
+        migo_antes = None
+        if 'numero_migo' in data:
+            from routes.migo import limpiar_migo
+            migo_antes = (db_query("SELECT numero_migo FROM comprobantes WHERE id = %s", (doc_id,)) or [{}])[0].get('numero_migo')
+            db_execute("UPDATE comprobantes SET numero_migo = %s WHERE id = %s", (limpiar_migo(data.get('numero_migo')), doc_id))
         antes = db_query("SELECT * FROM finanzas_seguimiento_cobro WHERE comprobante_id = %s", (doc_id,))
         db_execute("""INSERT INTO finanzas_seguimiento_cobro
                           (comprobante_id, portal_ingresado, portal_fecha, fecha_programada, retencion_numero, retencion_monto,
@@ -711,11 +757,15 @@ def api_seguimiento_cobro():
                    (doc_id, portal, portal_fecha, programada, numero_ret, monto_ret, usuario))
         despues = {'portal_ingresado': portal, 'portal_fecha': _fmt(portal_fecha), 'fecha_programada': _fmt(programada),
                    'retencion_numero': numero_ret, 'retencion_monto': float(monto_ret) if monto_ret is not None else None}
+        if 'numero_migo' in data:
+            from routes.migo import limpiar_migo
+            despues['numero_migo'] = limpiar_migo(data.get('numero_migo'))
         try:
             from routes.auditoria import registrar_auditoria
             registrar_auditoria('ACTUALIZAR', 'Finanzas', 'finanzas_seguimiento_cobro', doc_id,
-                                antes={k: _fmt(v) for k, v in (antes[0].items() if antes else [])
-                                       if k in despues} or None, despues=despues,
+                                antes=({k: _fmt(v) for k, v in (antes[0].items() if antes else [])
+                                        if k in despues} | ({'numero_migo': migo_antes} if 'numero_migo' in data else {})) or None,
+                                despues=despues,
                                 detalle=f"Seguimiento de cobro de {doc.get('serie') or ''}-{doc.get('numero') or doc_id}")
         except Exception as e:
             print(f"⚠️ Auditoría de seguimiento de cobro: {e}")
@@ -757,10 +807,10 @@ def api_flujo():
 
         for x in _cuentas('cxc'):
             if x['saldo'] > 0:
-                filas[ubicar(x['fecha_vencimiento'])]['ingresos'] += x['saldo']
+                filas[ubicar(x['fecha_vencimiento'])]['ingresos'] += _saldo_soles(x)
         for x in _cuentas('cxp'):
             if x['saldo'] > 0:
-                filas[ubicar(x['fecha_vencimiento'])]['egresos'] += x['saldo']
+                filas[ubicar(x['fecha_vencimiento'])]['egresos'] += _saldo_soles(x)
         acumulado = 0.0
         for f in filas:
             f['ingresos'] = round(f['ingresos'], 2)

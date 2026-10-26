@@ -206,21 +206,15 @@ def test_exportar_csv_xlsx_pdf(rep, admin):
 
 
 def test_proteccion_por_rol(rep, app, vendedor, aprobador):
-    # Vendedor y validadora: sin montos (ni página, ni datos, ni exportación)
-    for c in (vendedor, aprobador):
-        assert c.get('/reportes').status_code == 403
+    # REGLA DE ORO (Erika 25/10/2026): Reportes solo para Erika. Vendedor, validadora y Finanzas ya no entran.
+    fin = _login(app, 'zzrep_fin', 'Clave#2026!')
+    for c in (vendedor, aprobador, fin):
+        assert c.get('/reportes').status_code == 302
         assert c.get('/reportes/api/reporte/ventas').status_code == 403
         assert c.get('/reportes/api/reporte/ventas/exportar?formato=csv').status_code == 403
+        assert c.get('/reportes/api/reporte/cxc').status_code == 403
         assert c.get('/reportes/api/tablero').status_code == 403
         assert c.get('/reportes/api/reporte/kpi').status_code == 403
-    # Finanzas: ve montos pero NO el KPI por colaborador
-    fin = _login(app, 'zzrep_fin', 'Clave#2026!')
-    fin.post('/api/empresa_activa', json={'codigo': 'TODAS'})
-    assert fin.get('/reportes').status_code == 200
-    assert fin.get('/reportes/api/reporte/cxc?cliente=ZZREP').status_code == 200
-    assert fin.get('/reportes/api/reporte/kpi').status_code == 403
-    assert fin.get('/reportes/api/reporte/kpi/exportar?formato=xlsx').status_code == 403
-    assert 'data-tab="kpi"' not in fin.get('/reportes').get_data(as_text=True)
     # Sin sesión
     assert app.test_client().get('/reportes/api/reporte/ventas').status_code == 401
 

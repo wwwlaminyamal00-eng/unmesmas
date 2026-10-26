@@ -989,7 +989,13 @@ def get_comparativo_costos():
 def get_resumen_costos():
     """API: Obtener resumen del dashboard de costos"""
     try:
-        resultado = db_query("SELECT * FROM vista_resumen_costos")
+        try:
+            resultado = db_query("SELECT * FROM vista_resumen_costos")
+        except Exception as e_vista:
+            # La vista no existe en la base real (24/10): se responde el resumen en cero en vez de un error 500.
+            if 'does not exist' not in str(e_vista):
+                raise
+            resultado = []
 
         if not resultado:
             return jsonify({

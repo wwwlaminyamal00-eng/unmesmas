@@ -121,6 +121,12 @@ class PDFGenerator:
     # ============================================================
     # FUNCIÓN PARA CONVERTIR NÚMEROS A LETRAS
     # ============================================================
+    @staticmethod
+    def _simbolo(datos):
+        """US$ si el documento es en dólares (24/10/2026); si no, S/."""
+        v = str((datos or {}).get('moneda') or '').upper()
+        return 'US$' if ('$' in v and 'S/' not in v) or 'USD' in v or 'DÓLAR' in v or 'DOLAR' in v else 'S/'
+
     def numero_a_letras(self, numero):
         try:
             numero = float(numero)
@@ -250,7 +256,7 @@ class PDFGenerator:
                         precio = float(item.get('valorVenta', item.get('precio', item.get('precio_unitario', item.get('price', 0)))))
                         total_item = cantidad * precio
                         
-                        descripcion = item.get('producto', item.get('descripcion', item.get('nombre', item.get('name', 'Sin descripción'))))
+                        descripcion = (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', item.get('nombre', item.get('name', 'Sin descripción'))))
                         
                         items_formateados.append({
                             'item': idx,
@@ -299,7 +305,7 @@ class PDFGenerator:
                 igv = subtotal * 0.18
                 total = subtotal + igv
 
-            total_letras = self.numero_a_letras(total)
+            total_letras = self.numero_a_letras(total) + (' DÓLARES AMERICANOS' if self._simbolo(datos_comprobante) == 'US$' else ' SOLES')
 
             orden_compra_cliente = datos_comprobante.get('orden_compra_cliente', '').strip()
             
@@ -358,7 +364,7 @@ class PDFGenerator:
                 'cliente_direccion': datos_comprobante.get('cliente_direccion', datos_comprobante.get('direccion', '')),
                 'cliente_email': datos_comprobante.get('cliente_email', datos_comprobante.get('email', '')),
                 'cliente_telefono': datos_comprobante.get('cliente_telefono', datos_comprobante.get('telefono', '')),
-                'moneda': 'S/',
+                'moneda': self._simbolo(datos_comprobante),
                 'subtotal': f"{subtotal:.2f}",
                 'igv': f"{igv:.2f}",
                 'total': f"{total:.2f}",
@@ -715,7 +721,7 @@ class PDFGenerator:
                 'cliente_direccion': datos.get('cliente_direccion', ''),
                 'cliente_email': datos.get('cliente_email', ''),
                 'cliente_telefono': datos.get('cliente_telefono', ''),
-                'moneda': 'S/',
+                'moneda': self._simbolo(datos),
                 'subtotal': datos.get('subtotal', '0.00'),
                 'igv': datos.get('igv', '0.00'),
                 'total': datos.get('total', '0.00'),
@@ -1068,7 +1074,7 @@ class PDFGenerator:
                 items_formateados.append({
                     'item': idx,
                     'codigo': item.get('codigo', ''),
-                    'descripcion': item.get('producto', item.get('descripcion', '')),
+                    'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),
                     'unidad': item.get('um', 'NIU'),
                     'cantidad': float(item.get('cantidad', 1))
                 })
@@ -1198,7 +1204,7 @@ class PDFGenerator:
                 if isinstance(item, dict):
                     items_formateados.append({
                         'codigo': item.get('codigo', ''),
-                        'descripcion': item.get('producto', item.get('descripcion', '')),
+                        'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),
                         'marca': item.get('marca', ''),
                         'modelo': item.get('modelo', ''),
                         'unidad': item.get('um', 'NIU'),
@@ -1822,7 +1828,7 @@ class PDFGenerator:
                 'cliente_direccion': datos.get('cliente_direccion', datos.get('direccion', '')),
                 'cliente_email': datos.get('cliente_email', datos.get('email', '')),
                 'cliente_telefono': datos.get('cliente_telefono', datos.get('telefono', '')),
-                'moneda': 'S/',
+                'moneda': self._simbolo(datos),
                 'subtotal': f"{subtotal:.2f}",
                 'igv': f"{igv:.2f}",
                 'total': f"{total:.2f}",

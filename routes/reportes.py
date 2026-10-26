@@ -783,7 +783,14 @@ def _cuentas(tipo, f):
             venc = venc.date()
         sem = _semaforo(saldo, venc, hoy)
         dias = (hoy - venc).days if venc else 0
-        salida.append({'estado': sem, 'dias_atraso': dias if sem == 'Vencido' else 0,
+        # 24/10/2026: documentos en dólares -> se muestra la moneda y los totales van en soles con su TC
+        mon = 'USD' if str(r.get('moneda') or '').upper() == 'USD' else 'PEN'
+        tc = a_decimal(r.get('tipo_cambio') or 0) if mon == 'USD' else Decimal('1')
+        if mon == 'USD' and tc <= 0:
+            from routes.moneda import tc_referencia
+            tc = a_decimal(tc_referencia(hoy) or 0)
+        salida.append({'moneda': 'US$' if mon == 'USD' else 'S/', 'saldo_soles': _n(saldo * tc),
+                       'estado': sem, 'dias_atraso': dias if sem == 'Vencido' else 0,
                        'dias_vence': -dias if venc and sem != 'Vencido' else None,
                        'empresa': _nombre_empresa(r.get('rep_empresa_id')),
                        'documento': r['documento'], 'tercero': r['tercero'] or '', 'ruc': r['ruc'] or '',
@@ -803,23 +810,27 @@ def _rep_cuentas(tipo, f):
     quien = 'Cliente' if tipo == 'cxc' else 'Proveedor'
 
     def suma(e):
-        return _n(sum(x['saldo'] for x in filas if x['estado'] == e))
-    resumen = [{'t': 'Vencido', 'v': suma('Vencido'), 'tipo': 'dinero', 'color': 'danger',
+        return _n(sum(x['saldo_soles'] for x in filas if x['estado'] == e))
+    resumen = [{'t': 'Vencido', 'v': suma('Vencido'), 'tipo': 'dinero', 'color': 'danger' if suma('Vencido') else '',
                 'sub': f"{sum(1 for x in filas if x['estado'] == 'Vencido')} documentos"},
-               {'t': 'Por vencer (7 días)', 'v': suma('Por vencer'), 'tipo': 'dinero', 'color': 'warn',
+               {'t': 'Por vencer (7 días)', 'v': suma('Por vencer'), 'tipo': 'dinero', 'color': 'warn' if suma('Por vencer') else '',
                 'sub': f"{sum(1 for x in filas if x['estado'] == 'Por vencer')} documentos"},
                {'t': 'Al día', 'v': suma('Al día'), 'tipo': 'dinero', 'color': 'ok',
                 'sub': f"{sum(1 for x in filas if x['estado'] == 'Al día')} documentos"},
-               {'t': 'Total pendiente', 'v': _n(sum(x['saldo'] for x in filas)), 'tipo': 'dinero'}]
+               # Colores de Finanzas (Erika 25/10/2026): total por cobrar verde azulado, por pagar morado
+               {'t': 'Total pendiente', 'v': _n(sum(x['saldo_soles'] for x in filas)), 'tipo': 'dinero',
+                'color': 'cobro' if tipo == 'cxc' else 'pago'}]
     cols = [_col('estado', 'Estado', 'estado'), _col('dias_atraso', 'Días de atraso', 'atraso'),
             _col('dias_vence', 'Vence en (días)', 'num'), _col('empresa', 'Empresa'), _col('documento', 'Documento'),
             _col('tercero', quien), _col('ruc', 'RUC'), _col('emision', 'Emisión', 'fecha'),
-            _col('vencimiento', 'Vencimiento', 'fecha'), _col('importe', 'Importe', 'dinero'),
-            _col('abonado', 'Cobrado' if tipo == 'cxc' else 'Pagado', 'dinero'), _col('saldo', 'Saldo', 'dinero')]
+            _col('vencimiento', 'Vencimiento', 'fecha'), _col('moneda', 'Moneda'), _col('importe', 'Importe', 'num'),
+            _col('abonado', 'Cobrado' if tipo == 'cxc' else 'Pagado', 'num'), _col('saldo', 'Saldo', 'num'),
+            _col('saldo_soles', 'Saldo en S/', 'dinero')]
     t = _salida('Cuentas por cobrar' if tipo == 'cxc' else 'Cuentas por pagar', cols, filas,
-                ['importe', 'abonado', 'saldo'], resumen)
+                ['importe', 'abonado', 'saldo', 'saldo_soles'], resumen)
     t['nota'] = ('Todo lo pendiente a hoy (no depende de las fechas). Primero lo vencido, con más días de atraso arriba. '
-                 '"Por vencer" = vence en los próximos 7 días. Mismo cálculo que Finanzas.')
+                 '"Por vencer" = vence en los próximos 7 días. Mismo cálculo que Finanzas. '
+                 'Los documentos en dólares se suman en soles con su tipo de cambio.')
     return t
 
 
@@ -1077,13 +1088,13 @@ def tablero(f):
         'por_mes': por_mes,
         'top_clientes': [{'cliente': x['grupo'], 'total': _n(x['total']), 'documentos': x['documentos'],
                           'ultima': x['ultima'].strftime('%d/%m/%Y')} for x in top],
-        'cxc_vencido': _n(sum(x['saldo'] for x in vencidas)), 'cxc_vencido_docs': len(vencidas),
-        'cxc_total': _n(sum(x['saldo'] for x in cxc)),
-        'cxc_por_vencer': _n(sum(x['saldo'] for x in cxc if x['estado'] == 'Por vencer')),
+        'cxc_vencido': _n(sum(x['saldo_soles'] for x in vencidas)), 'cxc_vencido_docs': len(vencidas),
+        'cxc_total': _n(sum(x['saldo_soles'] for x in cxc)),
+        'cxc_por_vencer': _n(sum(x['saldo_soles'] for x in cxc if x['estado'] == 'Por vencer')),
         'cxc_peores': [{'cliente': x['tercero'], 'documento': x['documento'], 'saldo': x['saldo'],
                         'dias': x['dias_atraso']} for x in vencidas[:5]],
-        'cxp_vencido': _n(sum(x['saldo'] for x in cxp if x['estado'] == 'Vencido')),
-        'cxp_por_vencer': _n(sum(x['saldo'] for x in cxp if x['estado'] == 'Por vencer')),
+        'cxp_vencido': _n(sum(x['saldo_soles'] for x in cxp if x['estado'] == 'Vencido')),
+        'cxp_por_vencer': _n(sum(x['saldo_soles'] for x in cxp if x['estado'] == 'Por vencer')),
         'perdidos': [{'cliente': r['cliente'], 'dias': r['dias'], 'total': r['total']} for r in perdidos['filas'][:5]],
         'perdidos_total': len(perdidos['filas']),
         'cotizaciones_mes': int(cot['n']), 'cotizado_mes': _n(cot['monto']), 'cotizaciones_conv': int(cot['conv']),
@@ -1348,6 +1359,21 @@ def _permiso_reporte(tipo):
         return _prohibido()
     if REPORTES[tipo].get('solo_admin') and not puede_ver_kpi():
         return _prohibido('El KPI por colaborador solo lo ve la gerencia / administración.')
+    return None
+
+
+@reportes_bp.before_request
+def _solo_erika():
+    # REGLA DE ORO (Erika 25/10/2026): Reportes solo para Erika: pantalla, consultas y exportaciones
+    from utils import es_duena_reportes
+    if 'usuario_id' not in session:
+        return None  # cada ruta ya pide iniciar sesión
+    if not es_duena_reportes():
+        if '/api/' in request.path:
+            return jsonify({'success': False, 'error': 'Reportes es solo para Erika.'}), 403
+        from flask import flash, redirect
+        flash('Reportes es solo para Erika.', 'warning')
+        return redirect('/index')
     return None
 
 

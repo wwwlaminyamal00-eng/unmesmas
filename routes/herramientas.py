@@ -5,7 +5,7 @@
 #   2. Exportar tablas de negocio a CSV/Excel (respaldo). Nunca exporta contraseñas ni claves.
 #   3. Revisar numeraciones: avisa huecos y números repetidos. NUNCA renumera guías ni facturas.
 #   4. Verificar integridad: registros huérfanos, duplicados y stock que no cuadra. Solo reporta.
-#   5. Recalcular stock (productos.stock = suma de inv_stock).
+#   5. Revisar stock (solo lectura: productos.stock frente a la suma de inv_stock).
 #   6. Limpiar caché del sistema.  7. Ver / rotar el registro de errores.  8. Estado de la base.
 # Cada uso queda en Auditoría (erp_auditoria).
 import csv
@@ -729,7 +729,7 @@ CHEQUEOS = [
      "SELECT x.id, 'Punto ' || x.id || ' → cliente ' || x.cliente_id AS texto FROM clientes_puntos_entrega x "
      "WHERE NOT EXISTS (SELECT 1 FROM clientes c WHERE c.id = x.cliente_id)"),
     ('stock_no_cuadra', 'Stock del producto distinto al de Inventario', 'productos.stock no es igual a la suma de inv_stock '
-     '(se arregla con "Recalcular stock").', 'alta',
+     '(la base los iguala sola; si aparece, avisar a sistemas).', 'alta',
      {'productos': ['stock'], 'inv_stock': ['producto_id']},
      "SELECT p.id, p.codigo || ': dice ' || COALESCE(p.stock, 0) || ', Inventario suma ' || s.total AS texto FROM productos p "
      "JOIN (SELECT producto_id, SUM(cantidad) AS total FROM inv_stock GROUP BY producto_id) s ON s.producto_id = p.id "
@@ -797,41 +797,28 @@ def api_integridad():
 # ============================================================
 # 5. RECALCULAR STOCK
 # ============================================================
-@herramientas_bp.route('/herramientas/api/recalcular_stock', methods=['POST'])
-def api_recalcular_stock():
-    from routes.inventario import asegurar_tablas_inventario
-    asegurar_tablas_inventario()  # crea fn_recalcular_stock_producto si falta
-    d = request.get_json(silent=True) or {}
-    pid = d.get('producto_id')
-    codigo = (d.get('codigo') or '').strip()
-    with db_tx() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        marcar_usuario(cur, origen='Herramientas · Recalcular stock')
-        if codigo and not pid:
-            cur.execute("SELECT id FROM productos WHERE UPPER(codigo) = UPPER(%s) ORDER BY id LIMIT 1", (codigo,))
-            f = cur.fetchone()
-            if not f:
-                return _err(f'No existe el producto {codigo}.', 404)
-            pid = f['id']
-        filtro, params = ('AND p.id = %s', (int(pid),)) if pid else ('', ())
-        # Solo productos que ya están en Inventario: los demás conservan su stock antiguo
-        cur.execute(f"""SELECT p.id, p.codigo, COALESCE(p.stock, 0) AS antes FROM productos p
-                        WHERE EXISTS (SELECT 1 FROM inv_stock s WHERE s.producto_id = p.id) {filtro} ORDER BY p.id""", params)
-        lista = cur.fetchall()
-        if pid and not lista:
-            return jsonify({'success': True, 'cambiados': [], 'revisados': 0,
-                            'message': 'Ese producto no tiene stock en Inventario: no se cambió nada.'})
-        cambiados = []
-        for p in lista:
-            cur.execute("SELECT fn_recalcular_stock_producto(%s)", (p['id'],))
-            cur.execute("SELECT COALESCE(stock, 0) AS despues FROM productos WHERE id = %s", (p['id'],))
-            despues = cur.fetchone()['despues']
-            if Decimal(str(despues)) != Decimal(str(p['antes'])):
-                cambiados.append({'id': p['id'], 'codigo': p['codigo'], 'antes': float(p['antes']), 'despues': float(despues)})
-    msg = f'Se revisaron {len(lista)} producto(s); {len(cambiados)} tenían el stock desactualizado y se corrigieron.'
-    registrar_auditoria('herramienta', MODULO, tabla='productos', registro_id=pid, detalle='Recalculó stock: ' + msg,
-                        despues={'cambiados': cambiados[:200]})
-    return jsonify({'success': True, 'revisados': len(lista), 'cambiados': cambiados, 'message': msg})
+@herramientas_bp.route('/herramientas/api/revisar_stock', methods=['GET'])
+def api_revisar_stock():
+    """Solo mira (Erika 25/10/2026: "recalcular stock me parece peligroso ... no estoy físicamente ahí").
+    Compara el stock que muestra Productos con la suma de Inventario (todas las empresas y sedes). No cambia nada:
+    la base ya los mantiene iguales sola (trigger trg_inv_stock_sync_productos). Si aparece una diferencia, se avisa
+    al equipo de sistemas; el conteo físico se corrige solo en Inventario ▸ Conteos."""
+    codigo = (request.args.get('codigo') or '').strip()
+    filtro, params = ('AND UPPER(p.codigo) = UPPER(%s)', (codigo,)) if codigo else ('', ())
+    filas = db_query(f"""
+        SELECT p.id, p.codigo, COALESCE(to_jsonb(p)->>'descripcion', to_jsonb(p)->>'producto', '') AS nombre, COALESCE(p.stock, 0) AS productos,
+               s.total AS inventario
+        FROM productos p
+        JOIN (SELECT producto_id, SUM(cantidad) AS total FROM inv_stock GROUP BY producto_id) s ON s.producto_id = p.id
+        WHERE 1 = 1 {filtro}
+        ORDER BY p.codigo""", params) or []
+    diferencias = [{'id': f['id'], 'codigo': f['codigo'], 'nombre': f['nombre'], 'productos': float(f['productos']),
+                    'inventario': float(f['inventario'])}
+                   for f in filas if Decimal(str(f['productos'])) != Decimal(str(f['inventario']))]
+    msg = (f'Se revisaron {len(filas)} producto(s): todos cuadran con Inventario.' if not diferencias else
+           f'Se revisaron {len(filas)} producto(s): {len(diferencias)} no cuadran. No se cambió nada.')
+    registrar_auditoria('herramienta', MODULO, detalle='Revisó el stock (solo lectura): ' + msg)
+    return jsonify({'success': True, 'revisados': len(filas), 'diferencias': diferencias, 'message': msg})
 
 
 # ============================================================

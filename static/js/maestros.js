@@ -990,6 +990,7 @@ function clearClientForm() {
   cliSincronizarDias();
   document.getElementById('cli_limiteCredito').value = '';
   document.getElementById('cli_descuento').value = '';
+  if (document.getElementById('cli_pideMigo')) document.getElementById('cli_pideMigo').checked = false;
   document.getElementById('cli_estado').value = 'Activo';
   document.getElementById('cli_obs').value = '';
   document.getElementById('cliContacts').innerHTML = contactBox({ principal: true });
@@ -1036,6 +1037,8 @@ function fillClientForm(data) {
         }
     });
     cliSincronizarDias();
+    const chkMigo = document.getElementById('cli_pideMigo');
+    if (chkMigo) chkMigo.checked = !!data.pide_migo;
     
     // 🔥 CARGAR CONTACTOS - USANDO DATOS DE LA API
     const cc = document.getElementById('cliContacts');
@@ -1345,6 +1348,7 @@ async function saveClient() {
         dias_credito: /cr[eé]dito/i.test(document.getElementById('cli_condicion')?.value || '') ? (document.getElementById('cli_diasCredito')?.value || '') : '0',
         limite_credito: document.getElementById('cli_limiteCredito')?.value?.trim() || '',
         descuento: document.getElementById('cli_descuento')?.value?.trim() || '',
+        pide_migo: !!document.getElementById('cli_pideMigo')?.checked,
         estado: document.getElementById('cli_estado')?.value || 'Activo',
         observaciones: document.getElementById('cli_obs')?.value?.trim() || '',
         contactos: contacts,

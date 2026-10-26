@@ -3,7 +3,7 @@ Pedido de Erika del 20/10/2026 ("Correcciones de flujo, estética y lógica de n
   - Cotización: "Entrega" por producto solo Pendiente/Entregado; la fila de la parihuela es obligatoria para validación.
   - Compras: panel de abastecimiento con "Extra para stock"; factura de proveedor que no cuadra no se guarda; botón Ver.
   - RUC duplicado: aviso apenas se escribe o carga el RUC (clientes y proveedores).
-  - Guías: "N° Facturas"; Facturas: Cotización > N° PC > N° Guía > N° factura.
+  - Guías: "N° Facturas"; Facturas: Cotización > N° PC > N° Guía > N° Factura.
   - "Pendiente por compra" solo con la cotización aceptada por el cliente.
   - Despacho sin stock: dice qué producto falta y en qué sede (ver test_stock_automatico).
   - Bug encontrado: "Guardar / Actualizar" cliente desde la cotización borraba contactos y datos del cliente.
@@ -107,7 +107,7 @@ def test_pantallas_del_20_de_octubre():
     assert guias.index('<th>N° cotización</th>') < guias.index('<th>N° PC</th>') < guias.index('<th>N° Facturas</th>')
     fac = html[html.index('<div id="comprobantes"'):]
     fac = fac[:fac.index('</thead>')]
-    orden = [fac.index(t) for t in ('<th>N° cotización</th>', '<th>N° PC</th>', '<th>N° guía</th>', '<th>N° factura</th>')]
+    orden = [fac.index(t) for t in ('<th>N° cotización</th>', '<th>N° PC</th>', '<th>N° Guía</th>', '<th>N° Factura</th>')]
     assert orden == sorted(orden) and '<th>Documento</th>' not in fac
     js = _leer('static/js/ventas.js')
     assert 'function mostrarErrorStockDespacho' in js and "response.codigo === 'falta_stock'" in js
