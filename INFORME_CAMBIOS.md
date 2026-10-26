@@ -2435,7 +2435,7 @@ Pedido: "Si Hellen puede aprobar sus propias OC, pero aquellas que el proveedor 
 - Era el "Estado del crédito" antiguo: toda factura a crédito nacía "Pendiente de aprobación" y nadie la aprobaba nunca. No lo usa ningún otro módulo.
 - Como la condición ya viene fija del PC aprobado, la lista ya no lo muestra. Solo aparece si alguien marca el crédito como "Rechazada".
 
-### 24.47 Nombres de golden rule: PV, PC y OC (Erika, 26/10/2026 20:26 y 20:41)
+### 24.47 Regla de oro de nombres: PV, PC y OC (Erika, 26/10/2026 20:26 y 20:41)
 - **PV (Pedido de venta)**: lo que antes se llamaba "PC (Pedido de compra)". Es el pedido interno de cada empresa, con número automático: PV-KCF-000012, PV-AGD-000103… La numeración sigue desde el último PC, sin saltos.
 - **PC (Pedido del cliente)**: el número que manda el cliente (antes "N° OC del cliente"). Es opcional. Si el cliente no manda número, se ve "—". Sale en la factura, en Entregas y en el PDF ("PC (PEDIDO DEL CLIENTE):").
 - **OC (Orden de compra) = solo Proveedor**. Ya no se usa "OC" para nada del cliente.
@@ -2455,3 +2455,40 @@ Pedido: "Si Hellen puede aprobar sus propias OC, pero aquellas que el proveedor 
 - Observaciones: sección propia "📝 Observaciones" (opcional, sale en el PDF).
 - Capturas: `capturas/26oct_retencion.png`, `capturas/26oct_factura_pie.png` y `capturas/26oct_correlativos_pv.png`.
 - Pruebas: 318 correctas (base normal) y 316 + 2 omitidas (reconstruida). Prueba nueva: `test_retencion_calculada_y_con_candado`.
+
+### 24.49 REGLA DE ORO de colores por avance (Erika, 26/10/2026 20:43)
+Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el texto de cada estado, y los colores están en `compacto.css`.
+
+| Avance | Color | Estados |
+|---|---|---|
+| 100% (cerrado) | Azul eléctrico #0057FF | Pagado, Cobrado, Entregado, Cerrado, Completado, Atendido / PV atendido, Recibido, Facturado, Conciliado, Liquidado, Rendido, Comprado / en stock, En portal |
+| 80% (casi listo) | Verde fluorescente #39FF14 | Despachado, Aprobado, Emitido/Emitida, Aceptado, PV conforme, Validado, Enviado, Registrado, Confirmado, Aceptada por cliente, Comprado por llegar / por recoger, OC generada |
+| 50% (a medias) | Amarillo #FFD60A | Pago parcial, Parcial, En preparación, En proceso, En revisión, Recibido parcial, Entrega parcial, Compra parcial |
+| 0-25% (pendiente) | Rojo #FF1E1E | Pendiente, Por despachar, Borrador, Por pagar, Por cobrar, Vencido, PV observado, Rechazado, Por aprobar, Por validar, Pendiente de compra, Falta MIGO / portal / XML |
+
+- Esta regla reemplaza "terminado = verde". Lo anulado y lo informativo (Activo, KCF/AGD, etc.) no cambian de color.
+- Captura: `capturas/26oct_colores_avance.png`.
+
+### 24.50 Notas de crédito: solo Hellen crea, solo Erika aprueba (Erika, 26/10/2026 20:49, 20:54 y 20:57)
+- **Quién**: solo Hellen crea, corrige y envía (variable `USUARIOS_NOTA_CREDITO`, por defecto `hel02kcf`). Solo Erika aprueba o rechaza (`USUARIOS_REPORTES` = `eri01kcf`). Nadie más, ni el administrador. Lo controla el servidor.
+- **Flujo**: Hellen la guarda como borrador o la envía → "Por aprobar" → Erika la aprueba (queda "Emitida") o la rechaza con motivo. Si la rechaza, Hellen la corrige y la vuelve a enviar.
+- **Cuándo cuenta**: no resta de Cuentas por cobrar, Reportes ni SUNAT hasta que Erika la aprueba. Todo queda en Auditoría con fecha y hora.
+- **Monto solo lectura** (nadie lo escribe):
+  - 01 Anulación, 02 Error en RUC y 06 Devolución total: todo el saldo de la factura.
+  - 07 Devolución por ítem: cantidad devuelta × precio de la factura.
+  - 04 Descuento global: % del total.
+  - Nunca supera el saldo de la factura. Se desglosa en valor de venta, IGV y total.
+- **Trazabilidad automática** al elegir la factura: N° factura y fecha, N° guía, N° PV, N° PC (Pedido del cliente) y N° cotización. Se ve en el formulario, en la lista y en el documento.
+- **Para SUNAT**:
+  - Tipo de nota del catálogo 09 y sustento obligatorio.
+  - Detalle de productos y moneda igual a la de la factura.
+  - En devoluciones, N° de guía de devolución obligatorio.
+  - Evidencias adjuntas: carta o correo del cliente, PDF/XML de la nota emitida en SOL.
+- **Serie**: si la factura es E… (portal SOL), la nota sale E001; si no, FC01. Las 3 notas FC01 existentes no se tocaron.
+- **Observaciones**: salen en el documento.
+- **Nota interna**: nunca sale en el documento; solo la ven Hellen y Erika. Lleva causa (Error operativo / Pedido del cliente / Devolución / Descuento comercial / Otro), responsable del error (obligatorio si es error operativo) y qué pasó.
+- **Reporte para Erika**: botón "📊 Causas y responsables" (notas por causa y errores por responsable). En la pestaña sale el aviso "Tienes N por aprobar" y un número rojo.
+- Documento para imprimir o PDF: ⋮ ▸ "Ver documento / PDF". El camino antiguo, que dejaba escribir el monto, quedó cerrado.
+- Base: migración `034_nota_credito_aprobacion.sql` aplicada en Supabase. Solo agrega columnas vacías y una tabla de evidencias, con RLS; no cambia datos.
+- Capturas: `capturas/26oct_nc_formulario.png`, `26oct_nc_lista.png`, `26oct_nc_revisar.png` y `26oct_nc_documento.png`.
+- Pruebas: 323 correctas (base normal) y 321 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_26oct_nota_credito.py`.

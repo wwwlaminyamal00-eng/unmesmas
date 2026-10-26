@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Nota de crédito {{ n.serie }}-{{ n.numero }}</title>
+<style>
+    /* Nota de crédito (26/10/2026). Nunca muestra la nota interna: es para el cliente y para SUNAT. */
+    @page{size:A4 portrait;margin:12mm}
+    body{font-family:Arial,Helvetica,sans-serif;color:#0F172A;margin:24px auto;max-width:186mm;font-size:12px;background:#fff}
+    .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid {{ empresa.color_primario or '#1E3A8A' }};padding-bottom:10px}
+    .cab h1{margin:0;font-size:18px}
+    .doc{border:3px solid {{ empresa.color_primario or '#1E3A8A' }};border-radius:8px;padding:10px 16px;text-align:center;white-space:nowrap;margin-left:16px}
+    .doc .titulo{display:block;font-size:16px;font-weight:800}
+    .doc b{display:block;font-size:22px;margin:2px 0}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+    .caja{border:1px solid #CBD5E1;border-radius:6px;padding:8px 10px;line-height:1.6}
+    .caja h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;color:#475569}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th{background:#E5E7EB;border:1px solid #CBD5E1;padding:6px;font-size:11px}
+    td{border:1px solid #CBD5E1;padding:6px}
+    td.n{text-align:right}
+    .tot td{font-weight:bold}
+    .nota{border:1px solid #CBD5E1;padding:8px 10px;border-radius:6px;margin-top:10px;line-height:1.5}
+    .sello{display:inline-block;margin-top:10px;padding:4px 10px;border-radius:6px;font-weight:bold}
+    .sello.ok{background:#0057FF;color:#fff}.sello.no{background:#FF1E1E;color:#fff}
+    @media print{.no-print{display:none}body{margin:0;max-width:none}}
+</style>
+</head>
+<body>
+{% set sim = 'US$' if (n.moneda or 'PEN') == 'USD' else 'S/' %}
+{% macro dmy(f) %}{% if f %}{{ f[8:10] }}/{{ f[5:7] }}/{{ f[0:4] }}{% endif %}{% endmacro %}
+<p class="no-print"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></p>
+<div class="cab">
+    <div>
+        <h1>{{ empresa.razon_social or empresa.nombre_comercial or '' }}</h1>
+        <div>RUC {{ empresa.ruc or '' }}</div>
+        <div>{{ empresa.direccion_fiscal or '' }}</div>
+    </div>
+    <div class="doc"><span class="titulo">NOTA DE CRÉDITO ELECTRÓNICA</span><b>{{ n.serie }}-{{ n.numero }}</b>Fecha: {{ dmy(n.fecha_emision) }}</div>
+</div>
+<div class="grid">
+    <div class="caja"><h3>Cliente</h3>
+        <b>{{ n.cliente_nombre }}</b><br>{{ n.cliente_tipo_doc or 'RUC' }}: {{ n.cliente_numero_doc }}<br>{{ n.cliente_direccion or '' }}</div>
+    <div class="caja"><h3>Documento que modifica</h3>
+        Factura: <b>{{ n.comprobante_asociado }}</b>{% if n.factura_fecha %} del {{ dmy(n.factura_fecha) }}{% endif %}<br>
+        Tipo de nota: <b>{{ n.tipo_nota or '' }} {{ tipos.get(n.tipo_nota, n.motivo or '') }}</b><br>
+        {% if n.guia_numero %}Guía de remisión: {{ n.guia_numero }}<br>{% endif %}
+        {% if n.pc_cliente %}PC (Pedido del cliente): {{ n.pc_cliente }}<br>{% endif %}
+        {% if n.guia_devolucion %}Guía de devolución: {{ n.guia_devolucion }}<br>{% endif %}
+    </div>
+</div>
+<div class="nota"><b>Sustento:</b> {{ n.sustento or n.motivo or '' }}</div>
+<table>
+    <thead><tr><th>Código</th><th>Descripción</th><th>U.M.</th><th>Cantidad</th><th>Valor unitario (sin IGV)</th><th>Total (con IGV)</th></tr></thead>
+    <tbody>
+    {% for it in (n.items_json or []) %}
+        <tr><td>{{ it.codigo }}</td><td>{{ it.producto }}</td><td>{{ it.um }}</td><td class="n">{{ '%g' % it.cantidad }}</td>
+            <td class="n">{{ '%.2f' % it.valor_unitario }}</td><td class="n">{{ '%.2f' % it.total }}</td></tr>
+    {% else %}
+        <tr><td colspan="6">{{ tipos.get(n.tipo_nota, n.motivo or '') }}{% if n.porcentaje %} ({{ '%g' % n.porcentaje }}% del total){% endif %}</td></tr>
+    {% endfor %}
+    <tr class="tot"><td colspan="5" class="n">Valor de venta (sin IGV)</td><td class="n">{{ sim }} {{ '%.2f' % (n.subtotal if n.subtotal is not none else (n.monto or 0) / 1.18) }}</td></tr>
+    <tr class="tot"><td colspan="5" class="n">IGV 18%</td><td class="n">{{ sim }} {{ '%.2f' % (n.igv if n.igv is not none else (n.monto or 0) - (n.monto or 0) / 1.18) }}</td></tr>
+    <tr class="tot"><td colspan="5" class="n">TOTAL NOTA DE CRÉDITO</td><td class="n">{{ sim }} {{ '%.2f' % (n.monto or 0) }}</td></tr>
+    </tbody>
+</table>
+{% if n.observaciones %}<div class="nota"><b>Observaciones:</b> {{ n.observaciones }}</div>{% endif %}
+{% if n.estado == 'Emitida' %}<span class="sello ok">Aprobada{% if n.aprobado_en %} el {{ dmy(n.aprobado_en) }} {{ n.aprobado_en[11:16] }}{% endif %}</span>
+{% else %}<span class="sello no">{{ n.estado }}: aún no aprobada, no válida para el cliente</span>{% endif %}
+</body>
+</html>

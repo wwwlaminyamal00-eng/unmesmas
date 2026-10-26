@@ -193,6 +193,37 @@
 .monto-ret{display:block;font-size:9.5px;color:#B91C1C;font-weight:700;white-space:nowrap}
 .migo-lista{display:block;font-size:9.5px;font-weight:800;color:#0F766E;margin-top:2px}
 .xml-lista{display:inline-block;margin-top:2px;padding:0 5px;border-radius:6px;background:#CCFBF1;color:#0F766E;font-size:9.5px;font-weight:900}
+.nc-regla{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:8px}
+.nc-estado-linea{margin:0 0 8px;font-weight:800}
+.nc-rechazo{background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:800;margin-top:4px}
+.nc-vacio{color:#64748B;font-size:12px;padding:6px 14px 12px}
+.nc-datos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:4px 14px 12px}
+.nc-dato{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:2px}
+.nc-dato span{font-size:10px;font-weight:900;color:#64748B;text-transform:uppercase}
+.nc-dato b{font-size:13px;color:#0F172A;word-break:break-word}
+.nc-dato.nc-saldo{border-color:#10B981;background:#ECFDF5}.nc-dato.nc-saldo b{color:#047857}
+table.nc-items{width:100%;border-collapse:collapse;margin-top:4px}
+table.nc-items th,table.nc-items td{border:1px solid #E2E8F0;padding:5px 8px;text-align:center;font-size:12px}
+table.nc-items th{background:#F1F5F9}
+table.nc-items input.nc-cant{width:90px;text-align:center;font-weight:900}
+.nc-nota-tipo{background:#F8FAFC;border:1px dashed #94A3B8;border-radius:8px;padding:8px 12px;font-size:12px}
+.nc-importe{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:4px 14px 12px}
+.nc-importe div{border:1px solid #E2E8F0;border-radius:10px;padding:8px;text-align:center;display:flex;flex-direction:column}
+.nc-importe span{font-size:11px;font-weight:900;color:#475569;text-transform:uppercase}
+.nc-importe b{font-size:18px}
+.nc-importe .nc-total{border-color:#FCA5A5;background:#FEF2F2}.nc-importe .nc-total b{color:#B91C1C}
+.nc-interna{border:2px dashed #7C3AED!important}
+.nc-interna .ficha-section-title{color:#6D28D9!important}
+.nc-evid{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 14px 12px}
+.nc-evid a{font-weight:800;color:#0F766E}
+.nc-btn-aprobar{background:#0057FF!important;color:#fff!important;border-color:#0041C2!important;font-weight:900}
+.nc-btn-rechazar{background:#FF1E1E!important;color:#fff!important;border-color:#C40000!important;font-weight:900}
+.nc-aviso{background:#FFF7ED;border:2px solid #FB923C;color:#9A3412;border-radius:10px;padding:8px 14px;margin-bottom:8px;font-weight:800;align-items:center;gap:6px}
+tr.nc-fila-pend td{background:#FFF7ED!important}
+.nc-traza,.nc-quien{font-size:11px;line-height:1.35}
+.nc-traza small,.nc-quien small,.nc-sub{display:block;color:#64748B;font-size:9px;font-weight:800;text-transform:uppercase}
+.nc-pend{display:inline-block;min-width:18px;padding:0 5px;margin-left:5px;border-radius:9px;background:#FF1E1E;color:#fff;font-size:11px;font-weight:900;text-align:center}
+@media (max-width:900px){.nc-datos,.nc-importe{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .pie-factura{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .pie-factura .pie-descargas,.pie-factura .pie-guardar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pie-factura .pie-tit{font-size:11px;font-weight:900;color:#475569}
@@ -3344,8 +3375,10 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
                         <th>N° Factura o boleta</th>
                         <th>Cliente</th>
                         <th>RUC</th>
-                        <th>Motivo</th>
+                        <th>PV / PC (Pedido del cliente) / Guía</th>
+                        <th>Tipo de nota</th>
                         <th title="Monto de la nota de crédito, con IGV">Monto (inc. IGV)</th>
+                        <th>Creó / Aprobó</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -3563,6 +3596,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 {% block extra_js %}
 <!-- PRIMERO: Cargar ventas.js -->
 <script src="{{ url_for('static', filename='js/ventas.js') }}"></script>
+<script src="{{ url_for('static', filename='js/nota_credito.js') }}?v=20261026"></script>
 
 <script>
     (function() {

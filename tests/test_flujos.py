@@ -269,15 +269,11 @@ class TestFacturacion:
         assert vendedor.put(f'/ventas/api/comprobantes/{cid}/toggle', json={'estado': 'Anulado'}).status_code == 200
         assert vendedor.put(f'/ventas/api/comprobantes/{cid}/toggle', json={'estado': 'Emitido'}).status_code == 409
 
-    def test_nota_credito_no_supera_comprobante(self, vendedor):
+    def test_nota_credito_camino_antiguo_cerrado(self, vendedor):
+        # 26/10/2026: el camino antiguo dejaba escribir cualquier monto; ahora solo Hellen por /ventas/api/nc (ver test_zz_zz_26oct_nota_credito)
         r = factura(vendedor).json['data']
-        asociado = f"{r['serie']}-{r['numero']}"
-        base = {'comprobante_asociado': asociado, 'motivo': 'Devolución', 'cliente_nombre': 'X'}
-        assert vendedor.post('/ventas/api/notas-credito/guardar', json={**base, 'monto': 500}).status_code == 400
-        ok = vendedor.post('/ventas/api/notas-credito/guardar', json={**base, 'monto': 18})
-        assert ok.status_code == 200 and ok.json['data']['numero']
-        assert vendedor.post('/ventas/api/notas-credito/guardar', json={**base, 'monto': 101}).status_code == 400
-        assert vendedor.post('/ventas/api/notas-credito/guardar', json={**base, 'monto': 10, 'motivo': ''}).status_code == 400
+        base = {'comprobante_asociado': f"{r['serie']}-{r['numero']}", 'motivo': 'Devolución', 'cliente_nombre': 'X'}
+        assert vendedor.post('/ventas/api/notas-credito/guardar', json={**base, 'monto': 18}).status_code == 403
 
 
 class TestGuias:

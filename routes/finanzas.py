@@ -143,7 +143,7 @@ SQL_CXC = """
     nc AS (
         SELECT comprobante_asociado, empresa_id, SUM(monto) AS monto_nc
         FROM notas_credito
-        WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR')
+        WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADA', 'ANULADO', 'BORRADOR', 'POR APROBAR', 'RECHAZADA')
         GROUP BY comprobante_asociado, empresa_id
     )
     SELECT c.id, c.tipo_comprobante, c.serie, c.numero,

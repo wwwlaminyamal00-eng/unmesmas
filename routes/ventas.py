@@ -761,17 +761,9 @@ def actualizar_estado_comprobante_db(comp_id, nuevo_estado):
 def obtener_notas_credito_db():
     """Obtiene todas las notas de crédito"""
     try:
-        query = """
-            SELECT 
-                id, serie, numero, fecha_emision, fecha_vencimiento,
-                cliente_tipo_doc, cliente_numero_doc, cliente_nombre,
-                cliente_direccion, cliente_email, cliente_telefono,
-                comprobante_asociado, motivo, monto, observaciones,
-                estado, creado_por, created_at, updated_at
-            FROM notas_credito
-            ORDER BY id DESC
-        """
-        return db_query(query)
+        from routes.nota_credito import asegurar_nota_credito
+        asegurar_nota_credito()
+        return db_query("SELECT * FROM notas_credito ORDER BY id DESC")
     except Exception as e:
         print(f"❌ Error en obtener_notas_credito_db: {e}")
         return []
@@ -3577,6 +3569,14 @@ def api_notas_credito_listar():
                 'motivo': row.get('motivo'),
                 'monto': float(row.get('monto') or 0),
                 'observaciones': row.get('observaciones'),
+                # Trazabilidad y aprobación (26/10/2026)
+                'tipo_nota': row.get('tipo_nota'),
+                'factura_fecha': str(row.get('factura_fecha'))[:10] if row.get('factura_fecha') else None,
+                'guia': row.get('guia_numero'), 'pv': row.get('pv_numero'), 'pc_cliente': row.get('pc_cliente'),
+                'cotizacion': row.get('cotizacion_numero'),
+                'creado_por_usuario': row.get('creado_por_usuario'), 'aprobado_por': row.get('aprobado_por'),
+                'aprobado_en': str(row.get('aprobado_en'))[:16] if row.get('aprobado_en') else None,
+                'motivo_rechazo': row.get('motivo_rechazo'),
                 **_tiempos(row)
             })
         return jsonify({'success': True, 'data': formatted_data})
@@ -3586,6 +3586,10 @@ def api_notas_credito_listar():
 @ventas_bp.route('/ventas/api/notas-credito/guardar', methods=['POST'])
 @login_required
 def api_notas_credito_guardar():
+    # 26/10/2026 (REGLA DE ORO de Erika): las notas se crean con /ventas/api/nc/guardar (solo Hellen, monto calculado
+    # y aprobación de Erika). Este camino antiguo dejaba escribir cualquier monto: queda cerrado.
+    return jsonify({'success': False, 'error': 'Las notas de crédito ahora las crea solo Hellen desde "+ Nueva nota" '
+                                               'y las aprueba Erika.'}), 403
     try:
         data = request.get_json()
         usuario_id = session.get('usuario_id')
@@ -3655,6 +3659,9 @@ def api_notas_credito_guardar():
 @login_required
 def api_notas_credito_eliminar_permanente(id):
     """Elimina físicamente una nota de crédito de la base de datos (solo si ya está anulada)"""
+    from utils import es_duena_reportes
+    if not es_duena_reportes():
+        return jsonify({'success': False, 'error': 'Solo Erika puede eliminar una nota de crédito.'}), 403
     try:
         print(f"🗑️ Eliminando físicamente nota de crédito ID: {id}")
 
@@ -4869,9 +4876,12 @@ def api_notas_credito_toggle(id):
         if not nuevo_estado:
             return jsonify({'success': False, 'error': 'Estado requerido'}), 400
         
-        estados_validos = ['Borrador', 'Emitida', 'Enviada', 'Aplicada', 'Anulada']
-        if nuevo_estado not in estados_validos:
-            return jsonify({'success': False, 'error': f'Estado inválido'}), 400
+        # 26/10/2026: el estado de una nota solo lo cambia Erika, y solo para anularla (aprobar/rechazar va por /nc/decidir)
+        from utils import es_duena_reportes
+        if not es_duena_reportes():
+            return jsonify({'success': False, 'error': 'Solo Erika cambia el estado de una nota de crédito.'}), 403
+        if nuevo_estado != 'Anulada':
+            return jsonify({'success': False, 'error': 'Aquí solo se puede anular. Aprobar o rechazar se hace desde la nota.'}), 400
         
         query = """
             UPDATE notas_credito 
