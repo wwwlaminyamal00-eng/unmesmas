@@ -252,6 +252,32 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 .btn-ver-oc:hover{background:#EFF6FF}
 .abast-despachado{background:#39FF14;color:#064E00;border:1px solid #22C55E}
 .abast-entregado{background:#0057FF;color:#FFFFFF;border:1px solid #0041C2}
+/* Factura total / parcial por posiciones (Erika 27/10/2026) */
+.fp-modo{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:0 0 10px;padding:10px 12px;border:1px solid #BFDBFE;background:#EFF6FF;border-radius:12px}
+.fp-pregunta{font-weight:900;color:#0F172A;font-size:13px;width:100%}
+.fp-op{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:13px;padding:6px 12px;border-radius:999px;border:2px solid #CBD5E1;background:#fff;cursor:pointer}
+.fp-op.on{border-color:#0057FF;color:#0057FF}
+.fp-avance{margin-left:auto;font-size:12px;font-weight:800;color:#1E3A8A}
+.fp-aviso{margin:0 0 8px;font-size:12px;font-weight:700;color:#64748B}
+.fp-tabla td.fp-num{white-space:nowrap;text-align:right}
+.fp-tabla td.fp-av{font-size:10.5px;line-height:1.35;white-space:nowrap}
+.fp-tabla tr.fp-off td{background:#F8FAFC;color:#94A3B8}
+.fp-tabla input.fp-cant{width:70px;height:30px;border:2px solid #CBD5E1;border-radius:8px;text-align:center;font-weight:800}
+.fp-tabla .fp-max{display:block;font-size:10px;color:#64748B}
+.fp-tabla .fp-no{font-size:11px;font-weight:800;color:#B91C1C}
+.fp-pend{margin-top:10px;border:2px solid #FCA5A5;background:#FFF5F5;border-radius:12px;padding:10px 12px}
+.fp-pend-tit{font-weight:900;color:#B91C1C;font-size:13px;margin-bottom:6px}
+.fp-pend-tit small{font-weight:700;color:#7F1D1D}
+.fp-pend-fila{display:grid;grid-template-columns:1fr 190px 1.2fr;gap:8px;align-items:center;margin-top:6px}
+.fp-pend-fila select,.fp-pend-fila input{height:34px;border:2px solid #FCA5A5;border-radius:8px;padding:0 8px;font-size:12.5px;font-weight:700;background:#fff}
+.fp-pend-pos{font-size:12.5px}
+@media (max-width:760px){.fp-pend-fila{grid-template-columns:1fr}}
+.entrega-ingreso{display:block;font-size:10.5px;font-weight:800;color:#1E3A8A;margin-top:2px}
+.pv-avance{display:block;font-size:10.5px;font-weight:800;line-height:1.3;margin-top:3px;color:#334155}
+.pv-avance .pv-falta{color:#B91C1C}
+.pvav{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:900;margin-top:2px;border:1px solid transparent}
+.pvav-100{background:#0057FF;color:#fff;border-color:#0041C2}.pvav-80{background:#39FF14;color:#064E00;border-color:#22C55E}
+.pvav-50{background:#FFD60A;color:#5C4500;border-color:#E0B400}.pvav-0{background:#FF1E1E;color:#fff;border-color:#C40000}
 /* Entregas ▸ Acción (21/10/2026): botones sin emojis, delgados, en una línea y del mismo ancho */
 #despachoRows td .acc-col{min-width:116px}
 #despachoRows td .acc-col :is(button,.desp-hecho){width:100%;padding:3px 8px!important;font-size:10.5px!important;line-height:1.25!important;white-space:nowrap!important;border-radius:6px!important;box-shadow:none!important;margin:0!important;min-height:0!important;height:auto!important}
@@ -3601,6 +3627,7 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 <!-- PRIMERO: Cargar ventas.js -->
 <script src="{{ url_for('static', filename='js/ventas.js') }}"></script>
 <script src="{{ url_for('static', filename='js/nota_credito.js') }}?v=20261026"></script>
+<script src="{{ url_for('static', filename='js/factura_parcial.js') }}?v=20261027"></script>
 
 <script>
     (function() {

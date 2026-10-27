@@ -82,6 +82,7 @@ from routes.compras import compras_bp
 from routes.compras_flujo import compras_flujo_bp
 from routes.abastecimiento import abastecimiento_bp
 from routes.stock_automatico import stock_auto_bp
+from routes.facturacion_parcial import facturacion_parcial_bp
 from routes.sunat import sunat_bp
 from routes.bancos import bancos_bp
 from routes.intercompany import intercompany_bp
@@ -280,6 +281,7 @@ app.register_blueprint(compras_bp)
 app.register_blueprint(compras_flujo_bp)
 app.register_blueprint(abastecimiento_bp)
 app.register_blueprint(stock_auto_bp)
+app.register_blueprint(facturacion_parcial_bp)  # Factura parcial por posiciones y cuadre (27/10/2026)
 app.register_blueprint(sunat_bp)   # SUNAT e impuestos (21/10/2026): solo gerencia y permiso SUNAT
 app.register_blueprint(bancos_bp)  # Conciliación bancaria (21/10/2026): gerencia y permiso propio
 app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026): gerencia y permiso propio

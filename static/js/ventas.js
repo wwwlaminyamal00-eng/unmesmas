@@ -1490,7 +1490,7 @@ function fechaDMY(iso) {
 function entregaRealHTML(r) {
     const salida = r.fecha_salida ? `<small class="ent-salida" title="Fecha y hora en que salió del almacén">Salió ${fechaDMY(r.fecha_salida)}</small>` : '';
     if (r.estado === 'Entregado') {
-        return `<button class="entrega-btn tiene" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Fecha en que el cliente recibió: clic para cambiarla">✔ ${fechaDMY(r.fecha_entrega_real) || 'Sin fecha'} ✏</button>${salida}`;
+        return `<button class="entrega-btn tiene" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Fecha en que el cliente recibió: clic para cambiarla">✔ ${fechaDMY(r.fecha_entrega_real) || 'Sin fecha'} ✏</button>${r.ingreso_cliente ? `<small class="entrega-ingreso" title="N° de ingreso del cliente">Ingreso ${sd(r.ingreso_cliente)}</small>` : ''}${salida}`;
     }
     if (r.estado === 'Despachado') {
         return `<button class="entrega-btn" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Cuando el cliente ya recibió, pon aquí la fecha real">✏ Poner fecha</button>${salida}`;
@@ -1740,7 +1740,9 @@ function abrirEntregaDespacho(id, modo) {
         <textarea id="entregaMotivo" maxlength="200" rows="3" placeholder="Ej: producto equivocado, caja dañada, cliente no estaba" style="width:100%;border:2px solid #CBD5E1;border-radius:10px;padding:8px;font-size:14px;margin-top:4px"></textarea>
         <div style="font-size:12px;color:#9A3412;margin-top:8px">El stock vuelve al inventario y el despacho queda para volver a despacharlo. Si se hizo guía, revisa si hay que anularla.</div>` : `
         <label style="font-size:13px;font-weight:800;color:#334155">Fecha real en que el cliente recibió</label>
-        <input type="date" id="entregaFecha" value="${actual}" max="${hoy}" ${minimo ? `min="${minimo}"` : ''} style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">`}
+        <input type="date" id="entregaFecha" value="${actual}" max="${hoy}" ${minimo ? `min="${minimo}"` : ''} style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">
+        <label style="display:block;font-size:13px;font-weight:800;color:#334155;margin-top:12px">N° de ingreso del cliente <small style="font-weight:600;color:#64748B">(opcional: el número que su sistema le da al recibir)</small></label>
+        <input type="text" id="entregaIngreso" maxlength="60" value="${sd(r.ingreso_cliente || '')}" placeholder="Ej: 5000123456" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">`}
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
           ${!rechazar && r.estado === 'Entregado' ? `<button type="button" data-acc="quitar" style="${btn};border:1px solid #FCA5A5;background:#fff;color:#B91C1C">Quitar fecha</button>` : ''}
           <button type="button" data-acc="cancelar" style="${btn};border:1px solid #CBD5E1;background:#fff">Cancelar</button>
@@ -1767,7 +1769,7 @@ function abrirEntregaDespacho(id, modo) {
             } else {
                 const f = document.getElementById('entregaFecha').value;
                 if (!f) { showToast('⚠️ Elige la fecha real de entrega', 'warning'); return; }
-                enviar({ accion: 'entregar', fecha_entrega: f });
+                enviar({ accion: 'entregar', fecha_entrega: f, ingreso_cliente: (document.getElementById('entregaIngreso')?.value || '').trim() });
             }
         }
     });
@@ -4692,6 +4694,8 @@ async function _saveComprobante(estado) {
     try {
         console.log('🔄 Guardando comprobante...', { estado });
         
+        // Factura total o parcial por posiciones (27/10/2026): revisa checks, cantidades y motivos antes de guardar
+        if (window.FacturaParcial && !window.FacturaParcial.listaParaGuardar()) return;
         let productos = window._compProductos || [];
         
         // ============================================================
@@ -4767,6 +4771,8 @@ async function _saveComprobante(estado) {
             condicion: condicion,
             observaciones: (v => v.charAt(0).toLocaleUpperCase('es-PE') + v.slice(1))((document.getElementById('compObs')?.value || '').replace(/^\s+/, '')),
             items: productos,
+            facturacion_tipo: window.FacturaParcial ? window.FacturaParcial.modo() : undefined,
+            pendientes: window.FacturaParcial ? window.FacturaParcial.pendientes() : undefined,
             // 🔽 DATOS DE RETENCIÓN (3% - LEY PERUANA)
             tiene_retencion: tieneRetencion,
             es_credito: esCredito,
@@ -9512,7 +9518,7 @@ function openPedidoCompraModal(mode = 'cot') {
     editingId = null;
     
     const isEdit = mode !== 'cot' && mode !== 'directo';
-    const title = isEdit ? 'Editar PV Cliente' : (mode === 'cot' ? 'Crear PV desde cotización' : 'PV directo / sin cotización');
+    const title = isEdit ? 'Editar PV (Pedido de venta)' : (mode === 'cot' ? 'Crear PV desde cotización' : 'PV directo / sin cotización');
     document.getElementById('pedidoCompraModalTitle').textContent = title;
     
     const formContainer = document.getElementById('pedidoCompraForm');
@@ -12782,7 +12788,7 @@ function openPedidoCompraModalSAP(mode, id) {
     const sub = document.getElementById('modalSub');
     
     if (title) {
-        title.textContent = esEdicion ? '✏️ Editar PV Cliente' : '📋 Crear PV Cliente';
+        title.textContent = esEdicion ? '✏️ Editar PV (Pedido de venta)' : '📋 Crear PV (Pedido de venta)';
     }
     if (sub) {
         sub.textContent = esEdicion 
@@ -15039,38 +15045,55 @@ function buscarCotizacionSAP(query) {
     resultsContainer.innerHTML = `<div style="padding:12px 16px; color:#94A3B8; font-weight:850; text-align:center;">⏳ Buscando cotizaciones...</div>`;
     resultsContainer.style.display = 'block';
     
+    // La lista va encima de todo y con su propio scroll (Erika 27/10/2026: al buscar "17" la COT-000017 quedaba tapada)
+    ubicarListaCotizaciones(resultsContainer, searchInput);
+
     // Buscar con debounce
     cotizacionSearchTimer = setTimeout(() => {
         // Buscar en cotizacionesData (cargado desde la API)
-        const results = cotizacionesData.filter(c => {
+        const ql = q.toLowerCase();
+        const digitos = q.replace(/\D/g, '');
+        const encontradas = cotizacionesData.filter(c => {
             const searchStr = `${c.numero || ''} ${c.razon || ''} ${c.ruc || ''} ${c.descripcion || ''} ${c.cod_cliente || ''}`.toLowerCase();
-            return searchStr.includes(q.toLowerCase());
+            return searchStr.includes(ql);
         });
+        // Solo cotizaciones "Aceptada por Cliente" que aún no tienen PV
+        const conPV = new Set((pedidosData || []).filter(p => !/anulad/i.test(p.estado || ''))
+            .map(p => String(p.cotizacion_numero || '').trim()).filter(Boolean));
+        const aceptada = c => /^aceptada/i.test(c.estado || '');
+        const results = encontradas.filter(c => aceptada(c) && !conPV.has(String(c.numero || '').trim()));
+        // Coincidencia exacta del número primero: "17" -> COT-000017 arriba
+        const exacta = c => digitos && String(c.numero || '').replace(/\D/g, '').replace(/^0+/, '') === digitos.replace(/^0+/, '');
+        results.sort((a, b) => (exacta(b) - exacta(a)) || (Number(b.id) - Number(a.id)));
+        const otras = encontradas.filter(c => !results.includes(c)).sort((a, b) => exacta(b) - exacta(a)).slice(0, 3);
+        const notaOtras = otras.length ? `<div style="padding:8px 14px; font-size:11px; color:#92400E; background:#FFFBEB; border-top:1px solid #FDE68A;">
+                ${otras.map(c => `<div><b>${sd(c.numero)}</b> · ${conPV.has(String(c.numero || '').trim()) ? 'ya tiene PV' : `está "${sd(c.estado || 'sin estado')}": primero debe estar "Aceptada por Cliente"`}</div>`).join('')}
+            </div>` : '';
         
         if (results.length === 0) {
             resultsContainer.innerHTML = `
                 <div style="padding:12px 16px; color:#94A3B8; font-weight:850; text-align:center;">
-                    ❌ No se encontraron cotizaciones para: "<b>${q}</b>"
-                </div>
+                    No hay cotizaciones aceptadas sin PV para: "<b>${sd(q)}</b>"
+                </div>${notaOtras}
             `;
+            ubicarListaCotizaciones(resultsContainer, searchInput);
             return;
         }
         
-        // Renderizar resultados
+        // Renderizar resultados: una línea clara por cotización (N° · cliente · monto)
         resultsContainer.innerHTML = results.map(c => `
             <div onclick="seleccionarCotizacionSAP(${c.id})" 
-                 style="padding:10px 14px; border-bottom:1px solid #F1F5F9; cursor:pointer; transition:all 0.15s; display:flex; justify-content:space-between; align-items:center;"
-                 onmouseover="this.style.background='#F8FAFC'"
-                 onmouseout="this.style.background='#fff'">
-                <div>
-                    <div style="font-weight:900; color:#0F172A;">${c.numero || 'COT-XXXX'}</div>
-                    <div style="font-size:11px; color:#64748B;">${c.razon || 'Sin cliente'} ${c.ruc ? '| RUC: ' + c.ruc : ''}</div>
-                </div>
-                <div style="font-weight:900; color:#EF233C; font-size:13px;">${money(c.total || c.monto || 0)}</div>
+                 style="padding:9px 14px; border-bottom:1px solid #F1F5F9; cursor:pointer; display:flex; gap:10px; align-items:center; ${exacta(c) ? 'background:#EFF6FF;' : ''}"
+                 onmouseover="this.style.background='#F1F5F9'"
+                 onmouseout="this.style.background='${exacta(c) ? '#EFF6FF' : '#fff'}'">
+                <b style="color:#0F172A; white-space:nowrap; font-size:13px;">${sd(c.numero || '')}</b>
+                <span style="flex:1; min-width:0; font-size:12px; color:#334155; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sd(c.razon || 'Sin cliente')}${c.ruc ? ' · RUC ' + sd(c.ruc) : ''}</span>
+                <b style="color:#0057FF; font-size:13px; white-space:nowrap;">${money(c.total || c.monto || 0)}</b>
             </div>
-        `).join('');
+        `).join('') + notaOtras;
         
         resultsContainer.style.display = 'block';
+        ubicarListaCotizaciones(resultsContainer, searchInput);
         
         // Cerrar resultados al hacer clic fuera
         document.addEventListener('click', function closeResults(e) {
@@ -15081,6 +15104,24 @@ function buscarCotizacionSAP(query) {
         });
         
     }, 300);
+}
+
+// La lista de cotizaciones del PV se dibuja sobre todo (fuera de los recuadros que la cortaban)
+function ubicarListaCotizaciones(lista, input) {
+    if (!lista || !input) return;
+    if (lista.parentElement !== document.body) {
+        document.body.appendChild(lista);
+        const reubicar = () => { if (lista.style.display !== 'none') ubicarListaCotizaciones(lista, input); };
+        window.addEventListener('resize', reubicar);
+        document.addEventListener('scroll', reubicar, true);
+    }
+    const r = input.getBoundingClientRect();
+    const ancho = Math.min(Math.max(r.width, 460), window.innerWidth - 16);
+    const izquierda = Math.max(8, Math.min(r.left, window.innerWidth - ancho - 8));
+    const abajo = window.innerHeight - r.bottom - 12;
+    lista.style.cssText = `display:${lista.style.display === 'none' ? 'none' : 'block'}; position:fixed; left:${izquierda}px; top:${r.bottom + 3}px;
+        width:${ancho}px; max-height:${Math.max(Math.min(abajo, 360), 160)}px; overflow-y:auto; background:#fff; border:2px solid #0057FF;
+        border-radius:10px; box-shadow:0 18px 50px rgba(15,23,42,.30); z-index:10000010;`;
 }
 
 function seleccionarCotizacionSAP(cotizacionId) {
@@ -15511,7 +15552,7 @@ function clearPedidoModalSAP() {
     // ============================================================
     const title = document.getElementById('pedidoCompraModalTitle');
     if (title) {
-        title.textContent = 'Crear PV Cliente';
+        title.textContent = 'Crear PV (Pedido de venta)';
     }
     
     const sub = document.getElementById('modalSub');

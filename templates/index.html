@@ -8,6 +8,41 @@
 
 {% block content %}
 <section id="dashboard" class="section active">
+    <!-- Control de Erika (27/10/2026): PV con posiciones por facturar y despachos que no cuadran -->
+    <div class="panel" id="ctrlPanel" style="display:none">
+        <div class="panel-head"><div>
+            <div class="panel-title">Control de hoy: facturación y entregas</div>
+            <div class="panel-help">Lo entregado que falta facturar y lo que salió del almacén sin cuadrar con la guía o con el cliente.</div>
+        </div></div>
+        <div id="ctrlLista" class="ctrl-lista"></div>
+    </div>
+    <style>
+        .ctrl-lista{display:flex;flex-direction:column;gap:8px;padding:4px 2px}
+        .ctrl-item{border-left:6px solid #FF1E1E;background:#FFF5F5;border-radius:10px;padding:9px 12px;font-size:13px;color:#0F172A}
+        .ctrl-item.amarillo{border-left-color:#E0B400;background:#FFFBEB}
+        .ctrl-item b{font-weight:900}
+        .ctrl-item small{display:block;color:#475569;font-weight:700;margin-top:2px}
+        .ctrl-ok{padding:10px 12px;border-radius:10px;background:#EFF6FF;color:#0041C2;font-weight:800;font-size:13px}
+    </style>
+    <script>
+    (function () {
+        const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        fetch('/ventas/api/control/alertas', { credentials: 'same-origin' }).then(r => r.json()).then(j => {
+            if (!j.success || j.solo_gerencia) return;
+            const panel = document.getElementById('ctrlPanel'), lista = document.getElementById('ctrlLista');
+            panel.style.display = '';
+            const pf = (j.por_facturar || []).map(a => `<div class="ctrl-item ${a.entregado_sin_factura.length ? '' : 'amarillo'}">
+                <b>${esc(a.pv)}</b> · ${esc(a.cliente || '')}: entregado ${a.entregado_pct}% · facturado ${a.facturado_pct}%.
+                ${a.entregado_sin_factura.length ? `<b>Entregado sin facturar: posición ${a.entregado_sin_factura.join(', ')}.</b>` : ''}
+                Falta facturar: posición ${a.faltan.join(', ')}${a.dias != null ? ` · ${a.dias} día(s) desde el PV` : ''}.
+                ${a.motivos.length ? `<small>${esc(a.motivos.join(' · '))}</small>` : ''}</div>`);
+            const cu = (j.cuadre || []).map(a => `<div class="ctrl-item">
+                <b>Despacho ${esc(a.despacho)}</b> (${esc(a.estado)}) · PV ${esc(a.pv || '—')} · ${esc(a.cliente || '')} · guía ${esc(a.guia)}
+                <small>${esc(a.problemas.join(' · '))} · Despachó: ${esc(a.despacho_por)}${a.fecha ? ' · ' + esc(a.fecha) : ''}</small></div>`);
+            lista.innerHTML = pf.concat(cu).join('') || '<div class="ctrl-ok">Todo cuadra: no hay entregas sin facturar ni despachos con diferencias.</div>';
+        }).catch(() => {});
+    })();
+    </script>
     <div class="cards">
         <div class="card"><div class="card-icon">⌂</div><div><div class="card-title">Dashboard</div><div class="card-value">ERP</div></div></div>
         <div class="card"><div class="card-icon">🏢</div><div><div class="card-title">Empresas</div><div class="card-value" id="dashEmpresas">0</div></div></div>
