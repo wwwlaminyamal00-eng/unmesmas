@@ -2531,3 +2531,23 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - **"Aceptada por Cliente" en azul eléctrico** (Erika, 27/10/2026 17:18): la cotización aceptada está cerrada al 100%, así que pasa del verde al azul en todas las pantallas (colores_avance.js).
 - Base: migración `036_adelanto_oc.sql` aplicada en Supabase (agrega la columna `adelanto_pct`, 0 por defecto). Respaldo previo: `respaldo_20261015.ordenes_compra_20261027` (44 filas). No se cambiaron datos.
 - Pruebas: 335 correctas (base normal) y 333 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_flujos.py`.
+
+### 24.55 Factura parcial por posiciones, cuadre de entregas y buscador del PV (Erika, 27/10/2026 17:07-17:26)
+- **Factura total o parcial** (caso Komatsu: PV de 5 posiciones, se entregan 4). En "Nueva factura / Boleta", al elegir el PV aparece "¿Vas a facturar todo el pedido o solo una parte?".
+  - En **Factura parcial**, cada posición tiene su check y su cantidad. Muestra lo pedido, lo que tiene guía y lo ya facturado. Solo se factura lo entregado con guía y nunca más de lo pedido; el servidor también lo bloquea.
+  - Lo que no se factura lleva **motivo obligatorio** (En importación / En fabricación / Falta ingreso del cliente / Otro) y un **comentario**. Es nota interna: no sale en el PDF ni la ve el cliente. Queda guardado con quién lo escribió y cuándo.
+  - Una "Factura total" de un PV que ya tuvo una parcial lleva solo lo que falta. Si no cubre todo, pide elegir "Factura parcial".
+  - La "Factura total" sigue permitida antes de la entrega, para los clientes que pagan primero.
+- **Subtotal, IGV (18%) y TOTAL** debajo de los productos de la factura. Antes solo salía el TOTAL.
+- **Ventas ▸ PV**: debajo del estado sale "Entregado X%" y "Facturado Y%" con los colores de avance, y en rojo "Falta facturar: posición N". Al pasar el mouse se ve el motivo.
+- **Inicio de Erika (Dashboard) ▸ "Control de hoy: facturación y entregas"** (solo gerencia):
+  - los PV con posiciones entregadas sin facturar o pendientes, con su motivo y los días desde el PV;
+  - los despachos que salieron del almacén y no cuadran: sin guía, guía anulada o inexistente, cantidad del kardex distinta a la de la guía, o Entregado sin fecha real. Muestra quién despachó.
+  - En Supabase hoy hay 8 despachos que descontaron stock y no tienen guía.
+- **Entregas ▸ Confirmar entrega**: nuevo campo opcional "N° de ingreso del cliente", el número que su sistema da al recibir. Se ve debajo de la fecha de entrega y queda en auditoría.
+- **Crear PV (Pedido de venta)** (antes "Crear PV Cliente"). El buscador de cotizaciones:
+  - la lista va encima de todo, con su propio scroll, y ya no queda tapada;
+  - pone primero la coincidencia exacta del número ("17" → COT-000017);
+  - muestra solo las "Aceptada por Cliente" sin PV, y avisa por qué no salen las demás (ya tienen PV, o están en otro estado).
+- Base: migración `037_factura_parcial.sql` aplicada en Supabase. Agrega columnas vacías: `comprobantes.facturacion_tipo`, `comprobantes.pendientes_json` y `despachos.ingreso_cliente`. Respaldos previos: `respaldo_20261015.comprobantes_20261027` (37 filas) y `respaldo_20261015.despachos_20261027` (45 filas). No se cambiaron datos.
+- Pruebas: 339 correctas (base normal) y 337 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_parcial.py`.

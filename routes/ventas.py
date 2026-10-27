@@ -3364,6 +3364,15 @@ def api_comprobantes_guardar():
         if numero_txt and not numero_txt.isdigit():
             return jsonify({'success': False, 'error': 'El número del comprobante solo debe tener dígitos (sin la serie).'}), 400
         comprobante_data['numero'] = numero_txt.zfill(8) if numero_txt else None
+
+        # Factura total o parcial por posiciones (Erika 27/10/2026, caso Komatsu): la parcial solo lleva lo
+        # entregado con guía y lo que falta queda con motivo y comentario (nota interna, el cliente no la ve)
+        from routes.facturacion_parcial import validar_factura, guardar_tipo, ErrorFacturaParcial, asegurar_columnas
+        try:
+            asegurar_columnas()
+            fact_tipo, fact_pendientes = validar_factura(data, pc_origen, data.get('id'))
+        except ErrorFacturaParcial as ep:
+            return jsonify({'success': False, 'codigo': 'factura_parcial', 'error': str(ep)}), 400
         
         # ============================================================
         # SI TIENE ID, ACTUALIZAR
@@ -3447,6 +3456,7 @@ def api_comprobantes_guardar():
             
             if result:
                 db_execute("UPDATE comprobantes SET tipo_cambio = %s WHERE id = %s", (tc_comp, data['id']))
+                guardar_tipo(data['id'], fact_tipo, fact_pendientes)
                 if 'numero_migo' in data:
                     guardar_numero_migo(data['id'], data.get('numero_migo'))
                 _auditar_cambio_condicion(cambio_condicion_erika, result[0])
@@ -3500,6 +3510,7 @@ def api_comprobantes_guardar():
                                 (limpiar_migo(data.get('numero_migo')), fila['id']))
         result = [_numero_8(dict(fila))] if fila else []
         if result:
+            guardar_tipo(fila['id'], fact_tipo, fact_pendientes)
             _auditar_cambio_condicion(cambio_condicion_erika, result[0])
             return jsonify({
                 'success': True,
@@ -3536,13 +3547,15 @@ def api_comprobantes_obtener(id):
                 es_credito, estado_credito, fecha_aprobacion,
                 fecha_vencimiento, dias_credito, 
                 porcentaje_retencion, monto_retenido, monto_a_pagar,
-                obs_retencion, numero_migo,
+                obs_retencion, numero_migo, facturacion_tipo, pendientes_json,
                 sunat_response, cdr_response, creado_por,
                 created_at, updated_at
             FROM comprobantes
             WHERE id = %s
         """
         asegurar_migo()
+        from routes.facturacion_parcial import asegurar_columnas as asegurar_fact_parcial
+        asegurar_fact_parcial()
         result = db_query(query, (id,))
         
         print(f"📊 Resultado de consulta: {result}")
@@ -4167,14 +4180,19 @@ def api_despacho_entrega(did):
             if salida and fecha < salida.date():
                 return jsonify({'success': False, 'error': f"La entrega no puede ser antes de la salida del almacén "
                                                            f"({salida.strftime('%d/%m/%Y')})"}), 400
-            db_execute("UPDATE despachos SET estado = 'Entregado', fecha_entrega_real = %s, updated_at = NOW() "
-                       "WHERE id = %s", (fecha, did))
+            # N° de ingreso del cliente (su SAP le da un número al recibir), opcional — cuadre de 3, Erika 27/10/2026
+            from routes.facturacion_parcial import asegurar_columnas as asegurar_fact_parcial
+            asegurar_fact_parcial()
+            ingreso = re.sub(r'\s+', ' ', str(datos.get('ingreso_cliente') or '')).strip().upper()[:60] or None
+            db_execute("UPDATE despachos SET estado = 'Entregado', fecha_entrega_real = %s, ingreso_cliente = %s, "
+                       "updated_at = NOW() WHERE id = %s", (fecha, ingreso, did))
             registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
                                 antes={'estado': estado, 'fecha_entrega_real': d.get('fecha_entrega_real')},
-                                despues={'estado': 'Entregado', 'fecha_entrega_real': fecha},
-                                detalle=f"Despacho {numero}: entregado al cliente el {fecha.strftime('%d/%m/%Y')}")
+                                despues={'estado': 'Entregado', 'fecha_entrega_real': fecha, 'ingreso_cliente': ingreso},
+                                detalle=f"Despacho {numero}: entregado al cliente el {fecha.strftime('%d/%m/%Y')}"
+                                        + (f" (N° de ingreso del cliente {ingreso})" if ingreso else ''))
             return jsonify({'success': True, 'data': {'id': did, 'estado': 'Entregado',
-                                                      'fecha_entrega_real': fecha.isoformat()}})
+                                                      'fecha_entrega_real': fecha.isoformat(), 'ingreso_cliente': ingreso}})
         if accion == 'rechazar':
             motivo = re.sub(r'\s+', ' ', str(datos.get('motivo') or '')).strip()
             if not motivo:
@@ -4238,10 +4256,12 @@ def api_despachos_listar():
         print("🚚 API DESPACHOS LISTAR - INICIO")
         _asegurar_fecha_cita()
         _asegurar_columnas_entrega()
+        from routes.facturacion_parcial import asegurar_columnas as asegurar_fact_parcial
+        asegurar_fact_parcial()
         
         query = """
             SELECT 
-                d.id, d.numero, d.fecha, d.fecha_despacho, d.estado,
+                d.id, d.numero, d.fecha, d.fecha_despacho, d.estado, d.ingreso_cliente,
                 d.pc_id, d.pc_numero, d.cotizacion_id, d.cotizacion_numero,
                 d.cliente, d.ruc, d.comprobante, d.guia, d.origen, d.destino,
                 d.transportista, d.observaciones, d.responsable,
@@ -4403,7 +4423,9 @@ def api_despachos_listar():
                     'fecha_salida': row['fecha_salida'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_salida') else None,
                     'fecha_entrega_real': row['fecha_entrega_real'].isoformat() if row.get('fecha_entrega_real') else None,
                     'motivo_rechazo': row.get('motivo_rechazo') or '',
-                    'fecha_rechazo': row['fecha_rechazo'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_rechazo') else None
+                    'fecha_rechazo': row['fecha_rechazo'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_rechazo') else None,
+                    # N° de ingreso del cliente al recibir (cuadre de 3, 27/10/2026)
+                    'ingreso_cliente': row.get('ingreso_cliente') or ''
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")
