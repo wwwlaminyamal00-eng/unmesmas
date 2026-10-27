@@ -13518,7 +13518,7 @@ async function loadRevision() {
         if (tbody) {
             tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#DC2626;padding:40px;">
                 🔒 No tienes permisos para ver este módulo.<br>
-                <small style="color:#94A3B8;">Solo Hellen y Erika pueden acceder a Revisiones.</small>
+                <small style="color:#94A3B8;">Solo Hellen y Erika pueden validar.</small>
             </td></tr>`;
         }
         return;
@@ -13787,7 +13787,7 @@ function mostrarPestanasPorRol() {
         tabRevision.style.display = autorizado ? 'inline-flex' : 'none';
         
         if (!autorizado) {
-            console.log('🔒 Pestaña "Revisión" oculta para usuario con rol:', rol);
+            console.log('🔒 Pestaña "Validar" oculta para usuario con rol:', rol);
         }
     }
 }
