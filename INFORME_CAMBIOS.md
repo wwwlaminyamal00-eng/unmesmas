@@ -2572,3 +2572,24 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - PV: además de la descripción, tiene "Código del cliente". Al guardar el PV, lo corregido pasa a lo que aún no se emitió: despachos sin guía, guías en Borrador y facturas en Borrador. Lo emitido no se toca.
 - Base: migración `038_descripcion_cliente.sql` aplicada en Supabase. Agrega 2 columnas vacías y 1 tabla nueva. Respaldo previo en `respaldo_20261015.cotizacion_detalle_20261027` (116 filas). No borra datos.
 - Pruebas: 343 correctas (base normal) y 341 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_desc_cliente.py`.
+
+### 24.58 Factura parcial por cantidad, guía por saldo, agente de retención, sin "Crear despacho" (Erika, 27/10/2026 20:34-20:48)
+- Por qué no aparecía la factura parcial: el PV se elige por código y la pantalla miraba si el modal estaba "visible" con un método que en ventanas fijas siempre dice "no". Ahora mira el campo del PV y el selector "Factura total / Factura parcial" sale siempre que hay PV, aunque tenga 1 solo producto.
+- Factura parcial: se elige por posición y por cantidad (por ejemplo 8 de 10). El máximo es lo que falta facturar del PV; nunca más de lo que pide el PV (el servidor también lo bloquea).
+  - Aviso rojo "FACTURA PARCIAL: esta factura lleva X de Y unidades del PV…", con lo que queda por facturar y el motivo.
+  - Si se factura algo que aún no salió con guía: "⚠ X sin guía" en la fila y aviso en rojo (se permite, como en la regla "factura sí sin stock").
+- Guía parcial y guía por saldo: un PV puede tener 2 o 3 guías. Encima de los productos de la guía:
+  - 🔴 "GUÍA PARCIAL": qué posición queda con saldo;
+  - ✅ "GUÍA POR SALDO" (completa el PV) o "GUÍA COMPLETA";
+  - ⛔ "NO SE PODRÁ GUARDAR" si pasa de lo que pide el PV;
+  - tabla por posición: Pide el PV, Ya salió con guía, Esta guía, Saldo. Funciona aunque la guía se haya hecho desde la cotización.
+- La guía ahora guarda la cantidad escrita en la tabla (antes guardaba la cantidad original de la cotización).
+- Agente de retención del cliente (Sí / No): se consulta en el padrón público de SUNAT (se baja una vez al día y cada cliente se revisa cada 30 días). En la factura:
+  - NO es agente: no hay retención, el botón queda bloqueado y el servidor la quita;
+  - SÍ es agente: la retención se activa sola;
+  - sin dato: sigue como antes.
+  - Si SUNAT no responde, un aprobador lo marca a mano ("Marcar Sí / Marcar No"), con auditoría (quién y cuándo, hora de Lima). Lo marcado a mano no se cambia solo.
+- Cotizaciones ▸ ⋮: se quitó "Crear despacho" (el despacho nace del PV).
+- Entregas ▸ Estado compra: si falta stock dice "🔴 Sin stock: proceder a comprar" (antes "Pendiente por compra"). Si el despacho es nuevo y aún no tenía dato, lo revisa solo en vez de mostrar "-".
+- Base: migración `039_agente_retencion.sql` aplicada en Supabase. Agrega 5 columnas vacías a `clientes`. Respaldo previo en `respaldo_20261015.clientes_20261027` (42 filas). No borra datos.
+- Pruebas: 348 correctas (base normal) y 346 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_retencion_guia.py`.

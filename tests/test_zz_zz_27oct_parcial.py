@@ -54,9 +54,9 @@ def test_factura_parcial_solo_lo_entregado_con_motivo(admin):
     # Con motivo pero sin comentario: tampoco
     r = _factura(admin, cuatro, facturacion_tipo='Parcial', pendientes=[{'posicion': 5, 'motivo': 'En importación'}])
     assert r.status_code == 400 and 'comentario' in r.json['error']
-    # La posición 5 no tiene guía: no se puede facturar en una parcial
-    r = _factura(admin, [_it(5)], facturacion_tipo='Parcial')
-    assert r.status_code == 400 and 'guía' in r.json['error']
+    # Nunca más de lo que pide el PV (pide 2)
+    r = _factura(admin, [_it(5, 3)], facturacion_tipo='Parcial')
+    assert r.status_code == 400 and 'más de lo pedido' in r.json['error']
     # "Total" que no cubre todo el pedido no pasa sin motivo... la primera vez sí se permite (factura anticipada)
     pend = [{'posicion': 5, 'motivo': 'En importación', 'comentario': 'llega de importación en 30 días'}]
     r = _factura(admin, cuatro, facturacion_tipo='Parcial', pendientes=pend)
@@ -81,6 +81,12 @@ def test_factura_parcial_solo_lo_entregado_con_motivo(admin):
     # Alerta en el inicio de Erika
     al = admin.get('/ventas/api/control/alertas').json
     assert any(x['pv'] == PV and x['faltan'] == [5] for x in al['por_facturar'])
+    # Erika 27/10/2026 20:34: parcial también por CANTIDAD (1 de 2), aunque aún no tenga guía (el aviso rojo lo dice)
+    r = _factura(admin, [_it(5, 1)], facturacion_tipo='Parcial',
+                 pendientes=[{'posicion': 5, 'motivo': 'En importación', 'comentario': 'la otra unidad llega en 30 días'}])
+    assert r.status_code == 200, r.json
+    a = admin.get('/ventas/api/pv/avance', query_string={'numero': PV}).json['data']
+    assert a['posiciones'][4]['facturado'] == 1 and a['posiciones'][4]['por_facturar'] == 1
     # La nota interna no sale en el PDF
     assert 'importación en 30 días' not in (RAIZ / 'pdf_generator.py').read_text(encoding='utf-8')
 
@@ -127,7 +133,7 @@ def test_guias_muestran_pc_del_cliente_desde_el_pv(admin):
 
 def test_pantallas_factura_parcial():
     js = (RAIZ / 'static/js/factura_parcial.js').read_text(encoding='utf-8')
-    assert 'Factura parcial (solo lo entregado con guía)' in js and 'IGV (18%)' in js and 'Subtotal' in js
+    assert 'Factura parcial (por posición o por cantidad)' in js and 'IGV (18%)' in js and 'Subtotal' in js
     assert 'En importación' in js and 'nota interna' in js
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     assert 'js/factura_parcial.js' in html

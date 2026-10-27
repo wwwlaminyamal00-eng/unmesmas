@@ -2566,7 +2566,8 @@ def _guia_duplicada(data):
     if pasa:
         nums = ', '.join(sorted({g['num'] for g in guias}))
         return (f"⛔ ERROR: El PV {pc['numero']} ya tiene guía ({nums}). \"{pasa['producto']}\": pidió {pasa['pide']:g}, "
-                f"ya hay {pasa['ya']:g} en guías y esta guía agrega {pasa['nuevo']:g}. No se puede duplicar.")
+                f"ya hay {pasa['ya']:g} en guías y esta guía agrega {pasa['nuevo']:g}. No se puede duplicar. "
+                f"La guía por saldo puede llevar como máximo {max(pasa['pide'] - pasa['ya'], 0):g}.")
     return None
 
 
@@ -3229,6 +3230,16 @@ def api_comprobantes_guardar():
         # 🔽 OBTENER DATOS DE RETENCIÓN DEL IGV (3%)
         # ============================================================
         tiene_retencion = data.get('tiene_retencion', False)
+        # 27/10/2026 (Erika): la retención depende de si el CLIENTE es agente de retención (padrón SUNAT o marcado a
+        # mano). Si no lo es, no hay retención; si lo es, se aplica (en facturas de más de S/ 700). Sin dato: como antes.
+        try:
+            from routes.agente_retencion import agente_de_ruc
+            es_agente = agente_de_ruc(data.get('ruc') or data.get('cliente_ruc'))
+        except Exception as e:
+            print(f"⚠️ Agente de retención: {e}")
+            es_agente = None
+        if es_agente is not None:
+            tiene_retencion = bool(es_agente)
         es_credito = data.get('es_credito', False)
         estado_credito = data.get('estado_credito')
         fecha_aprobacion = data.get('fecha_aprobacion')

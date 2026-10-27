@@ -97,10 +97,12 @@ def test_pc_informa_estado_de_su_despacho(ab, vendedor):
 
 def test_vista_de_ventas_tiene_los_cambios_del_excel(vendedor):
     js = vendedor.get('/static/js/ventas.js').get_data(as_text=True)
-    # 3. Orden exacto en el menú de la cotización: Despacho, Guía, Factura en KCF
+    # 3. Orden exacto en el menú de la cotización: Guía, Factura en KCF. Sin "Crear despacho" (Erika 27/10/2026 20:45:
+    #    el despacho se hace desde el PV o Entregas)
     menu = js[js.rindex('function showCotizacionMenu'):]
     menu = menu[:menu.index('createMenuWithClose')]
-    pos = [menu.index("'despacho'"), menu.index("'guia'"), menu.index("'factura'")]
+    assert "'despacho'" not in menu
+    pos = [menu.index("'guia'"), menu.index("'factura'")]
     assert pos == sorted(pos) and 'Crear factura en KCF' in menu
     # 5. Guías de remisión: "Crear factura" va DENTRO del menú ⋮ (pedido de Erika del 15/10), no afuera
     assert 'crearFacturaDesdeGuia' not in js[js.index('function renderGuias'):js.index('function renderComprobantes')]

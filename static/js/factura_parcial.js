@@ -87,8 +87,35 @@
         return `<div class="fp-modo">
             <div class="fp-pregunta">¿Vas a facturar todo el pedido o solo una parte?</div>
             <label class="fp-op ${st.modo === 'Total' ? 'on' : ''}"><input type="radio" name="fpModo" value="Total" ${st.modo === 'Total' ? 'checked' : ''}> Factura total</label>
-            <label class="fp-op ${st.modo === 'Parcial' ? 'on' : ''}"><input type="radio" name="fpModo" value="Parcial" ${st.modo === 'Parcial' ? 'checked' : ''}> Factura parcial (solo lo entregado con guía)</label>
-            <div class="fp-avance">PV ${esc(a.pv)} · Entregado ${num(a.entregado_pct)}% · Con guía ${num(a.guiado_pct)}% · Facturado ${num(a.facturado_pct)}%</div>
+            <label class="fp-op ${st.modo === 'Parcial' ? 'on' : ''}"><input type="radio" name="fpModo" value="Parcial" ${st.modo === 'Parcial' ? 'checked' : ''}> Factura parcial (por posición o por cantidad)</label>
+            <div class="fp-avance">PV ${esc(a.pv)} · Entregado ${num(a.entregado_pct)}% · Con guía ${num(a.guiado_pct)}% · Facturado ${num(a.facturado_pct)}%${(a.guias || []).length ? ' · Guías: ' + esc(a.guias.join(', ')) : ''}</div>
+        </div>${avisoRojo()}`;
+    }
+
+    // 27/10/2026 20:34 (Erika): aviso rojo claro cuando la factura no cubre todo o lleva algo sin guía
+    function avisoRojo() {
+        const ps = posiciones();
+        if (!ps.length) return '';
+        const pedido = ps.reduce((t, p) => t + Number(p.pedido || 0), 0);
+        if (st.modo !== 'Parcial') {
+            const sinGuia = ps.filter(p => Number(p.guiado) < Number(p.pedido) - 0.0001);
+            return sinGuia.length && ps.some(p => Number(p.por_facturar) > 0) ? `<div class="fp-alerta fp-alerta-amb">⚠ Ojo: el PV todavía no sale completo con guía
+                (${sinGuia.map(p => 'posición ' + p.posicion).join(', ')}). La factura total se permite (el cliente paga antes), pero revisa que sea lo acordado.</div>` : '';
+        }
+        let lleva = 0, sinGuiaCant = 0;
+        const faltan = [];
+        ps.forEach(p => {
+            const s = st.sel[p.posicion] || {};
+            const c = s.on ? Number(s.cant) || 0 : 0;
+            lleva += c;
+            sinGuiaCant += Math.max(c - Number(p.facturable || 0), 0);
+            const queda = Number(p.por_facturar) - c;
+            if (queda > 0.0001) faltan.push(`posición ${p.posicion} (${num(queda)} ${esc(p.unidad || 'NIU')})`);
+        });
+        const ya = ps.reduce((t, p) => t + Number(p.facturado || 0), 0);
+        return `<div class="fp-alerta">🔴 <b>FACTURA PARCIAL</b>: esta factura lleva <b>${num(lleva)}</b> de <b>${num(pedido)}</b> unidades del PV ${esc(st.avance && st.avance.pv || st.pv)}${ya > 0 ? ` (antes ya se facturaron ${num(ya)})` : ''}.
+            ${faltan.length ? `<br>Quedan por facturar: <b>${faltan.join(', ')}</b>. Escribe abajo el motivo.` : '<br>Con esta factura el PV queda facturado completo.'}
+            ${sinGuiaCant > 0.0001 ? `<br>⚠ <b>${num(sinGuiaCant)}</b> de lo que facturas todavía <b>no salió con guía</b> (no se entregó). Confirma que el cliente lo aceptó así.` : ''}
         </div>`;
     }
 
@@ -108,16 +135,17 @@
         const t = totales(items);
         const filas = posiciones().map(p => {
             const s = st.sel[p.posicion] || { on: false, cant: 0 };
-            const max = Number(p.facturable);
+            const max = Number(p.por_facturar);
             const bloqueada = max <= 0;
-            const motivoNoSe = Number(p.por_facturar) <= 0 ? 'Ya facturada' : (bloqueada ? 'Sin guía todavía' : '');
+            const motivoNoSe = bloqueada ? 'Ya facturada' : '';
             const cant = s.on ? Number(s.cant) || 0 : 0;
+            const sinGuia = Math.max(cant - Number(p.facturable || 0), 0);
             return `<tr class="${s.on ? 'fp-on' : 'fp-off'}">
                 <td><input type="checkbox" class="fp-check" data-pos="${p.posicion}" ${s.on ? 'checked' : ''} ${bloqueada ? 'disabled' : ''} title="${bloqueada ? esc(motivoNoSe) : 'Facturar esta posición'}"></td>
                 <td><b>${p.posicion}</b></td><td>${esc(p.codigo || '-')}</td><td class="left">${esc(p.producto)}${lineaCli(p)}</td><td>${esc(p.unidad || 'NIU')}</td>
                 <td class="fp-av">Pedido <b>${num(p.pedido)}</b><br>Con guía <b>${num(p.guiado)}</b><br>Facturado <b>${num(p.facturado)}</b></td>
                 <td>${bloqueada ? `<span class="fp-no">${esc(motivoNoSe)}</span>` :
-                    `<input type="number" class="fp-cant" data-pos="${p.posicion}" min="0" max="${max}" step="any" value="${s.on ? num(s.cant) : ''}" ${s.on ? '' : 'disabled'}><small class="fp-max">máx. ${num(max)}</small>`}</td>
+                    `<input type="number" class="fp-cant" data-pos="${p.posicion}" min="0" max="${max}" step="any" value="${s.on ? num(s.cant) : ''}" ${s.on ? '' : 'disabled'}><small class="fp-max">máx. ${num(max)} (lo que falta del PV)</small>${sinGuia > 0.0001 ? `<small class="fp-sin-guia">⚠ ${num(sinGuia)} sin guía</small>` : ''}`}</td>
                 <td class="fp-num">${dinero(precioDe(p))}</td>
                 <td class="fp-num" style="font-weight:900;color:#059669">${dinero(cant * precioDe(p))}</td>
             </tr>`;
@@ -145,7 +173,8 @@
         const html = `<div data-fp="1">${selectorModo()}${st.modo === 'Parcial' && hayParcial() ? tablaParcial()
             : (items.length ? tablaTotal(items) : '<div style="padding:20px;text-align:center;color:#94A3B8">📭 No hay productos disponibles.</div>')}</div>`;
         st.pintando = true;
-        cont.innerHTML = html;
+        try { cont.innerHTML = html; }
+        catch (e) { setTimeout(pintar, 0); }   // la casilla que se estaba dejando (blur) aún no se soltó: se repinta enseguida
         st.pintando = false;
         // La factura guarda lo que se ve
         if (items.length || st.modo === 'Parcial') window._compProductos = items;
@@ -165,7 +194,7 @@
             const ex = editando();
             const r = await fetch(`/ventas/api/pv/avance?numero=${encodeURIComponent(pv)}${ex ? '&excluir=' + ex : ''}`, { credentials: 'same-origin' });
             const j = await r.json();
-            if (($('compPC')?.value || '').trim() !== pv) return;   // cambió mientras cargaba
+            if (($('compPC')?.value || '').trim() !== pv) { st.cargando = false; return; }   // cambió mientras cargaba
             st.avance = j.success ? j.data : null;
         } catch (e) { st.avance = null; }
         st.cargando = false;
@@ -200,12 +229,12 @@
         const pos = Number(t.dataset.pos);
         if (t.classList.contains('fp-check')) {
             const p = posiciones().find(x => x.posicion === pos);
-            st.sel[pos] = { on: t.checked, cant: t.checked ? (Number(st.sel[pos]?.cant) || Number(p?.facturable) || 0) : 0 };
+            st.sel[pos] = { on: t.checked, cant: t.checked ? (Number(st.sel[pos]?.cant) || Number(p?.facturable) || Number(p?.por_facturar) || 0) : 0 };
             pintar();
         } else if (t.classList.contains('fp-cant')) {
             const p = posiciones().find(x => x.posicion === pos);
             let v = Math.max(Number(t.value) || 0, 0);
-            if (p && v > Number(p.facturable)) { v = Number(p.facturable); if (window.showToast) showToast(`Posición ${pos}: con guía y sin facturar solo hay ${num(v)}`, 'warning'); }
+            if (p && v > Number(p.por_facturar)) { v = Number(p.por_facturar); if (window.showToast) showToast(`Posición ${pos}: el PV pide ${num(p.pedido)} y ya se facturó ${num(p.facturado)}. Máximo ${num(v)}.`, 'warning'); }
             st.sel[pos] = { on: v > 0, cant: r2(v) };
             pintar();
         } else if (t.classList.contains('fp-motivo')) {
@@ -251,6 +280,14 @@
         if (f) obs.observe(f, { childList: true, subtree: true });
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enganchar); else enganchar();
+    // El PV a veces se pone por código (desde la guía o la cotización) sin aviso de cambio: se revisa cada medio segundo
+    setInterval(() => {
+        // El modal es position:fixed (su offsetParent siempre es null): se mira el campo del PV, que sí está dentro
+        const c = $('compPC');
+        if (!c || !c.offsetParent) return;
+        const pv = ($('compPC')?.value || '').trim();
+        if (pv !== st.pv && !st.cargando) cargarAvance();
+    }, 500);
 
     // Al abrir una factura nueva se empieza en "Factura total"
     document.addEventListener('click', e => {

@@ -2,8 +2,8 @@
 
 Un cliente manda un pedido de 5 posiciones, se le entregan 4 (la 5 está en importación) y hay que facturar ya
 lo entregado porque el crédito es a 90 días. Reglas aprobadas por Erika:
-  1. Factura parcial = solo lo que ya salió con guía: se marca con check cada posición y su cantidad. No se
-     factura más de lo que dice la guía ni más de lo pedido en el PV (Pedido de venta).
+  1. Factura parcial = se marca con check cada posición y su cantidad. Nunca más de lo pedido en el PV (Pedido de
+     venta). Desde el 27/10/2026 20:34 (Erika) también puede ir lo que aún no tiene guía: la pantalla lo avisa en rojo.
   2. Lo que no se factura lleva motivo (En importación / En fabricación / Falta ingreso del cliente / Otro) y un
      comentario. Es nota interna: nunca sale en el PDF ni en lo que ve el cliente.
   3. El PV muestra "Entregado X% · Facturado Y% · Falta: posición N" y el inicio avisa los PV con posiciones
@@ -126,18 +126,20 @@ def _despachos_del_pv(pv):
                        ORDER BY id""", (pv['numero'], pv['id']))
 
 
-def _guias_del_pv(pv):
+def _guias_del_pv(pv, excluir_guia=None):
+    cot = pv.get('cotizacion_numero') or ''
     return db_query("""
-        SELECT g.id, g.serie, g.numero, g.items_json FROM guias_remision g
+        SELECT g.id, g.serie, g.numero, g.items_json, g.estado_sunat FROM guias_remision g
         WHERE UPPER(COALESCE(g.estado_sunat, '')) NOT IN ('ANULADO', 'ANULADA')
-          AND (g.documento_asociado = %s OR EXISTS (
+          AND g.id <> COALESCE(%s, -1)
+          AND (g.documento_asociado = %s OR (%s <> '' AND g.documento_asociado = %s) OR EXISTS (
                 SELECT 1 FROM despachos d WHERE (d.pc_numero = %s OR d.pc_id = %s) AND COALESCE(d.estado, '') <> 'Anulado'
                   AND COALESCE(d.guia, '') <> ''
                   AND regexp_replace(d.guia, '^.*-', '') ~ '^[0-9]+$'
                   AND split_part(d.guia, '-', 1) IN (COALESCE(g.serie, ''), d.guia)
                   AND NULLIF(regexp_replace(regexp_replace(d.guia, '^.*-', ''), '\\D', '', 'g'), '')::bigint
                       = NULLIF(regexp_replace(g.numero::text, '\\D', '', 'g'), '')::bigint))
-        ORDER BY g.id""", (pv['numero'], pv['numero'], pv['id']))
+        ORDER BY g.id""", (excluir_guia, pv['numero'], cot, cot, pv['numero'], pv['id']))
 
 
 def _repartir(posiciones, total_por_clave, campo):
@@ -153,7 +155,7 @@ def _repartir(posiciones, total_por_clave, campo):
         resto[k] = resto.get(k, CERO) - p[campo]
 
 
-def avance_pv(pv, excluir_factura=None):
+def avance_pv(pv, excluir_factura=None, excluir_guia=None):
     """Posiciones del PV con lo entregado, lo que tiene guía y lo ya facturado."""
     from routes.compras_flujo import _items_pedido, _resolver_productos
     crudo = _lista(pv.get('items_json'))
@@ -175,8 +177,10 @@ def avance_pv(pv, excluir_factura=None):
     for d in despachos:
         if (d.get('estado') or '') in ESTADOS_SALIDA:
             _sumar(entregado, _por_clave(d.get('items_json') if _lista(d.get('items_json')) else crudo))
-    for g in _guias_del_pv(pv):
+    guias = _guias_del_pv(pv, excluir_guia)
+    for g in guias:
         _sumar(guiado, _por_clave(g.get('items_json')))
+    pv['_guias'] = [f"{g.get('serie') or ''}-{g.get('numero') or ''}".strip('-') for g in guias]
     facturas = _facturas_del_pv(pv, excluir_factura)
     for f in facturas:
         _sumar(facturado, _por_clave(f.get('items_json')))
@@ -205,14 +209,15 @@ def _pct(posiciones, campo):
     return float(redondear(hecho * 100 / total))
 
 
-def resumen_pv(pv, excluir_factura=None):
-    posiciones, despachos, facturas = avance_pv(pv, excluir_factura)
+def resumen_pv(pv, excluir_factura=None, excluir_guia=None):
+    posiciones, despachos, facturas = avance_pv(pv, excluir_factura, excluir_guia)
     faltan = [p['posicion'] for p in posiciones if p['por_facturar'] > 0]
     return {
         'pv': pv['numero'], 'cliente': pv.get('cliente_nombre'),
         'entregado_pct': _pct(posiciones, 'entregado'), 'guiado_pct': _pct(posiciones, 'guiado'),
         'facturado_pct': _pct(posiciones, 'facturado'),
-        'faltan_facturar': faltan, 'facturas': len(facturas),
+        'faltan_facturar': faltan, 'facturas': len(facturas), 'guias': pv.get('_guias') or [],
+        'faltan_guia': [p['posicion'] for p in posiciones if p['guiado'] < p['pedido'] - TOL],
         'posiciones': [{k: (float(v) if isinstance(v, Decimal) else v) for k, v in p.items() if k != 'clave'}
                        for p in posiciones],
     }
@@ -249,12 +254,6 @@ def validar_factura(data, pc_origen, excluir_id=None):
         if ya + c > pedido + TOL:
             raise ErrorFacturaParcial(f'Posición {num} "{nombre}": el PV pide {pedido:g}, ya se facturó {ya:g} y esta '
                                       f'factura agrega {c:g}. No se puede facturar más de lo pedido.')
-        if tipo == 'Parcial':
-            guia = sum((min(p['guiado'], p['pedido']) for p in ps), CERO)
-            if ya + c > guia + TOL:
-                raise ErrorFacturaParcial(
-                    f'Posición {num} "{nombre}": con guía hay {guia:g} y ya se facturó {ya:g}. En una factura parcial '
-                    f'solo va lo entregado con guía: puedes facturar hasta {max(guia - ya, CERO):g}.')
     # Lo que queda sin facturar después de esta factura
     quedan = []
     resto = dict(nuevo)
@@ -434,15 +433,22 @@ def api_avance_pv():
     if not _sesion():
         return jsonify({'success': False, 'error': 'Inicia sesión.'}), 401
     asegurar_columnas()
-    pv = pv_por_numero(request.args.get('numero'))
+    numero = (request.args.get('numero') or '').strip()
+    pv = pv_por_numero(numero)
+    if not pv and numero.upper().startswith('COT'):
+        # Guía o factura hecha desde la cotización: su PV (27/10/2026)
+        fila = db_query("""SELECT numero FROM pedido_compra_pc WHERE cotizacion_numero = %s
+                            AND UPPER(COALESCE(estado, '')) NOT IN ('ANULADO', 'ANULADA') ORDER BY id DESC LIMIT 1""", (numero,))
+        pv = pv_por_numero(fila[0]['numero']) if fila else None
     if not pv:
         return jsonify({'success': False, 'error': 'No se encontró el PV.'}), 404
-    excluir = request.args.get('excluir')
-    try:
-        excluir = int(excluir) if excluir else None
-    except ValueError:
-        excluir = None
-    r = resumen_pv(pv, excluir)
+
+    def _entero(nombre):
+        try:
+            return int(request.args.get(nombre) or 0) or None
+        except ValueError:
+            return None
+    r = resumen_pv(pv, _entero('excluir'), _entero('excluir_guia'))
     r['motivos_lista'] = list(MOTIVOS_PENDIENTE)
     return jsonify({'success': True, 'data': r})
 
