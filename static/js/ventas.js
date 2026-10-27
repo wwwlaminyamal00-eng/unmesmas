@@ -1417,7 +1417,10 @@ function estadoCompraHTML(r, despachado, anulado) {
     }[info.estado] || ['compra-camino', info.estado];
     // Con OC generada (aunque esté en borrador o por aprobar) sale "Comprado, por llegar" con su N° de OC (22/10/2026)
     const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? `<small class="compra-ocs">${info.ocs.map(sd).join(', ')}</small>` : '';
-    return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>${ocs}`;
+    // 27/10/2026: si ya hay OC, en lugar de "Generar compra" sale "Ver OC" (no se compra dos veces)
+    const verOc = ['Por llegar', 'Pendiente por recojo'].includes(info.estado) && (info.ocs || []).length
+        ? `<button class="btn-ver-oc" onclick="location.href='/compras?tab=ordenes&oc=${encodeURIComponent(info.ocs[0])}'" title="Abre la orden de compra en Compras">Ver OC</button>` : '';
+    return `<span class="compra-est ${t[0]}" title="${titulo}">${t[1]}</span>${ocs}${verOc}`;
 }
 // Erika 25/10/2026: "N° Guía / N° Factura esto debe estar en cada columna para poder filtrar y ordenar"
 // Erika 25/10/2026: sus facturas son como E001-00002319: serie en mayúscula y número de 8 cifras con ceros.
@@ -5749,6 +5752,12 @@ window.createDocFromCotizacion = async function(id, tipo) {
                 
                 // Cerrar el menú si está abierto
                 document.querySelectorAll('.menu-pop').forEach(el => el.remove());
+
+                // 27/10/2026 (Hellen): si la cotización ya tiene PV, la guía y la factura llevan los productos del PV
+                // (descripción editada, cantidad y precio del PV), no los de la cotización ni los del catálogo.
+                if (tipo === 'guia' || tipo === 'factura') {
+                    await usarProductosDelPV(cotizacion, id);
+                }
                 
                 switch(tipo) {
                     case 'guia':
@@ -6105,6 +6114,35 @@ console.log('✅ Estilos del badge agregados');
 // ============================================================
 // FUNCIÓN PARA ABRIR MODAL DE GUÍA CON DATOS PRECARGADOS
 // ============================================================
+async function usarProductosDelPV(cotizacion, cotizacionId) {
+    try {
+        if (typeof loadPedidos === 'function' && !(pedidosData || []).length) await loadPedidos();
+    } catch (e) { console.warn('No se pudo leer los PV', e); }
+    const pv = (pedidosData || []).filter(p =>
+        (Number(p.cotizacion_id) === Number(cotizacionId) || (p.cotizacion_numero && p.cotizacion_numero === cotizacion.numero_cotizacion))
+        && !/anulad/i.test(p.estado || '')).sort((a, b) => b.id - a.id)[0];
+    if (!pv) return cotizacion;
+    let items = pv.items || [];
+    if (!items.length) {
+        try {
+            const r = await apiFetch(`/ventas/api/pedido-compra/${pv.id}`);
+            items = (r && r.success && r.data && r.data.items) || [];
+        } catch (e) { items = []; }
+    }
+    if (!items.length) return cotizacion;
+    cotizacion.productos = items.filter(it => it && typeof it === 'object' && !Array.isArray(it)).map(it => ({
+        codigo: it.codigo || '',
+        producto: it.descripcion_cliente || it.producto || it.descripcion || '',
+        descripcion: it.descripcion_cliente || it.producto || it.descripcion || '',
+        descripcion_cliente: it.descripcion_cliente || '',
+        marca: it.marca || '', modelo: it.modelo || '', um: it.um || 'NIU',
+        cantidad: Number(it.cantidad_pc || it.cantidad || 1),
+        valorVenta: Number(it.precio_pc || it.precio_cotizado || it.precio || 0)
+    }));
+    cotizacion.pv_numero = pv.numero;
+    return cotizacion;
+}
+
 function openGuiaModalWithData(id, cotizacion) {
     // 1. Abre el modal real (mismo HTML de guia_modal.html, no lo destruye)
     window.openGuiaModal(id);
@@ -11473,6 +11511,36 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
         showToast('⚠️ Guía no encontrada', 'warning');
         return;
     }
+    // 27/10/2026 (Hellen): la guía no lleva precios. El servidor arma la factura con las cantidades de la guía y
+    // los precios y descripciones de su PV, para que no salga en 0. Si falla, sigue el camino de antes.
+    if (guia.id && !window._facturaGuiaCargando) {
+        window._facturaGuiaCargando = true;
+        apiFetch(`/ventas/api/guias/${guia.id}/para-factura`).then(r => {
+            if (!r || !r.success || !(r.data.items || []).length) throw new Error((r && r.error) || 'sin productos');
+            const d = r.data;
+            ponerVinculoFactura('compPC', d.pv || guia.pc_numero);
+            ponerVinculoFactura('compCotizacion', d.cotizacion || guia.cotizacion || cotizacionDePC(d.pv || guia.pc_numero));
+            const compCliente = document.getElementById('compCliente');
+            const compRuc = document.getElementById('compRuc');
+            if (compCliente && !compCliente.value.trim()) compCliente.value = d.cliente || '';
+            if (compRuc && !compRuc.value.trim()) compRuc.value = d.ruc || '';
+            const oc = document.getElementById('compOrdenCompra') || document.getElementById('compOcCliente');
+            if (oc && !oc.value.trim() && d.pc_cliente) oc.value = d.pc_cliente;
+            window._compProductos = d.items;
+            renderProductosComprobante(d.items);
+            const monto = document.getElementById('compMonto');
+            if (monto) monto.value = Number(d.total || 0).toFixed(2);
+            actualizarObservacionesComprobante();
+            if ((d.sin_precio || []).length) showToast(`⚠️ Sin precio en el PV: ${d.sin_precio.join(', ')}. Revísalo antes de guardar.`, 'warning');
+            else showToast(`✅ Guía ${d.guia} vinculada: ${d.items.length} productos con precios del PV ${d.pv || ''}`, 'success');
+        }).catch(e => {
+            console.warn('Factura desde guía (servidor):', e);
+            window._facturaGuiaSinServidor = true;
+            loadComprobanteFromGuia(valorSeleccionado);
+        }).finally(() => { window._facturaGuiaCargando = false; });
+        if (!window._facturaGuiaSinServidor) return;
+    }
+    window._facturaGuiaSinServidor = false;
     ponerVinculoFactura('compPC', guia.pc_numero);
     ponerVinculoFactura('compCotizacion', guia.cotizacion || cotizacionDePC(guia.pc_numero));
 
@@ -16494,7 +16562,7 @@ if (fechaFin) {
         renderCotizaciones();
     });
 }
-function showSuccessModal(cotizacionId) {
+async function showSuccessModal(cotizacionId) {
     // Si no se pasó el ID, intentar obtenerlo de la respuesta
     if (!cotizacionId) {
         // Buscar la última cotización creada
@@ -16504,13 +16572,23 @@ function showSuccessModal(cotizacionId) {
         }
     }
     
-    // Obtener datos de la cotización generada
-    const ruc = document.getElementById('fRuc')?.value?.trim() || '---';
-    const razon = document.getElementById('fRazon')?.value?.trim() || '---';
-    const totalSpan = document.getElementById('sumTotal');
-    const total = totalSpan?.textContent || 'S/ 0.00';
-    const subtotal = document.getElementById('sumSubtotal')?.textContent || 'S/ 0.00';
-    const igv = document.getElementById('sumIgv')?.textContent || 'S/ 0.00';
+    // 27/10/2026 (Erika y Hellen): el resumen sale de la cotización YA GUARDADA. Antes leía el formulario,
+    // que se limpia al cerrar, y por eso decía "0 ítems", un número inventado y sin descuento.
+    let cot = null;
+    if (cotizacionId) {
+        try {
+            const r = await fetch(`/ventas/api/cotizaciones/${cotizacionId}/completa`, { credentials: 'same-origin' }).then(x => x.json());
+            if (r && r.success) cot = r.data;
+        } catch (e) { console.warn('Resumen de la cotización:', e); }
+    }
+    const monSim = cot && String(cot.moneda || '').toUpperCase() === 'USD' ? 'US$' : 'S/';
+    const plata = v => `${monSim} ${Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const ruc = cot ? (cot.cliente_ruc || '---') : (document.getElementById('fRuc')?.value?.trim() || '---');
+    const razon = cot ? (cot.cliente_razon_social || '---') : (document.getElementById('fRazon')?.value?.trim() || '---');
+    const total = cot ? plata(cot.total) : (document.getElementById('sumTotal')?.textContent || 'S/ 0.00');
+    const subtotal = cot ? plata(cot.subtotal_lista ?? cot.subtotal) : (document.getElementById('sumSubtotal')?.textContent || 'S/ 0.00');
+    const igv = cot ? plata(cot.igv) : (document.getElementById('sumIgv')?.textContent || 'S/ 0.00');
+    const descuento = cot ? plata(cot.descuento_total) : (document.getElementById('sumDiscount')?.textContent || 'S/ 0.00').replace(/^-/, '');
     const now = new Date();
     const fechaHora = now.toLocaleString('es-PE', { 
         day: '2-digit', 
@@ -16522,8 +16600,8 @@ function showSuccessModal(cotizacionId) {
         hour12: false,
         timeZone: 'America/Lima'
     });
-    const numeroCotizacion = `COT-${String(Date.now()).slice(-8)}`;
-    const productosCount = quoteProducts.length;
+    const numeroCotizacion = cot ? (cot.codigo_cotizacion || cot.numero_cotizacion || '—') : '—';
+    const productosCount = cot && Array.isArray(cot.productos) ? cot.productos.length : quoteProducts.length;
     
     // Remover modales existentes
     document.querySelectorAll('.success-modal-overlay').forEach(el => el.remove());
@@ -16578,10 +16656,13 @@ function showSuccessModal(cotizacionId) {
                 <div style="font-weight: 700; color: #0F172A; text-align: right;">${esc(ruc)}</div>
                 
                 <div><span style="color: #64748B; font-weight: 600;">📦 Productos</span></div>
-                <div style="font-weight: 700; color: #0F172A; text-align: right;">${productosCount} items</div>
+                <div style="font-weight: 700; color: #0F172A; text-align: right;">${productosCount} ${productosCount === 1 ? 'ítem' : 'ítems'}</div>
                 
                 <div><span style="color: #64748B; font-weight: 600;">💰 Subtotal</span></div>
                 <div style="font-weight: 700; color: #0F172A; text-align: right;">${subtotal}</div>
+                
+                <div><span style="color: #64748B; font-weight: 600;">🏷 Descuento</span></div>
+                <div style="font-weight: 700; color: #D32F2F; text-align: right;">- ${descuento}</div>
                 
                 <div><span style="color: #64748B; font-weight: 600;">📊 IGV 18%</span></div>
                 <div style="font-weight: 700; color: #0F172A; text-align: right;">${igv}</div>
@@ -16617,7 +16698,7 @@ function showSuccessModal(cotizacionId) {
                 cursor: pointer;
                 transition: all 0.2s;
                 box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
-            ">📄 Descargar PDF</button>
+            ">Descargar PDF</button>
             ` : ''}
             <button class="success-email-btn" style="
                 padding: 10px 28px;
@@ -16630,7 +16711,7 @@ function showSuccessModal(cotizacionId) {
                 cursor: pointer;
                 transition: all 0.2s;
                 box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
-            ">✉ Enviar al cliente</button>
+            ">Enviar al cliente</button>
         </div>
     `;
     
@@ -17625,7 +17706,10 @@ const ABAST_ESTILOS = {
     'Pendiente por compra': { icono: '', clase: 'abast-compra' },  // sin carrito (Erika 26/10/2026)
     'Pendiente por recojo': { icono: '🚚', clase: 'abast-recojo' },
     'Por llegar': { icono: '📦', clase: 'abast-llegar' },
-    'Con stock': { icono: '✅', clase: 'abast-ok' }
+    'Con stock': { icono: '✅', clase: 'abast-ok' },
+    // 27/10/2026: el PV ya salió del almacén. Nunca "Pendiente de compra" (regla de colores: verde y azul)
+    'Despachado': { icono: '', clase: 'abast-despachado' },
+    'Entregado': { icono: '', clase: 'abast-entregado' }
 };
 // Pedido de Erika 20/10/2026: en cotizaciones la etiqueta de abastecimiento ("Pendiente por compra") solo sale
 // cuando el cliente ya aceptó (no en "Generada" ni antes).
@@ -17638,8 +17722,9 @@ function abastBadge(tipo, id) {
     if (!info || !info.estado) return '';
     const est = ABAST_ESTILOS[info.estado] || { icono: '•', clase: 'abast-ok' };
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
-    const texto = { 'Por llegar': 'Comprado, por llegar', 'Pendiente por recojo': 'Comprado, por recoger', 'Pendiente por compra': 'Pendiente de compra' }[info.estado] || info.estado;
-    const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? ` (${info.ocs.join(', ')})` : '';
+    const texto = { 'Por llegar': 'Comprado, por llegar', 'Pendiente por recojo': 'Comprado, por recoger', 'Pendiente por compra': 'Pendiente de compra',
+        'Despachado': '✔ Despachado', 'Entregado': '✔ Entregado' }[info.estado] || info.estado;
+    const ocs = !['Con stock', 'Despachado', 'Entregado'].includes(info.estado) && (info.ocs || []).length ? ` (${info.ocs.join(', ')})` : '';
     return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono ? est.icono + ' ' : ''}${texto}${ocs.replace(/[<>"&]/g, '')}</span>`;
 }
 async function cargarAbastecimiento() {

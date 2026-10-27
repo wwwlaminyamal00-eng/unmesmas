@@ -13,7 +13,14 @@
 #   - El stock libre se reparte entre los pedidos (el más antiguo primero) y no se cuenta dos veces: con 32 en stock,
 #     un PV de 18 y otro de 40, al primero le tocan 18 y al segundo 14 (faltan 26), no 32 a cada uno.
 #   - Cada estado trae el N° de la OC que lo cubre.
-# No crea tablas ni columnas: solo lee lo que ya registran Inventario y Compras.
+# 27/10/2026 (Erika y Hellen, "ya recibí la mercadería y sigue diciendo Pendiente de compra"):
+#   - Lo que se RECIBIÓ con una OC hecha para un PV queda para ese PV: se le asigna primero, antes de repartir el
+#     resto del stock por antigüedad. Antes entraba al stock común y se lo llevaba un PV más antiguo.
+#     OJO: no basta con "hay stock" (podría ser de otro pedido y se vendería dos veces): cuenta lo de ese PV.
+#   - Lo ya despachado de un PV se descuenta de lo que el PV necesita (esas unidades ya salieron del almacén).
+#   - Cotización con PV: muestra el estado de su PV; si ya se despachó o entregó, dice "Despachado" o "Entregado"
+#     y nunca "Pendiente de compra".
+# No crea tablas ni columnas: solo lee lo que ya registran Inventario, Compras y Despachos.
 from collections import defaultdict
 from decimal import Decimal
 
@@ -25,6 +32,9 @@ from utils import a_decimal
 abastecimiento_bp = Blueprint('abastecimiento', __name__, url_prefix='/api/abastecimiento')
 
 CON_STOCK = 'Con stock'
+DESPACHADO = 'Despachado'
+ENTREGADO = 'Entregado'
+ESTADOS_SALIDA = (DESPACHADO, ENTREGADO)
 SIN_STOCK = 'Sin stock'
 POR_COMPRA = 'Pendiente por compra'
 POR_RECOJO = 'Pendiente por recojo'
@@ -65,6 +75,65 @@ def _en_camino(producto_ids, pedido_id=None):
         if f['numero_orden'] and f['numero_orden'] not in r['ocs']:
             r['ocs'].append(f['numero_orden'])
     return res
+
+
+def _recibido_por_pedido(producto_ids):
+    """{(pedido_id, producto_id): cantidad ya recibida en almacén con OC (no anuladas) hechas para ese PV}."""
+    if not producto_ids:
+        return {}
+    filas = db_query("""
+        SELECT oci.pedido_id, oci.producto_id, SUM(COALESCE(oci.cantidad_recibida, 0)) AS recibido
+        FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+        WHERE COALESCE(oc.estado, '') <> ALL(%s) AND oci.producto_id = ANY(%s) AND oci.pedido_id IS NOT NULL
+        GROUP BY oci.pedido_id, oci.producto_id
+        HAVING SUM(COALESCE(oci.cantidad_recibida, 0)) > 0
+    """, (list(OC_FUERA), list(producto_ids)))
+    return {(f['pedido_id'], f['producto_id']): a_decimal(f['recibido']) for f in filas}
+
+
+def _salidas_por_pedido(pedido_ids=None):
+    """Lo que ya salió del almacén por PV: ({(pc_id, producto_id): cantidad}, {pc_id: 'Despachado'|'Entregado'}).
+    El estado es 'Entregado' solo si todos sus despachos que salieron ya se entregaron."""
+    from routes.compras_flujo import _items_pedido, _resolver_productos
+    filas = db_query("""
+        SELECT d.pc_id, d.estado, COALESCE(NULLIF(d.items_json::text, '[]'), pc.items_json::text) AS items_json
+        FROM despachos d LEFT JOIN pedido_compra_pc pc ON pc.id = d.pc_id
+        WHERE d.pc_id IS NOT NULL AND COALESCE(d.estado, '') = ANY(%s)
+          AND (%s::int[] IS NULL OR d.pc_id = ANY(%s::int[]))
+    """, (list(ESTADOS_SALIDA), pedido_ids, pedido_ids))
+    cantidades = defaultdict(Decimal)
+    estado = {}
+    for f in filas:
+        items = _items_pedido(f)
+        _resolver_productos(items)
+        for it in items:
+            if it['producto_id']:
+                cantidades[(f['pc_id'], it['producto_id'])] += a_decimal(it['cantidad'])
+        if f['estado'] == DESPACHADO or estado.get(f['pc_id']) == DESPACHADO:
+            estado[f['pc_id']] = DESPACHADO
+        else:
+            estado[f['pc_id']] = ENTREGADO
+    return dict(cantidades), estado
+
+
+def _restar_salidas(items, pedido_id, salidas):
+    """Items del PV menos lo ya despachado. Devuelve la lista con lo que aún falta entregar (sin los que ya salieron)."""
+    from routes.compras_flujo import _resolver_productos
+    _resolver_productos(items)
+    usado = defaultdict(Decimal)
+    quedan = []
+    for it in items:
+        pid = it['producto_id']
+        if pid:
+            salio = max(salidas.get((pedido_id, pid), Decimal('0')) - usado[pid], Decimal('0'))
+            toma = min(salio, a_decimal(it['cantidad']))
+            usado[pid] += toma
+            resto = a_decimal(it['cantidad']) - toma
+            if resto <= 0:
+                continue
+            it = dict(it, cantidad=resto)
+        quedan.append(it)
+    return quedan
 
 
 def ocs_en_transito(producto_ids):
@@ -131,18 +200,41 @@ def evaluar_documentos(docs, por_pedido=False):
     restante = dict(libre)
     asignado = {}
     if por_pedido:
+        # 1) Primero, a cada PV lo que llegó con SUS órdenes de compra (27/10/2026)
+        recibido = _recibido_por_pedido(ids)
+        for doc_id in sorted(docs, key=lambda k: (docs[k].get('pedido_id') or 10 ** 12, k)):
+            d = docs[doc_id]
+            if not d.get('pedido_id'):
+                continue
+            llave_doc = ('pc', d['pedido_id'])
+            for it in d['items']:
+                pid = it['producto_id']
+                if not pid or (llave_doc, pid) in asignado:
+                    continue
+                propio = recibido.get((d['pedido_id'], pid), Decimal('0')) - d.get('salido', {}).get(pid, Decimal('0'))
+                if propio <= 0:
+                    continue
+                c = camino.get((d['pedido_id'], pid), vacio)
+                necesita = max(a_decimal(it['cantidad']) - c['recojo'] - c['llega'], Decimal('0'))
+                toca = min(max(restante.get(pid, Decimal('0')), Decimal('0')), necesita, propio)
+                if toca > 0:
+                    restante[pid] = restante.get(pid, Decimal('0')) - toca
+                    asignado[(llave_doc, pid)] = toca
+        # 2) Luego, el resto del stock libre por antigüedad
         for doc_id in sorted(docs, key=lambda k: (docs[k].get('pedido_id') or 10 ** 12, k)):
             d = docs[doc_id]
             llave_doc = ('pc', d['pedido_id']) if d.get('pedido_id') else ('doc', doc_id)
             for it in d['items']:
                 pid = it['producto_id']
-                if not pid or (llave_doc, pid) in asignado:
+                if not pid or (llave_doc, pid, 'general') in asignado:
                     continue
                 c = camino.get((d.get('pedido_id'), pid), vacio) if d.get('pedido_id') else vacio
-                necesita = max(a_decimal(it['cantidad']) - c['recojo'] - c['llega'], Decimal('0'))
+                ya = asignado.get((llave_doc, pid), Decimal('0'))
+                necesita = max(a_decimal(it['cantidad']) - c['recojo'] - c['llega'] - ya, Decimal('0'))
                 toca = min(max(restante.get(pid, Decimal('0')), Decimal('0')), necesita)
                 restante[pid] = restante.get(pid, Decimal('0')) - toca
-                asignado[(llave_doc, pid)] = toca
+                asignado[(llave_doc, pid)] = ya + toca
+                asignado[(llave_doc, pid, 'general')] = True
     salida = {}
     for doc_id, d in docs.items():
         evaluados = []
@@ -166,17 +258,34 @@ def evaluar_documentos(docs, por_pedido=False):
 # ============================================================
 # API
 # ============================================================
-@abastecimiento_bp.route('/pc')
-def api_pc():
-    """Estado de abastecimiento de cada pedido de venta (PV) abierto."""
+def estados_pv():
+    """{pv_id: resumen} de los PV abiertos. Lo ya despachado no cuenta; un PV que ya salió entero dice
+    'Despachado' o 'Entregado' (nunca 'Pendiente por compra')."""
     from routes.compras_flujo import _items_pedido, ESTADOS_PC_FUERA
-    _preparar()
     filas = db_query("""
         SELECT id, items_json FROM pedido_compra_pc
         WHERE COALESCE(UPPER(estado), '') <> ALL(%s) ORDER BY id DESC LIMIT 500
     """, (list(ESTADOS_PC_FUERA),))
-    docs = {f['id']: {'pedido_id': f['id'], 'items': _items_pedido(f)} for f in filas}
-    return jsonify({'success': True, 'data': evaluar_documentos(docs, por_pedido=True)})
+    salidas, estado_salida = _salidas_por_pedido([f['id'] for f in filas])
+    docs, salieron = {}, {}
+    for f in filas:
+        items = _items_pedido(f)
+        quedan = _restar_salidas(items, f['id'], salidas)
+        if f['id'] in estado_salida and not quedan:
+            salieron[f['id']] = {'estado': estado_salida[f['id']], 'faltan': 0, 'ocs': [], 'detalle': []}
+            continue
+        docs[f['id']] = {'pedido_id': f['id'], 'items': quedan,
+                         'salido': {pid: c for (pv, pid), c in salidas.items() if pv == f['id']}}
+    data = evaluar_documentos(docs, por_pedido=True)
+    data.update(salieron)
+    return data
+
+
+@abastecimiento_bp.route('/pc')
+def api_pc():
+    """Estado de abastecimiento de cada pedido de venta (PV) abierto."""
+    _preparar()
+    return jsonify({'success': True, 'data': estados_pv()})
 
 
 @abastecimiento_bp.route('/cotizaciones')
@@ -195,7 +304,29 @@ def api_cotizaciones():
     for f in filas:
         docs[f['cotizacion_id']]['items'].append({'producto_id': f['producto_id'], 'codigo': f['codigo'] or '',
                                                   'descripcion': f['descripcion'], 'cantidad': a_decimal(f['cantidad'])})
-    return jsonify({'success': True, 'data': evaluar_documentos(dict(docs))})
+    # 27/10/2026: la cotización que ya tiene PV toma el estado de su PV (despachado/entregado o lo que falte)
+    from routes.compras_flujo import ESTADOS_PC_FUERA
+    pv_de = {}
+    if docs:
+        for f in db_query("""
+            SELECT c.id AS cot_id, MAX(pc.id) AS pv_id
+            FROM cotizaciones c JOIN pedido_compra_pc pc
+              ON pc.cotizacion_numero IN (c.codigo_cotizacion, c.numero_cotizacion)
+             AND COALESCE(UPPER(pc.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')
+            WHERE c.id = ANY(%s) GROUP BY c.id
+        """, (list(docs),)):
+            pv_de[f['cot_id']] = f['pv_id']
+    data = evaluar_documentos({k: v for k, v in docs.items() if k not in pv_de})
+    if pv_de:
+        pvs = estados_pv()
+        # PV cerrado (ya no está entre los abiertos): solo se muestra si salió del almacén
+        _, salida_cerrados = _salidas_por_pedido([v for v in pv_de.values() if v not in pvs])
+        for cot_id, pv_id in pv_de.items():
+            if pv_id in pvs:
+                data[cot_id] = pvs[pv_id]
+            elif pv_id in salida_cerrados:
+                data[cot_id] = {'estado': salida_cerrados[pv_id], 'faltan': 0, 'ocs': [], 'detalle': []}
+    return jsonify({'success': True, 'data': data})
 
 
 @abastecimiento_bp.route('/despachos')
@@ -204,12 +335,21 @@ def api_despachos():
     from routes.compras_flujo import _items_pedido
     _preparar()
     filas = db_query("""
-        SELECT d.id, d.pc_id, COALESCE(NULLIF(d.items_json::text, '[]'), pc.items_json::text) AS items_json
+        SELECT d.id, d.pc_id, COALESCE(NULLIF(d.items_json::text, '[]'), pc.items_json::text) AS items_json,
+               COALESCE(d.items_json::text, '[]') = '[]' AS usa_items_pv
         FROM despachos d LEFT JOIN pedido_compra_pc pc ON pc.id = d.pc_id
         WHERE COALESCE(d.estado, '') NOT IN ('Despachado', 'Entregado', 'Anulado')
         ORDER BY d.id DESC LIMIT 500
     """)
-    docs = {f['id']: {'pedido_id': f['pc_id'], 'items': _items_pedido(f)} for f in filas}
+    # 27/10/2026: lo que el PV ya despachó en otros despachos no se vuelve a pedir
+    salidas, _ = _salidas_por_pedido([f['pc_id'] for f in filas if f['pc_id']] or [0])
+    docs = {}
+    for f in filas:
+        items = _items_pedido(f)
+        if f['pc_id'] and f['usa_items_pv']:
+            items = _restar_salidas(items, f['pc_id'], salidas)
+        docs[f['id']] = {'pedido_id': f['pc_id'], 'items': items,
+                         'salido': {pid: c for (pv, pid), c in salidas.items() if pv == f['pc_id']}}
     return jsonify({'success': True, 'data': evaluar_documentos(docs, por_pedido=True)})
 
 

@@ -1029,6 +1029,10 @@ class PDFGenerator:
     <div class="info-linea-unica">
         <span class="info-titulo">Documentos relacionados:</span>
         <div class="info-item">
+            <span class="info-label">PV (PEDIDO DE VENTA):</span>
+            <span class="info-value">{{ nro_pv or '—' }}</span>
+        </div>
+        <div class="info-item">
             <span class="info-label">PC (PEDIDO DEL CLIENTE):</span>
             <span class="info-value">{{ orden_compra_cliente or '—' }}</span>
         </div>
@@ -1127,6 +1131,7 @@ class PDFGenerator:
             'orden_compra_cliente': datos_guia.get('orden_compra_cliente', ''),
             'factura': datos_guia.get('factura', ''),
             'nro_cotizacion': datos_guia.get('nro_cotizacion', datos_guia.get('documento_asociado', '')),
+            'nro_pv': datos_guia.get('nro_pv', ''),
             'items': items_formateados,
             'observaciones': datos_guia.get('observaciones', ''),
             'qr_base64': self._generar_qr_guia(datos_guia)
