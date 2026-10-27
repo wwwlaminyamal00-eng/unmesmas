@@ -24,6 +24,7 @@ from routes.multiempresa import (filtrar_filas, filtro_sql, empresa_para_crear, 
                                  empresa_por_codigo, marca_pdf)
 from routes.moneda import asegurar_moneda, moneda_documento, codigo_moneda, ErrorMoneda
 from routes.migo import asegurar_migo, guardar_numero_migo, limpiar_migo
+from routes import descripcion_cliente as desc_cli
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
@@ -1532,6 +1533,7 @@ def api_cotizaciones_guardar():
         productos = data.get('productos') or []
         if not productos:
             return jsonify({'success': False, 'error': 'Agrega al menos un producto a la cotización'}), 400
+        desc_cli.asegurar_columnas()
 
         estado_nuevo = (data.get('estado') or 'Borrador').strip()
 
@@ -1627,7 +1629,10 @@ def api_cotizaciones_guardar():
                     return jsonify({'success': False, 'error': f'Precio inválido en la línea {idx} ({codigo_producto})'}), 400
                 lineas.append({'producto_id': producto_bd['id'], 'cantidad': cantidad, 'precio': precio,
                                'costo': a_decimal(producto_bd.get('costo_unitario') or 0),
-                               'entrega': estado_entrega_valido(producto.get('estado_entrega'))})
+                               'entrega': estado_entrega_valido(producto.get('estado_entrega')),
+                               # 27/10/2026 (caso Komatsu): cómo lo pide el cliente, por línea
+                               'desc_cliente': desc_cli.limpiar_desc(producto.get('descripcion_cliente')) or None,
+                               'cod_cliente': desc_cli.limpiar_codigo(producto.get('codigo_cliente')) or None})
 
             if no_encontrados:
                 # Antes se omitían en silencio y la cotización quedaba incompleta
@@ -1720,14 +1725,19 @@ def api_cotizaciones_guardar():
                     INSERT INTO cotizacion_detalle (
                         cotizacion_id, producto_id, cantidad, costo_unitario, subtotal_costo, margen_porcentaje,
                         precio_venta_unitario, subtotal_venta, descuento_porcentaje, precio_venta_con_descuento,
-                        subtotal_venta_con_descuento, descuento_total, margen_final, estado_entrega
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        subtotal_venta_con_descuento, descuento_total, margen_final, estado_entrega,
+                        descripcion_cliente, codigo_cliente
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (cotizacion_id, l['producto_id'], l['cantidad'], l['costo'], redondear(subtotal_costo),
                       redondear(margen), l['precio'], redondear(subtotal_venta),
                       redondear((1 - factor) * 100), redondear(precio_desc),
                       redondear(subtotal_venta * factor), redondear(subtotal_venta * (1 - factor)),
-                      redondear(margen_final), l['entrega']))
+                      redondear(margen_final), l['entrega'], l['desc_cliente'], l['cod_cliente']))
 
+        try:
+            desc_cli.recordar(cliente_id, productos, usuario_id)   # se sugiere en la próxima cotización de este cliente
+        except Exception as e:
+            print(f"⚠️ No se pudo recordar la descripción del cliente: {e}")
         accion = 'actualizada' if es_edicion else 'creada'
         return jsonify({
             'success': True,
@@ -2289,6 +2299,7 @@ def api_guia_para_factura(guia_id):
                 'codigo': it.get('codigo') or '',
                 'producto': base.get('producto') or it.get('producto') or it.get('descripcion') or '',
                 'descripcion_cliente': (it.get('descripcion_cliente') or base.get('descripcion_cliente') or '').strip(),
+                'codigo_cliente': (it.get('codigo_cliente') or base.get('codigo_cliente') or '').strip(),
                 'marca': it.get('marca') or base.get('marca') or '', 'modelo': it.get('modelo') or base.get('modelo') or '',
                 'um': it.get('um') or 'NIU',
                 'cantidad': float(a_decimal(it.get('cantidad') or 0)),
@@ -3055,13 +3066,17 @@ def _completar_desc_cliente(items, pc_numero):
             pc_items = json.loads(pc_items or '[]')
     except Exception:
         return items
-    mapa = {str(i.get('codigo') or '').strip().upper(): (i.get('descripcion_cliente') or '').strip()
-            for i in pc_items or [] if isinstance(i, dict) and (i.get('descripcion_cliente') or '').strip()}
+    mapa = {str(i.get('codigo') or '').strip().upper(): ((i.get('descripcion_cliente') or '').strip(),
+                                                          (i.get('codigo_cliente') or '').strip())
+            for i in pc_items or [] if isinstance(i, dict)}
     for it in items:
-        if isinstance(it, dict) and not (it.get('descripcion_cliente') or '').strip():
-            d = mapa.get(str(it.get('codigo') or '').strip().upper())
-            if d:
-                it['descripcion_cliente'] = d
+        if not isinstance(it, dict):
+            continue
+        d, c = mapa.get(str(it.get('codigo') or '').strip().upper(), ('', ''))
+        if d and not (it.get('descripcion_cliente') or '').strip():
+            it['descripcion_cliente'] = d
+        if c and not (it.get('codigo_cliente') or '').strip():
+            it['codigo_cliente'] = c   # 27/10/2026: N° de material del cliente
     return items
 
 
@@ -4016,6 +4031,18 @@ def api_pedido_compra_guardar():
         if result:
             # 24/10/2026 (Erika): el PV lleva la moneda y el TC de su cotización (o los que se escriban en el PV)
             db_execute("UPDATE pedido_compra_pc SET moneda = %s, tipo_cambio = %s WHERE id = %s", moneda_pc + (result['id'],))
+            # 27/10/2026 (caso Komatsu): la descripción y el código del cliente corregidos en el PV pasan a lo que aún
+            # no se emitió (despachos sin guía, guías y facturas en Borrador) y se recuerdan para este cliente
+            try:
+                fila_pv = db_query("SELECT numero, cotizacion_numero, ruc FROM pedido_compra_pc WHERE id = %s", (result['id'],))
+                if fila_pv and pc_id:
+                    desc_cli.propagar_pv(fila_pv[0]['numero'], data.get('items') or [], fila_pv[0].get('cotizacion_numero'))
+                cli = db_query("SELECT id FROM clientes WHERE numero_documento = %s ORDER BY id LIMIT 1",
+                               ((fila_pv[0].get('ruc') if fila_pv else None) or data.get('ruc') or '',))
+                if cli:
+                    desc_cli.recordar(cli[0]['id'], data.get('items') or [], usuario_id)
+            except Exception as e:
+                print(f"⚠️ No se pudo pasar la descripción del cliente: {e}")
 
         if result:
             # Si tiene cotizacion_id y es NUEVO, actualizar estado de la cotización
@@ -4497,6 +4524,7 @@ def _vincular_despacho_con_pc(data):
                 'codigo': i.get('codigo') or '',
                 'producto': i.get('producto') or i.get('descripcion') or '',
                 'descripcion_cliente': i.get('descripcion_cliente') or '',   # 24/10/2026: como en la PC (Pedido del cliente)
+                'codigo_cliente': i.get('codigo_cliente') or '',
                 'marca': i.get('marca') or '', 'modelo': i.get('modelo') or '',
                 'cantidad': float(i.get('cantidad_pc') or i.get('cantidad') or 0),
                 'um': i.get('um') or 'NIU',
@@ -5157,9 +5185,11 @@ def api_cotizaciones_obtener_completa(id):
             return jsonify({'success': False, 'error': 'Cotización no encontrada'}), 404
         
         # 🔽 OBTENER PRODUCTOS - VERIFICAR QUE ESTE QUERY FUNCIONE
+        desc_cli.asegurar_columnas()   # 27/10/2026: descripción y código del cliente por línea
         query_productos = """
             SELECT 
                 d.id, d.producto_id, d.cantidad,
+                d.descripcion_cliente, d.codigo_cliente,
                 d.precio_venta_unitario as valorVenta,
                 d.subtotal_venta,
                 d.descuento_porcentaje,
@@ -5216,7 +5246,9 @@ def api_cotizaciones_obtener_completa(id):
                 'subtotal_venta': float(p.get('subtotal_venta') or 0),
                 'descuento_porcentaje': float(p.get('descuento_porcentaje') or 0),
                 'precio_venta_con_descuento': float(p.get('precio_venta_con_descuento') or 0),
-                'estado_entrega': estado_entrega_valido(p.get('estado_entrega'))
+                'estado_entrega': estado_entrega_valido(p.get('estado_entrega')),
+                'descripcion_cliente': p.get('descripcion_cliente') or '',
+                'codigo_cliente': p.get('codigo_cliente') or ''
             })
         
         _aplicar_descuento_cotizacion(result)
@@ -5572,9 +5604,11 @@ def api_cotizaciones_generar_pdf(id):
         c = cabecera[0]
         
         # 2. Obtener productos de la cotización
+        desc_cli.asegurar_columnas()   # 27/10/2026: descripción y código del cliente por línea
         query_productos = """
             SELECT 
                 d.id, d.producto_id, d.cantidad,
+                d.descripcion_cliente, d.codigo_cliente,
                 d.precio_venta_unitario, d.subtotal_venta,
                 d.descuento_porcentaje, d.precio_venta_con_descuento,
                 d.subtotal_venta_con_descuento,
@@ -5620,7 +5654,8 @@ def api_cotizaciones_generar_pdf(id):
                 'precio_venta_unitario': precio_unitario,
                 'subtotal_venta': subtotal_producto,
                 'descuento_porcentaje': descuento_pct,
-                'subtotal_venta_desc': subtotal_desc
+                'subtotal_venta_desc': subtotal_desc,
+                'linea_cliente': desc_cli.linea_cliente(p)   # "Según su pedido: … · Código del cliente: …"
             })
         
         # Calcular si hay descuentos
@@ -6121,7 +6156,7 @@ def api_cotizaciones_generar_pdf(id):
                 <tr>
                     <td class="text-center">{{ producto.item }}</td>
                     <td>{{ producto.codigo|default('-') }}</td>
-                    <td class="descripcion">{{ producto.descripcion }}</td>
+                    <td class="descripcion">{{ producto.descripcion }}{% if producto.linea_cliente %}<span style="display:block;font-size:7.5px;font-weight:600;color:#334155;margin-top:1px">{{ producto.linea_cliente }}</span>{% endif %}</td>
                     <td>{{ producto.modelo|default('-') }}</td>
                     <td>{{ producto.marca|default('-') }}</td>
                     <td class="text-center">{{ producto.unidad|default('Unid') }}</td>
@@ -6325,7 +6360,8 @@ def generar_pdf_guia_endpoint(guia_id):
                 items_formateados.append({
                     'item': idx,
                     'codigo': item.get('codigo', ''),
-                    'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),   # 27/10/2026: la del PV
+                    'descripcion': item.get('producto') or item.get('descripcion') or '',   # 27/10/2026: los dos nombres
+                    'linea_cliente': desc_cli.linea_cliente(item),
                     'marca': item.get('marca', ''),
                     'modelo': item.get('modelo', ''),
                     'unidad': item.get('um', 'NIU'),
@@ -6556,7 +6592,8 @@ def preparar_datos_guia_pdf(guia):
             items_formateados.append({
                 'item': idx,
                 'codigo': item.get('codigo', ''),
-                'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),   # 27/10/2026: la del PV
+                'descripcion': item.get('producto') or item.get('descripcion') or '',   # 27/10/2026: los dos nombres
+                    'linea_cliente': desc_cli.linea_cliente(item),
                 'marca': item.get('marca', ''),
                 'modelo': item.get('modelo', ''),
                 'unidad': item.get('um', 'NIU'),
@@ -7118,6 +7155,7 @@ def api_pedido_compra_obtener(id):
                                     'codigo': item.get('codigo', ''),
                                     'producto': item.get('producto', item.get('descripcion', '')),
                                     'descripcion_cliente': item.get('descripcion_cliente') or '',   # 24/10/2026: como en la PC (Pedido del cliente)
+                                    'codigo_cliente': item.get('codigo_cliente') or '',
                                     'marca': item.get('marca', ''),
                                     'modelo': item.get('modelo', ''),
                                     'cantidad_cotizada': float(item.get('cantidad_cotizada', item.get('cantidad_cot', 0))),
@@ -7313,9 +7351,11 @@ def api_cotizaciones_preview_pdf(id):
         c = cabecera[0]
         
         # 2. Obtener productos
+        desc_cli.asegurar_columnas()   # 27/10/2026: descripción y código del cliente por línea
         query_productos = """
             SELECT 
                 d.id, d.producto_id, d.cantidad,
+                d.descripcion_cliente, d.codigo_cliente,
                 d.precio_venta_unitario, d.subtotal_venta,
                 d.descuento_porcentaje, d.precio_venta_con_descuento,
                 d.subtotal_venta_con_descuento,
@@ -7356,7 +7396,8 @@ def api_cotizaciones_preview_pdf(id):
                 'precio_venta_unitario': precio_unitario,
                 'subtotal_venta': subtotal_producto,
                 'descuento_porcentaje': descuento_pct,
-                'subtotal_venta_desc': subtotal_desc
+                'subtotal_venta_desc': subtotal_desc,
+                'linea_cliente': desc_cli.linea_cliente(p)   # "Según su pedido: … · Código del cliente: …"
             })
         
         hay_descuentos = any(p.get('descuento_porcentaje', 0) > 0 for p in productos_list) or descuento_monto > 0
@@ -7860,7 +7901,7 @@ def api_cotizaciones_preview_pdf(id):
                 <tr>
                     <td class="text-center">{{ producto.item }}</td>
                     <td>{{ producto.codigo|default('-') }}</td>
-                    <td class="descripcion">{{ producto.descripcion }}</td>
+                    <td class="descripcion">{{ producto.descripcion }}{% if producto.linea_cliente %}<span style="display:block;font-size:7.5px;font-weight:600;color:#334155;margin-top:1px">{{ producto.linea_cliente }}</span>{% endif %}</td>
                     <td>{{ producto.modelo|default('-') }}</td>
                     <td>{{ producto.marca|default('-') }}</td>
                     <td class="text-center">{{ producto.unidad|default('Unid') }}</td>
@@ -8082,7 +8123,8 @@ def preview_pdf_comprobante(comp_id):
                         items.append({
                             'item': idx,
                             'codigo': item.get('codigo', ''),
-                            'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', 'Sin descripción')),
+                            'descripcion': item.get('producto') or item.get('descripcion') or 'Sin descripción',   # 27/10/2026: los dos nombres
+                            'linea_cliente': desc_cli.linea_cliente(item),
                             'marca': item.get('marca', ''),          # ← IMPORTANTE
                             'modelo': item.get('modelo', ''),        # ← IMPORTANTE
                             'unidad': item.get('um', 'NIU'),
@@ -8240,7 +8282,8 @@ def generar_pdf_comprobante(comp_id):
                         items.append({
                             'item': idx,
                             'codigo': item.get('codigo', ''),
-                            'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', 'Sin descripción')),
+                            'descripcion': item.get('producto') or item.get('descripcion') or 'Sin descripción',   # 27/10/2026: los dos nombres
+                            'linea_cliente': desc_cli.linea_cliente(item),
                             'marca': item.get('marca', ''),
                             'modelo': item.get('modelo', ''),
                             'unidad': item.get('um', 'NIU'),

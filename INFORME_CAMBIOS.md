@@ -2557,3 +2557,18 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Ventas: el N° PV (Pedido de venta) y el N° PC (Pedido del cliente) van en dos columnas separadas en PV (vista principal y completa), Entregas, Guías y Facturas. Si el cliente no mandó PC: "—".
 - Guías: las guías se guardaban con el PC del cliente vacío. La columna "N° PC (Pedido del cliente)" ahora toma el número vigente del PV (por cotización o por N° PV), igual que el PDF de la guía. El PDF ya mostraba "PV (PEDIDO DE VENTA)" y "PC (PEDIDO DEL CLIENTE)" en "Documentos relacionados".
 - Sin cambios en la base.
+
+### 24.57 Descripción del cliente por línea: los dos nombres en todo (Erika y Hellen, 27/10/2026 20:23, caso Komatsu)
+- Por qué "no se guardaba": en la base sí se guardaba (PV-KCF-000028 la llevó al despacho, la guía y la factura). Lo que fallaba era lo que se veía:
+  - Entregas y Guías mostraban solo el nombre del catálogo;
+  - los PDF ponían la descripción del cliente EN LUGAR del nombre del maestro;
+  - lo corregido en el PV después de crear el despacho no llegaba;
+  - la cotización no tenía el campo.
+- Ahora cada línea lleva los dos nombres. Arriba va el "Nombre producto" del maestro y debajo "Según su pedido: … · Código del cliente: …". Se ve así en:
+  - Cotización, PV, Entregas, Guía, Factura (total y parcial) y Nota de crédito;
+  - los PDF de cotización, guía, factura y nota de crédito.
+- Cotización: cada producto tiene "✏ Descripción del cliente" y "Código del cliente" (opcionales), que se guardan en `cotizacion_detalle`.
+- Memoria por cliente y producto (tabla `cliente_producto_descripcion`): al guardar se recuerda cómo llama ese cliente a cada producto. En su próxima cotización se sugiere solo ("💡 Sugerido") y se puede cambiar.
+- PV: además de la descripción, tiene "Código del cliente". Al guardar el PV, lo corregido pasa a lo que aún no se emitió: despachos sin guía, guías en Borrador y facturas en Borrador. Lo emitido no se toca.
+- Base: migración `038_descripcion_cliente.sql` aplicada en Supabase. Agrega 2 columnas vacías y 1 tabla nueva. Respaldo previo en `respaldo_20261015.cotizacion_detalle_20261027` (116 filas). No borra datos.
+- Pruebas: 343 correctas (base normal) y 341 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_desc_cliente.py`.

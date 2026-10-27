@@ -165,7 +165,9 @@ def avance_pv(pv, excluir_factura=None):
         precio = a_decimal(raw.get('precio_pc') or raw.get('precio_cotizado') or raw.get('valorVenta')
                            or raw.get('precio_unitario') or 0)
         posiciones.append({'posicion': i, 'clave': _clave(it), 'codigo': it['codigo'],
-                           'producto': (raw.get('descripcion_cliente') or '').strip() or it['descripcion'],
+                           'producto': raw.get('producto') or it['descripcion'],
+                           'descripcion_cliente': (raw.get('descripcion_cliente') or '').strip(),
+                           'codigo_cliente': (raw.get('codigo_cliente') or '').strip(),
                            'unidad': it['unidad'] or 'NIU', 'marca': raw.get('marca') or '', 'modelo': raw.get('modelo') or '',
                            'producto_id': it['producto_id'], 'precio': precio, 'pedido': it['cantidad']})
     entregado, guiado, facturado = {}, {}, {}

@@ -28,9 +28,16 @@
         return b ? Number(b.valorVenta || b.precio_unitario || 0) : 0;
     }
 
+    // 27/10/2026 (caso Komatsu): debajo del Nombre producto, cómo lo pide el cliente
+    function lineaCli(p) {
+        return typeof window.lineaClienteHTML === 'function' ? window.lineaClienteHTML(p) : '';
+    }
+
     function itemDePosicion(p, cantidad) {
         const b = st.base.find(x => String(x.codigo || '').trim().toUpperCase() === String(p.codigo || '').trim().toUpperCase()) || {};
         return { ...b, codigo: p.codigo, producto: p.producto, um: p.unidad || b.um || 'NIU', marca: p.marca || b.marca || '',
+                 descripcion_cliente: p.descripcion_cliente || b.descripcion_cliente || '',
+                 codigo_cliente: p.codigo_cliente || b.codigo_cliente || '',
                  modelo: p.modelo || b.modelo || '', cantidad: r2(cantidad), valorVenta: precioDe(p), posicion: p.posicion };
     }
 
@@ -90,7 +97,7 @@
         return `<div class="table-scroll"><table class="master-table fp-tabla" style="font-size:11px">
             <thead><tr><th>Ítem</th><th>Código de producto</th><th>Nombre producto</th><th>Marca</th><th>Modelo</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario</th><th>Total</th></tr></thead>
             <tbody>${items.map((p, i) => `<tr>
-                <td>${p.posicion || i + 1}</td><td>${esc(p.codigo || '-')}</td><td class="left">${esc(p.producto || p.descripcion || 'Sin nombre')}</td>
+                <td>${p.posicion || i + 1}</td><td>${esc(p.codigo || '-')}</td><td class="left">${esc(p.producto || p.descripcion || 'Sin nombre')}${lineaCli(p)}</td>
                 <td>${esc(p.marca || '-')}</td><td>${esc(p.modelo || '-')}</td><td>${esc(p.um || 'NIU')}</td><td>${num(p.cantidad || 0)}</td>
                 <td class="fp-num">${dinero(p.valorVenta)}</td><td class="fp-num" style="font-weight:900;color:#059669">${dinero((Number(p.cantidad) || 0) * (Number(p.valorVenta) || 0))}</td>
             </tr>`).join('')}</tbody>${pie(t, 9)}</table></div>`;
@@ -107,7 +114,7 @@
             const cant = s.on ? Number(s.cant) || 0 : 0;
             return `<tr class="${s.on ? 'fp-on' : 'fp-off'}">
                 <td><input type="checkbox" class="fp-check" data-pos="${p.posicion}" ${s.on ? 'checked' : ''} ${bloqueada ? 'disabled' : ''} title="${bloqueada ? esc(motivoNoSe) : 'Facturar esta posición'}"></td>
-                <td><b>${p.posicion}</b></td><td>${esc(p.codigo || '-')}</td><td class="left">${esc(p.producto)}</td><td>${esc(p.unidad || 'NIU')}</td>
+                <td><b>${p.posicion}</b></td><td>${esc(p.codigo || '-')}</td><td class="left">${esc(p.producto)}${lineaCli(p)}</td><td>${esc(p.unidad || 'NIU')}</td>
                 <td class="fp-av">Pedido <b>${num(p.pedido)}</b><br>Con guía <b>${num(p.guiado)}</b><br>Facturado <b>${num(p.facturado)}</b></td>
                 <td>${bloqueada ? `<span class="fp-no">${esc(motivoNoSe)}</span>` :
                     `<input type="number" class="fp-cant" data-pos="${p.posicion}" min="0" max="${max}" step="any" value="${s.on ? num(s.cant) : ''}" ${s.on ? '' : 'disabled'}><small class="fp-max">máx. ${num(max)}</small>`}</td>

@@ -54,7 +54,7 @@
     <thead><tr><th>Código</th><th>Descripción</th><th>U.M.</th><th>Cantidad</th><th>Valor unitario (sin IGV)</th><th>Total (con IGV)</th></tr></thead>
     <tbody>
     {% for it in (n.items_json or []) %}
-        <tr><td>{{ it.codigo }}</td><td>{{ it.producto }}</td><td>{{ it.um }}</td><td class="n">{{ '%g' % it.cantidad }}</td>
+        <tr><td>{{ it.codigo }}</td><td>{{ it.producto }}{% if it.descripcion_cliente or it.codigo_cliente %}<span style="display:block;font-size:10px;font-weight:600;color:#334155">{% if it.descripcion_cliente %}Según su pedido: {{ it.descripcion_cliente }}{% endif %}{% if it.descripcion_cliente and it.codigo_cliente %} · {% endif %}{% if it.codigo_cliente %}Código del cliente: {{ it.codigo_cliente }}{% endif %}</span>{% endif %}</td><td>{{ it.um }}</td><td class="n">{{ '%g' % it.cantidad }}</td>
             <td class="n">{{ '%.2f' % it.valor_unitario }}</td><td class="n">{{ '%.2f' % it.total }}</td></tr>
     {% else %}
         <tr><td colspan="6">{{ tipos.get(n.tipo_nota, n.motivo or '') }}{% if n.porcentaje %} ({{ '%g' % n.porcentaje }}% del total){% endif %}</td></tr>

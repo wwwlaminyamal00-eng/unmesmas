@@ -4494,3 +4494,10 @@ td.col-item{font-size:12.5px}
 /* 24/10/2026: descripción del cliente por línea en el PC (caso Komatsu) */
 .pc-desc-cliente { display:block; width:100%; margin-top:2px; min-height:16px; resize:vertical; border:1px dashed #F59E0B; border-radius:4px; background:#FFFBEB; font-size:9px; padding:1px 3px; font-family:inherit; color:#92400E; }
 .pc-desc-cliente:placeholder-shown { background:#FFFFFF; border-color:#CBD5E1; }
+/* 27/10/2026 (caso Komatsu): Código del cliente en el PV, y descripción + código del cliente en la cotización */
+.pc-cod-cliente, .cot-cli-wrap textarea, .cot-cli-wrap input { display:block; width:100%; margin-top:2px; min-height:16px; resize:vertical; border:1px dashed #F59E0B; border-radius:4px; background:#FFFBEB; font-size:9px; padding:1px 3px; font-family:inherit; color:#92400E; font-weight:700; box-sizing:border-box; }
+.cot-cli-wrap textarea, .cot-cli-wrap input { font-size:11px; padding:2px 4px; }
+.pc-cod-cliente:placeholder-shown, .cot-cli-wrap textarea:placeholder-shown, .cot-cli-wrap input:placeholder-shown { background:#FFFFFF; border-color:#CBD5E1; font-weight:500; }
+.cot-cli-wrap { margin-top:3px; }
+.cot-cli-sug { display:inline-block; margin-top:2px; font-size:10px; font-weight:800; color:#B45309; }
+.desc-cli-linea { display:block; font-size:10px; font-weight:700; font-style:italic; color:#92400E; line-height:1.25; margin-top:1px; }

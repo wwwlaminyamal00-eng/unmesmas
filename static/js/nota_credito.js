@@ -138,7 +138,7 @@
             const dev = {};
             (notaNC?.items_json || []).forEach(it => { dev[it.idx] = it.cantidad; });
             return `<table class="nc-items"><thead><tr><th>Nombre producto</th><th>Cantidad facturada</th><th>Valor unitario (sin IGV)</th><th>Cantidad devuelta</th><th>Total (con IGV)</th></tr></thead><tbody>
-                ${origenNC.items.map(it => `<tr><td class="left">${h(it.producto)}</td><td>${it.cantidad}</td><td>${m2(it.valor_unitario)}</td>
+                ${origenNC.items.map(it => `<tr><td class="left">${h(it.producto)}${typeof window.lineaClienteHTML === 'function' ? window.lineaClienteHTML(it) : ''}</td><td>${it.cantidad}</td><td>${m2(it.valor_unitario)}</td>
                     <td><input type="number" class="nc-cant" data-idx="${it.idx}" min="0" max="${it.cantidad}" step="1" value="${dev[it.idx] ?? 0}" ${soloLectura ? 'disabled' : ''} oninput="ncRecalcular()"></td>
                     <td class="nc-item-total" data-idx="${it.idx}">0.00</td></tr>`).join('')}
             </tbody></table>`;
