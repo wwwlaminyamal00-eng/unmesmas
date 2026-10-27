@@ -372,7 +372,8 @@
     async function cargarOrdenes() {
         try {
             const conFiltro = filtroVer && filtroVer.tab === 'ordenes';
-            const params = new URLSearchParams({ estado: conFiltro || $('ocPaso').value === 'anulada' || $('ocPaso').value === 'listo' ? '' : 'abiertas' });
+            // Al buscar un N° se busca en todas (también las ya recibidas), 27/10/2026
+            const params = new URLSearchParams({ estado: conFiltro || $('ocBuscar').value.trim() || $('ocPaso').value === 'anulada' || $('ocPaso').value === 'listo' ? '' : 'abiertas' });
             if ($('ocEmpresa').value) params.set('empresa_id', $('ocEmpresa').value);
             if ($('ocPaso').value && !conFiltro) params.set('paso', $('ocPaso').value);
             if ($('ocBuscar').value.trim()) params.set('q', $('ocBuscar').value.trim());
@@ -431,6 +432,7 @@
         const cp = oc ? condPagoPartes(oc.condicion_pago, oc.dias_credito) : { tipo: 'Contado', dias: 0 };
         $('ocCondicion').value = cp.tipo || 'Contado';
         $('ocDias').value = cp.dias || '';
+        $('ocAdelantoPct').value = String(Math.round((Number(oc && oc.adelanto_pct) || 0) / 10) * 10);
         $('ocModalidad').value = oc ? (oc.modalidad_entrega || 'Proveedor entrega') : 'Proveedor entrega';
         $('ocRecojo').value = oc ? (oc.direccion_recojo || '') : '';
         const smp = cat.sedes[0];
@@ -461,6 +463,10 @@
         if (!credito) $('ocDias').value = '';
         const ct = $('ocCondTexto');
         if (ct) ct.textContent = credito ? condPagoTexto('Crédito', $('ocDias').value) : '';
+        // Adelanto (%) solo con Crédito o Contra entrega ("Adelanto 50%" ya trae su 50%; Contado es todo antes)
+        const conAdel = credito || $('ocCondicion').value === 'Contra entrega';
+        $('ocAdelWrap').style.display = conAdel ? '' : 'none';
+        if (!conAdel) $('ocAdelantoPct').value = '0';
         textoAdelanto();
         $('ocRecojoWrap').style.display = $('ocModalidad').value === 'Nosotros recogemos' ? '' : 'none';
         if ($('ocModalidad').value === 'Nosotros recogemos' && !$('ocRecojo').value && provElegido)
@@ -812,13 +818,17 @@
         return Math.round(sub * 100) / 100 + Math.round(sub * IGV * 100) / 100;
     }
 
-    // Adelanto 50% (24/10/2026): cuánto se paga antes y cuánto queda para Finanzas
+    // Adelanto (24/10 y 27/10/2026): cuánto se paga antes y cuánto queda para Finanzas
     function textoAdelanto() {
         const t = $('ocAdelantoTxt');
         if (!t) return;
-        if ($('ocCondicion').value !== 'Adelanto 50%') { t.textContent = ''; return; }
-        const m = Moneda.leer('oc').moneda, tot = totalOC(), mitad = Math.round(tot * 50) / 100;
-        t.textContent = `Adelanto: ${dinero(m, mitad)} · Saldo: ${dinero(m, Math.round((tot - mitad) * 100) / 100)}`;
+        const cond = $('ocCondicion').value;
+        const pct = cond === 'Adelanto 50%' ? 50 : (Number($('ocAdelantoPct').value) || 0);
+        if (!pct) { t.textContent = ''; return; }
+        const m = Moneda.leer('oc').moneda, tot = totalOC(), adel = Math.round(tot * pct) / 100;
+        const dias = Number($('ocDias').value) || 0;
+        const cuando = cond === 'Crédito' && dias ? ` a crédito ${dias} días` : (cond === 'Contra entrega' ? ' con la entrega' : '');
+        t.textContent = `Adelanto ${pct}%: ${dinero(m, adel)} · Saldo ${100 - pct}%${cuando}: ${dinero(m, Math.round((tot - adel) * 100) / 100)}`;
     }
 
     function totales() {
@@ -842,7 +852,7 @@
         if (mon.moneda === 'USD' && !(Number(mon.tipo_cambio) > 0)) { aviso('La orden es en dólares: escribe el tipo de cambio.', 'error'); $('ocTC').focus(); return; }
         const body = {
             id: $('ocId').value || null, empresa_id: $('ocEmp').value, proveedor_id: provElegido.id,
-            condicion_pago: $('ocCondicion').value, dias_credito: $('ocDias').value, modalidad_entrega: $('ocModalidad').value,
+            condicion_pago: $('ocCondicion').value, dias_credito: $('ocDias').value, adelanto_pct: $('ocAdelantoPct').value, modalidad_entrega: $('ocModalidad').value,
             direccion_recojo: $('ocRecojo').value, almacen_entrega_id: $('ocSede').value, fecha_compromiso: $('ocFecha').value,
             num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value,
             motivo_compra: $('ocMotivoCompra').value, motivo_stock: $('ocMotivo').value.trim(), items, enviar,
@@ -904,7 +914,7 @@
                 <div class="com-datos">
                     <div><small>Empresa que compra</small><b>${esc(o.empresa || '—')}</b></div>
                     <div><small>Proveedor</small><b>${esc(o.proveedor || '')}</b><span>RUC ${esc(o.ruc || '—')}</span></div>
-                    <div><small>Condición de pago</small><b>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</b></div>
+                    <div><small>Condición de pago</small><b>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</b>${Number(o.adelanto_pct) > 0 && !/adelanto/i.test(o.condicion_pago || '') ? `<span>Adelanto ${Number(o.adelanto_pct)}% antes de la entrega: ${dinero(o.moneda, o.adelanto)}</span>` : ''}</div>
                     <div><small>Cómo llega</small><b>${esc(o.modalidad_entrega || '')}</b><span>${esc(o.direccion_recojo || '')}</span></div>
                     <div><small>Debe quedar en</small><b>${esc(o.sede || '—')}</b><span>Fecha prometida ${fecha(o.fecha_compromiso)}${o.atrasada ? ' · <b class="neg">ATRASADA</b>' : ''}</span></div>
                     <div><small>Tipo</small><b>${esc(o.tipo_compra || '')}</b><span>${esc(o.motivo_stock || '')}</span></div>
@@ -1009,8 +1019,8 @@
         $('pagoTitulo').textContent = `Registrar pago · ${o.numero}`;
         const p = cat.proveedores.find(x => x.id === o.proveedor_id) || o.proveedor_datos || {};
         let falta = Math.max(Number(o.total) - Number(o.pagado), 0);
-        // Adelanto 50%: primero se sugiere solo lo que falta del adelanto; el saldo se paga con la factura
-        const conAdelanto = /adelanto/i.test(o.condicion_pago || '') && Number(o.falta_adelanto) > 0;
+        // Adelanto: primero se sugiere solo lo que falta del adelanto; el saldo se paga con la factura
+        const conAdelanto = Number(o.adelanto_pct) > 0 && Number(o.falta_adelanto) > 0;
         if (conAdelanto) falta = Number(o.falta_adelanto);
         // Un dato por línea y siempre en el mismo orden (pedido de Erika 21/10 17:22)
         const fila = (et, val, cls = '') => `<div class="fd-et">${et}</div><div class="fd-val ${cls}">${val}</div>`;
@@ -1023,7 +1033,7 @@
             ${fila('N° de cuenta', esc(p.numero_cuenta || '—'), 'fd-num')}
             ${fila('CCI', esc(p.cci || '—'), 'fd-num')}
             ${fila('Monto a pagar (incluye IGV)', dinero(o.moneda, o.total), 'fd-monto')}
-            ${conAdelanto ? fila('Adelanto 50% (pagar ahora)', dinero(o.moneda, o.adelanto), 'fd-monto') : ''}
+            ${conAdelanto ? fila(`Adelanto ${Number(o.adelanto_pct)}% (pagar ahora)`, dinero(o.moneda, o.adelanto), 'fd-monto') : ''}
             ${fila(conAdelanto ? 'Falta del adelanto' : 'Falta pagar', dinero(o.moneda, falta), 'fd-monto ' + (falta > 0 ? 'fd-falta' : 'fd-ok'))}
             ${cuentaDeRelleno(p.numero_cuenta, p.cci) ? '<div class="fd-nota fd-alerta">⚠️ La cuenta o el CCI parecen de relleno (números repetidos). Confírmalos con el proveedor y corrígelos en Maestros ▸ Proveedores antes de pagar.</div>' : ''}
             ${tieneCuenta ? '<div class="fd-nota">Paga solo a esta cuenta. Si el proveedor te pide pagar a otra, consulta con tu supervisora.</div>'
@@ -1469,7 +1479,8 @@
         $('ocBuscar').oninput = () => { clearTimeout(tOc); tOc = setTimeout(cargarOrdenes, 300); };
         $('preBuscar').oninput = () => { clearTimeout(tPre); tPre = setTimeout(cargarPrecios, 300); };
         ['ocCondicion', 'ocModalidad', 'ocEmp', 'ocSede'].forEach(i => { $(i).onchange = ajustarForm; });
-        $('ocDias').oninput = () => { $('ocCondTexto').textContent = condPagoTexto('Crédito', $('ocDias').value); };
+        $('ocDias').oninput = () => { $('ocCondTexto').textContent = condPagoTexto('Crédito', $('ocDias').value); textoAdelanto(); };
+        $('ocAdelantoPct').onchange = textoAdelanto;
         $('ocGuardar').onclick = () => guardarOC(false, $('ocGuardar'));
         $('ocEnviar').onclick = () => guardarOC(true, $('ocEnviar'));
         $('recTraidoTipo').onchange = ajustarTraido;
@@ -1508,6 +1519,12 @@
             }
             // Botón "Generar compra" de Ventas ▸ Entregas: /compras?tab=pedidos&pc=PC-... abre la orden con ese pedido
             if (qs.get('pc')) await abrirCompraDePedido(qs.get('pc'), qs.get('desp'));
+            // Botón "Ver OC" de Ventas ▸ Entregas (27/10/2026): /compras?tab=ordenes&oc=OC-... busca esa orden
+            if (qs.get('oc')) {
+                if (tabActual !== 'ordenes') cambiarTab('ordenes');
+                $('ocBuscar').value = qs.get('oc');
+                cargarOrdenes();
+            }
         } catch (e) { aviso('No se pudo cargar Compras: ' + e.message, 'error'); }
     })();
 })();

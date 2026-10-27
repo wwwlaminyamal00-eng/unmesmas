@@ -70,8 +70,18 @@ def es_credito(condicion):
     return 'crédito' in c or 'credito' in c
 
 
-def monto_adelanto(total):
-    return redondear(a_decimal(total) * PORC_ADELANTO)
+def pct_adelanto(o):
+    """% que se paga antes de la entrega. Erika 27/10/2026: con crédito el proveedor puede pedir un adelanto
+    (ej. 50% antes y 50% a crédito 30 días); el campo "Adelanto (%)" es independiente de la condición."""
+    pct = a_decimal((o or {}).get('adelanto_pct') or 0)
+    if pct > 0:
+        return min(pct, Decimal('100'))
+    return PORC_ADELANTO * 100 if es_adelanto((o or {}).get('condicion_pago')) else Decimal('0')
+
+
+def monto_adelanto(total, pct=None):
+    porc = PORC_ADELANTO if pct is None else a_decimal(pct) / 100
+    return redondear(a_decimal(total) * porc)
 MODALIDADES = ('Proveedor entrega', 'Nosotros recogemos')
 ESTADOS_ABIERTOS = ('Aprobada', 'Recibida parcial')
 ESTADOS_PC_FUERA = ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA', 'CERRADO', 'CERRADA')
@@ -91,6 +101,7 @@ class ErrorCompras(Exception):
 # ============================================================
 SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS adelanto_pct NUMERIC(5,2) DEFAULT 0;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS modalidad_entrega VARCHAR(30);
@@ -533,14 +544,20 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
                           WHERE oci.pedido_id IS NOT NULL AND COALESCE(oc.estado, '') <> 'Anulada' AND oc.id <> COALESCE(%s, -1)
                           GROUP BY oci.pedido_id, oci.producto_id""", (excluir_oc,)):
         ocs_linea[(f['pedido_id'], f['producto_id'])] = f['ocs']
+    # 27/10/2026: lo ya despachado del PV salió del almacén y no se vuelve a comprar
+    from routes.abastecimiento import _salidas_por_pedido
+    salidas, _ = _salidas_por_pedido([f['id'] for f in filas] or [0])
     pedidos, ids = [], set()
     for pc in filas:
         items = _resolver_productos(_items_pedido(pc))
         for it in items:
             ya = comprado.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
+            salio = salidas.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
             it['comprado'] = ya
+            it['despachado'] = salio
             it['ocs'] = ocs_linea.get((pc['id'], it['producto_id'])) if it['producto_id'] else None
-            it['falta'] = max(it['cantidad'] - ya, Decimal('0'))
+            # Falta = PV − lo cubierto: lo comprado para el PV o lo ya despachado (lo que sea mayor)
+            it['falta'] = max(it['cantidad'] - max(ya, salio), Decimal('0'))
             if it['producto_id']:
                 ids.add(it['producto_id'])
         pend = [i for i in items if i['falta'] > 0]
@@ -583,7 +600,7 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
             it['stock_asignado'] = float(st)
             it['stock_otros_pedidos'] = float(max(min(st_total, it['falta']) - st, Decimal('0')))
             it['comprar_pedido'] = float(max(it['falta'] - st, Decimal('0')))
-            for k in ('cantidad', 'comprado', 'falta'):
+            for k in ('cantidad', 'comprado', 'falta', 'despachado'):
                 it[k] = float(it[k])
         p['empresa_id'] = str(p['empresa_id']) if p['empresa_id'] is not None else None
         p['fecha'] = p['fecha'].strftime('%Y-%m-%d') if isinstance(p['fecha'], (date, datetime)) else p['fecha']
@@ -675,7 +692,7 @@ SQL_OC_LISTA = """
     SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
            oc.empresa_id, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
-           oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, oc.num_cotizacion, oc.notas,
+           oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, COALESCE(oc.adelanto_pct, 0) AS adelanto_pct, oc.num_cotizacion, oc.notas,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
            oc.subtotal, oc.igv, oc.total, COALESCE(oc.moneda, 'PEN') AS moneda, oc.tipo_cambio, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
            oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at, oc.updated_at,
@@ -725,9 +742,10 @@ def _paso(o):
         return {'codigo': 'aprobar', 'texto': 'Aprobar', 'quien': 'Supervisora'}
     if estado in ESTADOS_ABIERTOS and contado and pagado < total:
         return {'codigo': 'pagar', 'texto': 'Pagar al proveedor (es al contado)', 'quien': 'Finanzas'}
-    if estado in ESTADOS_ABIERTOS and es_adelanto(o.get('condicion_pago')) and pagado < monto_adelanto(total) \
+    pct = pct_adelanto(o)
+    if estado in ESTADOS_ABIERTOS and pct > 0 and pagado < monto_adelanto(total, pct) \
             and not _es_intercompany(o.get('ruc')):
-        return {'codigo': 'pagar', 'texto': 'Pagar el adelanto del 50% (el saldo lo paga Finanzas después)', 'quien': 'Finanzas'}
+        return {'codigo': 'pagar', 'texto': f'Pagar el adelanto del {float(pct):g}% (el saldo lo paga Finanzas después)', 'quien': 'Finanzas'}
     if estado in ESTADOS_ABIERTOS:
         texto = 'Recibir lo que falta' if estado == 'Recibida parcial' else (
             'Recoger y recibir en sede' if o.get('modalidad_entrega') == 'Nosotros recogemos' else 'Recibir en sede')
@@ -745,9 +763,11 @@ def _oc_dict(o):
     d = _fila(o)
     d['paso'] = _paso(o)
     d['saldo_pago'] = float(max(a_decimal(o['total']) - a_decimal(o['pagado']), 0))
-    if es_adelanto(o.get('condicion_pago')):
-        d['adelanto'] = float(monto_adelanto(o['total']))
-        d['falta_adelanto'] = float(max(monto_adelanto(o['total']) - a_decimal(o['pagado']), 0))
+    pct = pct_adelanto(o)
+    d['adelanto_pct'] = float(pct)
+    if pct > 0:
+        d['adelanto'] = float(monto_adelanto(o['total'], pct))
+        d['falta_adelanto'] = float(max(monto_adelanto(o['total'], pct) - a_decimal(o['pagado']), 0))
     d['solo_admin_aprueba'] = es_credito(o.get('condicion_pago'))
     d['intercompany'] = _es_intercompany(o.get('ruc'))
     d['falta_pago_intercompany'] = bool(d['intercompany'] and (o.get('condicion_pago') or '').startswith('Contado')
@@ -851,19 +871,23 @@ def api_resumen():
             alerta('danger', f'<b>{len(pagadas_sin_llegar)} orden(es) pagadas y la mercadería aún no llega completa</b> '
                              f'(más de {DIAS_AVISO} días): ' + ', '.join(o['numero'] for o in pagadas_sin_llegar[:6]) + '.',
                    'recibir', len(pagadas_sin_llegar), pagadas_sin_llegar, 'Pagadas y la mercadería aún no llega')
-        inc = db_query("SELECT COUNT(*) AS n FROM com_incidencias WHERE estado = 'Abierta'")[0]['n']
+        # Diferencias abiertas solo de órdenes vigentes (no anuladas)
+        inc = db_query("""SELECT COUNT(*) AS n FROM com_incidencias i LEFT JOIN ordenes_compra oc ON oc.id = i.orden_compra_id
+                          WHERE i.estado = 'Abierta' AND COALESCE(oc.estado, '') <> 'Anulada'""")[0]['n']
         if inc:
             alerta('danger', f'<b>{inc} diferencia(s) abiertas</b> (faltantes, sobrantes, dañados o facturas que no cuadran). '
                              'Una supervisora debe resolverlas.', 'ordenes', inc,
                   [o for o in ocs if o.get('incidencias')], 'Órdenes con diferencias abiertas')
-        sin_factura = [o for o in ocs if o['estado'] in ('Recibida', 'Recibida parcial') and not o['facturas']]
+        # 27/10/2026 (Hellen): solo lo que pide acción. Una sola alerta de "falta la factura del proveedor": la orden
+        # ya llegó (o se pagó hace más de DIAS_AVISO días) y no tiene factura. Un adelanto recién pagado no es tarea.
+        limite = (hoy - timedelta(days=DIAS_AVISO)).isoformat()
+        sin_factura = [o for o in ocs if o['estado'] != 'Anulada' and not o['facturas'] and (
+            o['estado'] in ('Recibida', 'Recibida parcial')
+            or (a_decimal(o['pagado']) > 0 and o['aprobado_en'] and str(o['aprobado_en'])[:10] <= limite))]
         if sin_factura:
-            alerta('warn', f'<b>{len(sin_factura)} orden(es) recibidas sin factura del proveedor.</b> Pídela y regístrala.',
-                   'facturas', len(sin_factura), sin_factura, 'Recibidas sin factura del proveedor')
-        pagado_sin_factura = [o for o in ocs if a_decimal(o['pagado']) > 0 and not o['facturas'] and o['estado'] != 'Anulada']
-        if pagado_sin_factura:
-            alerta('warn', f'<b>{len(pagado_sin_factura)} pago(s) sin factura.</b> Se pagó y todavía no hay factura registrada.',
-                   'facturas', len(pagado_sin_factura), pagado_sin_factura, 'Pagadas sin factura')
+            alerta('warn', f'<b>{len(sin_factura)} orden(es) sin factura del proveedor</b> (ya llegaron o se pagaron hace más de '
+                           f'{DIAS_AVISO} días): ' + ', '.join(o['numero'] for o in sin_factura[:6]) + '. Pídela y regístrala.',
+                   'facturas', len(sin_factura), sin_factura, 'Sin factura del proveedor')
         no_ingresadas = db_query("""
             SELECT COUNT(DISTINCT r.com_recepcion_id) AS n FROM recepciones_mercaderia r
             WHERE r.com_recepcion_id IS NOT NULL AND r.fecha < NOW() - INTERVAL '1 day'
@@ -873,11 +897,7 @@ def api_resumen():
             alerta('danger', f'<b>{no_ingresadas} recepción(es) de hace más de un día no están en el Inventario.</b> '
                              'Mercadería que no está en el inventario se puede perder. Ve a Inventario ▸ Entradas y salidas.',
                    None, no_ingresadas)
-        propias = [o for o in ocs if o['aprobado_por_id'] and o['aprobado_por_id'] == o['usuario_id']]
-        if propias:
-            alerta('info', f'{len(propias)} orden(es) fueron aprobadas por la misma persona que las hizo (solo puede hacerlo un administrador): '
-                           + ', '.join(o['numero'] for o in propias[:6]) + '.', 'ordenes', len(propias),
-                  propias, 'Aprobadas por quien las hizo')
+        # (27/10/2026) "Aprobadas por quien las hizo" ya no sale aquí: es un dato de control, no una tarea del día.
         cxp = db_query("""
             SELECT COUNT(*) AS n, COALESCE(SUM(monto), 0) AS m FROM comprobantes_proveedor
             WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA', 'PAGADO')
@@ -889,9 +909,9 @@ def api_resumen():
         stock_mes = sum(float(o['total']) for o in ocs if o['tipo_compra'] == 'Para stock' and o['estado'] != 'Anulada'
                         and str(o['fecha'])[:7] == hoy.isoformat()[:7])
         total_mes = sum(float(o['total']) for o in ocs if o['estado'] != 'Anulada' and str(o['fecha'])[:7] == hoy.isoformat()[:7])
-        if stock_mes:
-            pct = stock_mes / total_mes * 100 if total_mes else 0
-            alerta('warn' if pct > 10 else 'info',
+        pct = stock_mes / total_mes * 100 if total_mes else 0
+        if stock_mes and pct > 10:   # solo cuando pasa la meta (antes avisaba siempre)
+            alerta('warn',
                    f'Este mes se compró <b>S/ {stock_mes:,.2f} para stock</b> ({pct:.0f}% de las compras). La meta es no pasar del 5-10%.',
                    'ordenes', None)
         if not alertas:
@@ -1203,6 +1223,13 @@ def api_orden_guardar():
             raise ErrorCompras(f'{dias} días de crédito no es posible: escribe entre 1 y 360 días.')
         if condicion != 'Crédito':
             dias = 0
+        # Adelanto (%) (Erika 27/10/2026): solo con Crédito o Contra entrega; "Adelanto 50%" ya es 50% y Contado es 100%
+        adelanto_pct = a_decimal(d.get('adelanto_pct') or 0)
+        if adelanto_pct < 0 or adelanto_pct > 100:
+            raise ErrorCompras('El adelanto debe estar entre 0% y 100%.')
+        if condicion not in ('Crédito', 'Contra entrega'):
+            adelanto_pct = Decimal('0')
+        adelanto_pct = redondear(adelanto_pct)
         modalidad = d.get('modalidad_entrega') or ''
         if modalidad not in MODALIDADES:
             raise ErrorCompras('Indica si el proveedor entrega o si nosotros recogemos.')
@@ -1284,7 +1311,8 @@ def api_orden_guardar():
                 oc_id = oc['id']
                 _historial(cur, oc_id, 'Creada', f"{tipo} · Total {sim} {totales['total']}"
                                                  + (f" (TC {tc})" if moneda == 'USD' else ''))
-            cur.execute("UPDATE ordenes_compra SET moneda = %s, tipo_cambio = %s WHERE id = %s", (moneda, tc, oc_id))
+            cur.execute("UPDATE ordenes_compra SET moneda = %s, tipo_cambio = %s, adelanto_pct = %s WHERE id = %s",
+                        (moneda, tc, adelanto_pct, oc_id))
             for i in items:
                 cur.execute("""
                     INSERT INTO ordenes_compra_items (orden_compra_id, producto_id, producto, unidad, cantidad, precio_unitario,
@@ -1658,9 +1686,10 @@ def api_orden_recibir(oc_id):
                     and _pagado_oc(oc_id) < a_decimal(oc['total'])):
                 raise ErrorCompras('Esta orden es al contado y Finanzas todavía no registra el pago completo. '
                                    'Si el proveedor entregó sin pago, avisa a tu supervisora.')
-            if (es_adelanto(oc['condicion_pago']) and not _es_intercompany(oc.get('proveedor_ruc'))
-                    and _pagado_oc(oc_id) < monto_adelanto(oc['total'])):
-                raise ErrorCompras('Esta orden es con adelanto del 50% y Finanzas todavía no registra el adelanto. '
+            pct = pct_adelanto(oc)
+            if (pct > 0 and not _es_intercompany(oc.get('proveedor_ruc'))
+                    and _pagado_oc(oc_id) < monto_adelanto(oc['total'], pct)):
+                raise ErrorCompras(f'Esta orden es con adelanto del {float(pct):g}% y Finanzas todavía no registra el adelanto. '
                                    'Si el proveedor entregó sin adelanto, avisa a tu supervisora.')
             cur.execute("SELECT 1 FROM com_recepciones WHERE orden_compra_id = %s AND guia_proveedor = %s", (oc_id, guia))
             if cur.fetchone():
@@ -2028,7 +2057,18 @@ def orden_imprimir(oc_id):
         # Pedido de Erika 22/10/2026 (reemplaza el del 20/10): el proveedor no ve el N° PV ni ningún N° interno
         # Documento para el PROVEEDOR: nunca lleva cliente, cotización del cliente ni motivo interno
         o = {k: v for k, v in dict(o).items() if k not in CAMPOS_CONFIDENCIALES}
-        return render_template('compras/imprimir_oc.html', o=o, empresa=empresa[0] if empresa else {},
+        # Erika 27/10/2026: debajo del IGV y el TOTAL va el adelanto y cuánto se paga después (a crédito o con la factura)
+        pago = None
+        pct = pct_adelanto(o)
+        if pct > 0:
+            adel = monto_adelanto(o.get('total'), pct)
+            dias = int(o.get('dias_credito') or 0)
+            pago = {'pct': f'{float(pct):g}', 'saldo_pct': f'{float(100 - pct):g}', 'adelanto': float(adel),
+                    'saldo': float(redondear(a_decimal(o.get('total')) - adel)),
+                    'cuando': f'a crédito {dias} días (desde la factura)' if es_credito(o.get('condicion_pago')) and dias
+                              else 'con la entrega' if (o.get('condicion_pago') or '').startswith('Contra entrega')
+                              else 'con la factura'}
+        return render_template('compras/imprimir_oc.html', o=o, pago=pago, empresa=empresa[0] if empresa else {},
                                sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
                                hoja=request.args.get('hoja') or 'oc', hoy=date.today(),
                                declarada=_sede_declarada(o['empresa_id'], o['almacen_entrega_id']) if o['empresa_id'] and o['almacen_entrega_id'] else None)

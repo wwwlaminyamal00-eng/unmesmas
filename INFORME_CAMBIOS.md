@@ -2518,3 +2518,14 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Términos: "Tipo" sigue como Cobro / Pago (el movimiento). El estado dice **Cobrado** o **Pagado** en azul eléctrico, y **Anulado** en rojo.
 - Resumen de arriba: "Cobrado real" (azul) y "Pagado real" (morado) suman el monto real.
 - Pruebas: 328 correctas (base normal) y 326 + 2 omitidas (reconstruida).
+
+### 24.54 Prompt de Adriel (7 puntos) y adelanto en la OC a crédito (Erika, 27/10/2026 16:40-16:53)
+- **Cotización ▸ ventana "Cotización guardada"**: N° real de la cotización, cantidad real de ítems, línea "Descuento" y totales leídos de la base. Botones sin emojis.
+- **Lo recibido para un PV queda para ese PV**: lo que llega con una OC hecha para el PV ya no se reparte a otros pedidos más antiguos. A cada PV se le resta lo que ya salió en despachos (Despachado / Entregado). Compras ▸ Pedidos por comprar ya no pide de nuevo lo despachado. Botón "Ver OC" cuando el producto está por llegar o pendiente de recojo.
+- **Estados con avance**: una cotización cuyo PV ya salió dice "Despachado" (verde) o "Entregado" (azul) y nunca "Pendiente de compra".
+- **Guía de remisión**: el PDF muestra el N° PV, el N° PC del cliente y la cotización actuales. La descripción editada en el PV ("descripción para el cliente") pasa a despacho, guía y factura creados desde ese momento. Los documentos ya emitidos no se cambian.
+- **Factura desde una guía** (desde el menú de la guía o al vincular la guía en Facturas): carga cliente, RUC, PV, PC, cantidades de la guía y precios del PV. La guía no tiene precios, por eso se toman del PV. Si un ítem no tiene precio, avisa.
+- **Compras ▸ Qué hacer hoy**: una sola alerta "sin factura del proveedor". Se quitaron las alertas de control que no eran tareas. Solo cuentan diferencias de OC no anuladas. El aviso de "para stock" solo sale si pasa del 10%.
+- **Adelanto (%) en la OC** (pedido de Erika con la OC de PROTENCO "Crédito 30 días"): campo nuevo, junto a la condición, para Crédito o Contra entrega (0% a 100%). Debajo del TOTAL, la OC impresa muestra "Adelanto 50% (antes de la entrega)" y "Saldo 50% a crédito 30 días (desde la factura)". Finanzas paga primero el adelanto desde la OC. En Cuentas por pagar ese pago sale como "Adelanto" debajo de lo pagado, y el saldo vence según los días de crédito. Una OC a crédito la sigue aprobando solo Erika. No se recibe la mercadería sin el adelanto pagado.
+- Base: migración `036_adelanto_oc.sql` aplicada en Supabase (agrega la columna `adelanto_pct`, 0 por defecto). Respaldo previo: `respaldo_20261015.ordenes_compra_20261027` (44 filas). No se cambiaron datos.
+- Pruebas: 335 correctas (base normal) y 333 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_flujos.py`.

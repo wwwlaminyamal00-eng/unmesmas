@@ -59,7 +59,7 @@
         Fecha: {{ o.fecha_compromiso.strftime('%d/%m/%Y') if o.fecha_compromiso else '' }}
         {% else %}
         <h3>Condiciones</h3>
-        Pago: <b>{{ o.condicion_pago }}</b>{% if 'delanto' in (o.condicion_pago or '') %}{% set mitad = ((o.total or 0)|float * 0.5)|round(2) %} · Adelanto {{ sim }} {{ '%.2f'|format(mitad) }} · Saldo {{ sim }} {{ '%.2f'|format((o.total or 0)|float - mitad) }}{% endif %}<br>
+        Pago: <b>{{ o.condicion_pago }}</b>{% if pago %} · Adelanto {{ pago.pct }}%: {{ sim }} {{ '%.2f'|format(pago.adelanto) }} · Saldo {{ pago.saldo_pct }}% {{ pago.cuando }}: {{ sim }} {{ '%.2f'|format(pago.saldo) }}{% endif %}<br>
         {% if (o.moneda or 'PEN') == 'USD' %}Moneda: <b>Dólares americanos (US$)</b><br>{% endif %}
         Entrega: <b>{{ o.modalidad_entrega }}</b> · Fecha: <b>{{ o.fecha_compromiso.strftime('%d/%m/%Y') if o.fecha_compromiso else '' }}</b><br>
         {% if o.modalidad_entrega == 'Proveedor entrega' %}Entregar en: <b>{{ sede.nombre }}</b> — {{ sede.direccion or '' }}{% else %}Recogemos en: {{ o.direccion_recojo }}{% endif %}<br>
@@ -83,10 +83,10 @@
         <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">{{ sim }} {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
         <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">{{ sim }} {{ '%.2f'|format(o.igv|float) }}</td></tr>
         <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">{{ sim }} {{ '%.2f'|format(o.total|float) }}</td></tr>
-        {% if 'delanto' in (o.condicion_pago or '') %}{% set mitad = ((o.total or 0)|float * 0.5)|round(2) %}
-        {# Erika 26/10/2026: con adelanto, debajo del TOTAL van el adelanto y el pago al final #}
-        <tr class="tot pago-adelanto"><td colspan="6" class="n">Adelanto 50% (antes de la entrega)</td><td class="n">{{ sim }} {{ '%.2f'|format(mitad) }}</td></tr>
-        <tr class="tot pago-adelanto"><td colspan="6" class="n">Pago al final 50% (con la factura)</td><td class="n">{{ sim }} {{ '%.2f'|format((o.total or 0)|float - mitad) }}</td></tr>
+        {% if pago %}
+        {# Erika 26 y 27/10/2026: con adelanto, debajo del TOTAL van el adelanto y lo que se paga después #}
+        <tr class="tot pago-adelanto"><td colspan="6" class="n">Adelanto {{ pago.pct }}% (antes de la entrega)</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.adelanto) }}</td></tr>
+        <tr class="tot pago-adelanto"><td colspan="6" class="n">Saldo {{ pago.saldo_pct }}% {{ pago.cuando }}</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.saldo) }}</td></tr>
         {% endif %}
     </tfoot>
     {% endif %}

@@ -2205,6 +2205,105 @@ def preview_rotulo_guia(guia_id):
         return jsonify({'error': str(e)}), 500
 
 
+def pv_de_guia(guia):
+    """PV (Pedido de venta) de una guía, por el despacho que la tiene o por su documento asociado (27/10/2026).
+    Devuelve {id, numero, oc_cliente, cotizacion_numero, items_json} o None."""
+    numeros = []
+    n = str((guia or {}).get('numero') or '').strip()
+    if n:
+        for d in db_query("""SELECT pc_numero FROM despachos WHERE COALESCE(guia, '') ~ %s AND COALESCE(pc_numero, '') <> ''
+                             ORDER BY id DESC LIMIT 3""", (r'(^|[^0-9])0*' + re.escape(n.lstrip('0') or '0') + r'([^0-9]|$)',)):
+            numeros.append(d['pc_numero'])
+    asociado = str((guia or {}).get('documento_asociado') or '').strip()
+    if asociado.upper().startswith(('PC', 'PV')):
+        numeros.append(asociado)
+    for num in numeros:
+        fila = db_query("""SELECT id, numero, to_jsonb(p) ->> 'oc_cliente' AS oc_cliente, cotizacion_numero, items_json
+                           FROM pedido_compra_pc p WHERE numero = %s ORDER BY id DESC LIMIT 1""", (num,))
+        if fila:
+            return fila[0]
+    return None
+
+
+def enriquecer_pdf_guia(guia, datos_guia):
+    """PDF de la guía con los números vigentes (27/10/2026, Hellen): N° PC del cliente y N° de cotización salen del PV
+    actual (no de lo que se copió al crear la guía); se agrega el N° PV. Solo cambia el PDF, no la guía guardada."""
+    try:
+        pv = pv_de_guia(guia)
+    except Exception as e:
+        print(f"⚠️ PV de la guía: {e}")
+        pv = None
+    pc_cliente = limpiar_pc_cliente((pv or {}).get('oc_cliente')) or limpiar_pc_cliente(guia.get('orden_compra_cliente'))
+    # Si lo guardado era el N° del PV (pasaba con guías antiguas), no es el PC del cliente
+    if pv and pc_cliente and pc_cliente == pv.get('numero'):
+        pc_cliente = ''
+    datos_guia['orden_compra_cliente'] = pc_cliente
+    asociado = str(guia.get('documento_asociado') or '').strip()
+    cot = (pv or {}).get('cotizacion_numero') or (asociado if asociado.upper().startswith('COT') else '')
+    datos_guia['nro_cotizacion'] = cot
+    datos_guia['nro_pv'] = (pv or {}).get('numero') or ''
+    return datos_guia
+
+
+@ventas_bp.route('/ventas/api/guias/<int:guia_id>/para-factura', methods=['GET'])
+@login_required
+def api_guia_para_factura(guia_id):
+    """Datos para facturar una guía (27/10/2026, Hellen: "Crear factura" desde la guía ponía montos en 0).
+    La guía de remisión no lleva precios: las cantidades salen de la guía y los precios y la descripción del PV
+    de esa guía (los aprobados). Si no hay PV, se usa lo que traiga la guía."""
+    try:
+        filas = db_query("""SELECT id, serie, numero, ruc_destinatario, destinatario_nombre, destinatario_direccion,
+                                   documento_asociado, orden_compra_cliente, items_json
+                            FROM guias_remision WHERE id = %s""", (guia_id,))
+        if not filas:
+            return jsonify({'success': False, 'error': 'Guía no encontrada'}), 404
+        guia = filas[0]
+        pv = pv_de_guia(guia)
+        def lista(v):
+            if isinstance(v, str):
+                try:
+                    v = json.loads(v or '[]')
+                except ValueError:
+                    v = []
+            return [i for i in (v or []) if isinstance(i, dict)]
+        del_pv = {}
+        for it in lista((pv or {}).get('items_json')):
+            del_pv.setdefault(str(it.get('codigo') or '').strip().upper(), it)
+        moneda = None
+        if pv:
+            m = db_query("SELECT moneda, tipo_cambio, condicion_pago, lugar_entrega FROM pedido_compra_pc WHERE id = %s", (pv['id'],))
+            moneda = m[0] if m else None
+        items = []
+        for it in lista(guia.get('items_json')):
+            base = del_pv.get(str(it.get('codigo') or '').strip().upper(), {})
+            precio = base.get('precio_pc') or base.get('precio_cotizado') or it.get('valorVenta') or it.get('precio') or 0
+            items.append({
+                'codigo': it.get('codigo') or '',
+                'producto': base.get('producto') or it.get('producto') or it.get('descripcion') or '',
+                'descripcion_cliente': (it.get('descripcion_cliente') or base.get('descripcion_cliente') or '').strip(),
+                'marca': it.get('marca') or base.get('marca') or '', 'modelo': it.get('modelo') or base.get('modelo') or '',
+                'um': it.get('um') or 'NIU',
+                'cantidad': float(a_decimal(it.get('cantidad') or 0)),
+                'valorVenta': float(a_decimal(precio)),
+                'precio_del_pv': bool(base),
+            })
+        subtotal = round(sum(i['cantidad'] * i['valorVenta'] for i in items), 2)
+        return jsonify({'success': True, 'data': {
+            'guia': f"{guia.get('serie') or ''}-{guia.get('numero') or ''}".strip('-'),
+            'cliente': guia.get('destinatario_nombre') or '', 'ruc': guia.get('ruc_destinatario') or '',
+            'direccion': guia.get('destinatario_direccion') or '',
+            'pv': (pv or {}).get('numero') or '',
+            'pc_cliente': limpiar_pc_cliente((pv or {}).get('oc_cliente')) or limpiar_pc_cliente(guia.get('orden_compra_cliente')),
+            'cotizacion': (pv or {}).get('cotizacion_numero') or '',
+            'moneda': (moneda or {}).get('moneda') or 'PEN',
+            'items': items, 'subtotal': subtotal, 'igv': round(subtotal * 0.18, 2), 'total': round(subtotal * 1.18, 2),
+            'sin_precio': [i['codigo'] or i['producto'] for i in items if not i['valorVenta']],
+        }})
+    except Exception as e:
+        print(f"❌ api_guia_para_factura: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _numeros_rotulo(guia=None, despacho=None, pc=None):
     """Los 4 números del rótulo (Erika 22/10/2026): N° despacho, N° PV, N° Guía y N° Factura. '—' si falta."""
     def unir(*vals):
@@ -6187,7 +6286,7 @@ def generar_pdf_guia_endpoint(guia_id):
                 items_formateados.append({
                     'item': idx,
                     'codigo': item.get('codigo', ''),
-                    'descripcion': item.get('producto', item.get('descripcion', '')),
+                    'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),   # 27/10/2026: la del PV
                     'marca': item.get('marca', ''),
                     'modelo': item.get('modelo', ''),
                     'unidad': item.get('um', 'NIU'),
@@ -6278,6 +6377,7 @@ def generar_pdf_guia_endpoint(guia_id):
         }
         
         # 5. Generar el PDF
+        enriquecer_pdf_guia(guia, datos_guia)
         datos_guia['empresa_pdf'] = marca_pdf(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente')))
         pdf_path = pdf_generator.generar_pdf_universal(datos_guia)
         
@@ -6375,6 +6475,7 @@ def preview_pdf_guia(guia_id):
         from pdf_generator import pdf_generator
         datos_guia = preparar_datos_guia_pdf(guia)  # Función auxiliar
         
+        enriquecer_pdf_guia(guia, datos_guia)
         datos_guia['empresa_pdf'] = marca_pdf(guia.get('empresa_id') or empresa_id_por_ruc(guia.get('ruc_remitente')))
         pdf_path = pdf_generator.generar_pdf_universal(datos_guia)
         
@@ -6416,7 +6517,7 @@ def preparar_datos_guia_pdf(guia):
             items_formateados.append({
                 'item': idx,
                 'codigo': item.get('codigo', ''),
-                'descripcion': item.get('producto', item.get('descripcion', '')),
+                'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),   # 27/10/2026: la del PV
                 'marca': item.get('marca', ''),
                 'modelo': item.get('modelo', ''),
                 'unidad': item.get('um', 'NIU'),
