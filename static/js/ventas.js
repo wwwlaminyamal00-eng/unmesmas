@@ -177,6 +177,11 @@ function esc(v) {
 }
 
 // N° de la orden de compra del cliente debajo del N° PV: rótulo claro y número que entra en la celda (26/10/2026)
+// Regla de oro (Erika 27/10/2026): N° PV y N° PC van en DOS columnas separadas en todas las tablas. "—" si no hay
+function pcClienteCelda(v) {
+    const t = String(v || '').trim();
+    return t ? numDocCelda(t, 'span') : '<span title="El cliente no envió N° de pedido">—</span>';
+}
 function ocClienteHTML(v) {
     // Regla de oro (Erika 26/10/2026): PC = Pedido del cliente (su número, opcional). Si no lo envió: "—"
     if (!v) return '<div class="oc-cliente-celda" title="El cliente no envió N° de pedido"><span>N° PC (Pedido del cliente)</span><b>—</b></div>';
@@ -768,6 +773,7 @@ function renderPedidos() {
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
                         <th>N° PV (Pedido de venta)</th>
+                        <th>N° PC (Pedido del cliente)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -785,6 +791,7 @@ function renderPedidos() {
                         <th>Fecha / Hora</th>
                         <th>Estado</th>
                         <th>N° PV (Pedido de venta)</th>
+                        <th>N° PC (Pedido del cliente)</th>
                         <th>N° cotización</th>
                         <th>Cliente</th>
                         <th>RUC</th>
@@ -804,7 +811,7 @@ function renderPedidos() {
             }
         }
         if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="19" style="text-align:center;color:#94A3B8;padding:40px;">
+            tbody.innerHTML = `<tr><td colspan="20" style="text-align:center;color:#94A3B8;padding:40px;">
                 📭 No hay PV (Pedido de venta) registrados. 
                 <br><small>Crea un PV desde cotización o directo.</small>
             </td></tr>`;
@@ -934,6 +941,7 @@ function renderPedidos() {
                 <th>Fecha / Hora</th>
                 <th>Estado</th>
                 <th>N° PV (Pedido de venta)</th>
+                <th>N° PC (Pedido del cliente)</th>
                 <th>N° cotización</th>
                 <th>Cliente</th>
                 <th>RUC</th>
@@ -946,7 +954,7 @@ function renderPedidos() {
         `;
         
         if (list.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#94A3B8;padding:40px;">
+            tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:40px;">
                 📭 No hay PV (Pedido de venta) que coincidan con los filtros.
                 ${pedidosData.length > 0 ? `(${pedidosData.length} registros cargados)` : ''}
             </td></tr>`;
@@ -971,7 +979,8 @@ function renderPedidos() {
                 <td>${i + 1}</td>
                 <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
                 <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
-                <td><b>${r.numero || '-'}</b>${ocClienteHTML(r.oc_cliente)}${badgeNuevo(r, 'created_at')}</td>
+                <td><b>${r.numero || '-'}</b>${badgeNuevo(r, 'created_at')}</td>
+                <td>${pcClienteCelda(r.oc_cliente)}</td>
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
                 <td>${r.ruc || '-'}</td>
@@ -996,6 +1005,7 @@ function renderPedidos() {
             <th>Fecha / Hora</th>
             <th>Estado</th>
             <th>N° PV (Pedido de venta)</th>
+            <th>N° PC (Pedido del cliente)</th>
             <th>N° cotización</th>
             <th>Cliente</th>
             <th>RUC</th>
@@ -1014,7 +1024,7 @@ function renderPedidos() {
     `;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="19" style="text-align:center;color:#94A3B8;padding:40px;">
+        tbody.innerHTML = `<tr><td colspan="20" style="text-align:center;color:#94A3B8;padding:40px;">
             📭 No hay PV (Pedido de venta) que coincidan con los filtros.
             ${pedidosData.length > 0 ? `(${pedidosData.length} registros cargados)` : ''}
         </td></tr>`;
@@ -1059,6 +1069,7 @@ function renderPedidos() {
             <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
             <td>${estadoBadge}${badgeDespachoPc(r)}${pcDespachado(r) ? '' : abastBadge('pc', r.id)}</td>
             <td><b>${r.numero || '-'}</b></td>
+            <td>${pcClienteCelda(r.oc_cliente)}</td>
             <td>${r.cotizacion_numero || '-'}</td>
             <td class="left"><b>${r.cliente || '-'}</b></td>
             <td>${r.ruc || '-'}</td>
@@ -1410,7 +1421,7 @@ function estadoCompraHTML(r, despachado, anulado) {
     if (!info || !info.estado) return '<small title="Sus productos no están en el catálogo o aún se está calculando">-</small>';
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
     const t = {
-        'Con stock': ['compra-ok', '✔ Comprado / en stock'],
+        'Con stock': ['compra-ok', '✔ Cubierto con stock'],   // Erika 27/10/2026: no requiere compra
         'Por llegar': ['compra-camino', '📦 Comprado, por llegar'],
         'Pendiente por recojo': ['compra-camino', '🚚 Comprado, por recoger'],
         'Pendiente por compra': ['compra-falta', 'Pendiente de compra']
@@ -1864,7 +1875,7 @@ function renderDespachos() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
         return;
     }
     
@@ -1903,7 +1914,8 @@ function renderDespachos() {
             <td class="date-cell">${fechaDisplay}${tiemposHTML(r)}</td>
             <td>${estadoDespachoHTML(r.estado)}</td>
             <td><b>${sd(r.numero)}</b>${badgeNuevo(r, 'fecha')}</td>
-            <td>${sd(r.pc_numero)}${ocClienteHTML(r.oc_cliente)}</td>
+            <td>${sd(r.pc_numero)}</td>
+            <td>${pcClienteCelda(r.oc_cliente)}</td>
             <td>${sd(r.cotizacion_numero)}</td>
             <td class="left">${sd(r.cliente)}</td>
             <td>${productosDespachoHTML(r)}</td>
@@ -2186,7 +2198,7 @@ function renderGuias() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay guías registradas</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay guías registradas</td></tr>`;
         return;
     }
     
@@ -2200,6 +2212,7 @@ function renderGuias() {
             <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
+            <td>${pcClienteCelda(r.pc_cliente)}</td>
             <td>${sd(r.comprobante)}</td>
             <td>${sd(r.origen)}</td>
             <td>${sd(r.destino)}</td>
@@ -2265,7 +2278,7 @@ function renderComprobantes() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay comprobantes registrados</td></tr>`;
         return;
     }
     
@@ -2316,6 +2329,7 @@ function renderComprobantes() {
             <td>${sd(r.ruc)}</td>
             <td>${sd(r.cotizacion)}</td>
             <td>${sd(r.pc_numero)}</td>
+            <td>${pcClienteCelda(r.pc_cliente)}</td>
             <td>${r.guia_numero ? numDocCelda(fmtNumDoc(r.guia_numero), 'span') : '-'}</td>
             <td>${numDocCelda(numDoc(r.serie, r.numero))}${r.xml_id ? `<small class="xml-lista" title="Ya tiene el XML de SUNAT: ⋮ ▸ Descargar XML">XML ✔</small>` : ''}${badgeNuevo(r, 'fecha')}</td>
             <td><b>${montoStr}</b></td>
@@ -17747,7 +17761,7 @@ const ABAST_ESTILOS = {
     'Pendiente por compra': { icono: '', clase: 'abast-compra' },  // sin carrito (Erika 26/10/2026)
     'Pendiente por recojo': { icono: '🚚', clase: 'abast-recojo' },
     'Por llegar': { icono: '📦', clase: 'abast-llegar' },
-    'Con stock': { icono: '✅', clase: 'abast-ok' },
+    'Con stock': { icono: '', clase: 'abast-ok' },
     // 27/10/2026: el PV ya salió del almacén. Nunca "Pendiente de compra" (regla de colores: verde y azul)
     'Despachado': { icono: '', clase: 'abast-despachado' },
     'Entregado': { icono: '', clase: 'abast-entregado' }
@@ -17764,7 +17778,7 @@ function abastBadge(tipo, id) {
     const est = ABAST_ESTILOS[info.estado] || { icono: '•', clase: 'abast-ok' };
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
     const texto = { 'Por llegar': 'Comprado, por llegar', 'Pendiente por recojo': 'Comprado, por recoger', 'Pendiente por compra': 'Pendiente de compra',
-        'Despachado': '✔ Despachado', 'Entregado': '✔ Entregado' }[info.estado] || info.estado;
+        'Despachado': '✔ Despachado', 'Entregado': '✔ Entregado', 'Con stock': '✔ Cubierto con stock' }[info.estado] || info.estado;
     const ocs = !['Con stock', 'Despachado', 'Entregado'].includes(info.estado) && (info.ocs || []).length ? ` (${info.ocs.join(', ')})` : '';
     return `<br><span class="abast-badge ${est.clase}" title="${titulo}">${est.icono ? est.icono + ' ' : ''}${texto}${ocs.replace(/[<>"&]/g, '')}</span>`;
 }

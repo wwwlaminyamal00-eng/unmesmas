@@ -421,9 +421,17 @@ def obtener_guias_db():
                           ORDER BY c.id DESC LIMIT 1)) AS factura_vinculada,
                 -- N° PV (19/10/2026): la PV de la misma cotización
                 (SELECT string_agg(DISTINCT p.numero, ', ') FROM pedido_compra_pc p
-                  WHERE p.cotizacion_numero = guias_remision.documento_asociado
+                  WHERE (p.cotizacion_numero = guias_remision.documento_asociado OR p.numero = guias_remision.documento_asociado)
                     AND NULLIF(p.numero, '') IS NOT NULL
-                    AND COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')) AS pc_numero
+                    AND COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')) AS pc_numero,
+                -- N° PC (Pedido del cliente) vigente en el PV, igual que el PDF de la guía (27/10/2026)
+                (SELECT string_agg(DISTINCT NULLIF(TRIM(to_jsonb(p) ->> 'oc_cliente'), ''), ', ') FROM pedido_compra_pc p
+                  WHERE (p.cotizacion_numero = guias_remision.documento_asociado OR p.numero = guias_remision.documento_asociado)
+                    AND NULLIF(p.numero, '') IS NOT NULL
+                    AND COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')) AS pv_pc_cliente,
+                -- Guía hecha desde un PV: la cotización es la del PV, no el N° PV
+                (SELECT MAX(p.cotizacion_numero) FROM pedido_compra_pc p
+                  WHERE p.numero = guias_remision.documento_asociado) AS pv_cotizacion
             FROM guias_remision
             ORDER BY id DESC
         """
@@ -2410,6 +2418,12 @@ def rotulo_documento(tipo, doc_id):
 # GUÍAS - API
 # ============================================================
 
+def _pc_cliente_lista(valor, pv=None):
+    """N° PC (Pedido del cliente) limpio para las listas; vacío si en realidad era el N° PV."""
+    v = limpiar_pc_cliente(valor)
+    return '' if not v or v == (pv or '').strip() or v.upper().startswith(('PV-', 'PC-KCF', 'PC-AGD')) else v
+
+
 @ventas_bp.route('/ventas/api/guias/listar', methods=['GET'])
 @login_required
 def api_guias_listar():
@@ -2447,10 +2461,12 @@ def api_guias_listar():
                 'estado': row.get('estado_sunat') or row.get('estado'),
                 'ruc': row.get('ruc_destinatario'),
                 'cliente': row.get('destinatario_nombre'),
-                'cotizacion': row.get('documento_asociado'),
+                'cotizacion': row.get('pv_cotizacion') or ('' if str(row.get('documento_asociado') or '').upper().startswith(('PV-', 'PC-')) else row.get('documento_asociado')),
                 # Antes mostraba la cotización como si fuera el comprobante: ahora es la factura de verdad
                 'comprobante': row.get('factura_vinculada') or '',
                 'pc_numero': row.get('pc_numero') or '',
+                # N° PC (Pedido del cliente) en su propia columna (Erika 27/10/2026)
+                'pc_cliente': _pc_cliente_lista(row.get('pv_pc_cliente'), row.get('pc_numero')) or _pc_cliente_lista(row.get('orden_compra_cliente'), row.get('pc_numero')),
                 'origen': row.get('remitente_direccion'),
                 'destino': row.get('destinatario_direccion'),
                 'motivo': row.get('motivo_traslado'),
@@ -2930,6 +2946,7 @@ def api_comprobantes_listar():
                 'cliente': row.get('cliente_nombre'),
                 'cotizacion': row.get('cotizacion_numero') or row.get('documento_asociado'),
                 'pc_numero': row.get('pc_numero') or '',
+                'pc_cliente': _pc_cliente_lista(row.get('orden_compra_cliente'), row.get('pc_numero')),
                 'guia_numero': row.get('guia_numero') or '',
                 'monto': float(row.get('total') or 0),
                 'monto_retenido': float(row.get('monto_retenido') or 0),

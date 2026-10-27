@@ -91,6 +91,21 @@ def _recibido_por_pedido(producto_ids):
     return {(f['pedido_id'], f['producto_id']): a_decimal(f['recibido']) for f in filas}
 
 
+def _separado_por_pedido(producto_ids):
+    """{(pedido_id, producto_id): cantidad} separada (vigente) en el inventario para ese PV. Ese stock ya no está en
+    el "stock libre", así que se le da a su PV sin restarlo otra vez (27/10/2026, PV-KCF-000026: salía
+    "Pendiente de compra" con 21 en stock porque lo separado para otros PV se descontaba dos veces)."""
+    if not producto_ids:
+        return {}
+    filas = db_query("""
+        SELECT p.id AS pedido_id, s.producto_id, SUM(s.cantidad) AS c
+        FROM inv_separaciones s JOIN pedido_compra_pc p ON p.numero = s.documento
+        WHERE s.estado = 'Activa' AND s.vence_el >= CURRENT_DATE AND s.producto_id = ANY(%s)
+        GROUP BY p.id, s.producto_id
+    """, (list(producto_ids),))
+    return {(f['pedido_id'], f['producto_id']): a_decimal(f['c']) for f in filas}
+
+
 def _salidas_por_pedido(pedido_ids=None):
     """Lo que ya salió del almacén por PV: ({(pc_id, producto_id): cantidad}, {pc_id: 'Despachado'|'Entregado'}).
     El estado es 'Entregado' solo si todos sus despachos que salieron ya se entregaron."""
@@ -202,6 +217,7 @@ def evaluar_documentos(docs, por_pedido=False):
     if por_pedido:
         # 1) Primero, a cada PV lo que llegó con SUS órdenes de compra (27/10/2026)
         recibido = _recibido_por_pedido(ids)
+        separado = _separado_por_pedido(ids)
         for doc_id in sorted(docs, key=lambda k: (docs[k].get('pedido_id') or 10 ** 12, k)):
             d = docs[doc_id]
             if not d.get('pedido_id'):
@@ -211,15 +227,19 @@ def evaluar_documentos(docs, por_pedido=False):
                 pid = it['producto_id']
                 if not pid or (llave_doc, pid) in asignado:
                     continue
-                propio = recibido.get((d['pedido_id'], pid), Decimal('0')) - d.get('salido', {}).get(pid, Decimal('0'))
-                if propio <= 0:
-                    continue
                 c = camino.get((d['pedido_id'], pid), vacio)
                 necesita = max(a_decimal(it['cantidad']) - c['recojo'] - c['llega'], Decimal('0'))
-                toca = min(max(restante.get(pid, Decimal('0')), Decimal('0')), necesita, propio)
+                # a) Lo separado para este PV (ya está fuera del stock libre: no se resta de nuevo)
+                sep = separado.get((d['pedido_id'], pid), Decimal('0'))
+                de_sep = min(necesita, sep)
+                # b) Lo recibido con sus OC que no quedó separado, tomado del stock libre
+                propio = recibido.get((d['pedido_id'], pid), Decimal('0')) - d.get('salido', {}).get(pid, Decimal('0')) - sep
+                toca = min(max(restante.get(pid, Decimal('0')), Decimal('0')), necesita - de_sep, max(propio, Decimal('0')))
+                toca = max(toca, Decimal('0'))
                 if toca > 0:
                     restante[pid] = restante.get(pid, Decimal('0')) - toca
-                    asignado[(llave_doc, pid)] = toca
+                if de_sep + toca > 0:
+                    asignado[(llave_doc, pid)] = de_sep + toca
         # 2) Luego, el resto del stock libre por antigüedad
         for doc_id in sorted(docs, key=lambda k: (docs[k].get('pedido_id') or 10 ** 12, k)):
             d = docs[doc_id]

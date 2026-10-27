@@ -13,8 +13,10 @@ def test_pc_y_entregas_usan_el_mismo_rotulo():
     js = _leer('static/js/ventas.js')
     assert 'function ocClienteHTML(v)' in js
     assert '<span>N° PC (Pedido del cliente)</span>' in js
-    assert '${sd(r.pc_numero)}${ocClienteHTML(r.oc_cliente)}' in js
-    assert "${r.numero || '-'}</b>${ocClienteHTML(r.oc_cliente)}" in js
+    # Erika 27/10/2026: N° PV y N° PC en DOS columnas separadas (ya no el N° PC debajo del N° PV)
+    assert '<td>${sd(r.pc_numero)}</td>' in js and '<td>${pcClienteCelda(r.oc_cliente)}</td>' in js
+    assert '${pcClienteCelda(r.pc_cliente)}' in js
+    assert '${sd(r.pc_numero)}${ocClienteHTML(r.oc_cliente)}' not in js
     assert 'PC del cliente: ${esc(r.oc_cliente)}' not in js
 
 
