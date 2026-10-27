@@ -113,6 +113,18 @@ def test_confirmar_entrega_guarda_ingreso_del_cliente(admin):
     assert fila['ingreso_cliente'] == '5000123456'
 
 
+def test_guias_muestran_pc_del_cliente_desde_el_pv(admin):
+    """Erika 27/10/2026 17:45: la guía se guardó sin PC del cliente; la lista lo toma del PV (igual que el PDF)."""
+    _escenario()
+    r = admin.get('/ventas/api/guias/listar')
+    assert r.status_code == 200
+    datos = r.json.get('data', r.json) if isinstance(r.json, dict) else r.json
+    fila = next(g for g in datos if g['numero'] == '00099501')
+    assert fila['pc_cliente'] == '4500012345'
+    assert fila['pc_numero'] == PV
+    assert not str(fila['cotizacion'] or '').startswith('PV-')
+
+
 def test_pantallas_factura_parcial():
     js = (RAIZ / 'static/js/factura_parcial.js').read_text(encoding='utf-8')
     assert 'Factura parcial (solo lo entregado con guía)' in js and 'IGV (18%)' in js and 'Subtotal' in js

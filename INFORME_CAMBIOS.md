@@ -2551,3 +2551,9 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
   - muestra solo las "Aceptada por Cliente" sin PV, y avisa por qué no salen las demás (ya tienen PV, o están en otro estado).
 - Base: migración `037_factura_parcial.sql` aplicada en Supabase. Agrega columnas vacías: `comprobantes.facturacion_tipo`, `comprobantes.pendientes_json` y `despachos.ingreso_cliente`. Respaldos previos: `respaldo_20261015.comprobantes_20261027` (37 filas) y `respaldo_20261015.despachos_20261027` (45 filas). No se cambiaron datos.
 - Pruebas: 339 correctas (base normal) y 337 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_parcial.py`.
+
+### 24.56 "Cubierto con stock", columnas N° PV y N° PC separadas, N° PC en Guías (Erika, 27/10/2026 17:37-17:45)
+- PV-KCF-000026 decía "Pendiente de compra" aunque había stock. Causa: el stock separado para otros pedidos se restaba dos veces (`routes/abastecimiento.py`, `_separado_por_pedido`). Ahora lo separado para ese PV cuenta para él y el resto sale del stock libre. La pastilla dice "✔ Cubierto con stock".
+- Ventas: el N° PV (Pedido de venta) y el N° PC (Pedido del cliente) van en dos columnas separadas en PV (vista principal y completa), Entregas, Guías y Facturas. Si el cliente no mandó PC: "—".
+- Guías: las guías se guardaban con el PC del cliente vacío. La columna "N° PC (Pedido del cliente)" ahora toma el número vigente del PV (por cotización o por N° PV), igual que el PDF de la guía. El PDF ya mostraba "PV (PEDIDO DE VENTA)" y "PC (PEDIDO DEL CLIENTE)" en "Documentos relacionados".
+- Sin cambios en la base.
