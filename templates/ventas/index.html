@@ -265,6 +265,28 @@ select.vinculo-auto{box-shadow:0 0 0 3px #A7F3D0!important;transition:box-shadow
 .fp-tabla input.fp-cant{width:70px;height:30px;border:2px solid #CBD5E1;border-radius:8px;text-align:center;font-weight:800}
 .fp-tabla .fp-max{display:block;font-size:10px;color:#64748B}
 .fp-tabla .fp-no{font-size:11px;font-weight:800;color:#B91C1C}
+.fp-tabla .fp-sin-guia{display:block;font-size:10px;font-weight:900;color:#DC2626}
+/* Avisos rojos de factura y guía parcial (Erika 27/10/2026 20:34) */
+.fp-alerta{margin:6px 0 8px;padding:8px 12px;border:2px solid #EF4444;border-left:8px solid #DC2626;border-radius:8px;background:#FEF2F2;color:#991B1B;font-size:12px;font-weight:700;line-height:1.45}
+.fp-alerta b{color:#7F1D1D}
+.fp-alerta-amb{border-color:#F59E0B;border-left-color:#D97706;background:#FFFBEB;color:#92400E}
+.fp-alerta-ok{border-color:#22C55E;border-left-color:#16A34A;background:#F0FDF4;color:#166534}
+.gp-detalle{margin:0 0 8px;font-size:11px}
+/* Agente de retención del cliente (27/10/2026) */
+.agret{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin:8px 10px;padding:8px 12px;border-radius:8px;border:2px solid #CBD5E1;background:#F8FAFC;font-size:12px;font-weight:700;color:#0F172A}
+.agret b{font-size:13px}
+.agret small{font-size:11px;font-weight:600;color:#475569}
+.agret-si{border-color:#2563EB;background:#EFF6FF}
+.agret-si b{color:#1D4ED8}
+.agret-no{border-color:#16A34A;background:#F0FDF4}
+.agret-no b{color:#15803D}
+.agret-nd{border-color:#F59E0B;background:#FFFBEB}
+.agret .agret-aviso{color:#B45309;font-weight:800}
+.agret-botones{margin-left:auto;display:flex;gap:6px}
+.agret-botones button{height:26px;padding:0 10px;border-radius:6px;border:1px solid #CBD5E1;background:#fff;font-size:11px;font-weight:800;cursor:pointer}
+.gp-detalle summary{cursor:pointer;font-weight:800;color:#1E3A8A;margin-bottom:4px}
+.gp-tabla{font-size:11px}
+.gp-tabla tr.gp-saldo td{background:#FEF2F2;color:#991B1B;font-weight:700}
 .fp-pend{margin-top:10px;border:2px solid #FCA5A5;background:#FFF5F5;border-radius:12px;padding:10px 12px}
 .fp-pend-tit{font-weight:900;color:#B91C1C;font-size:13px;margin-bottom:6px}
 .fp-pend-tit small{font-weight:700;color:#7F1D1D}
@@ -3634,7 +3656,9 @@ table:has(#comprobanteRows) th, table:has(#comprobanteRows) td{padding:6px 3px!i
 <!-- PRIMERO: Cargar ventas.js -->
 <script src="{{ url_for('static', filename='js/ventas.js') }}"></script>
 <script src="{{ url_for('static', filename='js/nota_credito.js') }}?v=20261026"></script>
-<script src="{{ url_for('static', filename='js/factura_parcial.js') }}?v=20261027"></script>
+<script src="{{ url_for('static', filename='js/factura_parcial.js') }}?v=20261027d"></script>
+<script src="{{ url_for('static', filename='js/guia_parcial.js') }}?v=20261027d"></script>
+<script src="{{ url_for('static', filename='js/agente_retencion.js') }}?v=20261027d"></script>
 
 <script>
     (function() {

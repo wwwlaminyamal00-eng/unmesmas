@@ -1418,13 +1418,23 @@ function estadoCompraHTML(r, despachado, anulado) {
     if (anulado) return '-';
     if (despachado) return '<span class="compra-est compra-ok">✔ Comprado</span>';
     const info = (abastData.despachos || {})[r.id];
-    if (!info || !info.estado) return '<small title="Sus productos no están en el catálogo o aún se está calculando">-</small>';
+    if (!info || !info.estado) {
+        // Erika 27/10/2026 20:48: un despacho recién creado salía con "-". Se recalcula al momento (una vez)
+        if (!(abastData._pedidos || {})[r.id] && typeof cargarAbastecimiento === 'function') {
+            abastData._pedidos = abastData._pedidos || {};
+            abastData._pedidos[r.id] = true;
+            clearTimeout(abastData._timer);
+            abastData._timer = setTimeout(cargarAbastecimiento, 400);
+            return '<small class="compra-calc">⏳ Revisando stock…</small>';
+        }
+        return '<small title="Sus productos no están en el catálogo (escritos a mano): no se puede saber su stock">Producto sin código</small>';
+    }
     const titulo = (info.detalle || []).join('\n').replace(/"/g, '&quot;');
     const t = {
         'Con stock': ['compra-ok', '✔ Cubierto con stock'],   // Erika 27/10/2026: no requiere compra
         'Por llegar': ['compra-camino', '📦 Comprado, por llegar'],
         'Pendiente por recojo': ['compra-camino', '🚚 Comprado, por recoger'],
-        'Pendiente por compra': ['compra-falta', 'Pendiente de compra']
+        'Pendiente por compra': ['compra-falta', '🔴 Sin stock: proceder a comprar']
     }[info.estado] || ['compra-camino', info.estado];
     // Con OC generada (aunque esté en borrador o por aprobar) sale "Comprado, por llegar" con su N° de OC (22/10/2026)
     const ocs = info.estado !== 'Con stock' && (info.ocs || []).length ? `<small class="compra-ocs">${info.ocs.map(sd).join(', ')}</small>` : '';
@@ -3684,19 +3694,21 @@ async function saveGuia(estado) {
         // ============================================================
         // 1. RECOLECTAR PRODUCTOS
         // ============================================================
-        let productos = window._guiaProductos || [];
-
-        if (productos.length === 0) {
-            document.querySelectorAll('#guiaProductosBody tr').forEach(row => {
-                const codigo = row.querySelector('.guia-producto-codigo')?.value || '';
-                const descripcion = row.querySelector('.guia-producto-desc')?.value || '';
-                const um = row.querySelector('.guia-producto-unidad')?.value || 'NIU';
-                const cantidad = parseFloat(row.querySelector('.guia-producto-cant')?.value || 0);
-                if (descripcion && cantidad > 0) {
-                    productos.push({ codigo, producto: descripcion, um, cantidad });
-                }
-            });
-        }
+        // 27/10/2026 (Erika): la guía lleva la cantidad que se escribe en la tabla (guía parcial o por saldo).
+        // Antes, si la guía venía de una cotización o PV, se guardaban las cantidades originales aunque se cambiaran.
+        const previos = window._guiaProductos || [];
+        let productos = [];
+        document.querySelectorAll('#guiaProductosBody tr').forEach(row => {
+            const codigo = row.querySelector('.guia-producto-codigo')?.value || '';
+            const descripcion = row.querySelector('.guia-producto-desc')?.value || '';
+            const um = row.querySelector('.guia-producto-unidad')?.value || 'NIU';
+            const cantidad = parseFloat(row.querySelector('.guia-producto-cant')?.value || 0);
+            if (descripcion && cantidad > 0) {
+                const base = previos.find(p => String(p.codigo || '').trim().toUpperCase() === String(codigo).trim().toUpperCase()) || {};
+                productos.push({ ...base, codigo, producto: base.producto || descripcion, um, cantidad });
+            }
+        });
+        if (productos.length === 0) productos = previos;
 
         if (productos.length === 0) {
             showToast('⚠️ Agrega al menos un producto a la guía', 'warning');
@@ -6461,10 +6473,7 @@ function showCotizacionMenu(event, id) {
         <div style="height:1px;background:#E5E7EB;margin:4px 0;"></div>
     `;
     
-    // Orden pedido en el Excel de pendientes: 1) Crear despacho, 2) Crear guía, 3) Crear factura en KCF
-    menuHtml += `
-        <button onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
-    `;
+    // Erika 27/10/2026 20:45: sin "Crear despacho" en la cotización; el despacho se hace desde el PV o Entregas
     if (isAccepted) {
         menuHtml += `
             <button class="menu-accepted" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">📦 Crear guía</button>
@@ -16948,10 +16957,7 @@ function showCotizacionMenu(event, id) {
         `;
     }
     
-    // Orden pedido en el Excel de pendientes: 1) Crear despacho, 2) Crear guía, 3) Crear factura en KCF
-    menuHtml += `
-        <button class="menu-despacho" onclick="createDocFromCotizacion(${id},'despacho');this.closest('.menu-pop').remove()">🚚 Crear despacho</button>
-    `;
+    // Erika 27/10/2026 20:45: sin "Crear despacho" en la cotización; el despacho se hace desde el PV o Entregas
     if (isAccepted) {
         menuHtml += `
             <button class="menu-guia" onclick="createDocFromCotizacion(${id},'guia');this.closest('.menu-pop').remove()">📦 Crear guía</button>
