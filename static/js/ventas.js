@@ -1521,7 +1521,8 @@ function fechasEntregaHTML(r, cerrado) {
 function itemsPc(r) {
     return (Array.isArray(r.items) ? r.items : []).map(it => ({
         cantidad: it.cantidad_pc ?? it.cantidad ?? it.cantidad_cotizada,
-        producto: it.descripcion_cliente || it.producto || it.descripcion || it.nombre || ''
+        producto: it.producto || it.descripcion || it.nombre || it.descripcion_cliente || '',
+        descripcion_cliente: it.descripcion_cliente || '', codigo_cliente: it.codigo_cliente || ''
     })).filter(it => it.producto);
 }
 function productosPcTexto(r) {
@@ -1533,7 +1534,7 @@ function descripcionPcHTML(r) {
     const lineas = items.slice(0, max).map(it => {
         const n = Number(it.cantidad);
         const cant = isNaN(n) ? sd(it.cantidad) : n.toLocaleString('es-PE', { maximumFractionDigits: 2 });
-        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto)}</div>`;
+        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto)}${lineaClienteHTML(it)}</div>`;
     }).join('');
     const mas = items.length > max
         ? `<div class="pc-mas" title="${sd(items.slice(max).map(it => it.cantidad + ' × ' + it.producto).join('\n'))}">+${items.length - max} más</div>` : '';
@@ -1549,7 +1550,7 @@ function productosDespachoHTML(r) {
     return items.map(it => {
         const n = Number(it.cantidad);
         const cant = isNaN(n) ? sd(it.cantidad) : n.toLocaleString('es-PE', { maximumFractionDigits: 2 });
-        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto || it.descripcion || it.nombre)}</div>`;
+        return `<div class="ent-prod"><b>${cant}</b>&nbsp;×&nbsp;${sd(it.producto || it.descripcion || it.nombre)}${lineaClienteHTML(it)}</div>`;
     }).join('');
 }
 // Distrito en vez de la dirección completa; la dirección sale al pasar el mouse
@@ -2735,7 +2736,9 @@ async function guardarCotizacion(estado) {
                 cantidad: p.cantidad || 1,
                 valorVenta: p.valorVenta || 0,
                 stock: p.stock || 0,
-                estado_entrega: p.estado_entrega === 'Entregado' ? 'Entregado' : 'Pendiente'
+                estado_entrega: p.estado_entrega === 'Entregado' ? 'Entregado' : 'Pendiente',
+                descripcion_cliente: (p.descripcion_cliente || '').trim(),
+                codigo_cliente: (p.codigo_cliente || '').trim()
             }))
         };
 
@@ -4288,7 +4291,7 @@ function renderProductosComprobanteHTML(productos) {
                         <tr>
                             <td>${i + 1}</td>
                             <td>${p.codigo || '-'}</td>
-                            <td class="left">${p.producto || p.descripcion || 'Sin nombre'}</td>
+                            <td class="left">${p.producto || p.descripcion || 'Sin nombre'}${lineaClienteHTML(p)}</td>
                             <td>${p.marca || '-'}</td>
                             <td>${p.modelo || '-'}</td>
                             <td>${p.um || 'NIU'}</td>
@@ -4422,7 +4425,7 @@ function renderProductosComprobanteHTML(productos) {
                         <tr>
                             <td>${i + 1}</td>
                             <td>${p.codigo || '-'}</td>
-                            <td class="left">${p.producto || 'Sin nombre'}</td>
+                            <td class="left">${p.producto || 'Sin nombre'}${lineaClienteHTML(p)}</td>
                             <td>${p.marca || '-'}</td>
                             <td>${p.modelo || '-'}</td>
                             <td>${p.um || 'NIU'}</td>
@@ -5183,7 +5186,7 @@ async function marcarDespachado(id) {
                                     return {
                                         codigo: item.codigo || '',
                                         producto: item.producto || item.descripcion || 'Sin descripción',
-                                        descripcion_cliente: item.descripcion_cliente || '',
+                                        descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                                         marca: item.marca || '',
                                         modelo: item.modelo || '',
                                         cantidad: parseFloat(item.cantidad_pc || item.cantidad || 1),
@@ -5326,7 +5329,7 @@ async function marcarDespachado(id) {
                     items: items.map(item => ({
                         codigo: item.codigo || '',
                         producto: item.producto || 'Sin descripción',
-                        descripcion_cliente: item.descripcion_cliente || '',
+                        descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                         marca: item.marca || '',
                         modelo: item.modelo || '',
                         cantidad: parseFloat(item.cantidad || 1),
@@ -6152,9 +6155,9 @@ async function usarProductosDelPV(cotizacion, cotizacionId) {
     if (!items.length) return cotizacion;
     cotizacion.productos = items.filter(it => it && typeof it === 'object' && !Array.isArray(it)).map(it => ({
         codigo: it.codigo || '',
-        producto: it.descripcion_cliente || it.producto || it.descripcion || '',
-        descripcion: it.descripcion_cliente || it.producto || it.descripcion || '',
-        descripcion_cliente: it.descripcion_cliente || '',
+        producto: it.producto || it.descripcion || '',
+        descripcion: it.producto || it.descripcion || '',
+        descripcion_cliente: it.descripcion_cliente || '', codigo_cliente: it.codigo_cliente || '',
         marca: it.marca || '', modelo: it.modelo || '', um: it.um || 'NIU',
         cantidad: Number(it.cantidad_pc || it.cantidad || 1),
         valorVenta: Number(it.precio_pc || it.precio_cotizado || it.precio || 0)
@@ -6719,7 +6722,7 @@ async function createGuiaFromPedido(id) {
         const items = (pc.items || []).map(it => ({
             codigo: it.codigo || '',
             producto: it.producto || '',
-            descripcion_cliente: it.descripcion_cliente || '',
+            descripcion_cliente: it.descripcion_cliente || '', codigo_cliente: it.codigo_cliente || '',
             descripcion: it.producto || '',
             marca: it.marca || '',
             modelo: it.modelo || '',
@@ -6781,7 +6784,7 @@ async function createFacturaFromPedido(id) {
         const items = (pc.items || []).map(it => ({
             codigo: it.codigo || '',
             producto: it.producto || '',
-            descripcion_cliente: it.descripcion_cliente || '',
+            descripcion_cliente: it.descripcion_cliente || '', codigo_cliente: it.codigo_cliente || '',
             descripcion: it.producto || '',
             marca: it.marca || '',
             modelo: it.modelo || '',
@@ -7571,7 +7574,8 @@ if (c.direccion_entrega) {
             quoteProducts = c.productos.map(p => ({
                 ...p,
                 cantidad: p.cantidad || 1,
-                valorVenta: p.valorVenta || 0
+                valorVenta: p.valorVenta || 0,
+                _sugConsultado: true   // al editar no se rellena solo lo que quedó vacío
             }));
             renderQuoteProducts();
             
@@ -9398,7 +9402,7 @@ async function enviarADespacho(id) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin descripción',
-                            descripcion_cliente: item.descripcion_cliente || '',
+                            descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             cantidad: parseFloat(item.cantidad_pc || item.cantidad || 1),
@@ -9916,9 +9920,35 @@ function addQuoteProductFromSearch() {
 }
 
 
+// 27/10/2026: sugiere cómo llama este cliente a cada producto (lo guardado en sus cotizaciones anteriores)
+let _sugCliPendiente = null;
+async function sugerirDescCliente() {
+    const ruc = (document.getElementById('fRuc')?.value || document.getElementById('fRucSearch')?.value || '').replace(/\D/g, '');
+    const faltan = quoteProducts.filter(p => p.codigo && !p._sugConsultado && !String(p.descripcion_cliente || '').trim() && !String(p.codigo_cliente || '').trim());
+    if (ruc.length !== 11 || !faltan.length) return;
+    faltan.forEach(p => { p._sugConsultado = true; });
+    try {
+        const r = await fetch(`/ventas/api/descripcion-cliente/sugerencias?ruc=${ruc}&codigos=${encodeURIComponent(faltan.map(p => p.codigo).join(','))}`);
+        const j = await r.json();
+        let hubo = false;
+        faltan.forEach(p => {
+            const s = j && j.data && j.data[p.codigo];
+            if (s && !String(p.descripcion_cliente || '').trim() && !String(p.codigo_cliente || '').trim()) {
+                p.descripcion_cliente = s.descripcion_cliente || '';
+                p.codigo_cliente = s.codigo_cliente || '';
+                p._sugerido = true;
+                hubo = true;
+            }
+        });
+        if (hubo) renderQuoteProducts();
+    } catch (e) { console.warn('Sugerencias de descripción del cliente:', e); }
+}
+
 function renderQuoteProducts() {
     const tbody = document.getElementById('quoteProductRows');
     if (!tbody) return;
+    clearTimeout(_sugCliPendiente);
+    _sugCliPendiente = setTimeout(sugerirDescCliente, 300);
     
     if (quoteProducts.length === 0) {
         tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#94A3B8;padding:20px;">📭 Agregue productos a la cotización</td></tr>`;
@@ -9939,6 +9969,14 @@ function renderQuoteProducts() {
             <td class="left">
                 <div class="product-name">${p.producto || p.descripcion || 'Sin nombre'}</div>
                 <div class="product-desc">${p.descripcion || ''}</div>
+                <div class="cot-cli-wrap">
+                    <textarea class="cot-desc-cliente" rows="1" maxlength="300" placeholder="✏ Descripción del cliente (como dice su pedido)"
+                        title="Tal cual la escribe el cliente en su pedido. El sistema la recuerda para este cliente y la pasa al PV, la guía y la factura."
+                        oninput="quoteProducts[${i}].descripcion_cliente=this.value">${esc(p.descripcion_cliente || '')}</textarea>
+                    <input class="cot-cod-cliente" maxlength="60" placeholder="Código del cliente" value="${esc(p.codigo_cliente || '')}"
+                        title="Número de material o código del cliente (opcional)" oninput="quoteProducts[${i}].codigo_cliente=this.value">
+                    ${p._sugerido ? '<span class="cot-cli-sug" title="Lo escribieron en una cotización anterior de este cliente">💡 Sugerido</span>' : ''}
+                </div>
             </td>
             <td class="col-model">${p.modelo || '-'}</td>
             <td class="col-brand">${p.marca || '-'}</td>
@@ -10507,7 +10545,7 @@ function productTableHtml(productos) {
                         <tr>
                             <td>${i+1}</td>
                             <td>${p.codigo || '-'}</td>
-                            <td class="left">${p.producto || p.descripcion || '-'}</td>
+                            <td class="left">${p.producto || p.descripcion || '-'}${lineaClienteHTML(p)}</td>
                             <td>${p.marca || '-'}</td>
                             <td>${p.um || 'NIU'}</td>
                             <td>${p.cantidad || 1}</td>
@@ -11467,7 +11505,7 @@ async function cargarProductosComprobanteDesdeCotizacion(numeroCotizacion) {
                             <tr>
                                 <td>${i + 1}</td>
                                 <td>${p.codigo || '-'}</td>
-                                <td class="left">${p.producto || p.descripcion || 'Sin nombre'}</td>
+                                <td class="left">${p.producto || p.descripcion || 'Sin nombre'}${lineaClienteHTML(p)}</td>
                                 <td>${p.marca || '-'}</td>
                                 <td>${p.modelo || '-'}</td>
                                 <td>${p.um || 'NIU'}</td>
@@ -11583,7 +11621,7 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || item.descripcion || 'Sin nombre',
-                    descripcion_cliente: item.descripcion_cliente || '',
+                    descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     um: item.um || 'NIU',
@@ -11616,7 +11654,7 @@ window.loadComprobanteFromGuia = function(valorSeleccionado) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin nombre',
-                            descripcion_cliente: item.descripcion_cliente || '',
+                            descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             um: item.um || 'NIU',
@@ -11702,7 +11740,7 @@ window.loadComprobanteFromPC = function(numeroPC) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || item.descripcion || 'Sin nombre',
-                    descripcion_cliente: item.descripcion_cliente || '',
+                    descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     um: item.um || 'NIU',
@@ -11735,7 +11773,7 @@ window.loadComprobanteFromPC = function(numeroPC) {
                         return {
                             codigo: item.codigo || '',
                             producto: item.producto || item.descripcion || 'Sin nombre',
-                            descripcion_cliente: item.descripcion_cliente || '',
+                            descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                             marca: item.marca || '',
                             modelo: item.modelo || '',
                             um: item.um || 'NIU',
@@ -11824,7 +11862,7 @@ function renderProductosComprobante(productos) {
                         <tr>
                             <td>${i + 1}</td>
                             <td>${p.codigo || '-'}</td>
-                            <td class="left">${p.producto || 'Sin nombre'}</td>
+                            <td class="left">${p.producto || 'Sin nombre'}${lineaClienteHTML(p)}</td>
                             <td>${p.marca || '-'}</td>
                             <td>${p.modelo || '-'}</td>
                             <td>${p.um || 'NIU'}</td>
@@ -12991,7 +13029,7 @@ async function cargarPCParaEditar(id) {
                     return {
                         codigo: item.codigo || '',
                         producto: item.producto || item.descripcion || '',
-                        descripcion_cliente: item.descripcion_cliente || '',
+                        descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                         marca: item.marca || '',
                         modelo: item.modelo || '',
                         cantidad_cotizada: parseFloat(item.cantidad_cotizada || item.cantidad_cot || 0),
@@ -13021,7 +13059,7 @@ async function cargarPCParaEditar(id) {
                 return {
                     codigo: item.codigo || '',
                     producto: item.producto || '',
-                    descripcion_cliente: item.descripcion_cliente || '',
+                    descripcion_cliente: item.descripcion_cliente || '', codigo_cliente: item.codigo_cliente || '',
                     marca: item.marca || '',
                     modelo: item.modelo || '',
                     cantidad_cotizada: parseFloat(item.cantidad_cotizada || item.cantidad || 0),
@@ -13148,7 +13186,7 @@ async function cargarPCParaEditar(id) {
                             <input value="${esc(producto)}" 
                                    style="width:100%; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; font-weight:800;"
                                    readonly>
-                            ${descClienteHTML(item.descripcion_cliente)}
+                            ${descClienteHTML(item.descripcion_cliente, item.codigo_cliente)}
                         </td>
                         <td style="padding:2px 3px;">
                             <input value="${esc(modelo)}" 
@@ -13290,11 +13328,26 @@ function actualizarFaltanteDesdeInput(input) {
 // ============================================================
 // 24/10/2026 (Hellen, caso Komatsu): el cliente pide en su OC otra descripción. Se escribe aquí, por línea, sin tocar el
 // catálogo; sale en el despacho, la guía y la factura. La OC al proveedor sigue con el nombre del catálogo.
-function descClienteHTML(valor) {
+// 27/10/2026 (Erika, caso Komatsu): cada línea lleva los dos nombres. Arriba el Nombre producto del maestro y debajo
+// cómo lo pide el cliente, más su Código del cliente (N° de material). Nacen en la cotización y llegan a todo.
+function descClienteHTML(valor, codigo) {
     return `<textarea class="pc-desc-cliente" rows="1" maxlength="300"
-        placeholder="✏ Descripción del cliente (como dice su OC)"
-        title="Descripción que pide el cliente en su OC. Sale en el despacho, la guía y la factura. Vacío = el nombre del catálogo.">${esc(valor || '')}</textarea>`;
+        placeholder="✏ Descripción del cliente (como dice su pedido)"
+        title="Tal cual la escribe el pedido del cliente. Sale debajo del Nombre producto en el despacho, la guía, la factura y la nota de crédito.">${esc(valor || '')}</textarea>
+        <textarea class="pc-cod-cliente" rows="1" maxlength="60" placeholder="✏ Código del cliente (opcional)"
+        title="Número de material o código que usa el cliente para este producto">${esc(codigo || '')}</textarea>`;
 }
+function lineaClienteTexto(it) {
+    if (!it) return '';
+    const d = String(it.descripcion_cliente || '').trim();
+    const c = String(it.codigo_cliente || '').trim();
+    return [d ? 'Según su pedido: ' + d : '', c ? 'Código del cliente: ' + c : ''].filter(Boolean).join(' · ');
+}
+function lineaClienteHTML(it) {
+    const t = lineaClienteTexto(it);
+    return t ? `<span class="desc-cli-linea" title="Cómo lo pide el cliente">${esc(t)}</span>` : '';
+}
+window.lineaClienteHTML = lineaClienteHTML;
 
 function addPedidoItemSAP() {
     const tbody = document.getElementById('pcItemsBody');
@@ -15282,7 +15335,7 @@ function seleccionarCotizacionSAP(cotizacionId) {
                     <td style="padding:2px 3px;">
                         <input value="${esc(p.producto || p.descripcion || 'Sin descripción')}" 
                                style="width:100%; border:none; background:#F1F5F9; font-size:9px; padding:0; outline:none; font-weight:800; cursor:not-allowed;" readonly>
-                        ${descClienteHTML(p.descripcion_cliente)}
+                        ${descClienteHTML(p.descripcion_cliente, p.codigo_cliente)}
                     </td>
                     <td style="padding:2px 3px;">
                         <input value="${esc(p.modelo || '')}" 
@@ -16160,7 +16213,8 @@ async function savePedidoCompraSAP(force) {
                     precio_pc: Number(inputs[7]?.value || 0),
                     stock: Number(stockCell?.textContent?.trim() || 0),
                     // 24/10/2026 (caso Komatsu): descripción tal como la pide la PC (Pedido del cliente); va al despacho, guía y factura
-                    descripcion_cliente: (row.querySelector('.pc-desc-cliente')?.value || '').trim()
+                    descripcion_cliente: (row.querySelector('.pc-desc-cliente')?.value || '').trim(),
+                    codigo_cliente: (row.querySelector('.pc-cod-cliente')?.value || '').trim()
                 });
             }
         });

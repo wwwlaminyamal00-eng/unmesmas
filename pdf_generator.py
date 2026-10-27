@@ -7,6 +7,24 @@ from datetime import datetime
 import json
 import base64
 import re
+from html import escape as _escape
+
+
+def linea_cliente(item):
+    """27/10/2026 (caso Komatsu): 'Según su pedido: … · Código del cliente: …' para la segunda línea del ítem."""
+    if not isinstance(item, dict):
+        return ''
+    if item.get('linea_cliente'):
+        return item['linea_cliente']
+    desc = str(item.get('descripcion_cliente') or '').strip()
+    cod = str(item.get('codigo_cliente') or '').strip()
+    partes = (['Según su pedido: ' + desc] if desc else []) + (['Código del cliente: ' + cod] if cod else [])
+    return ' · '.join(partes)
+
+
+def _span_cliente(item):
+    texto = linea_cliente(item)
+    return ('<span style="display:block;font-size:7.5px;font-weight:600;color:#334155;margin-top:1px">' + _escape(texto) + '</span>') if texto else ''
 
 
 class PDFGenerator:
@@ -256,12 +274,14 @@ class PDFGenerator:
                         precio = float(item.get('valorVenta', item.get('precio', item.get('precio_unitario', item.get('price', 0)))))
                         total_item = cantidad * precio
                         
-                        descripcion = (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', item.get('nombre', item.get('name', 'Sin descripción'))))
+                        # 27/10/2026 (caso Komatsu): los dos nombres, el del maestro y debajo cómo lo pide el cliente
+                        descripcion = item.get('producto') or item.get('descripcion') or item.get('nombre') or item.get('name') or 'Sin descripción'
                         
                         items_formateados.append({
                             'item': idx,
                             'codigo': item.get('codigo', item.get('code', '')),
                             'descripcion': descripcion,
+                            'linea_cliente': linea_cliente(item),
                             'marca': item.get('marca', item.get('brand', '')),
                             'modelo': item.get('modelo', item.get('model', '')),
                             'unidad': item.get('um', item.get('unidad', item.get('unit', 'NIU'))),
@@ -629,7 +649,7 @@ class PDFGenerator:
                 <tr>
                     <td>{{ item.item }}</td>
                     <td>{{ item.codigo }}</td>
-                    <td class="descripcion">{{ item.descripcion }}</td>
+                    <td class="descripcion">{{ item.descripcion }}{% if item.linea_cliente %}<span style="display:block;font-size:7.5px;font-weight:600;color:#334155;margin-top:1px">{{ item.linea_cliente|e }}</span>{% endif %}</td>
                     <td>{{ item.modelo }}</td>
                     <td>{{ item.marca }}</td>
                     <td>{{ item.cantidad }}</td>
@@ -751,7 +771,7 @@ class PDFGenerator:
                 <tr>
                     <td>{item.get('item', '')}</td>
                     <td>{item.get('codigo', '')}</td>
-                    <td class="descripcion">{item.get('descripcion', '')}</td>
+                    <td class="descripcion">{item.get('descripcion', '')}{_span_cliente(item)}</td>
                     <td>{item.get('modelo', '')}</td>
                     <td>{item.get('marca', '')}</td>
                     <td>{item.get('cantidad', 0)}</td>
@@ -1079,7 +1099,8 @@ class PDFGenerator:
                 items_formateados.append({
                     'item': idx,
                     'codigo': item.get('codigo', ''),
-                    'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),
+                    'descripcion': item.get('producto') or item.get('descripcion') or '',
+                    'linea_cliente': linea_cliente(item),   # 27/10/2026: cómo lo pide el cliente
                     'unidad': item.get('um', 'NIU'),
                     'cantidad': float(item.get('cantidad', 1))
                 })
@@ -1163,7 +1184,7 @@ class PDFGenerator:
     def _generar_filas_productos_guia(self, productos):
         filas = ""
         for prod in productos:
-            filas += f"""<tr><td>{prod.get('item', '')}</td><td>{prod.get('codigo', '')}</td><td class="descripcion">{prod.get('descripcion', '')}</td><td>{prod.get('unidad', 'NIU')}</td><td>{prod.get('cantidad', 0)}</td></tr>"""
+            filas += f"""<tr><td>{prod.get('item', '')}</td><td>{prod.get('codigo', '')}</td><td class="descripcion">{prod.get('descripcion', '')}{_span_cliente(prod)}</td><td>{prod.get('unidad', 'NIU')}</td><td>{prod.get('cantidad', 0)}</td></tr>"""
         return filas
 
     def _reemplazar_variables_template_guia(self, template, datos):
@@ -1210,7 +1231,8 @@ class PDFGenerator:
                 if isinstance(item, dict):
                     items_formateados.append({
                         'codigo': item.get('codigo', ''),
-                        'descripcion': (item.get('descripcion_cliente') or '').strip() or item.get('producto', item.get('descripcion', '')),
+                        'descripcion': item.get('producto') or item.get('descripcion') or '',
+                        'linea_cliente': linea_cliente(item),
                         'marca': item.get('marca', ''),
                         'modelo': item.get('modelo', ''),
                         'unidad': item.get('um', 'NIU'),
@@ -1784,6 +1806,7 @@ class PDFGenerator:
                         'item': idx,
                         'codigo': item.get('codigo', ''),
                         'descripcion': item.get('producto', item.get('descripcion', '')),
+                        'linea_cliente': linea_cliente(item),
                         'marca': item.get('marca', ''),
                         'modelo': item.get('modelo', ''),
                         'unidad': item.get('um', 'NIU'),
@@ -2087,7 +2110,7 @@ class PDFGenerator:
                 <tr>
                     <td>{{ item.item }}</td>
                     <td>{{ item.codigo }}</td>
-                    <td class="descripcion">{{ item.descripcion }}</td>
+                    <td class="descripcion">{{ item.descripcion }}{% if item.linea_cliente %}<span style="display:block;font-size:7.5px;font-weight:600;color:#334155;margin-top:1px">{{ item.linea_cliente|e }}</span>{% endif %}</td>
                     <td>{{ item.marca }}</td>
                     <td>{{ item.modelo }}</td>
                     <td>{{ item.unidad }}</td>

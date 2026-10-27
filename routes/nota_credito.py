@@ -166,6 +166,9 @@ def _items_factura(comp):
         cant = a_decimal(it.get('cantidad') or 0)
         valor = a_decimal(it.get('valorVenta', it.get('precio_venta_con_descuento', it.get('precio_unitario', 0))) or 0)
         salida.append({'idx': i, 'codigo': it.get('codigo') or '', 'producto': it.get('producto') or it.get('descripcion') or '',
+                       # 27/10/2026 (caso Komatsu): cómo lo pide el cliente, igual que en la factura
+                       'descripcion_cliente': (it.get('descripcion_cliente') or '').strip(),
+                       'codigo_cliente': (it.get('codigo_cliente') or '').strip(),
                        'um': it.get('um') or 'NIU', 'cantidad': float(cant), 'valor_unitario': float(redondear(valor)),
                        'total': float(redondear(cant * valor * (1 + tasa_igv())))})
     return salida
