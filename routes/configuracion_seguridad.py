@@ -1635,6 +1635,8 @@ def asignar_password_usuario(usuario_id):
         from werkzeug.security import generate_password_hash
         db_execute("UPDATE usuarios SET password = %s, updated_at = NOW() WHERE id = %s",
                    (generate_password_hash(password), usuario_id))
+        from routes.sesiones import cerrar_sesiones
+        cerrar_sesiones(usuario_id)   # quien tenga el ERP abierto con la contraseña vieja sale en el siguiente clic
         from routes.auditoria import registrar_auditoria
         registrar_auditoria('cambiar_contraseña', 'Usuarios', tabla='usuarios', registro_id=usuario_id,
                             detalle=f"El administrador asignó una contraseña nueva a '{filas[0]['usuario_sistema']}'")
