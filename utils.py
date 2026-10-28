@@ -47,6 +47,15 @@ def es_duena_reportes():
     return (session.get('usuario') or '').strip().lower() in USUARIOS_REPORTES
 
 
+# Erika 28/10/2026: "yo soy la única para crear usuario y eliminar usuario" y "Hellen y nadie debe ver planilla".
+# Por usuario, igual que Reportes: otro administrador (Hellen, admin) tampoco puede. Se cambia con USUARIOS_DUENA.
+USUARIOS_DUENA = _lista_env('USUARIOS_DUENA', ','.join(sorted(USUARIOS_REPORTES)))
+
+
+def es_duena():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_DUENA
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 

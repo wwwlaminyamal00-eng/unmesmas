@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import hmac
+import re
 
 # Hora de Perú para todo el ERP (16/10): en Render el servidor está en UTC y datetime.now()
 # daba 5 horas más (Kardex, numeraciones por día, fechas de documentos).
@@ -195,7 +196,36 @@ def control_de_acceso():
             return jsonify({'success': False, 'error': 'No tienes permisos de administrador para esta acción.'}), 403
         flash('No tienes permisos para acceder a esa sección.', 'error')
         return redirect(url_for('index'))
+    if _crea_o_elimina_usuario(ruta, request.method):
+        from utils import es_duena
+        if not es_duena():
+            return jsonify({'success': False, 'codigo': 'solo_erika',
+                            'error': 'Solo Erika puede crear, eliminar o reactivar usuarios.'}), 403
     return None
+
+
+# Erika 28/10/2026: solo ella crea, elimina (desactiva) o reactiva usuarios. Ver utils.es_duena.
+_RE_USUARIO_ID = re.compile(r'^/api/config/usuarios/[^/]+$')
+
+
+def _crea_o_elimina_usuario(ruta, metodo):
+    if metodo == 'POST' and (ruta == '/api/config/usuarios' or ruta.endswith('/activar')
+                             and ruta.startswith('/api/config/usuarios/')
+                             or ruta.startswith('/api/config/auth-sin-vincular/') and ruta.endswith('/crear')):
+        return True
+    if _RE_USUARIO_ID.match(ruta):
+        if metodo == 'DELETE':
+            return True
+        if metodo == 'PUT':
+            # Editar datos sí; cambiar el estado (activo / inactivo) solo Erika
+            data = request.get_json(silent=True) or {}
+            try:
+                filas = db_query("SELECT estado FROM usuarios WHERE id = %s", (int(ruta.rsplit('/', 1)[1]),))
+            except (ValueError, Exception):
+                filas = []
+            actual = (filas[0].get('estado') if filas else None) or 'activo'
+            return (data.get('estado') or 'activo') != actual
+    return False
 
 
 @app.after_request
@@ -264,9 +294,10 @@ def inject_request():
     except Exception:
         puede_validar = False
     # 25/10/2026: regla de oro, el menú 8 Reportes solo lo ve Erika
-    from utils import es_duena_reportes
+    from utils import es_duena_reportes, es_duena
     return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin(), puede_validar_ventas=puede_validar,
-                es_duena_reportes='usuario_id' in session and es_duena_reportes())
+                es_duena_reportes='usuario_id' in session and es_duena_reportes(),
+                es_duena='usuario_id' in session and es_duena())
 
 # ==========================================
 # REGISTRO DE BLUEPRINTS

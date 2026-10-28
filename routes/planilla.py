@@ -59,14 +59,10 @@ class ErrorPlanilla(Exception):
 # PERMISO (en el servidor)
 # ============================================================
 def puede_ver_planilla():
-    if es_admin():
-        return True
-    try:
-        from routes.acceso import acceso_usuario
-        acc = acceso_usuario()
-    except Exception:
-        return False
-    return bool(acc.get('configurado') and 'planilla' in acc.get('modulos', set()))
+    # Erika 28/10/2026: "Hellen y nadie debe ver planilla". Solo ella, igual que Reportes: ni otro
+    # administrador ni el permiso "Planilla" de la matriz abren los sueldos.
+    from utils import es_duena
+    return es_duena()
 
 
 @planilla_bp.before_request
@@ -74,8 +70,7 @@ def _proteger():
     if 'usuario_id' not in session:
         return None
     if not puede_ver_planilla():
-        msg = ('No tienes permiso para entrar a Planilla. Lo ve solo la gerencia y quien tenga el permiso '
-               '"Planilla" en Configuración ▸ Usuarios y permisos.')
+        msg = 'Planilla (sueldos) es solo para Erika.'
         if '/api/' in request.path:
             return jsonify({'success': False, 'error': msg, 'codigo': 'sin_permiso'}), 403
         from flask import flash, redirect, url_for

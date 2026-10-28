@@ -433,7 +433,8 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                     </div>
                 </div>
 
-                <!-- PLANILLA Y RRHH (22/10/2026): sueldos, solo gerencia y permiso propio -->
+                <!-- PLANILLA Y RRHH (22/10/2026): sueldos. Desde el 28/10/2026 solo Erika -->
+                {% if es_duena %}
                 <div class="menu-group" data-modulo="planilla">
                     <div class="menu-header-wrapper">
                         <a href="/planilla" class="menu-header" style="text-decoration:none;flex:1;">
@@ -447,6 +448,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <a href="/planilla?tab=beneficios" class="child-btn" style="text-decoration:none;">🎁 CTS y gratificaciones</a>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- CAJA CHICA (22/10/2026): fondo fijo, rendición semanal y arqueo; gerencia y permiso propio -->
                 <div class="menu-group" data-modulo="caja_chica">
