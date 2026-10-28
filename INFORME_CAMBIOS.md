@@ -2621,3 +2621,24 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
   - Respaldo previo: respaldo_20261015.pedido_compra_pc_20261028 (53 filas) y respaldo_20261015.despachos_20261028 (50 filas). No se borró nada.
 - Se conservan los cambios del PR #15 (sesiones y contraseñas, migración 040).
 - Pruebas: 357 bien en la base de prueba y 355 bien + 2 omitidas en la copia con la estructura real.
+
+### 24.60 Distrito que se llena solo, Compras con documentos en orden y columnas alineadas (Erika, 28/10/2026 12:03-12:16)
+- **Distrito de entrega del PV se llena solo**. Se busca en este orden:
+  1. el cliente recoge en nuestro local;
+  2. se lee en la dirección de entrega;
+  3. si la entrega es en la dirección fiscal del cliente, el distrito fiscal guardado en el cliente;
+  4. el que ya se eligió antes para esa misma dirección en otro PV (el más reciente);
+  5. si hay clave de SUNAT en Render (DECOLECTA_TOKEN), el distrito del domicilio fiscal del RUC. Solo se usa si la entrega es en esa dirección, y se guarda en el cliente.
+  - Si nada lo da, se elige UNA sola vez: queda guardado para ese cliente y esa dirección.
+  - Las listas de PV y Entregas usan lo mismo, así que los rojos se van llenando solos.
+  - Con la clave de SUNAT, una vez cada 12 horas se completan los clientes con PV que no tienen distrito (cada RUC se consulta una sola vez).
+- **Sin la clave de SUNAT**, las direcciones como "MZA. B LOTE 17 URB. ALFONSO COBIAN" no traen distrito y hay que elegirlo la primera vez. La clave la pone Adriel en Render.
+- **Compras ▸ Pedidos por comprar**:
+  - documentos siempre en este orden: PV (Pedido de venta), PC (Pedido del cliente), Cotización, N° despacho, con los N° en azul;
+  - "Ya en órdenes" pasa a "Ya pedido al proveedor (en OC (Proveedor))". Cuenta las OC aprobadas y por aprobar; las anuladas no cuentan. Si una parte aún no está aprobada, sale debajo en rojo "N por aprobar";
+  - todas las tablas con las mismas columnas y anchos fijos ("Nombre producto" 30 %); los nombres largos bajan de línea;
+  - el resaltado usa amarillo claro estándar;
+  - la pastilla dice "PV conforme" (solo cambia lo que se ve; el dato guardado no cambia).
+- **Migración 042** (aplicada el 28/10/2026): clientes.distrito_fiscal, distrito_fiscal_fuente y distrito_fiscal_revisado_en. Solo agrega. Respaldo: respaldo_20261015.clientes_20261028 (43 filas).
+- Se incluye el PR #17 de main (solo Erika crea o elimina usuarios y ve Planilla).
+- Pruebas: 364 bien.

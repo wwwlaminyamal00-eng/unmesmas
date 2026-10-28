@@ -4126,6 +4126,19 @@ def _asegurar_fecha_cita():
     _cita_lista = True
 
 
+@ventas_bp.route('/ventas/api/pv/distrito_sugerido', methods=['GET'])
+@login_required
+def api_pv_distrito_sugerido():
+    """Distrito que se llena solo en el formulario del PV (Erika 28/10/2026 12:03: "que se autocomplete")."""
+    try:
+        from routes import distrito_entrega
+        a = request.args
+        return jsonify({'success': True, 'data': distrito_entrega.sugerir(a.get('lugar', ''), a.get('ruc', ''), a.get('numero', ''))})
+    except Exception as e:
+        print(f"⚠️ Distrito sugerido: {e}")
+        return jsonify({'success': True, 'data': {'distrito': '', 'origen': '', 'texto': ''}})
+
+
 @ventas_bp.route('/ventas/api/despachos/<int:did>/cita', methods=['POST'])
 @login_required
 def api_despacho_cita(did):
@@ -4222,8 +4235,9 @@ def _distrito_pv_despacho(row):
     el "Distrito de entrega" del PV, el que se lee en la dirección o el de la dirección del cliente."""
     try:
         from routes.distrito_entrega import resolver
-        return resolver({'numero': row.get('pc_numero'), 'lugar_entrega': row.get('destino'),
-                         'distrito_entrega': row.get('pv_distrito')}, row.get('direccion_cliente') or '')['distrito']
+        return resolver({'numero': row.get('pc_numero'), 'lugar_entrega': row.get('destino'), 'ruc': row.get('ruc'),
+                         'distrito_entrega': row.get('pv_distrito')}, row.get('direccion_cliente') or '',
+                        row.get('distrito_cliente') or '')['distrito']
     except Exception:
         return adivinar_distrito(row.get('destino'))
 
@@ -4390,7 +4404,9 @@ def api_despachos_listar():
                 (SELECT to_jsonb(p) ->> 'distrito_entrega' FROM pedido_compra_pc p
                   WHERE p.numero = d.pc_numero ORDER BY p.id DESC LIMIT 1) AS pv_distrito,
                 (SELECT c.direccion_fiscal FROM clientes c WHERE c.numero_documento = d.ruc
-                  ORDER BY c.id LIMIT 1) AS direccion_cliente
+                  ORDER BY c.id LIMIT 1) AS direccion_cliente,
+                (SELECT to_jsonb(c) ->> 'distrito_fiscal' FROM clientes c WHERE c.numero_documento = d.ruc
+                  ORDER BY c.id LIMIT 1) AS distrito_cliente
             FROM despachos d
             ORDER BY d.id DESC
         """
