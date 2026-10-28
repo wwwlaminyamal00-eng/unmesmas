@@ -178,6 +178,18 @@ function esc(v) {
 
 // N° de la orden de compra del cliente debajo del N° PV: rótulo claro y número que entra en la celda (26/10/2026)
 // Regla de oro (Erika 27/10/2026): N° PV y N° PC van en DOS columnas separadas en todas las tablas. "—" si no hay
+// Lugar entrega del PV: solo el distrito, automático (Erika 27/10/2026 18:48 y 18:53). La dirección sale al pasar
+// el mouse. Si el cliente recoge, el distrito del local de la empresa (KCF: San Martín de Porres; AGD: Breña).
+// Nadie lo escribe en la lista: si falta, se corrige en el PV ("Distrito de entrega").
+function lugarEntregaPvHTML(r) {
+    const dir = esc(r.lugar_entrega || r.entrega || 'Sin dirección');
+    const d = r.distrito_entrega_ver || '';
+    if (r.distrito_origen === 'recojo') {
+        return `<span class="pv-distrito" title="${dir}">📍 ${esc(d)}</span><small class="pv-recojo">Recoge en nuestro local</small>`;
+    }
+    if (d) return `<span class="pv-distrito" title="Dirección: ${dir}">📍 ${esc(d)}</span>`;
+    return `<span class="pv-sin-distrito" title="Dirección: ${dir}">⚠ Falta distrito: corrígelo en el PV</span>`;
+}
 function pcClienteCelda(v) {
     const t = String(v || '').trim();
     return t ? numDocCelda(t, 'span') : '<span title="El cliente no envió N° de pedido">—</span>';
@@ -984,7 +996,7 @@ function renderPedidos() {
                 <td>${r.cotizacion_numero || '-'}</td>
                 <td class="left"><b>${r.cliente || '-'}</b></td>
                 <td>${r.ruc || '-'}</td>
-                <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
+                <td class="pv-lugar">${lugarEntregaPvHTML(r)}</td>
                 <td class="left pc-desc">${descripcionPcHTML(r)}</td>
                 <td><b>${money(montoSinIgv)}</b></td>
                 <td><b>${money(montoConIgv)}</b></td>
@@ -1073,7 +1085,7 @@ function renderPedidos() {
             <td>${r.cotizacion_numero || '-'}</td>
             <td class="left"><b>${r.cliente || '-'}</b></td>
             <td>${r.ruc || '-'}</td>
-            <td class="left">${r.entrega || r.lugar_entrega || '-'}</td>
+            <td class="pv-lugar">${lugarEntregaPvHTML(r)}</td>
             <td class="left pc-desc">${descripcionPcHTML(r)}</td>
             <td><b>${money(montoSinIgv)}</b></td>
             <td><b>${money(montoConIgv)}</b></td>
@@ -1498,9 +1510,15 @@ function citaDespachoHTML(r, cerrado) {
         const m = String(r.fecha_cita).match(/^(\d{4})-(\d{2})-(\d{2})/);
         txt = m ? `${m[3]}/${m[2]}/${m[1]}` : (isNaN(d) ? String(r.fecha_cita) : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
     }
-    if (cerrado) return txt ? `<b>${txt}</b>` : '-';
+    // Erika 27/10/2026 18:57: cuántas veces se cambió la cita (con su último motivo) y si ya pasó sin entregarse
+    const veces = Number(r.reprogramaciones || 0);
+    const reprog = veces ? `<small class="cita-reprog" title="Último motivo: ${sd(r.ultimo_motivo)}">🔁 Reprogramada ${veces} ${veces === 1 ? 'vez' : 'veces'}</small>` : '';
+    const cita = r.fecha_cita ? String(r.fecha_cita).slice(0, 10) : '';
+    const vencida = cita && !cerrado && r.estado !== 'Despachado' && cita < isoLima(new Date());
+    const atraso = vencida ? '<small class="cita-vencida">⚠ Ya pasó la cita</small>' : '';
+    if (cerrado) return (txt ? `<b>${txt}</b>` : '-') + reprog;
     // Lápiz para que logística la ponga o la cambie hasta que se entregue (Erika 26/10/2026)
-    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha acordada con el cliente para la entrega: clic para ponerla o cambiarla">${txt ? `📅 ${txt} ✏` : '✏ Poner cita'}</button>`;
+    return `<button class="cita-btn ${txt ? 'tiene' : ''}" onclick="ponerCitaDespacho(${r.id})" title="Fecha programada con el cliente para la entrega: clic para ponerla o cambiarla">${txt ? `📅 ${txt} ✏` : '✏ Poner cita'}</button>${atraso}${reprog}`;
 }
 function fechaDMY(iso) {
     const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
@@ -1511,7 +1529,7 @@ function fechaDMY(iso) {
 function entregaRealHTML(r) {
     const salida = r.fecha_salida ? `<small class="ent-salida" title="Fecha y hora en que salió del almacén">Salió ${fechaDMY(r.fecha_salida)}</small>` : '';
     if (r.estado === 'Entregado') {
-        return `<button class="entrega-btn tiene" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Fecha en que el cliente recibió: clic para cambiarla">✔ ${fechaDMY(r.fecha_entrega_real) || 'Sin fecha'} ✏</button>${r.ingreso_cliente ? `<small class="entrega-ingreso" title="N° de ingreso del cliente">Ingreso ${sd(r.ingreso_cliente)}</small>` : ''}${salida}`;
+        return `<button class="entrega-btn tiene" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Fecha en que el cliente recibió: clic para cambiarla">✔ ${fechaDMY(r.fecha_entrega_real) || 'Sin fecha'} ✏</button>${salida}`;
     }
     if (r.estado === 'Despachado') {
         return `<button class="entrega-btn" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="Cuando el cliente ya recibió, pon aquí la fecha real">✏ Poner fecha</button>${salida}`;
@@ -1564,14 +1582,12 @@ function productosDespachoHTML(r) {
     }).join('');
 }
 // Distrito en vez de la dirección completa; la dirección sale al pasar el mouse
+// Erika 27/10/2026 18:53: el distrito sale solo del PV / la cotización; aquí nadie lo escribe
 function distritoDespachoHTML(r, cerrado) {
     const dir = esc(r.destino || 'Sin dirección');
-    if (r.distrito) {
-        return `<span class="ent-distrito" title="Dirección: ${dir}">📍 ${esc(r.distrito)}</span>` +
-            (cerrado ? '' : `<button class="ent-editar" onclick="editarDatoDespacho(${r.id}, 'distrito', this)" title="Cambiar el distrito">✏</button>`);
-    }
+    if (r.distrito) return `<span class="ent-distrito" title="Dirección: ${dir}">📍 ${esc(r.distrito)}</span>`;
     if (cerrado) return `<span title="Dirección: ${dir}">-</span>`;
-    return `<button class="ent-sin-dato" onclick="editarDatoDespacho(${r.id}, 'distrito', this)" title="Dirección: ${dir}">📍 Poner distrito</button>`;
+    return `<span class="pv-sin-distrito" title="Dirección: ${dir}">⚠ Falta distrito: corrígelo en el PV</span>`;
 }
 // Comentario corto que se escribe en la misma fila (clic para escribir o cambiar)
 function comentarioDespachoHTML(r) {
@@ -1675,40 +1691,83 @@ function verCobroDespacho(id) {
     if (!r || !r.comprobante) return;
     window.location.href = '/finanzas?tab=cxc&factura=' + encodeURIComponent(String(r.comprobante).replace(/\s+/g, ''));
 }
+// Fecha programada (cita) con el cliente. Erika 27/10/2026 18:57: si ya había cita y se cambia, se pide el motivo
+// (no hubo transporte, no llegó el producto…) y queda el historial; se sugiere el próximo martes o jueves.
+function proximoDiaSemana(desdeIso, dia) {   // dia: 2 = martes, 4 = jueves
+    const d = new Date(desdeIso + 'T12:00:00Z');
+    do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() !== dia);
+    return d.toISOString().slice(0, 10);
+}
 function ponerCitaDespacho(id) {
     const r = (despachosData || []).find(x => x.id === id);
     if (!r) return;
     document.getElementById('citaDespachoModal')?.remove();
     const actual = r.fecha_cita ? String(r.fecha_cita).slice(0, 10) : '';
+    const hoy = isoLima(new Date());
+    const base = actual && actual > hoy ? actual : hoy;
+    const mar = proximoDiaSemana(base, 2), jue = proximoDiaSemana(base, 4);
+    const btn = 'padding:9px 14px;border-radius:10px;font-weight:800;cursor:pointer';
     const d = document.createElement('div');
     d.id = 'citaDespachoModal';
     d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000002;display:flex;align-items:center;justify-content:center;padding:16px';
-    d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-        <div style="font-size:18px;font-weight:900;margin-bottom:4px">📅 Fecha de cita con el cliente</div>
-        <div style="font-size:13px;color:#475569;margin-bottom:12px">${sd(r.numero)} · ${sd(r.cliente)}</div>
-        <input type="date" id="citaDespachoValor" value="${actual}" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700">
+    d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:92vh;overflow:auto">
+        <div style="font-size:18px;font-weight:900;margin-bottom:6px">📅 ${actual ? 'Cambiar la fecha programada' : 'Fecha programada (cita)'}</div>
+        <ul class="aviso-lista">
+          <li>Despacho: <b class="aviso-doc">${sd(r.numero)}</b></li>
+          ${r.pc_numero ? `<li>PV: <b class="aviso-doc">${sd(r.pc_numero)}</b>${r.oc_cliente ? ` · PC del cliente: <b class="aviso-doc">${sd(r.oc_cliente)}</b>` : ''}</li>` : ''}
+          <li>Cliente: <b>${sd(r.cliente)}</b></li>
+          ${actual ? `<li>Cita actual: <b>${fechaDMY(actual)}</b></li>` : ''}
+        </ul>
+        <input type="date" id="citaDespachoValor" value="${actual}" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:8px">
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <button type="button" data-dia="${mar}" class="cita-sug">Próximo martes ${fechaDMY(mar).slice(0, 5)}</button>
+          <button type="button" data-dia="${jue}" class="cita-sug">Próximo jueves ${fechaDMY(jue).slice(0, 5)}</button>
+        </div>
+        ${actual ? `<div class="cita-motivo-box">
+          <label>¿Por qué se cambia? <span style="color:#DC2626">*</span></label>
+          <select id="citaMotivo"><option value="">Elige el motivo…</option></select>
+          <input type="text" id="citaComentario" maxlength="200" placeholder="Comentario corto (obligatorio si eliges Otro)">
+        </div>` : ''}
+        <div id="citaHistorial" class="cita-historial"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
-          ${actual ? '<button type="button" data-acc="quitar" style="padding:9px 14px;border-radius:10px;border:1px solid #FCA5A5;background:#fff;color:#B91C1C;font-weight:800;cursor:pointer">Quitar cita</button>' : ''}
-          <button type="button" data-acc="cancelar" style="padding:9px 14px;border-radius:10px;border:1px solid #CBD5E1;background:#fff;font-weight:800;cursor:pointer">Cancelar</button>
-          <button type="button" data-acc="guardar" style="padding:9px 16px;border-radius:10px;border:0;background:#16A34A;color:#fff;font-weight:900;cursor:pointer">💾 Guardar</button>
+          <button type="button" data-acc="cancelar" style="${btn};border:1px solid #CBD5E1;background:#fff">Cancelar</button>
+          <button type="button" data-acc="guardar" style="${btn};border:0;background:#16A34A;color:#fff;font-weight:900">💾 Guardar</button>
         </div></div>`;
     document.body.appendChild(d);
+    apiFetch(`/ventas/api/despachos/${id}/reprogramaciones`).then(res => {
+        const h = (res && res.data) || {};
+        const sel = document.getElementById('citaMotivo');
+        if (sel) sel.innerHTML = '<option value="">Elige el motivo…</option>' + (h.motivos || []).map(m => `<option>${sd(m)}</option>`).join('');
+        const cont = document.getElementById('citaHistorial');
+        if (cont && (h.historial || []).length) {
+            cont.innerHTML = `<div class="cita-hist-t">🔁 Cambios de la cita${h.fecha_cita_inicial ? ` (primera cita: <b>${sd(h.fecha_cita_inicial)}</b>)` : ''}</div>` +
+                h.historial.map(x => `<div class="cita-hist-f"><b>${sd(x.antes)} → ${sd(x.despues)}</b> · <span class="cita-hist-m">${sd(x.motivo)}</span>${x.comentario ? ` · ${sd(x.comentario)}` : ''}<br><small>${sd(x.cuando)} · ${sd(x.usuario)}</small></div>`).join('');
+        }
+    }).catch(() => {});
     const guardar = async valor => {
+        const motivo = document.getElementById('citaMotivo')?.value || '';
+        const comentario = (document.getElementById('citaComentario')?.value || '').trim();
+        if (actual && valor !== actual) {
+            if (!motivo) { showToast('⚠️ Elige por qué se cambia la cita', 'warning'); return; }
+            if (motivo === 'Otro' && !comentario) { showToast('⚠️ Escribe por qué se cambia la cita', 'warning'); return; }
+        }
         try {
-            const res = await apiFetch(`/ventas/api/despachos/${id}/cita`, { method: 'POST', body: JSON.stringify({ fecha_cita: valor }) });
+            const res = await apiFetch(`/ventas/api/despachos/${id}/cita`, { method: 'POST', body: JSON.stringify({ fecha_cita: valor, motivo, comentario }) });
             r.fecha_cita = res.data ? res.data.fecha_cita : valor;
+            if (res.data) { r.reprogramaciones = res.data.reprogramaciones; if (actual && valor !== actual) r.ultimo_motivo = motivo; }
             d.remove();
-            showToast(valor ? '✅ Cita guardada' : '✅ Cita quitada', 'success');
+            showToast('✅ Fecha programada guardada', 'success');
             renderDespachos();
         } catch (e) { showToast('❌ ' + e.message, 'error'); }
     };
     d.addEventListener('click', e => {
         const acc = e.target.dataset && e.target.dataset.acc;
+        if (e.target.dataset && e.target.dataset.dia) { document.getElementById('citaDespachoValor').value = e.target.dataset.dia; return; }
         if (e.target === d || acc === 'cancelar') d.remove();
-        else if (acc === 'quitar') guardar('');
         else if (acc === 'guardar') {
             const v = document.getElementById('citaDespachoValor').value;
-            if (!v) { showToast('⚠️ Elige la fecha de la cita', 'warning'); return; }
+            if (!v) { showToast('⚠️ Elige la fecha programada', 'warning'); return; }
+            if (v === actual) { d.remove(); return; }
             guardar(v);
         }
     });
@@ -1756,15 +1815,14 @@ function abrirEntregaDespacho(id, modo) {
     const btn = 'padding:9px 14px;border-radius:10px;font-weight:900;cursor:pointer';
     d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
         <div style="font-size:18px;font-weight:900;margin-bottom:4px;color:${rechazar ? '#C2410C' : '#1D4ED8'}">${rechazar ? '↩ Rechazado por el cliente' : '✔ Confirmar entrega al cliente'}</div>
-        <div style="font-size:13px;color:#475569;margin-bottom:12px">${sd(r.numero)} · ${sd(r.cliente)}${r.fecha_salida ? ` · salió ${fechaDMY(r.fecha_salida)}` : ''}</div>
+        ${Aviso.html({ docs: Aviso.docsDe(r).concat([['Salió del almacén', r.fecha_salida ? fechaDMY(r.fecha_salida) : ''], ['Fecha programada (cita)', r.fecha_cita ? fechaDMY(String(r.fecha_cita).slice(0, 10)) : '']]) })}
         ${rechazar ? `
         <label style="font-size:13px;font-weight:800;color:#334155">¿Por qué lo rechazó?</label>
         <textarea id="entregaMotivo" maxlength="200" rows="3" placeholder="Ej: producto equivocado, caja dañada, cliente no estaba" style="width:100%;border:2px solid #CBD5E1;border-radius:10px;padding:8px;font-size:14px;margin-top:4px"></textarea>
-        <div style="font-size:12px;color:#9A3412;margin-top:8px">El stock vuelve al inventario y el despacho queda para volver a despacharlo. Si se hizo guía, revisa si hay que anularla.</div>` : `
+        ${Aviso.rojo(['El <b>stock vuelve</b> al inventario', 'El despacho queda para <b>volver a despacharlo</b>', 'Si se hizo guía, revisa si hay que <b>anularla</b>'])}` : `
         <label style="font-size:13px;font-weight:800;color:#334155">Fecha real en que el cliente recibió</label>
         <input type="date" id="entregaFecha" value="${actual}" max="${hoy}" ${minimo ? `min="${minimo}"` : ''} style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">
-        <label style="display:block;font-size:13px;font-weight:800;color:#334155;margin-top:12px">N° de ingreso del cliente <small style="font-weight:600;color:#64748B">(opcional: el número que su sistema le da al recibir)</small></label>
-        <input type="text" id="entregaIngreso" maxlength="60" value="${sd(r.ingreso_cliente || '')}" placeholder="Ej: 5000123456" style="width:100%;height:40px;border:2px solid #CBD5E1;border-radius:10px;padding:0 10px;font-size:15px;font-weight:700;margin-top:4px">`}
+        ${Aviso.rojo(['Pon la fecha en que el cliente <b>de verdad recibió</b>', 'El despacho pasa a <b>Entregado</b>'])}`}
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
           ${!rechazar && r.estado === 'Entregado' ? `<button type="button" data-acc="quitar" style="${btn};border:1px solid #FCA5A5;background:#fff;color:#B91C1C">Quitar fecha</button>` : ''}
           <button type="button" data-acc="cancelar" style="${btn};border:1px solid #CBD5E1;background:#fff">Cancelar</button>
@@ -1791,7 +1849,7 @@ function abrirEntregaDespacho(id, modo) {
             } else {
                 const f = document.getElementById('entregaFecha').value;
                 if (!f) { showToast('⚠️ Elige la fecha real de entrega', 'warning'); return; }
-                enviar({ accion: 'entregar', fecha_entrega: f, ingreso_cliente: (document.getElementById('entregaIngreso')?.value || '').trim() });
+                enviar({ accion: 'entregar', fecha_entrega: f });
             }
         }
     });
@@ -1886,7 +1944,7 @@ function renderDespachos() {
     if (!tbody) return;
     
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center;color:#94A3B8;padding:40px;">📭 No hay despachos ${despachosData.length ? 'con estos filtros' : 'registrados'}</td></tr>`;
         return;
     }
     
@@ -1934,7 +1992,8 @@ function renderDespachos() {
             <td>${facturaDespachoHTML(r)}</td>
             <td>${distritoDespachoHTML(r, anulado)}</td>
             <td>${estadoCompraHTML(r, despachado, anulado)}</td>
-            <td>${fechasEntregaHTML(r, entregado || anulado)}</td>
+            <td>${citaDespachoHTML(r, entregado || anulado)}</td>
+            <td>${entregaRealHTML(r) || '-'}</td>
             <td>${comentarioDespachoHTML(r)}</td>
             <td><div class="acc-col">
                 ${!despachado && !anulado ? `
@@ -1943,7 +2002,6 @@ function renderDespachos() {
                     ${!r.comprobante ? `<button class="btn-factura-desp" onclick="facturaDesdeDespacho(${r.id})" title="La factura se puede hacer aunque todavía no haya stock">Generar factura</button>` : ''}` :
                   despachado && !entregado ? `
                      <button class="btn-confirmar-entrega" onclick="abrirEntregaDespacho(${r.id}, 'entregar')" title="El cliente ya recibió: pon la fecha real de entrega">Confirmar entrega</button>
-                     <button class="btn-rechazo-desp" onclick="abrirEntregaDespacho(${r.id}, 'rechazar')" title="El cliente no lo recibió: anota el motivo; el stock vuelve al inventario">Rechazado por el cliente</button>
                      <button class="btn-anular-despacho" onclick="anularDespacho(${r.id})" title="Anular: el stock vuelve al inventario">Anular</button>` :
                   entregado ? `<span class="desp-entregado">Entregado</span>` : ''
                 }
@@ -3559,6 +3617,7 @@ async function _savePedidoCompra(estado) {
             tipo_cambio: window.Moneda ? Moneda.leer('pc').tipo_cambio : null,
             condicion_pago: getPcCondicionValue(),
             lugar_entrega: document.getElementById('pcEntrega')?.value || '',
+            distrito_entrega: document.getElementById('pcDistrito')?.value,  // solo si el formulario tiene el campo
             observaciones: document.getElementById('pcObs')?.value || '',
             validaciones: validaciones,
             items: items,
@@ -5142,10 +5201,12 @@ async function marcarDespachado(id) {
     const ubic = await prepararUbicacionDespacho(id);
     if (!ubic) return;
     
+    // Aviso en viñetas (Erika 27/10/2026 18:58): documentos en azul, productos y en rojo lo que pasa al confirmar
     showConfirmModal(
-        '🚚 ¿Marcar como despachado?',
-        `Estás a punto de marcar como <b>"Despachado"</b> el despacho <b>${numero}</b> del cliente <b>${cliente}</b>.${ubic.html}`,
-        '⚠️ Se descontará el stock de la empresa y sede elegidas y se creará una Guía de Remisión.',
+        '🚚 ¿Confirmar el despacho?',
+        Aviso.html({ docs: Aviso.docsDe(despacho), productos: despacho.items || [] }) + ubic.html,
+        ['Se <b>descontará el stock</b> de la empresa y sede que elijas', 'Se creará la <b>Guía de Remisión</b>',
+         'Si te equivocas, hay que <b>anular</b> el despacho'],
         async function() {
             try {
                 const [empresaId, almacenId] = String(window._despUbicacion || '|').split('|');
@@ -12440,10 +12501,9 @@ function showConfirmModal(title, message, warning, onConfirm) {
     modal.innerHTML = `
         <div style="font-size: 48px; margin-bottom: 12px;">⚠️</div>
         <h2 style="font-size: 22px; font-weight: 900; color: #0F172A; margin-bottom: 8px;">${title}</h2>
-        <p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>
-        <div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; margin-bottom: 24px; border-left: 4px solid #EF233C;">
-            <span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span>
-        </div>
+        ${window.Aviso ? Aviso.cuerpoDesdeTexto(message) : `<p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>`}
+        ${!warning ? '' : window.Aviso ? Aviso.rojo(warning) : `<div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; border-left: 4px solid #EF233C;"><span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span></div>`}
+        <div style="height: 18px"></div>
         <div style="display: flex; gap: 12px; justify-content: center;">
             <button class="confirm-cancel-btn" style="
                 padding: 12px 32px;
@@ -12930,6 +12990,7 @@ function cargarPCParaEdicion(pcId) {
                 ponerMonedaPC(pc.moneda, pc.tipo_cambio);
                 setValue('pcMontoPC', montoSinIgv.toFixed(2));
                 setValue('pcEntrega', pc.lugar_entrega || pc.entrega || '');
+                window._pvDistritoCargado = pc.distrito_entrega ?? (((pedidosData || []).find(x => x.id == pc.id) || {}).distrito_entrega || '');
                 setValue('pcObs', pc.observaciones || '');
                 
                 // ============================================================
@@ -13128,6 +13189,7 @@ async function cargarPCParaEditar(id) {
         setValue('pcMonto', pc.monto || 0);
         setValue('pcMontoConIgv', (pc.monto || 0) * 1.18);
         setValue('pcEntrega', pc.lugar_entrega || pc.entrega);
+        window._pvDistritoCargado = pc.distrito_entrega ?? (((pedidosData || []).find(x => x.id == pc.id) || {}).distrito_entrega || '');
         setValue('pcObs', pc.observaciones);
         setValue('pcCondicionPago', pc.condicion_pago || 'Contado');
         setValue('pcVendedor', pc.vendedor || 'Helen Blas Príncipe');
@@ -13930,10 +13992,9 @@ function showConfirmModal(title, message, warning, onConfirm, confirmText = '✅
     modal.innerHTML = `
         <div style="font-size: 48px; margin-bottom: 12px;">${icon}</div>
         <h2 style="font-size: 22px; font-weight: 900; color: #0F172A; margin-bottom: 8px;">${title}</h2>
-        <p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>
-        <div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; margin-bottom: 24px; border-left: 4px solid #EF233C;">
-            <span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span>
-        </div>
+        ${window.Aviso ? Aviso.cuerpoDesdeTexto(message) : `<p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>`}
+        ${!warning ? '' : window.Aviso ? Aviso.rojo(warning) : `<div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; border-left: 4px solid #EF233C;"><span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span></div>`}
+        <div style="height: 18px"></div>
         <div style="display: flex; gap: 12px; justify-content: center;">
             <button class="confirm-cancel-btn" style="
                 padding: 12px 32px;
@@ -14040,10 +14101,9 @@ function showDeleteConfirmModal(title, message, warning, onConfirm, confirmText 
     modal.innerHTML = `
         <div style="font-size: 48px; margin-bottom: 12px;">🗑️</div>
         <h2 style="font-size: 22px; font-weight: 900; color: #0F172A; margin-bottom: 8px;">${title}</h2>
-        <p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>
-        <div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; border-left: 4px solid #EF233C;">
-            <span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span>
-        </div>
+        ${window.Aviso ? Aviso.cuerpoDesdeTexto(message) : `<p style="font-size: 15px; color: #475569; line-height: 1.5; margin-bottom: 12px;">${message}</p>`}
+        ${!warning ? '' : window.Aviso ? Aviso.rojo(warning) : `<div style="background: #FEF2F2; border-radius: 12px; padding: 12px 16px; border-left: 4px solid #EF233C;"><span style="font-size: 13px; font-weight: 700; color: #DC2626;">${warning}</span></div>`}
+        <div style="height: 14px"></div>
         <div style="text-align:left; margin-bottom:20px;">
             <label style="display:block;font-size:13px;font-weight:800;color:#0F172A;margin-bottom:6px;">
                 Motivo de eliminación <span style="color:#DC2626;">*</span>
@@ -16301,6 +16361,7 @@ async function savePedidoCompraSAP(force) {
             monto: Number(document.getElementById('pcMontoPC')?.value || 0),
             entrega: document.getElementById('pcEntrega')?.value || '',
             lugar_entrega: document.getElementById('pcEntrega')?.value || '',
+            distrito_entrega: document.getElementById('pcDistrito')?.value,  // solo si el formulario tiene el campo
             condicion_pago: condicionPago,
             oc_cliente: (document.getElementById('pcOcCliente')?.value || '').trim(),
             vendedor: document.getElementById('pcVendedor')?.value || 'Helen Blas Príncipe',
@@ -17916,7 +17977,7 @@ async function prepararUbicacionDespacho(id) {
                     style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid #CBD5E1;font-size:13px">
                 ${window._despUbicacion ? '' : '<option value="" selected>— Elige empresa y sede —</option>'}${opts}
             </select>
-            <div style="font-size:12px;color:#475569;margin-top:8px;max-height:90px;overflow:auto">${productos}</div>${aviso}
+${aviso}
         </div>`;
     return { html };
 }
@@ -17956,9 +18017,9 @@ window.mostrarErrorStockDespacho = mostrarErrorStockDespacho;
 function anularDespacho(id) {
     const despacho = (despachosData || []).find(d => d.id === id) || {};
     showDeleteConfirmModal(
-        '↩️ ¿Anular despacho?',
-        `Vas a anular el despacho <b>${despacho.numero || ''}</b> de <b>${despacho.cliente || ''}</b>.`,
-        '⚠️ La mercadería vuelve al stock de la misma empresa y sede, y vuelve a quedar separada para el cliente.',
+        '↩️ ¿Anular el despacho?',
+        Aviso.html({ docs: Aviso.docsDe(despacho), productos: despacho.items || [] }),
+        ['La mercadería <b>vuelve al stock</b> de la misma empresa y sede', 'Vuelve a quedar <b>separada para el cliente</b>'],
         async function(motivo) {
             try {
                 const r = await apiFetch(`/ventas/api/despachos/${id}`, {

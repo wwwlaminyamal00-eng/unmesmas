@@ -90,9 +90,12 @@ def test_fecha_de_cita_del_despacho(vendedor):
     fila = next(d for d in vendedor.get('/ventas/api/despachos/listar').json['data'] if d['id'] == did)
     # 22/10/2026: la cita es solo fecha; si llega con hora (dato antiguo) la hora se ignora
     assert fila['fecha_cita'] == '2026-10-22'
-    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-23'}).json['data']['fecha_cita'] == '2026-10-23'
+    # 27/10/2026: cambiar una cita pide el motivo y queda en el historial
+    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-23'}).status_code == 400
+    r = vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '2026-10-23', 'motivo': 'No hubo transporte'})
+    assert r.json['data']['fecha_cita'] == '2026-10-23' and r.json['data']['reprogramaciones'] == 1
     assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': 'mañana'}).status_code == 400
-    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': ''}).status_code == 200
+    assert vendedor.post(f'/ventas/api/despachos/{did}/cita', json={'fecha_cita': '', 'motivo': 'Otro', 'comentario': 'Sin fecha aún'}).status_code == 200
     assert _sql("SELECT fecha_cita FROM despachos WHERE id = %s", (did,))[0][0] is None
 
 
@@ -106,7 +109,7 @@ def test_pantalla_de_entregas_18h():
     tabla = tabla[:tabla.index('</thead>')]
     # 25/10/2026: N° Guía y N° Factura en columnas separadas (Erika: "para poder filtrar y ordenar")
     orden = [tabla.index(f'>{t}</th>') for t in ('N° PV (Pedido de venta)', 'N° cotización', 'Cliente', 'N° Guía', 'N° Factura', 'Distrito',
-                                                   'Estado compra', 'Fecha de cita y entrega real', 'Acción')]
+                                                   'Estado compra', 'Fecha programada (cita)', 'Fecha real de entrega', 'Acción')]
     assert orden == sorted(orden) and '<th>Destino</th>' not in tabla
     cjs = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
     assert "qs.get('pc')" in cjs and 'async function abrirCompraDePedido' in cjs

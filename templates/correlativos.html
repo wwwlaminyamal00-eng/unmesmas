@@ -110,7 +110,7 @@
         if (!actual || !n) { aviso.textContent = ''; return; }
         aviso.innerHTML = n <= actual.ultimo
             ? `<b style="color:#dc2626">No se puede:</b> debe ser mayor que ${actual.ultimo}.`
-            : `Solo afecta a los documentos <b>nuevos</b>. El próximo saldrá como <b>${esc(actual.formato.replace('{n}', String(n).padStart(actual.documento === 'COT' || actual.documento === 'PC' ? 6 : 8, '0')))}</b>.`;
+            : `Solo afecta a los documentos <b>nuevos</b>. El próximo saldrá como <b>${esc(actual.formato.replace('{n}', String(n).padStart(['COT', 'PC', 'DESP'].includes(actual.documento) ? 6 : 8, '0')))}</b>.`;
     }
     async function guardar() {
         const n = parseInt(document.getElementById('ncValor').value, 10);

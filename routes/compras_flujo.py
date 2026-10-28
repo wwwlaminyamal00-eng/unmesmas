@@ -344,7 +344,8 @@ def _diferencias_recepcion(oc_items, contados):
         buena, danada, _ = contados[iid]
         llego = buena + danada
         u = (' ' + oi['unidad']) if oi.get('unidad') else ''
-        base = {'producto': oi['producto'], 'pide': float(pendiente), 'registras': float(buena), 'danada': float(danada)}
+        base = {'producto': oi['producto'], 'pide': float(pendiente), 'registras': float(buena), 'danada': float(danada),
+                'unidad': oi.get('unidad') or ''}
         if buena > pendiente:
             difs.append({**base, 'tipo': 'Sobra', 'texto': f"{oi['producto']}: la OC pide {_cant(pendiente)}{u}, estás registrando "
                          f"{_cant(buena)} → sobran {_cant(buena - pendiente)}"})
@@ -482,7 +483,7 @@ def _tiene_columna(tabla, columna):
 
 def _detalle_stock_libre(producto_id):
     filas = db_query("""
-        SELECT COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede,
+        SELECT e.codigo AS empresa, a.nombre AS sede,
                s.cantidad - COALESCE((SELECT SUM(x.cantidad) FROM inv_separaciones x WHERE x.estado = 'Activa'
                    AND x.vence_el >= CURRENT_DATE AND x.producto_id = s.producto_id AND x.empresa_id = s.empresa_id
                    AND x.almacen_id = s.almacen_id), 0) AS libre
@@ -690,7 +691,7 @@ SQL_OC_LISTA = """
     ),
     inc AS (SELECT orden_compra_id, COUNT(*) AS abiertas FROM com_incidencias WHERE estado = 'Abierta' GROUP BY orden_compra_id)
     SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
-           oc.empresa_id, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+           oc.empresa_id, e.codigo AS empresa,
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
            oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, COALESCE(oc.adelanto_pct, 0) AS adelanto_pct, oc.num_cotizacion, oc.notas,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
@@ -878,6 +879,16 @@ def api_resumen():
             alerta('danger', f'<b>{inc} diferencia(s) abiertas</b> (faltantes, sobrantes, dañados o facturas que no cuadran). '
                              'Una supervisora debe resolverlas.', 'ordenes', inc,
                   [o for o in ocs if o.get('incidencias')], 'Órdenes con diferencias abiertas')
+        # Erika 28/10/2026 00:31: se recibió con diferencia (contaron distinto a la OC) → aviso a la jefa por 7 días
+        rec_dif = db_query("""SELECT DISTINCT h.orden_compra_id FROM com_historial h
+                               WHERE h.accion = 'Recibió confirmando diferencias' AND h.fecha >= NOW() - INTERVAL '7 days'""")
+        ids_dif = {r['orden_compra_id'] for r in rec_dif}
+        con_dif = [o for o in ocs if o['id'] in ids_dif]
+        if con_dif:
+            alerta('danger', f'<b>{len(con_dif)} orden(es) recibidas con diferencia</b> en los últimos 7 días '
+                             '(lo contado no coincidió con la OC; el motivo está en el historial): '
+                             + ', '.join(o['numero'] for o in con_dif[:6]) + '.',
+                   'ordenes', len(con_dif), con_dif, 'Recibidas con diferencia')
         # 27/10/2026 (Hellen): solo lo que pide acción. Una sola alerta de "falta la factura del proveedor": la orden
         # ya llegó (o se pagó hace más de DIAS_AVISO días) y no tiene factura. Un adelanto recién pagado no es tarea.
         limite = (hoy - timedelta(days=DIAS_AVISO)).isoformat()
@@ -948,7 +959,7 @@ def api_info_producto(producto_id):
     try:
         compras = db_query("""
             SELECT oc.numero_orden, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, p.razon_social AS proveedor,
-                   oci.cantidad, oci.precio_unitario, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa
+                   oci.cantidad, oci.precio_unitario, e.codigo AS empresa
             FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
             LEFT JOIN proveedores p ON p.id = oc.proveedor_id LEFT JOIN erp_empresas e ON e.id = oc.empresa_id
             WHERE oci.producto_id = %s AND COALESCE(oc.estado, '') NOT IN ('Anulada', 'Borrador')
@@ -1718,6 +1729,10 @@ def api_orden_recibir(oc_id):
             # la cantidad de la OC solo se ve DESPUÉS de escribir lo contado y pulsar Guardar.
             difs = _diferencias_recepcion(oc_items, contados)
             confirmo = bool(d.get('confirmar_diferencias'))
+            # Erika 28/10/2026 00:31: confirmar con diferencia exige explicar por qué (queda en el historial y avisa)
+            if difs and confirmo and len((d.get('motivo_diferencias') or '').strip()) < 5:
+                raise ErrorCompras('Para confirmar con diferencia, explica qué pasó (mínimo 5 letras). '
+                                   'Si de verdad llegó así, coordina con el proveedor y avisa a tu jefe inmediato.')
             if difs and not confirmo:
                 _historial(cur, oc_id, 'Aviso de diferencia al recibir',
                            f"Guía {guia}: " + '; '.join(x['texto'] for x in difs) + ' (aún no se grabó)')

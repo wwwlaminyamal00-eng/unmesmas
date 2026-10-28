@@ -940,7 +940,7 @@ def api_kardex():
         q = (request.args.get('q') or '').strip()
         filas = db_query("""
             SELECT m.*, p.codigo, p.descripcion, p.unidad, e.codigo AS empresa_codigo,
-                   COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede
+                   e.codigo AS empresa, a.nombre AS sede
             FROM inv_movimientos m
             JOIN productos p ON p.id = m.producto_id
             LEFT JOIN erp_empresas e ON e.id = m.empresa_id
@@ -974,7 +974,7 @@ def api_kardex_exportar():
     desde = request.args.get('desde') or None
     hasta = request.args.get('hasta') or None
     filas = db_query("""
-        SELECT m.*, p.codigo, p.descripcion, p.unidad, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+        SELECT m.*, p.codigo, p.descripcion, p.unidad, e.codigo AS empresa,
                e.ruc, a.nombre AS sede
         FROM inv_movimientos m JOIN productos p ON p.id = m.producto_id
         LEFT JOIN erp_empresas e ON e.id = m.empresa_id LEFT JOIN almacenes a ON a.id = m.almacen_id
@@ -1102,7 +1102,7 @@ def api_traslados():
     try:
         estado = request.args.get('estado') or ''
         filas = db_query("""
-            SELECT t.*, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+            SELECT t.*, e.codigo AS empresa,
                    o.nombre AS origen, d.nombre AS destino,
                    COALESCE(json_agg(json_build_object('id', i.id, 'producto_id', i.producto_id, 'codigo', p.codigo,
                        'descripcion', p.descripcion, 'unidad', p.unidad, 'cantidad', i.cantidad,
@@ -1301,8 +1301,8 @@ def api_intercompany_lista():
     try:
         filas = db_query("""
             SELECT m.grupo, MIN(m.fecha) AS fecha, MAX(m.documento_numero) AS factura,
-                   MAX(CASE WHEN m.tipo = 'SALIDA' THEN COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) END) AS vende,
-                   MAX(CASE WHEN m.tipo = 'ENTRADA' THEN COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) END) AS compra,
+                   MAX(CASE WHEN m.tipo = 'SALIDA' THEN e.codigo END) AS vende,
+                   MAX(CASE WHEN m.tipo = 'ENTRADA' THEN e.codigo END) AS compra,
                    MAX(a.nombre) AS sede, MAX(p.codigo) AS codigo, MAX(p.descripcion) AS descripcion,
                    MAX(m.cantidad) AS cantidad, MAX(CASE WHEN m.tipo = 'ENTRADA' THEN m.costo_unitario END) AS precio,
                    MAX(m.usuario_nombre) AS usuario
@@ -1384,7 +1384,7 @@ def api_separaciones():
         empresa_id = _empresa_vista()
         almacen_id = request.args.get('almacen_id', type=int)
         filas = db_query("""
-            SELECT s.*, p.codigo, p.descripcion, p.unidad, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+            SELECT s.*, p.codigo, p.descripcion, p.unidad, e.codigo AS empresa,
                    a.nombre AS sede, (s.vence_el < CURRENT_DATE) AS vencida
             FROM inv_separaciones s JOIN productos p ON p.id = s.producto_id
             LEFT JOIN erp_empresas e ON e.id = s.empresa_id LEFT JOIN almacenes a ON a.id = s.almacen_id
@@ -1459,7 +1459,7 @@ def api_separacion_liberar(sid):
 def api_conteos():
     try:
         filas = db_query("""
-            SELECT c.*, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede,
+            SELECT c.*, e.codigo AS empresa, a.nombre AS sede,
                    (SELECT COUNT(*) FROM inv_conteo_items i WHERE i.conteo_id = c.id) AS productos,
                    (SELECT COUNT(*) FROM inv_conteo_items i WHERE i.conteo_id = c.id
                        AND i.stock_sistema IS NOT NULL AND i.cantidad_contada <> i.stock_sistema) AS con_diferencia,
@@ -1526,7 +1526,7 @@ def api_conteo_nuevo():
 @inventario_bp.route('/api/conteos/<int:cid>')
 def api_conteo_detalle(cid):
     try:
-        c = db_query("""SELECT c.*, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede
+        c = db_query("""SELECT c.*, e.codigo AS empresa, a.nombre AS sede
                         FROM inv_conteos c LEFT JOIN erp_empresas e ON e.id = c.empresa_id
                         LEFT JOIN almacenes a ON a.id = c.almacen_id WHERE c.id = %s""", (cid,))
         if not c:
@@ -1766,7 +1766,7 @@ def api_resumen():
         inmovil = [p for p in consolidado if p['rotacion'] == 'Inmovilizado']
         perdidas = db_query("""
             SELECT m.id, m.numero, m.fecha, m.motivo, m.cantidad, m.costo_total, m.observaciones, m.usuario_nombre,
-                   m.tercero, p.descripcion, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa, a.nombre AS sede
+                   m.tercero, p.descripcion, e.codigo AS empresa, a.nombre AS sede
             FROM inv_movimientos m JOIN productos p ON p.id = m.producto_id
             LEFT JOIN erp_empresas e ON e.id = m.empresa_id LEFT JOIN almacenes a ON a.id = m.almacen_id
             WHERE m.estado = 'Registrado' AND m.motivo IN ('MERMA', 'VENCIMIENTO', 'PERDIDA_ROBO', 'FALTANTE_CONTEO', 'FALTANTE_TRASLADO')
@@ -1775,7 +1775,7 @@ def api_resumen():
         """, pe)
         pendientes = db_query("""
             SELECT m.id, m.numero, m.fecha, m.motivo, m.cantidad, m.costo_unitario, m.observaciones, m.usuario_nombre,
-                   m.usuario_id, p.codigo, p.descripcion, COALESCE(NULLIF(e.nombre_corto, ''), e.codigo) AS empresa,
+                   m.usuario_id, p.codigo, p.descripcion, e.codigo AS empresa,
                    a.nombre AS sede
             FROM inv_movimientos m JOIN productos p ON p.id = m.producto_id
             LEFT JOIN erp_empresas e ON e.id = m.empresa_id LEFT JOIN almacenes a ON a.id = m.almacen_id

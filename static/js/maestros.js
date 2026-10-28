@@ -2303,9 +2303,7 @@ function showConfirmModalMaestro(entidad, onConfirm) {
         <h2 style="font-size: 19px; font-weight: 900; color: #0F172A; margin-bottom: 6px;">
             ¿Estás seguro de guardar ${entidad}?
         </h2>
-        <p style="font-size: 13.5px; color: #64748B; line-height: 1.4; margin-bottom: 22px;">
-            Revisa que los datos ingresados sean correctos antes de continuar.
-        </p>
+        <div style="text-align:left;margin-bottom:22px;">${window.Aviso ? Aviso.lista(['Revisa que los <b>datos ingresados</b> sean correctos.', 'Se guardará con <b>fecha, hora y usuario</b>.'], '', true) : '<p>Revisa que los datos ingresados sean correctos antes de continuar.</p>'}</div>
         <div style="display: flex; gap: 10px; justify-content: center;">
             <button class="cmm-cancel-btn" style="
                 padding: 10px 26px;

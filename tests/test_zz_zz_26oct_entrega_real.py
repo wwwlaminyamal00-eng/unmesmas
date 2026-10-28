@@ -67,12 +67,14 @@ def test_rechazado_por_el_cliente(vendedor):
 
 def test_pantalla_de_entregas_26oct():
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
-    assert 'Fecha de cita y entrega real</th>' in html
+    assert 'Fecha programada (cita)</th>' in html and 'Fecha real de entrega</th>' in html
     assert '<option value="Entregado">Entregado</option>' in html
     assert '<option value="Rechazado por el cliente">Rechazado por el cliente</option>' in html
     assert '.desp-entregado{' in html and 'background:#1D4ED8' in html
     js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
     for t in ('function abrirEntregaDespacho', 'function fechasEntregaHTML', 'function entregaRealHTML',
-              'Confirmar entrega</button>', 'Rechazado por el cliente</button>', "'Volver a despachar'",
+              'Confirmar entrega</button>', "'Volver a despachar'",
               'Primero pon la fecha de cita con el cliente', "`/ventas/api/despachos/${id}/entrega`"):
         assert t in js, t
+    # 28/10/2026: el botón "Rechazado por el cliente" ya no sale en Acción (casos raros: se reprograma la cita)
+    assert 'Rechazado por el cliente</button>' not in js

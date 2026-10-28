@@ -132,6 +132,10 @@ def test_flujo_completo_bajo_pedido(cx, aprobador, app):
     assert r.status_code == 409 and r.get_json()['codigo'] == 'diferencias', r.get_json()
     assert any('faltan 1' in x['texto'] for x in r.get_json()['diferencias'])
     rec['confirmar_diferencias'] = True
+    # 28/10/2026: confirmar con diferencia exige explicar qué pasó
+    r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    assert r.status_code == 400 and 'jefe inmediato' in r.get_json()['error']
+    rec['motivo_diferencias'] = 'El proveedor mandó incompleto'
     r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
     assert r.status_code == 200, r.get_json()
     res = r.get_json()

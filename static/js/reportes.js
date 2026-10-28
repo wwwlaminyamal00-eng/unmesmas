@@ -152,6 +152,12 @@
                 return `<td class="num"><span class="rep-pill ${cls}">${pct(v)}</span></td>`;
             }
             case 'fecha': return `<td>${fecha(v)}</td>`;
+            // Cumplimiento de entregas (27/10/2026): verde a tiempo, rojo tarde o atrasado, ámbar pendiente
+            case 'puntual': {
+                const cls = { 'A tiempo': 'rep-bien sem-ok', 'Tarde': 'rep-mal sem-peligro', 'Atrasado': 'rep-mal sem-peligro', 'Pendiente': 'rep-medio sem-atencion' }[v] || '';
+                const ico = { 'A tiempo': '🟢', 'Tarde': '🔴', 'Atrasado': '🔴', 'Pendiente': '🟡' }[v] || '⚪';
+                return `<td><span class="rep-pill ${cls}">${ico} ${esc(v)}</span></td>`;
+            }
             case 'fechahora': return `<td>${fecha(v, true)}</td>`;
             case 'estado': {
                 const cls = { 'Vencido': 'rep-mal sem-peligro', 'Por vencer': 'rep-medio sem-atencion', 'Al día': 'rep-bien sem-ok' }[v] || '';

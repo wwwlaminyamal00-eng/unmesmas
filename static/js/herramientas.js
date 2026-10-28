@@ -16,7 +16,7 @@
     function confirmar(titulo, html, textoSi) {
         return new Promise((resolve) => {
             $('herrConfirmTitulo').textContent = titulo;
-            $('herrConfirmTexto').innerHTML = html;
+            $('herrConfirmTexto').innerHTML = (window.Aviso && !/<(ul|li|div|table)/i.test(html || '')) ? Aviso.cuerpoDesdeTexto(html) : html;
             $('herrConfirmSi').textContent = textoSi || 'Sí, continuar';
             const m = $('herrConfirm');
             m.classList.add('show');

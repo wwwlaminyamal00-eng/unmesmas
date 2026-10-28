@@ -964,6 +964,12 @@ def obtener_pc_db():
                 else:
                     row['req_compra'] = 'Sí'
         
+        # Lugar entrega: solo el distrito (Erika 27/10/2026)
+        try:
+            from routes import distrito_entrega
+            distrito_entrega.completar_lista(results)
+        except Exception as e:
+            print(f"⚠️ Distrito de entrega del PV: {e}")
         print(f"✅ {len(results)} PVs cargados correctamente")
         return results
         
@@ -1309,8 +1315,7 @@ def guardar_despacho_db(data):
         # ============================================================
         if not data.get('numero'):
             from datetime import datetime
-            now = datetime.now(zona_peru)
-            data['numero'] = f"DESP-{now.strftime('%Y%m%d')}-{str(now.timestamp()).split('.')[0][-4:]}"
+            data['numero'] = numero_despacho_nuevo(data.get('pc_numero'))
         
         # ============================================================
         # GUARDAR ITEMS COMO JSON
@@ -2642,7 +2647,7 @@ def _faltantes_stock_guia(data, empresa_id):
         filas = db_query("""SELECT producto_id, COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
                              WHERE producto_id = ANY(%s) AND empresa_id = %s GROUP BY producto_id""", (ids, empresa_id))
         emp = empresa_por_id(empresa_id) or {}
-        nombre_emp = emp.get('nombre_corto') or emp.get('codigo') or emp.get('razon_social') or 'la empresa'
+        nombre_emp = emp.get('codigo') or emp.get('nombre_corto') or emp.get('razon_social') or 'la empresa'
     else:
         filas = db_query("""SELECT producto_id, COALESCE(SUM(cantidad), 0) AS hay FROM inv_stock
                              WHERE producto_id = ANY(%s) GROUP BY producto_id""", (ids,))
@@ -4034,6 +4039,11 @@ def api_pedido_compra_guardar():
             except Exception as e:
                 print(f"⚠️ No se pudo guardar valida_productos: {e}")
 
+        if result and 'distrito_entrega' in data:
+            # Lugar entrega: solo el distrito, que se elige en el PV (Erika 27/10/2026)
+            from routes import distrito_entrega
+            distrito_entrega.guardar(result['id'], data.get('distrito_entrega'))
+
         if result and 'oc_cliente' in data:
             _asegurar_columna_oc_cliente()
             db_execute("UPDATE pedido_compra_pc SET oc_cliente = %s WHERE id = %s",
@@ -4088,6 +4098,23 @@ def api_pedido_compra_guardar():
 _cita_lista = False
 
 
+def numero_despacho_nuevo(pc_numero=None):
+    """N° corto por empresa DESP-KCF-000001 (Erika 27/10/2026 18:52), con el piso de Configuración ▸ Correlativos.
+    La empresa sale del PV (PV-KCF-… / PC-AGD-…) o, si no hay PV, de la empresa elegida arriba."""
+    from routes.numeracion import con_piso, clave_desp
+    from routes.multiempresa import empresa_actual
+    m_cod = re.match(r'^P[CV]-([A-Za-z]+)-', str(pc_numero or ''))
+    cod = ((m_cod.group(1) if m_cod else '') or ((empresa_actual() or {}).get('codigo') or 'KCF')).upper()
+    prefijo = f"DESP-{cod}-"
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        bloquear_numeracion(cur, 'despachos:' + prefijo)
+        cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::bigint), 0) + 1 AS sig
+                       FROM despachos WHERE numero ~ %s""", (len(prefijo) + 1, '^' + re.escape(prefijo) + '[0-9]+$'))
+        sig = con_piso(cur, 'DESP', clave_desp(cod), cur.fetchone()['sig'])
+    return prefijo + str(sig).zfill(6)
+
+
 def _asegurar_fecha_cita():
     """Columna "Fecha de cita del cliente" en despachos (migración 013; en la base de pruebas se crea aquí)."""
     global _cita_lista
@@ -4102,26 +4129,51 @@ def _asegurar_fecha_cita():
 @ventas_bp.route('/ventas/api/despachos/<int:did>/cita', methods=['POST'])
 @login_required
 def api_despacho_cita(did):
-    """Pone o cambia la fecha de la cita con el cliente para la entrega (solo fecha, sin hora). Vacío la quita."""
+    """Pone o cambia la fecha programada (cita) con el cliente para la entrega (solo fecha, sin hora). Vacío la quita.
+    Erika 27/10/2026: la primera cita queda guardada y cada cambio pide el motivo y queda en el historial."""
     try:
         _asegurar_fecha_cita()
-        texto = str((request.get_json(silent=True) or {}).get('fecha_cita') or '').strip()
+        from routes import reprogramacion as rep
+        rep.asegurar()
+        datos = request.get_json(silent=True) or {}
+        texto = str(datos.get('fecha_cita') or '').strip()
         nueva = None
         if texto:
             try:
                 nueva = datetime.fromisoformat(texto.replace('Z', '')[:10])
             except ValueError:
                 return jsonify({'success': False, 'error': 'Fecha de cita no válida'}), 400
-        antes = db_query("SELECT id, numero, fecha_cita FROM despachos WHERE id = %s", (did,))
+        antes = db_query("SELECT id, numero, estado, fecha_cita, fecha_cita_inicial FROM despachos WHERE id = %s", (did,))
         if not antes:
             return jsonify({'success': False, 'error': 'Despacho no encontrado'}), 404
-        db_execute("UPDATE despachos SET fecha_cita = %s, updated_at = NOW() WHERE id = %s", (nueva, did))
+        a = antes[0]
+        if (a.get('estado') or '') in ('Entregado', 'Anulado'):
+            return jsonify({'success': False, 'error': f"El despacho ya está {a.get('estado').lower()}: su cita no se cambia."}), 409
+        previa = a['fecha_cita'].date() if a.get('fecha_cita') else None
+        cambia = previa is not None and previa != (nueva.date() if nueva else None)
+        motivo = re.sub(r'\s+', ' ', str(datos.get('motivo') or '')).strip()
+        comentario = re.sub(r'\s+', ' ', str(datos.get('comentario') or '')).strip()
+        if cambia:
+            if motivo not in rep.MOTIVOS:
+                return jsonify({'success': False, 'error': 'Elige por qué se cambia la cita (no hubo transporte, no llegó el producto, etc.).'}), 400
+            if motivo == 'Otro' and not comentario:
+                return jsonify({'success': False, 'error': 'Escribe por qué se cambia la cita.'}), 400
+            if len(comentario) > rep.COMENTARIO_MAX:
+                return jsonify({'success': False, 'error': f'El comentario es corto: máximo {rep.COMENTARIO_MAX} letras.'}), 400
+        db_execute("UPDATE despachos SET fecha_cita = %s, fecha_cita_inicial = COALESCE(fecha_cita_inicial, fecha_cita::date, %s), "
+                   "updated_at = NOW() WHERE id = %s", (nueva, nueva.date() if nueva else None, did))
+        usuario = session.get('nombre_completo') or session.get('nombre') or session.get('usuario') or ''
+        if cambia:
+            rep.registrar(did, previa, nueva.date() if nueva else None, motivo, comentario, usuario)
         from routes.auditoria import registrar_auditoria
         registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
-                            antes={'fecha_cita': antes[0].get('fecha_cita')}, despues={'fecha_cita': nueva},
-                            detalle=f"Fecha de cita del despacho {antes[0].get('numero') or did}: "
-                                    f"{nueva.strftime('%d/%m/%Y') if nueva else 'sin cita'}")
-        return jsonify({'success': True, 'data': {'id': did, 'fecha_cita': nueva.strftime('%Y-%m-%d') if nueva else None}})
+                            antes={'fecha_cita': a.get('fecha_cita')}, despues={'fecha_cita': nueva},
+                            detalle=f"Fecha programada (cita) del despacho {a.get('numero') or did}: "
+                                    f"{nueva.strftime('%d/%m/%Y') if nueva else 'sin cita'}"
+                                    + (f" (reprogramada: {motivo}{' - ' + comentario if comentario else ''})" if cambia else ''))
+        veces = rep.conteos([did]).get(did, {}).get('veces', 0)
+        return jsonify({'success': True, 'data': {'id': did, 'fecha_cita': nueva.strftime('%Y-%m-%d') if nueva else None,
+                                                  'reprogramaciones': veces}})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -4163,6 +4215,17 @@ def adivinar_distrito(direccion):
     (en "AV. INDEPENDENCIA 123 - SAN ISIDRO" es San Isidro). Si no hay ninguno, devuelve ''."""
     halla = list(_RE_DISTRITO.finditer(_sin_tildes(direccion)))
     return _MAPA_DISTRITO[halla[-1].group(1)] if halla else ''
+
+
+def _distrito_pv_despacho(row):
+    """Distrito del despacho, siempre automático (Erika 27/10/2026 18:53: "nadie debería tocar"): recojo en el local,
+    el "Distrito de entrega" del PV, el que se lee en la dirección o el de la dirección del cliente."""
+    try:
+        from routes.distrito_entrega import resolver
+        return resolver({'numero': row.get('pc_numero'), 'lugar_entrega': row.get('destino'),
+                         'distrito_entrega': row.get('pv_distrito')}, row.get('direccion_cliente') or '')['distrito']
+    except Exception:
+        return adivinar_distrito(row.get('destino'))
 
 
 def _asegurar_columnas_entrega():
@@ -4235,19 +4298,16 @@ def api_despacho_entrega(did):
             if salida and fecha < salida.date():
                 return jsonify({'success': False, 'error': f"La entrega no puede ser antes de la salida del almacén "
                                                            f"({salida.strftime('%d/%m/%Y')})"}), 400
-            # N° de ingreso del cliente (su SAP le da un número al recibir), opcional — cuadre de 3, Erika 27/10/2026
-            from routes.facturacion_parcial import asegurar_columnas as asegurar_fact_parcial
-            asegurar_fact_parcial()
-            ingreso = re.sub(r'\s+', ' ', str(datos.get('ingreso_cliente') or '')).strip().upper()[:60] or None
-            db_execute("UPDATE despachos SET estado = 'Entregado', fecha_entrega_real = %s, ingreso_cliente = %s, "
-                       "updated_at = NOW() WHERE id = %s", (fecha, ingreso, did))
+            # Erika 27/10/2026 18:59: ya no se pide el N° de ingreso del cliente (lo controla aparte). La columna y lo ya
+            # guardado se quedan en la base, pero no se tocan ni se muestran.
+            db_execute("UPDATE despachos SET estado = 'Entregado', fecha_entrega_real = %s, "
+                       "updated_at = NOW() WHERE id = %s", (fecha, did))
             registrar_auditoria('ACTUALIZAR', 'Ventas', 'despachos', did,
                                 antes={'estado': estado, 'fecha_entrega_real': d.get('fecha_entrega_real')},
-                                despues={'estado': 'Entregado', 'fecha_entrega_real': fecha, 'ingreso_cliente': ingreso},
-                                detalle=f"Despacho {numero}: entregado al cliente el {fecha.strftime('%d/%m/%Y')}"
-                                        + (f" (N° de ingreso del cliente {ingreso})" if ingreso else ''))
+                                despues={'estado': 'Entregado', 'fecha_entrega_real': fecha},
+                                detalle=f"Despacho {numero}: entregado al cliente el {fecha.strftime('%d/%m/%Y')}")
             return jsonify({'success': True, 'data': {'id': did, 'estado': 'Entregado',
-                                                      'fecha_entrega_real': fecha.isoformat(), 'ingreso_cliente': ingreso}})
+                                                      'fecha_entrega_real': fecha.isoformat()}})
         if accion == 'rechazar':
             motivo = re.sub(r'\s+', ' ', str(datos.get('motivo') or '')).strip()
             if not motivo:
@@ -4282,8 +4342,11 @@ def api_despacho_dato(did):
         _asegurar_columnas_entrega()
         datos = request.get_json(silent=True) or {}
         campo = datos.get('campo')
-        if campo not in ('distrito', 'comentario'):
-            return jsonify({'success': False, 'error': 'Solo se puede cambiar el distrito o el comentario'}), 400
+        if campo == 'distrito':
+            # Erika 27/10/2026 18:53: el distrito no se escribe en Entregas, sale solo del PV / la cotización
+            return jsonify({'success': False, 'error': 'El distrito sale solo del PV. Si falta, corrígelo en el PV (Distrito de entrega).'}), 400
+        if campo != 'comentario':
+            return jsonify({'success': False, 'error': 'Solo se puede cambiar el comentario'}), 400
         valor = re.sub(r'\s+', ' ', str(datos.get('valor') or '')).strip()
         if campo == 'comentario' and len(valor) > COMENTARIO_ENTREGA_MAX:
             return jsonify({'success': False, 'error': f'El comentario es corto: máximo {COMENTARIO_ENTREGA_MAX} letras '
@@ -4320,10 +4383,14 @@ def api_despachos_listar():
                 d.pc_id, d.pc_numero, d.cotizacion_id, d.cotizacion_numero,
                 d.cliente, d.ruc, d.comprobante, d.guia, d.origen, d.destino,
                 d.transportista, d.observaciones, d.responsable,
-                d.items_json, d.created_at, d.updated_at, d.fecha_cita,
+                d.items_json, d.created_at, d.updated_at, d.fecha_cita, to_jsonb(d) ->> 'fecha_cita_inicial' AS fecha_cita_inicial,
                 d.distrito, d.comentario, d.fecha_salida, d.fecha_entrega_real, d.motivo_rechazo, d.fecha_rechazo,
                 (SELECT to_jsonb(p) ->> 'oc_cliente' FROM pedido_compra_pc p
-                  WHERE p.numero = d.pc_numero ORDER BY p.id DESC LIMIT 1) AS oc_cliente
+                  WHERE p.numero = d.pc_numero ORDER BY p.id DESC LIMIT 1) AS oc_cliente,
+                (SELECT to_jsonb(p) ->> 'distrito_entrega' FROM pedido_compra_pc p
+                  WHERE p.numero = d.pc_numero ORDER BY p.id DESC LIMIT 1) AS pv_distrito,
+                (SELECT c.direccion_fiscal FROM clientes c WHERE c.numero_documento = d.ruc
+                  ORDER BY c.id LIMIT 1) AS direccion_cliente
             FROM despachos d
             ORDER BY d.id DESC
         """
@@ -4379,6 +4446,12 @@ def api_despachos_listar():
         # 🔽 FORMATEAR FECHAS CON HORA
         # ============================================================
         formatted_data = []
+        try:
+            from routes.reprogramacion import conteos
+            _reprog = conteos([r['id'] for r in data])
+        except Exception as e:
+            print(f"⚠️ Reprogramaciones: {e}")
+            _reprog = {}
         for row in data:
             try:
                 # Formatear fecha_despacho
@@ -4470,9 +4543,13 @@ def api_despachos_listar():
                     'updated_at': row.get('updated_at'),
                     # Fecha de cita con el cliente (Entregas, 20/10/2026); texto ISO sin zona para la pantalla
                     'fecha_cita': row['fecha_cita'].strftime('%Y-%m-%d') if row.get('fecha_cita') else None,
+                    # Primera cita y reprogramaciones (Erika 27/10/2026 18:57)
+                    'fecha_cita_inicial': (row.get('fecha_cita_inicial') or '')[:10] or None,
+                    'reprogramaciones': _reprog.get(row['id'], {}).get('veces', 0),
+                    'ultimo_motivo': _reprog.get(row['id'], {}).get('ultimo_motivo', ''),
                     # Distrito: el que escribió el usuario o, si no, el que se lee en la dirección (23/10/2026)
-                    'distrito': row.get('distrito') or adivinar_distrito(row.get('destino')),
-                    'distrito_escrito': bool(row.get('distrito')),
+                    # Distrito: siempre automático desde el PV / la cotización (Erika 27/10/2026 18:53)
+                    'distrito': _distrito_pv_despacho(row),
                     'comentario': row.get('comentario') or '',
                     # Salida del almacén, entrega real y rechazo (Erika 26/10/2026)
                     'fecha_salida': row['fecha_salida'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_salida') else None,
@@ -4480,7 +4557,7 @@ def api_despachos_listar():
                     'motivo_rechazo': row.get('motivo_rechazo') or '',
                     'fecha_rechazo': row['fecha_rechazo'].strftime('%Y-%m-%dT%H:%M:%S') if row.get('fecha_rechazo') else None,
                     # N° de ingreso del cliente al recibir (cuadre de 3, 27/10/2026)
-                    'ingreso_cliente': row.get('ingreso_cliente') or ''
+                    'ingreso_cliente': ''  # ya no se muestra (Erika 27/10/2026 18:59)
                 })
             except Exception as e:
                 print(f"❌ Error procesando fila de despacho: {e}")
@@ -4588,17 +4665,12 @@ def api_despachos_guardar():
         ahora_peru = ahora_utc - timedelta(hours=5)
         fecha_actual = ahora_peru.strftime('%Y-%m-%d %H:%M:%S')
         
-        # Número: correlativo del día DESP-AAAAMMDD-NNNN (antes eran 4 cifras de la hora y podían repetirse)
-        if not data.get('id') and data.get('numero') and db_query("SELECT 1 FROM despachos WHERE numero = %s", (data['numero'],)):
+        # Número corto por empresa DESP-KCF-000001 (Erika 27/10/2026 18:52), con el piso de Configuración ▸ Correlativos.
+        # El que manda la pantalla (DESP-… de la hora) se ignora en los nuevos: lo pone siempre el servidor.
+        if not data.get('id'):
             data['numero'] = None
         if not data.get('id') and not data.get('numero'):
-            prefijo = f"DESP-{ahora_peru.strftime('%Y%m%d')}-"
-            with db_tx() as conn:
-                cur = conn.cursor(cursor_factory=RealDictCursor)
-                bloquear_numeracion(cur, 'despachos:' + prefijo)
-                cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(SUBSTRING(numero FROM %s), '\\D', '', 'g'), '')::int), 0) + 1 AS sig
-                               FROM despachos WHERE numero LIKE %s""", (len(prefijo) + 1, prefijo + '%'))
-                data['numero'] = prefijo + str(cur.fetchone()['sig']).zfill(4)
+            data['numero'] = numero_despacho_nuevo(data.get('pc_numero'))
         
         if not data.get('fecha'):
             data['fecha'] = fecha_actual

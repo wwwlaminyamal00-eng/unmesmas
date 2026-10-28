@@ -85,6 +85,7 @@ from routes.stock_automatico import stock_auto_bp
 from routes.facturacion_parcial import facturacion_parcial_bp
 from routes.descripcion_cliente import descripcion_cliente_bp
 from routes.agente_retencion import agente_retencion_bp
+from routes.reprogramacion import reprogramacion_bp
 from routes.sunat import sunat_bp
 from routes.bancos import bancos_bp
 from routes.intercompany import intercompany_bp
@@ -295,6 +296,7 @@ app.register_blueprint(stock_auto_bp)
 app.register_blueprint(facturacion_parcial_bp)  # Factura parcial por posiciones y cuadre (27/10/2026)
 app.register_blueprint(descripcion_cliente_bp)  # Descripción del cliente por línea (27/10/2026)
 app.register_blueprint(agente_retencion_bp)  # Agente de retención del cliente (27/10/2026)
+app.register_blueprint(reprogramacion_bp)  # Entregas: historial de reprogramaciones de la cita (27/10/2026)
 app.register_blueprint(sunat_bp)   # SUNAT e impuestos (21/10/2026): solo gerencia y permiso SUNAT
 app.register_blueprint(bancos_bp)  # Conciliación bancaria (21/10/2026): gerencia y permiso propio
 app.register_blueprint(intercompany_bp)  # Intercompany KCF ↔ AGD (21/10/2026): gerencia y permiso propio
