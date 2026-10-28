@@ -142,6 +142,15 @@ def control_de_acceso():
             return jsonify({'success': False, 'error': 'Sesión expirada o no autorizada. Inicia sesión.'}), 401
         flash('Por favor, inicia sesión para acceder.', 'warning')
         return redirect(url_for('login'))
+    # Sesión abierta antes de un cambio de contraseña: se cierra (27/10/2026). Ver routes/sesiones.py
+    from routes.sesiones import sesion_vigente
+    if not sesion_vigente():
+        session.clear()
+        mensaje = 'Tu sesión se cerró por seguridad. Vuelve a entrar con tu contraseña nueva.'
+        if es_api:
+            return jsonify({'success': False, 'error': mensaje, 'codigo': 'sesion_cerrada'}), 401
+        flash(mensaje, 'warning')
+        return redirect(url_for('login'))
 
     ruta = request.path
     # Permisos reales del ERP (pedido de Erika 21/10/2026): administrador = GERENCIA_TOTAL y cada
@@ -406,6 +415,8 @@ def login():
             session["empresa"] = empresa
             session["auth_user_id"] = user["auth_user_id"]
             session.permanent = True
+            from routes.sesiones import marcar_inicio
+            marcar_inicio()
             from routes.auditoria import registrar_auditoria
             registrar_auditoria('login', 'Sesión', tabla='usuarios', registro_id=user["id"],
                                 detalle=f'Inició sesión ({empresa})')

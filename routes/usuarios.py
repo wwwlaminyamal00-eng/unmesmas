@@ -239,6 +239,8 @@ def update_usuario(usuario_id):
                     raise ValueError('La contraseña debe tener al menos 8 caracteres')
                 cur.execute("UPDATE usuarios SET password = %s WHERE id = %s",
                             (generate_password_hash(data['password']), usuario_id))
+                from routes.sesiones import cerrar_sesiones
+                cerrar_sesiones(usuario_id, cur=cur)   # con la contraseña vieja ya nadie sigue dentro
             if data.get('rol'):
                 cur.execute("UPDATE usuarios SET rol = %s WHERE id = %s", (data['rol'], usuario_id))
             
