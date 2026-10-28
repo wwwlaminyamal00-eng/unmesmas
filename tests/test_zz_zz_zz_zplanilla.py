@@ -39,7 +39,7 @@ def _nueva(admin, kcf, **kw):
     return admin.post('/planilla/api/personal', json=d)
 
 
-def test_solo_gerencia_o_permiso(app, admin, vendedor, base):
+def test_solo_erika_aunque_tenga_permiso(app, admin, vendedor, base):
     assert admin.get('/planilla').status_code == 200
     assert 'data-modulo="planilla"' in admin.get('/planilla').get_data(as_text=True)
     r = vendedor.get('/planilla/api/pagos')
@@ -60,8 +60,8 @@ def test_solo_gerencia_o_permiso(app, admin, vendedor, base):
     assert h.get('/planilla/api/pagos').status_code == 403            # ver Finanzas no basta
     _guardar(admin, uid, base['emp']['KCF'], [{'submodulo_codigo': 'PLANILLA', 'puede_ver': True}])
     limpiar_cache()
-    assert h.get('/planilla').status_code == 200
-    assert h.post('/planilla/api/config', json={'regimen_laboral': 'MICRO'}).status_code == 403   # régimen: solo admin
+    # Erika 28/10/2026: "Hellen y nadie debe ver planilla": ni con el permiso Planilla de la matriz
+    assert h.get('/planilla/api/pagos').status_code == 403
 
 
 def test_calculos_del_sueldo():
