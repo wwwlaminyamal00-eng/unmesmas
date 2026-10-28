@@ -55,10 +55,15 @@ def test_maestros_guarda_y_devuelve_tres_cuentas(admin):
     assert admin.put(f'/maestros/api/proveedores/{pid}', json=datos).get_json()['success']
     d = admin.get(f'/maestros/api/proveedores/{pid}').get_json()['data']
     assert d['cuenta3'] == '' and d['cuenta2'] == '0011-22'
+    # El formulario de 2 cuentas no envía la 3: si la base la tuviera, no se pierde
+    _sql("UPDATE proveedores SET banco3 = 'BCP', numero_cuenta3 = '999' WHERE id = %s", (pid,), fetch=False)
+    sin3 = {k: v for k, v in datos.items() if not k.endswith('3')}
+    assert admin.put(f'/maestros/api/proveedores/{pid}', json=sin3).get_json()['success']
+    assert admin.get(f'/maestros/api/proveedores/{pid}').get_json()['data']['cuenta3'] == '999'
     # En Compras cada proveedor trae sus cuentas y el banco de cada empresa
     cat = admin.get('/compras/api/flujo/catalogos').get_json()
     prov = next(p for p in cat['proveedores'] if p['id'] == pid)
-    assert [c['banco'] for c in prov['cuentas']] == ['Interbank', 'BBVA']
+    assert [c['banco'] for c in prov['cuentas']] == ['Interbank', 'BBVA', 'BCP']  # la 3 guardada sigue contando
     assert 'bancos_empresa' in cat
     for e in cat['empresas']:
         esperado = {'KCF': 'BBVA', 'AGD': 'BCP'}.get((e.get('codigo') or '').upper())
@@ -72,8 +77,12 @@ def test_pantallas_muestran_cuenta_elegida_y_boton_crear_oc():
     assert 'function cuentaPreferida' in js and 'cuenta_aviso' in js
     assert 'cuenta_aviso' in (RAIZ / 'static/js/finanzas.js').read_text(encoding='utf-8')
     modal = (RAIZ / 'templates/modales/proveedor_modal.html').read_text(encoding='utf-8')
-    for campo in ('prov_banco2', 'prov_cuenta2', 'prov_cci2', 'prov_banco3', 'prov_cci3', 'prov_monedaCuenta'):
+    for campo in ('prov_banco2', 'prov_cuenta2', 'prov_cci2', 'prov_monedaCuenta'):
         assert f'id="{campo}"' in modal
+    # Erika 28/10/2026 19:47: solo 2 cuentas en pantalla
+    assert 'prov_banco3' not in modal and 'hasta 2 cuentas' in modal
+    import re
+    assert len(re.findall(r'<div\b', modal)) == modal.count('</div>')  # ventana bien cerrada
     flujo = (RAIZ / 'templates/compras/flujo.html').read_text(encoding='utf-8')
     assert 'Crear OC - Orden de compra (Proveedor)' in flujo and '>🛒 Crear orden de compra' not in flujo
 

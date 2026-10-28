@@ -2660,3 +2660,8 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - "Ítem" también en: líneas de la nueva OC, Productos y Diferencias del detalle de la OC, y el resultado de la recepción.
 - En el detalle de la OC, la línea para stock dice "Para stock - Sin PC (Pedido del cliente)" (antes "Stock").
 - Sin cambios en la base. Pruebas: 368 bien.
+
+### 24.63 Solo 2 cuentas por proveedor (Erika, 28/10/2026 19:47)
+- Maestros ▸ Proveedores muestra **Cuenta 1 y Cuenta 2** (se quitó la Cuenta 3). El texto dice "Registra hasta 2 cuentas".
+- En la base no se borró nada: las columnas de la cuenta 3 siguen. Hoy ningún proveedor tiene Cuenta 3 (ni Cuenta 2) guardada. Si alguna existiera, guardar el proveedor desde la pantalla no la borra y la regla de ahorro la sigue usando.
+- Pruebas: 368 bien.
