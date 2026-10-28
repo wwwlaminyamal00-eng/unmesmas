@@ -1600,7 +1600,7 @@ function provCuentasExtra(data) {
     const pon = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
     const monedaComercial = String(data.moneda || '').toLowerCase().startsWith('d') ? 'USD' : 'PEN';
     pon('prov_monedaCuenta', data.monedaCuenta || monedaComercial);
-    ['2', '3'].forEach(s => {
+    ['2'].forEach(s => {   // Erika 28/10/2026 19:47: solo 2 cuentas
         pon('prov_banco' + s, data['banco' + s] || '');
         pon('prov_tipoCuenta' + s, data['tipoCuenta' + s] || 'Cuenta corriente');
         pon('prov_monedaCuenta' + s, data['monedaCuenta' + s] || 'PEN');
@@ -1612,7 +1612,7 @@ function provCuentasExtra(data) {
 function provCuentasLeer() {
     const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
     const d = { monedaCuenta: v('prov_monedaCuenta') };
-    ['2', '3'].forEach(s => {
+    ['2'].forEach(s => {
         Object.assign(d, { ['banco' + s]: v('prov_banco' + s), ['tipoCuenta' + s]: v('prov_tipoCuenta' + s),
             ['monedaCuenta' + s]: v('prov_monedaCuenta' + s), ['cuenta' + s]: v('prov_cuenta' + s), ['cci' + s]: v('prov_cci' + s) });
     });
@@ -1654,7 +1654,7 @@ async function saveProveedor() {
     if (!data.ruc) { showToast('⚠️ El RUC es obligatorio', 'warning'); return; }
     if (data.condicion_pago === 'Crédito') { showToast('⚠️ Escribe el número de días de crédito', 'warning'); document.getElementById('prov_diasCredito').focus(); return; }
     // Cada cuenta con N° de cuenta o CCI necesita su banco (para la regla de ahorro KCF ➜ BBVA, AGD ➜ BCP)
-    for (const [n, s] of [[1, ''], [2, '2'], [3, '3']]) {
+    for (const [n, s] of [[1, ''], [2, '2']]) {
         if ((data['cuenta' + s] || data['cci' + s]) && !data['banco' + s]) {
             showToast(`⚠️ Cuenta ${n}: elige el banco`, 'warning'); document.getElementById('prov_banco' + s).focus(); return;
         }

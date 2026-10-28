@@ -161,7 +161,8 @@ def datos_formulario(data):
     """Columnas de las cuentas 2 y 3 (y la moneda de la cuenta 1) desde el formulario de Maestros."""
     data = data or {}
     vals = {'moneda_cuenta': (data.get('monedaCuenta') or '').strip() or None}
-    for n in (2, 3):
+    # Erika 28/10/2026 19:47: en pantalla solo hay 2 cuentas. La 3 queda en la base y solo se cambia si llega en el formulario
+    for n in (2, 3) if any(f'{k}3' in data for k in ('banco', 'cuenta', 'cci')) else (2,):
         vals[f'banco{n}'] = normalizar_banco(data.get(f'banco{n}'))
         vals[f'tipo_cuenta{n}'] = (data.get(f'tipoCuenta{n}') or '').strip() or None
         vals[f'moneda_cuenta{n}'] = (data.get(f'monedaCuenta{n}') or '').strip() or None
