@@ -212,20 +212,30 @@
         } catch (e) { $('pedLista').innerHTML = `<div class="inv-vacio">${esc(e.message)}</div>`; }
     }
 
+    // Erika 28/10/2026 12:10: en Compras los documentos van siempre en este orden: PV, PC, Cotización, N° despacho
+    function docsPedido(p, desp) {
+        const az = v => `<b class="aviso-azul">${esc(v)}</b>`;
+        const partes = [`PV (Pedido de venta) ${az(p.numero)}`, `PC (Pedido del cliente) ${p.pc_cliente ? az(p.pc_cliente) : '—'}`,
+                        `Cotización ${p.cotizacion ? az(p.cotizacion) : '—'}`];
+        if (desp !== undefined) partes.push(`N° despacho ${desp ? az(desp) : '—'}`);
+        return partes.join(' · ');
+    }
+
     function pintarPedidos() {
         const q = $('pedBuscar').value.trim().toLowerCase();
         const lista = pedidosCache.filter(p => !q || [p.numero, p.cliente, p.ruc, ...p.items.map(i => i.descripcion + ' ' + i.codigo)]
             .join(' ').toLowerCase().includes(q));
         $('pedLista').innerHTML = lista.length ? lista.map(p => `
             <div class="com-pedido${pedidoResaltado && pedidoResaltado.id === p.id ? ' com-pedido-resaltado' : ''}" data-pedido="${p.id}">
-                ${pedidoResaltado && pedidoResaltado.id === p.id ? `<div class="com-resaltado-nota">👉 Este es el pedido ${esc(p.numero)}${pedidoResaltado.desp ? ` del despacho ${esc(pedidoResaltado.desp)}` : ''}: sus líneas por comprar ya están marcadas. Revisa y pulsa <b>Crear orden de compra</b>.</div>` : ''}
+                ${pedidoResaltado && pedidoResaltado.id === p.id ? `<div class="com-resaltado-nota">👉 <b>Este es el pedido:</b> ${docsPedido(p, pedidoResaltado.desp)}<br>Sus líneas por comprar ya están marcadas. Revisa y pulsa <b>Crear orden de compra</b>.</div>` : ''}
                 <div class="com-pedido-head">
-                    <div><b>${esc(p.numero)}</b>${p.cotizacion ? ` · N° cotización <b>${esc(p.cotizacion)}</b>` : ''} · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
-                    <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(p.estado || 'Pendiente')}</span>
+                    <div>${docsPedido(p)} · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
+                    <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(String(p.estado || 'Pendiente').replace(/^PC\b/, 'PV'))}</span>
                         ${p.lugar_entrega ? ` · Entrega: ${esc(p.lugar_entrega)}` : ''}</div>
                 </div>
                 <div class="table-wrap"><table class="inv-table inv-mini com-resumen">
-                    <thead><tr><th></th><th class="left">Nombre producto</th><th>PV<small>Pedido de venta</small></th><th>Ya en órdenes</th><th>Stock asignado<small>a este PV</small></th>
+                    <colgroup><col class="c-chk"><col class="c-prod"><col class="c-pv"><col class="c-oc"><col class="c-stock"><col class="c-bajo"><col class="c-para"><col class="c-total"></colgroup>
+                    <thead><tr><th></th><th class="left">Nombre producto</th><th>PV<small>Pedido de venta</small></th><th title="Cantidad que ya está en órdenes de compra al proveedor (aprobadas o por aprobar). Las anuladas no cuentan.">Ya pedido al proveedor<small>en OC (Proveedor)</small></th><th>Stock asignado<small>a este PV</small></th>
                         <th>Compra bajo pedido</th><th>Comprar para stock</th><th>Total a comprar</th></tr></thead>
                     <tbody>${p.items.map((it, i) => {
                         const sinProducto = !it.producto_id;
@@ -243,7 +253,7 @@
                             <td class="left"><b>${esc(it.codigo)}</b> ${esc(it.descripcion)}${it.ocs ? `<small class="com-oc-generada">✅ OC ya generada: ${esc(it.ocs)}${cubierto ? '' : ` · falta comprar ${cant(it.comprar_pedido)}`}</small>` : ''}${sinProducto ? '<small class="neg">Este producto no está en el catálogo: créalo en Productos para poder comprarlo.</small>' : ''}
                                 ${it.stock_libre > r.stock && it.falta > 0 ? `<small class="com-stock-si" title="Stock sin separar en otras empresas/sedes del grupo">Hay ${cant(it.stock_libre)} libres en el grupo</small>` : ''}</td>
                             <td class="num">${cant(it.cantidad)} ${esc(it.unidad || '')}</td>
-                            <td class="num">${cant(it.comprado)}</td>
+                            <td class="num">${cant(it.comprado)}${Number(it.comprado_por_aprobar) > 0 ? `<small class="com-por-aprobar" title="Esa parte está en una OC que todavía no se aprueba">${cant(it.comprado_por_aprobar)} por aprobar</small>` : ''}</td>
                             <td class="num">${r.stock > 0 ? `<span class="com-stock-si">${cant(r.stock)}</span>` : '<span class="com-stock-no">0</span>'}${Number(it.stock_empresa) > r.stock ? `<small title="El stock se reparte entre los PV: el más antiguo primero">${cant(it.stock_empresa)} en la empresa · ${cant(Number(it.stock_empresa) - r.stock)} para PV más antiguos</small>` : ''}</td>
                             <td class="num"><b>${cant(r.pedido)}</b></td>
                             <td>${marcable ? `<input type="number" class="inp-num ped-extra" min="0" step="any" value="${r.extra}" data-ped="${p.id}" data-i="${i}" title="0 por defecto: comprar de más es una decisión y pide motivo">` : ''}</td>

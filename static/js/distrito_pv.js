@@ -56,7 +56,7 @@
             ent.dispatchEvent(new Event('change', { bubbles: true }));
             revisar(true);
         });
-        $('pcDistrito').addEventListener('input', () => { $('pcDistrito').dataset.auto = ''; pintarAviso(); });
+        $('pcDistrito').addEventListener('input', () => { $('pcDistrito').dataset.auto = ''; $('pcDistrito').dataset.origen = ''; pintarAviso(); });
     }
 
     function pintarAviso() {
@@ -68,8 +68,28 @@
             return;
         }
         dis.disabled = false; dis.placeholder = 'Se llena solo con la dirección';
-        if (dis.value.trim()) { av.className = 'pv-dist-ok'; av.textContent = dis.dataset.auto ? '✅ Leído de la dirección de entrega' : '✅ Elegido en el PV'; }
-        else { av.className = 'pv-dist-falta'; av.textContent = '⚠ No se lee el distrito en la dirección: elígelo aquí (si no, saldrá en rojo en PV y Entregas).'; }
+        if (dis.value.trim()) { av.className = 'pv-dist-ok'; av.textContent = dis.dataset.auto ? (dis.dataset.origen || '✅ Leído de la dirección de entrega') : '✅ Elegido en el PV'; }
+        else if (dis.dataset.buscando) { av.className = 'pv-dist-ok'; av.textContent = '🔎 Buscando el distrito del cliente…'; }
+        else { av.className = 'pv-dist-falta'; av.textContent = '⚠ No se encontró el distrito: elígelo aquí una sola vez (queda guardado para este cliente y esta dirección).'; }
+    }
+
+    let consulta = 0;
+    async function buscarEnServidor(lugar) {
+        const dis = $('pcDistrito');
+        const n = ++consulta;
+        dis.dataset.buscando = '1';
+        try {
+            const q = new URLSearchParams({ lugar: lugar || '', ruc: ($('pcRuc') || {}).value || '', numero: ($('pcNumero') || {}).value || '' });
+            const r = await fetch('/ventas/api/pv/distrito_sugerido?' + q.toString(), { credentials: 'same-origin' });
+            const j = await r.json();
+            const d = (j && j.data) || {};
+            // Solo si sigue siendo la misma dirección y nadie escribió el distrito mientras tanto
+            if (n === consulta && d.distrito && $('pcEntrega').value === lugar && (dis.dataset.auto || !dis.value.trim())) {
+                dis.value = d.distrito; dis.dataset.auto = '1'; dis.dataset.origen = d.texto || '';
+            }
+        } catch (e) { /* sin conexión: se elige a mano */ }
+        if (n === consulta) delete dis.dataset.buscando;
+        pintarAviso();
     }
 
     let firma = '', abierto = false;
@@ -91,11 +111,14 @@
             dis.dataset.auto = cargado ? '' : '1';
         }
         const f = ent.value;
-        if (f !== firma || forzar) {
-            firma = f;
+        const clave = f + '|' + (($('pcRuc') || {}).value || '');   // el RUC llega a veces después de la dirección
+        if (clave !== firma || forzar) {
+            firma = clave;
             if (dis.dataset.auto || !dis.value.trim()) {
                 const d = adivinar(f);
-                if (d || dis.dataset.auto) { dis.value = d; dis.dataset.auto = '1'; }
+                if (d || dis.dataset.auto) { dis.value = d; dis.dataset.auto = '1'; dis.dataset.origen = ''; }
+                // 28/10/2026: si la dirección no lo dice, el servidor lo busca (cliente, PV anteriores, SUNAT)
+                if (!d && !esRecojo(f)) buscarEnServidor(f);
             }
         }
         pintarAviso();

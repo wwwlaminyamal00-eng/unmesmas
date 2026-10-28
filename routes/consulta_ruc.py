@@ -63,6 +63,11 @@ def _normalizar(data):
         'direccion': data.get('direccion') or '',
         'estado': data.get('estado') or '',
         'condicion': data.get('condicion') or '',
+        # 28/10/2026: SUNAT también da el distrito del domicilio fiscal (para el "Distrito de entrega" del PV)
+        'distrito': data.get('distrito') or '',
+        'provincia': data.get('provincia') or '',
+        'departamento': data.get('departamento') or '',
+        'ubigeo': data.get('ubigeo') or '',
     }
 
 

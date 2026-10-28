@@ -196,9 +196,9 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 /* 22/10/2026: nota pequeña bajo la acción de Recibir mercadería */
 .com-pago-nota{display:block;margin-top:3px;font-size:11px;font-weight:700;color:#B45309}
 /* Pedido que llega desde Ventas ▸ Entregas ▸ Generar compra (22/10/2026): sombreado para no equivocarse de línea */
-.com-pedido.com-pedido-resaltado{outline:4px solid #FACC15;box-shadow:0 0 0 8px rgba(250,204,21,.25);background:#FFFBEB}
-.com-resaltado-nota{background:#FACC15;color:#422006;font-weight:900;font-size:13px;padding:8px 12px;border-radius:8px 8px 0 0}
-.com-fila-resaltada td{background:#FEF08A!important;font-weight:800}
+.com-pedido.com-pedido-resaltado{outline:2px solid #FDE68A;box-shadow:none;background:#FFFDF2}
+.com-resaltado-nota{background:#FEF9C3;color:#422006;font-weight:700;font-size:13px;padding:8px 12px;border-radius:8px 8px 0 0;border-bottom:1px solid #FDE68A}
+.com-fila-resaltada td{background:#FEF9C3!important;font-weight:800}
 /* Resumen de abastecimiento por pedido (22/10/2026): primero esta orden, luego los otros pedidos */
 .com-ab-prod{border-top:1px solid #C7D2FE;padding:8px 10px 10px}
 .com-ab-head{font-size:14px;font-weight:800;color:#0F172A;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
@@ -229,3 +229,9 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 #hoyAlertas .inv-alerta{padding:7px 12px;margin-bottom:6px;font-size:13px}
 /* "Ver" desde Hoy en Compras: aviso del filtro aplicado (Erika 26/10/2026) */
 .com-filtro-ver{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px;margin-bottom:8px;border-radius:10px;background:#FEF3C7;border:2px solid #F59E0B;font-size:12.5px;font-weight:700;color:#78350F}
+
+/* Erika 28/10/2026 12:15: todas las tablas de "Pedidos por comprar" con las mismas columnas y anchos fijos */
+.com-resumen{table-layout:fixed!important;width:100%!important}
+.com-resumen col.c-chk{width:4%}.com-resumen col.c-prod{width:30%}.com-resumen col.c-pv{width:9%}.com-resumen col.c-oc{width:11%}
+.com-resumen col.c-stock{width:10%}.com-resumen col.c-bajo{width:11%}.com-resumen col.c-para{width:13%}.com-resumen col.c-total{width:12%}
+.com-resumen td,.com-resumen th{overflow-wrap:break-word;white-space:normal!important}

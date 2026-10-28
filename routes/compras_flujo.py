@@ -530,7 +530,8 @@ def _comprado_por_pedido(cur=None, excluir_oc=None):
 def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtro=False, solo_por_comprar=False):
     col_emp = 'empresa_id' if _tiene_columna('pedido_compra_pc', 'empresa_id') else 'NULL AS empresa_id'
     filas = db_query("""
-        SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero, """ + col_emp + """
+        SELECT id, numero, fecha, cliente, ruc, estado, items_json, lugar_entrega, cotizacion_numero,
+               COALESCE(to_jsonb(pedido_compra_pc) ->> 'oc_cliente', '') AS oc_cliente, """ + col_emp + """
         FROM pedido_compra_pc
         WHERE COALESCE(UPPER(estado), '') <> ALL(%s) AND (%s::int IS NULL OR id = %s::int)
         ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 300
@@ -539,7 +540,14 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
         filas = filtrar_filas('pedido_compra_pc', filas)   # solo los pedidos de la empresa elegida arriba
     comprado = _comprado_por_pedido(excluir_oc=excluir_oc)
     # N° de las OC activas de cada línea, para mostrar "OC ya generada: OC-..." (pedido de Erika 21/10/2026)
-    ocs_linea = {}
+    ocs_linea, sin_aprobar = {}, {}
+    # Erika 28/10/2026 12:12: de lo "ya en OC", cuánto todavía no está aprobado (borrador o por aprobar)
+    for f in db_query("""SELECT oci.pedido_id, oci.producto_id, SUM(oci.cantidad) AS c
+                          FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
+                          WHERE oci.pedido_id IS NOT NULL AND COALESCE(oc.estado, 'Borrador') IN ('Borrador', 'Por aprobar')
+                            AND oc.id <> COALESCE(%s, -1)
+                          GROUP BY oci.pedido_id, oci.producto_id""", (excluir_oc,)):
+        sin_aprobar[(f['pedido_id'], f['producto_id'])] = a_decimal(f['c'])
     for f in db_query("""SELECT oci.pedido_id, oci.producto_id, string_agg(DISTINCT oc.numero_orden, ', ') AS ocs
                           FROM ordenes_compra_items oci JOIN ordenes_compra oc ON oc.id = oci.orden_compra_id
                           WHERE oci.pedido_id IS NOT NULL AND COALESCE(oc.estado, '') <> 'Anulada' AND oc.id <> COALESCE(%s, -1)
@@ -555,6 +563,7 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
             ya = comprado.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
             salio = salidas.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
             it['comprado'] = ya
+            it['comprado_por_aprobar'] = sin_aprobar.get((pc['id'], it['producto_id']), Decimal('0')) if it['producto_id'] else Decimal('0')
             it['despachado'] = salio
             it['ocs'] = ocs_linea.get((pc['id'], it['producto_id'])) if it['producto_id'] else None
             # Falta = PV − lo cubierto: lo comprado para el PV o lo ya despachado (lo que sea mayor)
@@ -566,7 +575,7 @@ def _pedidos_por_comprar(todos=False, pedido_id=None, excluir_oc=None, sin_filtr
             continue
         pedidos.append({'id': pc['id'], 'numero': pc['numero'], 'fecha': pc['fecha'], 'cliente': pc['cliente'],
                         'ruc': pc['ruc'], 'estado': pc['estado'], 'lugar_entrega': pc['lugar_entrega'],
-                        'cotizacion': pc['cotizacion_numero'], 'items': items,
+                        'cotizacion': pc['cotizacion_numero'], 'pc_cliente': pc.get('oc_cliente') or '', 'items': items,
                         'empresa_id': pc.get('empresa_id') or empresa_filtro()})
     libre = _stock_libre_grupo(ids)
     por_empresa = {}
