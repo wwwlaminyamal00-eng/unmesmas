@@ -4501,3 +4501,71 @@ td.col-item{font-size:12.5px}
 .cot-cli-wrap { margin-top:3px; }
 .cot-cli-sug { display:inline-block; margin-top:2px; font-size:10px; font-weight:800; color:#B45309; }
 .desc-cli-linea { display:block; font-size:10px; font-weight:700; font-style:italic; color:#92400E; line-height:1.25; margin-top:1px; }
+
+/* Avisos claros en todo el ERP (Erika 27/10/2026): viñetas, azul = datos del documento, rojo = lo importante */
+.aviso-cuerpo{text-align:left;margin:6px 0 10px}
+.aviso-lista{margin:6px 0;padding-left:20px;list-style:disc;text-align:left}
+.aviso-lista li{font-size:14px;line-height:1.45;color:#0F172A;margin:2px 0}
+.aviso-docs li{font-size:14px}
+.aviso-azul{color:#1D4ED8;font-weight:900}
+.aviso-sub{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;margin-top:8px}
+.aviso-prod li{font-size:13px}
+.aviso-rojo{background:#FEF2F2;border:2px solid #FCA5A5;border-left:6px solid #DC2626;border-radius:12px;padding:8px 12px;margin-top:10px;text-align:left}
+.aviso-rojo .aviso-lista{margin:2px 0}
+.aviso-rojo li{color:#B91C1C;font-weight:800;font-size:13.5px}
+
+/* ===== Ninguna tabla con barra horizontal (Erika 27/10/2026 23:52) =====
+   Las tablas ocupan el ancho disponible y los textos largos (N° de documento, nombres) bajan de línea
+   en vez de empujar la tabla hacia la derecha. Pensado también para pantallas de 1366 px. */
+.table-scroll > table, .table-wrap > table, table.master-table, table.fin-table, table.inv-table { width: 100%; max-width: 100%; }
+.table-scroll > table td, .table-scroll > table th,
+.table-wrap > table td, .table-wrap > table th,
+table.master-table td, table.master-table th,
+table.fin-table td, table.fin-table th,
+table.inv-table td, table.inv-table th { overflow-wrap: break-word; }
+.table-scroll > table td button, .table-wrap > table td button,
+table.master-table td button, table.fin-table td button, table.inv-table td button { white-space: normal; overflow-wrap: normal; }
+@media (max-width: 1440px) {
+    .table-scroll > table td, .table-scroll > table th,
+    .table-wrap > table td, .table-wrap > table th { padding-left: 3px; padding-right: 3px; }
+}
+/* Las pastillas de estado bajan de línea dentro de la celda (antes empujaban la tabla) */
+table td :is(.badge, .est, .seg-chip, .sun-estado, .fin-tipo, .av-pill) { white-space: normal !important; min-width: 0 !important; max-width: 100%; }
+table.fin-table td small, table.inv-table td small { white-space: normal !important; }
+:is(.table-scroll > table, .table-wrap > table, table.master-table, table.fin-table, table.inv-table) td { white-space: normal !important; }
+:is(.table-scroll > table, .table-wrap > table, table.master-table, table.fin-table, table.inv-table) td :is(b, strong, span:not(.num-doc), small) { white-space: normal !important; }
+table td .abast-badge { min-width: 0 !important; white-space: normal !important; }
+#pedidosTable td.pc-desc { min-width: 110px !important; }
+#pedidosTable td:nth-child(7) { min-width: 80px !important; }
+/* Entregas (17 columnas): los N° de guía y factura bajan de línea en el guion */
+#despachoRows td .num-doc { white-space: normal !important; }
+#despachoRows td .acc-col { min-width: 0 !important; max-width: 84px; }
+#despachoRows td .acc-col button { font-size: 9.5px !important; padding-left: 3px !important; padding-right: 3px !important; }
+#despachoRows .ent-prod { min-width: 0 !important; }
+#despachoRows .ent-prod, #despachoRows td .ent-prod { min-width: 0 !important; }
+.aviso-rojo-txt{color:#DC2626;font-weight:900}
+/* Entregas y Órdenes de compra: letra y márgenes un poco más compactos para que entren sin barra en 1366 px */
+@media (max-width: 1600px) {
+    table:has(#despachoRows) :is(th, td) { padding-left: 2px !important; padding-right: 2px !important; }
+    #despachoRows td { font-size: 10.5px !important; }
+    #despachoRows td :is(b, span, small, div, button) { font-size: inherit; }
+    table.inv-table.con-item :is(th, td) { padding-left: 3px !important; padding-right: 3px !important; }
+    table.inv-table.con-item td { font-size: 11.5px !important; }
+}
+@media (max-width: 1600px) {
+    table:has(#despachoRows) thead th { font-size: 9.5px !important; }
+    #despachoRows td .acc-col { max-width: 72px !important; }
+    #despachoRows td .acc-col button { max-width: 72px !important; }
+    #despachoRows .compra-est { max-width: 62px !important; font-size: 9.5px !important; }
+    #despachoRows .cita-btn { max-width: 60px !important; }
+    #despachoRows td:nth-child(3) :is(span, .desp-por, .desp-hecho) { font-size: 9.5px !important; max-width: 64px !important; }
+    table.inv-table.con-item thead th { font-size: 10px !important; }
+}
+/* Solo en las columnas de nombres largos (cliente, producto, proveedor) se permite cortar una palabra muy larga */
+#despachoRows td:nth-child(8), #despachoRows td:nth-child(9), #despachoRows td:nth-child(8) *, #despachoRows td:nth-child(9) *,
+table.inv-table.con-item td:nth-child(5), table.inv-table.con-item td:nth-child(6),
+table.inv-table.con-item td:nth-child(5) *, table.inv-table.con-item td:nth-child(6) * { overflow-wrap: anywhere !important; }
+#despachoRows td:nth-child(8) { min-width: 70px; }
+#despachoRows td:nth-child(9) { min-width: 56px; }
+table.inv-table.con-item td:nth-child(5), table.inv-table.con-item td:nth-child(6) { min-width: 84px; }
+@media (max-width: 1600px) { .table-scroll { padding-left: 2px !important; padding-right: 2px !important; } }

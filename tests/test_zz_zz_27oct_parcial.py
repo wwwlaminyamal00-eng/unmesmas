@@ -105,18 +105,19 @@ def test_cuadre_almacen_guia_cliente(admin):
         assert 'sin fecha real' in cuadre_despacho(dict(bien, estado='Entregado'), g)[0]
 
 
-def test_confirmar_entrega_guarda_ingreso_del_cliente(admin):
+def test_confirmar_entrega_ya_no_pide_ingreso_del_cliente(admin):
+    """Erika 27/10/2026 18:59: el N° de ingreso del cliente se quita (lo controla aparte). Lo ya guardado no se borra."""
     _sql("DELETE FROM despachos WHERE numero = 'DES-ZZPAR-1'", fetch=False)
-    did = _sql("""INSERT INTO despachos (numero, cliente, ruc, estado, pc_numero, guia, fecha_salida)
-                  VALUES ('DES-ZZPAR-1', 'KOMATSU ZZ', '20100070970', 'Despachado', %s, 'T001-00099501', NOW() - INTERVAL '1 day')
+    did = _sql("""INSERT INTO despachos (numero, cliente, ruc, estado, pc_numero, guia, fecha_salida, ingreso_cliente)
+                  VALUES ('DES-ZZPAR-1', 'KOMATSU ZZ', '20100070970', 'Despachado', %s, 'T001-00099501', NOW() - INTERVAL '1 day', 'ANTIGUO-1')
                   RETURNING id""", (PV,))[0][0]
     r = admin.post(f'/ventas/api/despachos/{did}/entrega', json={'accion': 'entregar',
                                                                'fecha_entrega': __import__('datetime').date.today().isoformat(),
                                                                'ingreso_cliente': ' 5000123456 '})
     assert r.status_code == 200, r.json
-    assert _sql("SELECT ingreso_cliente, estado FROM despachos WHERE id = %s", (did,))[0] == ('5000123456', 'Entregado')
+    assert _sql("SELECT ingreso_cliente, estado FROM despachos WHERE id = %s", (did,))[0] == ('ANTIGUO-1', 'Entregado')
     fila = next(d for d in admin.get('/ventas/api/despachos/listar').json['data'] if d['id'] == did)
-    assert fila['ingreso_cliente'] == '5000123456'
+    assert fila['ingreso_cliente'] == ''
 
 
 def test_guias_muestran_pc_del_cliente_desde_el_pv(admin):
@@ -138,5 +139,5 @@ def test_pantallas_factura_parcial():
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')
     assert 'js/factura_parcial.js' in html
     ventas = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
-    assert 'FacturaParcial.listaParaGuardar' in ventas and 'entregaIngreso' in ventas
+    assert 'FacturaParcial.listaParaGuardar' in ventas and 'entregaIngreso' not in ventas
     assert 'ctrlPanel' in (RAIZ / 'templates/index.html').read_text(encoding='utf-8')

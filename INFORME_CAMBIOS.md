@@ -2593,3 +2593,31 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Entregas ▸ Estado compra: si falta stock dice "🔴 Sin stock: proceder a comprar" (antes "Pendiente por compra"). Si el despacho es nuevo y aún no tenía dato, lo revisa solo en vez de mostrar "-".
 - Base: migración `039_agente_retencion.sql` aplicada en Supabase. Agrega 5 columnas vacías a `clientes`. Respaldo previo en `respaldo_20261015.clientes_20261027` (42 filas). No borra datos.
 - Pruebas: 348 correctas (base normal) y 346 + 2 omitidas (reconstruida). Prueba nueva: `test_zz_zz_27oct_retencion_guia.py`.
+
+### 24.59 Distrito automático, citas reprogramadas, KPI de cumplimiento, avisos en viñetas, sin barra horizontal (Erika, 27/10/2026 23:48 - 28/10/2026 00:31)
+- **PV ▸ Lugar entrega** y **Entregas ▸ Distrito**: salen solos, solo el distrito. Si el cliente recoge ("🏬 Recoge en nuestro local" en el formulario del PV): KCF = San Martín de Porres, AGD = Breña. Si no se lee el distrito, sale en rojo "⚠ Falta distrito: corrígelo en el PV". En Entregas ya nadie lo escribe a mano (el servidor lo rechaza). Nuevo campo "Distrito de entrega" en el formulario del PV, con lista. Lo escrito antes a mano en Entregas queda guardado en la base, pero ya no se muestra.
+- **PV-KCF-000029**: Entregas decía "Cubierto con stock" y el PV "Pendiente de compra". Ahora Entregas sigue el estado del PV. Lo correcto es "Pendiente de compra": hay 8 separados de 20, y PV más antiguos piden 58 más.
+- **N° de despacho corto**: DESP-KCF-000008 / DESP-AGD-000001, con el piso de Configuración ▸ Correlativos (nueva fila DESP por empresa). Los despachos antiguos NO se renombraron (falta el "sí" escrito de Erika).
+- **Entregas, dos columnas**: "Fecha programada (cita)" y "Fecha real de entrega".
+  - La cita se puede cambiar las veces que haga falta (2.ª, 3.ª, 4.ª…), pidiendo el motivo: No hubo transporte, No llegó el producto, El cliente pidió otro día, El cliente no recibió u Otro (con comentario).
+  - Queda el historial con fecha, hora de Lima y usuario. Botones "Próximo martes / jueves". La primera cita queda guardada.
+  - La fecha real de entrega es una sola.
+- **Quitado el botón "Rechazado por el cliente"** de Acción (Erika 28/10 00:13): si no se entrega, se reprograma la cita. Si la mercadería vuelve al almacén, "Anular" devuelve el stock. Los despachos antiguos con ese estado se siguen viendo.
+- **Reportes ▸ Colaboradores ▸ Cumplimiento de entregas** (solo Erika):
+  - días desde que llega el PV hasta la entrega real, a tiempo o tarde contra la primera cita, reprogramaciones y atrasados;
+  - por pedido, cliente, mes o responsable, con promedio mensual.
+- **Avisos de confirmación en viñetas** en todos los módulos (componente `static/js/avisos.js`):
+  - datos del documento en azul (Despacho, PV, PC del cliente, Cotización, Cliente) y productos;
+  - lo importante en rojo.
+  - Aplicado en Ventas (despachar, entregar, anular, eliminar, confirmaciones), Compras, Maestros y Herramientas.
+- **Recibir mercadería con diferencia** (Erika 28/10 00:31): aviso contundente. Dice "La OC fue emitida por 50 PAR. Estás registrando 1. Diferencia: 49 FALTAN", y pregunta "¿Estás seguro de que contaste bien?". Si llegó así: coordinar con el proveedor y avisar al jefe inmediato. La explicación es **obligatoria**. El conteo sigue siendo a ciegas. En "Hoy en Compras" sale en rojo "Órdenes recibidas con diferencia" durante 7 días.
+- **"N° de ingreso del cliente"** quitado de todas las pantallas. La columna y sus datos siguen en Supabase. "Control de hoy" no depende de ese dato.
+- **Sin abreviaturas de empresa**: "KC" pasa a "KCF" en todo el ERP (se usa el código de la empresa).
+- **Ninguna tabla con barra horizontal**: medido con navegador en 1366 px y 1920 px en todos los módulos y pestañas (Ventas, Compras, Finanzas, SUNAT, etc.). Los textos largos bajan de línea.
+- **Migración 041** aplicada en Supabase el 28/10/2026. Solo agrega:
+  - pedido_compra_pc.distrito_entrega;
+  - despachos.fecha_cita_inicial (copiada de la cita actual);
+  - tabla despacho_reprogramaciones (con RLS).
+  - Respaldo previo: respaldo_20261015.pedido_compra_pc_20261028 (53 filas) y respaldo_20261015.despachos_20261028 (50 filas). No se borró nada.
+- Se conservan los cambios del PR #15 (sesiones y contraseñas, migración 040).
+- Pruebas: 357 bien en la base de prueba y 355 bien + 2 omitidas en la copia con la estructura real.

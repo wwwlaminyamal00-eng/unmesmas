@@ -628,6 +628,144 @@ def rep_kpi(f):
 
 
 # ============================================================
+# CUMPLIMIENTO DE ENTREGAS (Erika, 27/10/2026 18:57)
+# ============================================================
+def _a_fecha(v):
+    if v is None or v == '':
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    try:
+        return datetime.strptime(str(v)[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def rep_cumplimiento(f):
+    """Cuánto se demora en atender cada pedido: desde que llega el PV (pedido del cliente) hasta la fecha real de
+    entrega. Además, fecha programada (primera cita) contra la real: a tiempo o tarde, y cuántas veces se reprogramó."""
+    from routes.reprogramacion import asegurar as asegurar_reprog
+    asegurar_reprog()
+    emp_sql, emp_par = _sql_empresa('p.empresa_id', f) if _tiene('pedido_compra_pc', 'empresa_id') else ('', ())
+    pvs = db_query(f"""
+        SELECT p.id, p.numero, p.cliente, p.ruc, p.items_json, p.estado,
+               COALESCE(p.fecha_recepcion, p.fecha, p.created_at) AS llego,
+               COALESCE(NULLIF(TRIM(p.vendedor), ''), NULLIF(TRIM(p.responsable), ''), '') AS responsable,
+               to_jsonb(p) ->> 'oc_cliente' AS oc_cliente
+        FROM pedido_compra_pc p
+        WHERE COALESCE(UPPER(p.estado), '') NOT IN ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA')
+          AND COALESCE(p.fecha_recepcion, p.fecha, p.created_at) >= %s
+          AND COALESCE(p.fecha_recepcion, p.fecha, p.created_at) < %s::date + 1 {emp_sql}
+        ORDER BY 7
+    """, (f['desde'], f['hasta']) + emp_par)
+    desp = defaultdict(list)
+    if pvs:
+        for d in db_query("""
+            SELECT d.id, d.pc_id, d.pc_numero, d.estado, d.fecha_cita, to_jsonb(d) ->> 'fecha_cita_inicial' AS fecha_cita_inicial,
+                   d.fecha_entrega_real,
+                   (SELECT COUNT(*) FROM despacho_reprogramaciones r WHERE r.despacho_id = d.id) AS reprog
+            FROM despachos d
+            WHERE (d.pc_id = ANY(%s) OR d.pc_numero = ANY(%s)) AND COALESCE(d.estado, '') NOT IN ('Anulado')
+        """, ([p['id'] for p in pvs], [p['numero'] for p in pvs])):
+            pv = next((p['id'] for p in pvs if p['id'] == d['pc_id'] or p['numero'] == d['pc_numero']), None)
+            if pv:
+                desp[pv].append(d)
+    hoy = date.today()
+    filas = []
+    for p in pvs:
+        lineas = _items(p['items_json'])
+        texto_prod = ', '.join(f"{('%.2f' % _n(l['cantidad'])).rstrip('0').rstrip('.')} {l['descripcion'] or l['codigo']}" for l in lineas)
+        if f['cliente'] and not _coincide(f['cliente'], p['cliente'], p['ruc']):
+            continue
+        if f['producto'] and not any(_coincide(f['producto'], l['descripcion'], l['codigo']) for l in lineas):
+            continue
+        ds = desp.get(p['id'], [])
+        llego = _a_fecha(p['llego'])
+        reales = [_a_fecha(d['fecha_entrega_real']) for d in ds if d['estado'] == 'Entregado' and d['fecha_entrega_real']]
+        pendientes = [d for d in ds if d['estado'] not in ('Entregado', 'Rechazado por el cliente')]
+        entregado = bool(reales) and not pendientes
+        real = max(reales) if reales else None
+        inicial = min((x for x in (_a_fecha(d['fecha_cita_inicial']) or _a_fecha(d['fecha_cita']) for d in ds) if x), default=None)
+        final = max((x for x in (_a_fecha(d['fecha_cita']) for d in ds) if x), default=None)
+        reprog = sum(int(d['reprog'] or 0) for d in ds)
+        if entregado:
+            dias = (real - llego).days if llego else None
+            cumple = 'Sin cita' if not inicial else ('A tiempo' if real <= inicial else 'Tarde')
+        else:
+            dias = (hoy - llego).days if llego else None
+            cumple = 'Atrasado' if (final and final < hoy) else 'Pendiente'
+        filas.append({'mes': f"{MESES[llego.month - 1]} {llego.year}" if llego else '', 'mes_k': (llego.year, llego.month) if llego else (0, 0),
+                      'pv': p['numero'], 'pc': p['oc_cliente'] or '', 'cliente': p['cliente'] or '', 'ruc': p['ruc'] or '',
+                      'productos': texto_prod, 'responsable': p['responsable'] or 'Sin responsable',
+                      'llego': llego, 'cita_inicial': inicial, 'cita_final': final, 'reprogramaciones': reprog,
+                      'real': real, 'dias': max(dias, 0) if dias is not None else None, 'cumplimiento': cumple,
+                      'entregado': entregado})
+    hechos = [r for r in filas if r['entregado']]
+    con_cita = [r for r in hechos if r['cumplimiento'] in ('A tiempo', 'Tarde')]
+    a_tiempo = sum(1 for r in con_cita if r['cumplimiento'] == 'A tiempo')
+    prom = _n(sum(r['dias'] for r in hechos if r['dias'] is not None) / len(hechos), 1) if hechos else 0
+    resumen = [{'t': 'Pedidos del periodo', 'v': len(filas), 'tipo': 'num'},
+               {'t': 'Entregados', 'v': len(hechos), 'tipo': 'num', 'color': 'ok'},
+               {'t': 'Días promedio de atención', 'v': prom, 'tipo': 'num'},
+               {'t': 'Entregados a tiempo', 'v': _n(a_tiempo * 100 / len(con_cita), 1) if con_cita else 0, 'tipo': 'pct',
+                'color': 'ok' if con_cita and a_tiempo == len(con_cita) else 'warn'},
+               {'t': 'Atrasados sin entregar', 'v': sum(1 for r in filas if r['cumplimiento'] == 'Atrasado'), 'tipo': 'num', 'color': 'danger'},
+               {'t': 'Reprogramaciones', 'v': sum(r['reprogramaciones'] for r in filas), 'tipo': 'num', 'color': 'warn'}]
+    nota = ('Días de atención: desde que llegó el pedido del cliente (fecha del PV) hasta la fecha real de entrega; si aún no se '
+            'entrega, los días que van hasta hoy. A tiempo: la fecha real es igual o antes de la primera fecha programada (cita). '
+            'Un PV con varias entregas cuenta cuando sale la última.')
+    ag = f['agrupar'] or 'detalle'
+    if ag == 'detalle':
+        cols = [_col('mes', 'Mes'), _col('pv', 'N° PV'), _col('pc', 'N° PC (Pedido del cliente)'), _col('cliente', 'Cliente'),
+                _col('productos', 'Productos'), _col('responsable', 'Responsable'), _col('llego', 'Llegó el pedido', 'fecha'),
+                _col('cita_inicial', 'Fecha programada (primera cita)', 'fecha'), _col('reprogramaciones', 'Reprogramaciones', 'num'),
+                _col('real', 'Fecha real de entrega', 'fecha'), _col('dias', 'Días de atención', 'num'),
+                _col('cumplimiento', 'Cumplimiento', 'puntual')]
+        t = _salida('Cumplimiento de entregas por pedido', cols,
+                    [{k: v for k, v in r.items() if k not in ('mes_k', 'entregado', 'ruc', 'cita_final')} for r in filas],
+                    ['reprogramaciones'], resumen)
+        t['nota'] = nota
+        return t
+    claves = {'cliente': (lambda r: (r['ruc'] or r['cliente']).upper(), lambda r: r['cliente'], 'Cliente'),
+              'mes': (lambda r: r['mes_k'], lambda r: r['mes'], 'Mes'),
+              'responsable': (lambda r: r['responsable'].upper(), lambda r: r['responsable'], 'Responsable')}
+    if ag not in claves:
+        raise ErrorReporte('Agrupación no válida.')
+    clave, nombre, titulo = claves[ag]
+    g = {}
+    for r in filas:
+        x = g.setdefault(clave(r), {'grupo': nombre(r), 'pedidos': 0, 'entregados': 0, 'dias': [], 'con_cita': 0,
+                                    'a_tiempo': 0, 'atrasados': 0, 'reprog': 0})
+        x['pedidos'] += 1
+        x['reprog'] += r['reprogramaciones']
+        if r['entregado']:
+            x['entregados'] += 1
+            if r['dias'] is not None:
+                x['dias'].append(r['dias'])
+        if r['cumplimiento'] in ('A tiempo', 'Tarde'):
+            x['con_cita'] += 1
+            x['a_tiempo'] += r['cumplimiento'] == 'A tiempo'
+        if r['cumplimiento'] == 'Atrasado':
+            x['atrasados'] += 1
+    orden = sorted(g.items(), key=(lambda kv: kv[0]) if ag == 'mes' else (lambda kv: -kv[1]['pedidos']))
+    filas_g = [{'grupo': x['grupo'], 'pedidos': x['pedidos'], 'entregados': x['entregados'],
+                'dias': _n(sum(x['dias']) / len(x['dias']), 1) if x['dias'] else None,
+                'maximo': max(x['dias']) if x['dias'] else None,
+                'a_tiempo': _n(x['a_tiempo'] * 100 / x['con_cita'], 1) if x['con_cita'] else None,
+                'atrasados': x['atrasados'], 'reprog': x['reprog']} for _, x in orden]
+    cols = [_col('grupo', titulo), _col('pedidos', 'Pedidos', 'num'), _col('entregados', 'Entregados', 'num'),
+            _col('dias', 'Días promedio de atención', 'dias1'), _col('maximo', 'Más días', 'num'),
+            _col('a_tiempo', '% a tiempo', 'semaforo'), _col('atrasados', 'Atrasados sin entregar', 'num'),
+            _col('reprog', 'Reprogramaciones', 'num')]
+    t = _salida(f'Cumplimiento de entregas por {titulo.lower()}', cols, filas_g, ['pedidos', 'entregados', 'atrasados', 'reprog'],
+                resumen, grafico=('grupo', 'dias'))
+    t['nota'] = nota
+    return t
+
+
+# ============================================================
 # COMPRAS
 # ============================================================
 def _compras(f):
@@ -1139,6 +1277,11 @@ REPORTES = {
             'ayuda': 'Lo que debemos.'},
     'kpi': {'titulo': 'KPI por colaborador', 'tab': 'kpi', 'fn': rep_kpi, 'filtros': ['fechas', 'empresa', 'usuario'],
             'solo_admin': True, 'ayuda': '¿Quién vende más, cuánto y en cuánto tiempo?'},
+    'cumplimiento': {'titulo': 'Cumplimiento de entregas', 'tab': 'kpi', 'fn': rep_cumplimiento,
+                     'agrupar': [('detalle', 'Por pedido'), ('cliente', 'Por cliente'), ('mes', 'Por mes'),
+                                 ('responsable', 'Por responsable')],
+                     'filtros': ['fechas', 'empresa', 'cliente', 'producto'], 'solo_admin': True,
+                     'ayuda': '¿Cuántos días demoramos en entregar cada pedido? ¿Cumplimos la fecha programada?'},
 }
 
 

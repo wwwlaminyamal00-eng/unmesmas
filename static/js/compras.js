@@ -42,8 +42,16 @@ function showConfirmModal(options) {
     }
     
     document.getElementById('confirmModalTitle').textContent = options.title || '⚠️ Confirmación';
-    document.getElementById('confirmMessage').textContent = options.message || '¿Estás seguro de realizar esta acción?';
-    document.getElementById('confirmDetails').textContent = options.details || '';
+    // Avisos claros (Erika 27/10/2026): viñetas, documentos en azul y en rojo lo importante
+    const msg = options.message || '¿Estás seguro de realizar esta acción?';
+    const det = options.details || '';
+    if (window.Aviso) {
+        document.getElementById('confirmMessage').innerHTML = options.html || Aviso.cuerpoDesdeTexto(msg);
+        document.getElementById('confirmDetails').innerHTML = det ? Aviso.rojo(det) : '';
+    } else {
+        document.getElementById('confirmMessage').textContent = msg;
+        document.getElementById('confirmDetails').textContent = Array.isArray(det) ? det.join('. ') : det;
+    }
     document.getElementById('confirmIcon').textContent = options.icon || '⚠️';
     
     const btn = document.getElementById('confirmModalBtn');

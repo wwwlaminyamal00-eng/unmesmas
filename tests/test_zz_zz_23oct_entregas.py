@@ -34,23 +34,19 @@ def test_distrito_y_comentario_en_la_fila(vendedor):
         return next(d for d in vendedor.get('/ventas/api/despachos/listar').json['data'] if d['id'] == did)
 
     f = fila()
-    assert f['distrito'] == 'Callao' and f['distrito_escrito'] is False and f['comentario'] == ''
+    assert f['distrito'] == 'Callao' and f['comentario'] == ''
     assert [i['producto'] for i in f['items']] == ['CASCO ZZ', 'GUANTE ZZ']
-    # El usuario corrige el distrito (se escribe igual que en la lista aunque lo pongan sin tildes)
+    # Erika 27/10/2026 18:53: el distrito ya no se escribe en Entregas (sale solo del PV / la dirección)
     r = vendedor.post(f'/ventas/api/despachos/{did}/dato', json={'campo': 'distrito', 'valor': 'breña'})
-    assert r.status_code == 200 and r.json['data']['distrito'] == 'Breña'
+    assert r.status_code == 400 and 'PV' in r.json['error']
     r = vendedor.post(f'/ventas/api/despachos/{did}/dato', json={'campo': 'comentario', 'valor': '  Llamar  antes a Juan '})
     assert r.json['data']['comentario'] == 'Llamar antes a Juan'
     f = fila()
-    assert f['distrito'] == 'Breña' and f['distrito_escrito'] is True and f['comentario'] == 'Llamar antes a Juan'
+    assert f['distrito'] == 'Callao' and f['comentario'] == 'Llamar antes a Juan'
     # Corto: más de 120 letras no se guarda; otros campos no se pueden cambiar por aquí
     assert vendedor.post(f'/ventas/api/despachos/{did}/dato', json={'campo': 'comentario', 'valor': 'x' * 121}).status_code == 400
     assert vendedor.post(f'/ventas/api/despachos/{did}/dato', json={'campo': 'estado', 'valor': 'Despachado'}).status_code == 400
     assert vendedor.post('/ventas/api/despachos/999999/dato', json={'campo': 'comentario', 'valor': 'a'}).status_code == 404
-    # Vacío lo borra y el distrito vuelve a leerse de la dirección
-    vendedor.post(f'/ventas/api/despachos/{did}/dato', json={'campo': 'distrito', 'valor': ''})
-    assert fila()['distrito'] == 'Callao'
-
 
 def test_pantalla_de_entregas_23oct():
     html = (RAIZ / 'templates/ventas/index.html').read_text(encoding='utf-8')

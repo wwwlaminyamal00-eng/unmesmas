@@ -1138,6 +1138,7 @@
         try {
             const r = await api(`/compras/api/flujo/ordenes/${id}/para_recibir`);
             const o = r.orden;
+            window._recOrden = o;
             $('recOc').value = o.id;
             $('recTitulo').textContent = `Recibir mercadería · ${o.numero}`;
             $('recInfo').innerHTML = `<b>${esc(o.proveedor || '')}</b> → <b>${esc(o.empresa || '')}</b>. Debe quedar en <b>${esc(o.sede || '')}</b>.<br>
@@ -1175,20 +1176,42 @@
             const f = document.createElement('div');
             f.id = 'ventanaDifRec';
             f.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
-            const color = { Sobra: '#B45309', Falta: '#B91C1C', 'Dañado': '#B91C1C' };
-            f.innerHTML = `<div role="alertdialog" style="background:#FFFBEB;border:4px solid #F59E0B;border-radius:14px;max-width:620px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#422006">
-                <div style="font-size:20px;font-weight:900;margin-bottom:6px">⚠️ Lo que contaste no coincide con la orden de compra</div>
-                <div style="font-size:14px;font-weight:700;margin-bottom:10px">Todavía NO se grabó nada. Revisa: puede ser un error al escribir.</div>
-                <ul style="margin:0 0 12px 18px;padding:0;font-size:15px;font-weight:700;line-height:1.5">
-                    ${difs.map(x => `<li style="color:${color[x.tipo] || '#422006'}">${esc(x.texto)}</li>`).join('')}</ul>
-                <label style="display:block;font-size:13px;font-weight:700;margin-bottom:12px">Si de verdad llegó así, explica por qué (opcional)
-                    <input type="text" data-motivo maxlength="300" placeholder="Ej. el proveedor mandó de más; devolvemos 45" style="width:100%;margin-top:4px;padding:8px;border:1px solid #D97706;border-radius:8px"></label>
+            // Erika 28/10/2026 00:31: aviso contundente, en viñetas, azul = datos de la OC, rojo = la diferencia
+            const o = window._recOrden || {};
+            const uni = (u) => (!u || /^(ZZ|NIU|UND|UNIDAD|UNIDADES)$/i.test(u)) ? 'unidades' : u;
+            const n = (x) => Number(x || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+            const filas = difs.map(x => {
+                const u = uni(x.unidad);
+                if (x.tipo === 'Dañado') return `<li><b>${esc(x.producto)}</b>: <b class="aviso-rojo-txt">${n(x.danada)} ${esc(u)} dañados</b></li>`;
+                const reg = Number(x.registras || 0) + Number(x.danada || 0);
+                const dif = Math.abs(Number(x.pide || 0) - reg);
+                return `<li><b>${esc(x.producto)}</b><ul class="aviso-lista">
+                    <li>La OC fue emitida por <b class="aviso-azul">${n(x.pide)} ${esc(u)}</b>.</li>
+                    <li>Estás registrando <b class="aviso-azul">${n(reg)} ${esc(u)}</b>.</li>
+                    <li><b class="aviso-rojo-txt">Diferencia: ${n(dif)} ${esc(u)} ${x.tipo === 'Sobra' ? 'de MÁS' : 'FALTAN'}</b></li></ul></li>`;
+            }).join('');
+            f.innerHTML = `<div role="alertdialog" style="background:#fff;border:4px solid #DC2626;border-radius:14px;max-width:620px;width:100%;max-height:92vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#0F172A">
+                <div style="font-size:20px;font-weight:900;margin-bottom:8px;color:#B91C1C">⛔ Lo que contaste NO coincide con la orden de compra</div>
+                <ul class="aviso-lista aviso-docs">
+                    ${o.numero ? `<li>Orden de compra (Proveedor): <b class="aviso-azul">${esc(o.numero)}</b></li>` : ''}
+                    ${o.proveedor ? `<li>Proveedor: <b class="aviso-azul">${esc(o.proveedor)}</b></li>` : ''}
+                    ${o.empresa ? `<li>Empresa: <b class="aviso-azul">${esc(o.empresa)}</b></li>` : ''}</ul>
+                <ul class="aviso-lista" style="font-size:14.5px;line-height:1.5">${filas}</ul>
+                <div style="font-size:16px;font-weight:900;margin:10px 0 6px">¿Estás seguro de que contaste bien?</div>
+                ${Aviso.rojo(['Todavía <b>NO se grabó nada</b>. Si fue un error al escribir, pulsa <b>Volver a contar</b>.',
+                              'Si de verdad llegó así: <b>coordina con el proveedor</b> y <b>avisa a tu jefe inmediato</b>.',
+                              'Al confirmar, queda en el historial con tu nombre, fecha y hora, y le <b>sale el aviso a la jefa</b> en Hoy en Compras.'])}
+                <label style="display:block;font-size:13px;font-weight:800;margin:12px 0">Explica qué pasó <span style="color:#DC2626">(obligatorio)</span>
+                    <input type="text" data-motivo maxlength="300" placeholder="Ej. el proveedor mandó 8; dice que manda 12 el viernes" style="width:100%;margin-top:4px;padding:8px;border:2px solid #DC2626;border-radius:8px"></label>
                 <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
                     <button type="button" data-r="0" style="padding:10px 18px;border-radius:10px;border:0;background:#16A34A;color:#fff;font-weight:900;cursor:pointer">🔁 Volver a contar</button>
-                    <button type="button" data-r="1" style="padding:10px 18px;border-radius:10px;border:2px solid #B45309;background:#fff;color:#92400E;font-weight:800;cursor:pointer">Confirmar con diferencia</button></div></div>`;
+                    <button type="button" data-r="1" disabled style="padding:10px 18px;border-radius:10px;border:2px solid #B91C1C;background:#fff;color:#B91C1C;font-weight:800;cursor:pointer;opacity:.45">Confirmar con diferencia</button></div></div>`;
             document.body.appendChild(f);
+            const inp = f.querySelector('[data-motivo]'), si = f.querySelector('button[data-r="1"]');
+            inp.oninput = () => { const ok = inp.value.trim().length >= 5; si.disabled = !ok; si.style.opacity = ok ? '1' : '.45'; };
             f.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => {
-                const motivo = f.querySelector('[data-motivo]').value.trim();
+                const motivo = inp.value.trim();
+                if (b.dataset.r === '1' && motivo.length < 5) { inp.focus(); return; }
                 f.remove();
                 resolve(b.dataset.r === '1' ? { motivo } : null);
             });

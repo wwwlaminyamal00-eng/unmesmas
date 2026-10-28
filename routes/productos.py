@@ -186,7 +186,7 @@ def stock_por_sede(producto_id):
         asegurar_tablas_inventario()
         filas = db_query("""
             SELECT s.empresa_id, s.almacen_id, s.cantidad,
-                   COALESCE(NULLIF(e.nombre_corto, ''), e.codigo, '') AS empresa, COALESCE(a.nombre, '') AS sede
+                   COALESCE(e.codigo, '') AS empresa, COALESCE(a.nombre, '') AS sede
             FROM inv_stock s
             LEFT JOIN erp_empresas e ON e.id = s.empresa_id
             LEFT JOIN almacenes a ON a.id = s.almacen_id

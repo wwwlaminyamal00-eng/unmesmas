@@ -29,7 +29,7 @@ SQL_TABLA = """
     )
 """
 
-NOMBRES = {'COT': 'Cotización', 'PC': 'Pedido de venta (PV)', 'GUIA': 'Guía de remisión',
+NOMBRES = {'COT': 'Cotización', 'PC': 'Pedido de venta (PV)', 'DESP': 'Despacho (Entregas)', 'GUIA': 'Guía de remisión',
            'COMPROBANTE': 'Factura / Boleta', 'OC': 'Orden de compra (Proveedor)'}
 
 _NUM = "NULLIF(regexp_replace({c}::text, '\\D', '', 'g'), '')::bigint"
@@ -40,6 +40,10 @@ def _empresa_txt(eid):
 
 
 def clave_pc(codigo_empresa):
+    return (codigo_empresa or '').upper()
+
+
+def clave_desp(codigo_empresa):
     return (codigo_empresa or '').upper()
 
 
@@ -93,7 +97,7 @@ def listar(cur):
             'documento': documento, 'nombre': NOMBRES[documento], 'clave': clave, 'empresa': empresa,
             'serie': serie, 'formato': formato, 'ultimo': ultimo, 'ultimo_txt': ultimo_txt or '—',
             'siguiente': siguiente, 'siguiente_txt': formato.replace('{n}', str(siguiente).zfill(
-                6 if documento in ('COT', 'PC') else 8)),
+                6 if documento in ('COT', 'PC', 'DESP') else 8)),
             'fijado': bool(p and int(p['siguiente']) > ultimo + 1),
             'actualizado_por': p['actualizado_por'] if p else None,
             'actualizado': p['updated_at'].strftime('%d/%m/%Y %H:%M') if p and p.get('updated_at') else None,
@@ -116,6 +120,16 @@ def listar(cur):
         u = ult_pc.get(cod) or 0
         agregar('PC', clave_pc(cod), cod, f'PV-{cod}', f'PV-{cod}-{{n}}', u,
                 f"PV-{cod}-{str(u).zfill(6)}" if u else None, nota='Número interno por empresa (PV = Pedido de venta).')
+
+    # Despachos (Erika 27/10/2026 18:52): número corto por empresa DESP-KCF-000001 (antes DESP-AAAAMMDD-NNNN)
+    cur.execute(f"""SELECT substring(numero FROM '^DESP-([A-Za-z]+)-[0-9]+$') AS cod,
+                           MAX({_NUM.format(c="substring(numero FROM '-([0-9]+)$')")}) AS ultimo
+                    FROM despachos WHERE numero ~ '^DESP-[A-Za-z]+-[0-9]+$' GROUP BY 1""")
+    ult_desp = {(r['cod'] or '').upper(): r['ultimo'] for r in cur.fetchall()}
+    for cod in sorted(set(codigos) | set(ult_desp)):
+        u = ult_desp.get(cod) or 0
+        agregar('DESP', clave_desp(cod), cod, f'DESP-{cod}', f'DESP-{cod}-{{n}}', u,
+                f"DESP-{cod}-{str(u).zfill(6)}" if u else None, nota='Número corto por empresa. Los antiguos DESP-AAAAMMDD-NNNN se quedan igual.')
 
     cur.execute(f"""SELECT DISTINCT ON (empresa_id, serie) empresa_id, serie, {_NUM.format(c='numero')} AS ultimo,
                            numero::text AS txt
@@ -178,7 +192,7 @@ def api_fijar():
     data = request.get_json(silent=True) or {}
     documento = str(data.get('documento') or '').upper()
     clave = str(data.get('clave') or '')
-    if documento not in ('COT', 'PC', 'GUIA', 'COMPROBANTE'):
+    if documento not in ('COT', 'PC', 'DESP', 'GUIA', 'COMPROBANTE'):
         return jsonify({'success': False, 'error': 'Ese documento no se puede editar aquí.'}), 400
     try:
         siguiente = int(str(data.get('siguiente') if data.get('siguiente') is not None else '').strip())

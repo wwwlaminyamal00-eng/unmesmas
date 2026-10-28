@@ -363,14 +363,22 @@ def api_despachos():
     """)
     # 27/10/2026: lo que el PV ya despachó en otros despachos no se vuelve a pedir
     salidas, _ = _salidas_por_pedido([f['pc_id'] for f in filas if f['pc_id']] or [0])
-    docs = {}
+    # 27/10/2026 (Erika, PV-KCF-000029): el despacho de un PV abierto dice lo mismo que su PV. Antes se repartía el
+    # stock solo entre los despachos pendientes, sin los PV más antiguos que aún no tienen despacho, y salía
+    # "Cubierto con stock" en Entregas mientras el PV decía "Pendiente de compra".
+    pvs = estados_pv()
+    data, docs = {}, {}
     for f in filas:
+        if f['pc_id'] and f['pc_id'] in pvs:
+            data[f['id']] = pvs[f['pc_id']]
+            continue
         items = _items_pedido(f)
         if f['pc_id'] and f['usa_items_pv']:
             items = _restar_salidas(items, f['pc_id'], salidas)
         docs[f['id']] = {'pedido_id': f['pc_id'], 'items': items,
                          'salido': {pid: c for (pv, pid), c in salidas.items() if pv == f['pc_id']}}
-    return jsonify({'success': True, 'data': evaluar_documentos(docs, por_pedido=True)})
+    data.update(evaluar_documentos(docs, por_pedido=True))
+    return jsonify({'success': True, 'data': data})
 
 
 @abastecimiento_bp.route('/productos')
