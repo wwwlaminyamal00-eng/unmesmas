@@ -1507,6 +1507,7 @@ function clearProveedorForm() {
     document.getElementById('prov_tipoCuenta').value = 'Cuenta corriente';
     document.getElementById('prov_cuenta').value = '';
     document.getElementById('prov_cci').value = '';
+    provCuentasExtra({});
     document.getElementById('prov_condicion').value = 'Contado';
     document.getElementById('prov_diasCredito').value = '';
     provCondicionCambio();
@@ -1550,6 +1551,7 @@ function fillProveedorForm(data) {
     document.getElementById('prov_tipoCuenta').value = data.tipoCuenta || 'Cuenta corriente';
     document.getElementById('prov_cuenta').value = data.cuenta || '';
     document.getElementById('prov_cci').value = data.cci || '';
+    provCuentasExtra(data);
     // Antes se guardaba "Crédito 30 días", "Credito", "46"... se separa en tipo + número de días
     const cp = condPagoPartes(data.condicion_pago || 'Contado');
     document.getElementById('prov_condicion').value = cp.tipo === 'Crédito' ? 'Crédito' : 'Contado';
@@ -1593,6 +1595,30 @@ function closeProveedorModal() {
     document.getElementById('proveedorModal').classList.remove('show');
 }
 
+// Cuentas 2 y 3 del proveedor y moneda de cada cuenta (Erika 28/10/2026: "por lo menos tres")
+function provCuentasExtra(data) {
+    const pon = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    const monedaComercial = String(data.moneda || '').toLowerCase().startsWith('d') ? 'USD' : 'PEN';
+    pon('prov_monedaCuenta', data.monedaCuenta || monedaComercial);
+    ['2', '3'].forEach(s => {
+        pon('prov_banco' + s, data['banco' + s] || '');
+        pon('prov_tipoCuenta' + s, data['tipoCuenta' + s] || 'Cuenta corriente');
+        pon('prov_monedaCuenta' + s, data['monedaCuenta' + s] || 'PEN');
+        pon('prov_cuenta' + s, data['cuenta' + s] || '');
+        pon('prov_cci' + s, data['cci' + s] || '');
+    });
+}
+
+function provCuentasLeer() {
+    const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    const d = { monedaCuenta: v('prov_monedaCuenta') };
+    ['2', '3'].forEach(s => {
+        Object.assign(d, { ['banco' + s]: v('prov_banco' + s), ['tipoCuenta' + s]: v('prov_tipoCuenta' + s),
+            ['monedaCuenta' + s]: v('prov_monedaCuenta' + s), ['cuenta' + s]: v('prov_cuenta' + s), ['cci' + s]: v('prov_cci' + s) });
+    });
+    return d;
+}
+
 async function saveProveedor() {
     const data = {
         ambito: document.getElementById('prov_ambito').value,
@@ -1609,6 +1635,7 @@ async function saveProveedor() {
         tipoCuenta: document.getElementById('prov_tipoCuenta').value,
         cuenta: document.getElementById('prov_cuenta').value.trim(),
         cci: document.getElementById('prov_cci').value.trim(),
+        ...provCuentasLeer(),
         condicion_pago: condPagoTexto(document.getElementById('prov_condicion').value, document.getElementById('prov_diasCredito').value),
         lineaCredito: document.getElementById('prov_lineaCredito').value.trim(),
         moneda: document.getElementById('prov_moneda').value,
@@ -1626,6 +1653,12 @@ async function saveProveedor() {
     if (!data.razon_social) { showToast('⚠️ La razón social es obligatoria', 'warning'); return; }
     if (!data.ruc) { showToast('⚠️ El RUC es obligatorio', 'warning'); return; }
     if (data.condicion_pago === 'Crédito') { showToast('⚠️ Escribe el número de días de crédito', 'warning'); document.getElementById('prov_diasCredito').focus(); return; }
+    // Cada cuenta con N° de cuenta o CCI necesita su banco (para la regla de ahorro KCF ➜ BBVA, AGD ➜ BCP)
+    for (const [n, s] of [[1, ''], [2, '2'], [3, '3']]) {
+        if ((data['cuenta' + s] || data['cci' + s]) && !data['banco' + s]) {
+            showToast(`⚠️ Cuenta ${n}: elige el banco`, 'warning'); document.getElementById('prov_banco' + s).focus(); return;
+        }
+    }
 
     try {
         const url = provEditId ? `/maestros/api/proveedores/${provEditId}` : '/maestros/api/proveedores/guardar';

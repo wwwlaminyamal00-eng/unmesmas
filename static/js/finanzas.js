@@ -371,6 +371,8 @@
             ficha += fila('Banco', esc(doc.banco || '—')) +
                 fila('N° de cuenta', esc(doc.numero_cuenta || '—'), 'fd-num') +
                 fila('CCI', esc(doc.cci || '—'), 'fd-num');
+            // 28/10/2026 (Erika): regla de ahorro. KCF paga a BBVA y AGD a BCP; otro banco = aviso en rojo (comisión)
+            if (doc.cuenta_aviso) ficha += `<div class="fd-nota ${doc.cuenta_mismo_banco ? 'fd-ok-nota' : 'fd-alerta fd-comision'}">${esc(doc.cuenta_aviso)}</div>`;
         }
         ficha += fila(`N° ${esc((doc.tipo_comprobante || 'documento').toLowerCase())}`, esc(doc.documento || '—'), 'fd-num');
         if (esCxc) {

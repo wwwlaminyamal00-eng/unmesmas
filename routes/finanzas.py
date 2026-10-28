@@ -17,6 +17,7 @@ from psycopg2.extras import RealDictCursor
 from database import db_query, db_execute, db_tx
 from utils import a_decimal, redondear, es_admin, es_aprobador, normalizar_banco
 from routes.multiempresa import filtro_sql
+from routes import cuentas_proveedor
 from routes.moneda import (ErrorMoneda, codigo_moneda, simbolo, pago_en_moneda, tc_referencia,
                            sql_monto_soles)
 
@@ -104,6 +105,8 @@ def asegurar_tablas_finanzas():
         # N° MIGO del cliente y de la factura (25/10/2026, migración 031)
         from routes.migo import asegurar_migo
         asegurar_migo()
+        # Cuentas 2 y 3 del proveedor (28/10/2026, migración 043): las usa SQL_CXP
+        cuentas_proveedor.asegurar()
         _tablas_listas = True
 
 
@@ -203,7 +206,9 @@ SQL_CXP = """
            0 AS notas_credito,
            COALESCE(cp.estado, 'Pendiente') AS estado_documento,
            COALESCE(cp.orden_compra_numero, oc.numero_orden) AS orden_compra,
-           pr.banco, pr.numero_cuenta, pr.cci,
+           pr.banco, pr.numero_cuenta, pr.cci, pr.tipo_cuenta, pr.moneda_cuenta, pr.prov_moneda,
+           pr.banco2, pr.tipo_cuenta2, pr.moneda_cuenta2, pr.numero_cuenta2, pr.cci2,
+           pr.banco3, pr.tipo_cuenta3, pr.moneda_cuenta3, pr.numero_cuenta3, pr.cci3,
            pg.ultimo_abono, COALESCE(NULLIF(cp.moneda, ''), oc.moneda, 'PEN') AS moneda,
            COALESCE(cp.tipo_cambio, oc.tipo_cambio) AS tipo_cambio, cp.empresa_id AS empresa_doc,
            COALESCE(NULLIF(oc.pc_numeros, ''),
@@ -227,7 +232,10 @@ SQL_CXP = """
     LEFT JOIN finanzas_comentarios fc ON fc.documento_tabla = 'comprobantes_proveedor' AND fc.documento_id = cp.id
     -- Cuenta del proveedor para el recuadro "Pagar a" (por la OC; si no hay OC, por el RUC)
     LEFT JOIN LATERAL (
-        SELECT p.banco, p.numero_cuenta, p.cci FROM proveedores p
+        SELECT p.banco, p.numero_cuenta, p.cci, p.tipo_cuenta, p.moneda_cuenta, p.moneda AS prov_moneda,
+               p.banco2, p.tipo_cuenta2, p.moneda_cuenta2, p.numero_cuenta2, p.cci2,
+               p.banco3, p.tipo_cuenta3, p.moneda_cuenta3, p.numero_cuenta3, p.cci3
+        FROM proveedores p
         WHERE p.id = oc.proveedor_id OR (oc.proveedor_id IS NULL AND p.ruc = cp.ruc_proveedor)
         ORDER BY (p.id = oc.proveedor_id) DESC NULLS LAST, p.activo DESC NULLS LAST, p.id
         LIMIT 1
@@ -299,6 +307,10 @@ def _cuentas(tipo, incluir_borradores=False):
         venc = f.get('fecha_vencimiento')
         semaforo = _semaforo(saldo, venc, hoy)
         dias_vencido = (hoy - (venc.date() if isinstance(venc, datetime) else venc)).days if venc and semaforo == 'Vencido' else 0
+        if tipo != 'cxc':
+            # 28/10/2026 (Erika): "Pagar a" usa la cuenta del mismo banco que la empresa (KCF BBVA, AGD BCP)
+            f = cuentas_proveedor.aplicar(dict(f), f.get('empresa_doc'), f.get('moneda'))
+            f.pop('prov_moneda', None)
         item = {k: _fmt(v) for k, v in f.items()}
         item.update(_detalle(tipo, f, saldo, abonado))
         # 24/10/2026 (Erika): documentos en dólares. Los totales y el flujo suman en soles con el TC del documento

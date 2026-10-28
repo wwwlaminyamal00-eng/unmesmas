@@ -1283,7 +1283,7 @@ function createOrdenFromSolicitud(id) {
     }
     
     showConfirmModal({
-        title: '📄 Crear orden de compra',
+        title: '📄 Crear OC - Orden de compra (Proveedor)',
         message: '¿Estás seguro de crear una orden de compra desde esta solicitud?',
         details: `📋 Solicitud: ${solicitud.numero}\n📦 Producto: ${solicitud.producto}\n💰 Cantidad: ${solicitud.cantidad} ${solicitud.unidad}`,
         icon: '📄',

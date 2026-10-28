@@ -2642,3 +2642,15 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - **Migración 042** (aplicada el 28/10/2026): clientes.distrito_fiscal, distrito_fiscal_fuente y distrito_fiscal_revisado_en. Solo agrega. Respaldo: respaldo_20261015.clientes_20261028 (43 filas).
 - Se incluye el PR #17 de main (solo Erika crea o elimina usuarios y ve Planilla).
 - Pruebas: 364 bien.
+
+### 24.61 Hasta 3 cuentas por proveedor con regla de ahorro, y arreglos de la OC (Erika, 28/10/2026 17:23-17:34)
+- **Maestros ▸ Proveedores ▸ Datos bancarios**: Cuenta 1, 2 y 3, cada una con banco, tipo, moneda, N° de cuenta y CCI. Cada cuenta con número necesita su banco.
+- **Regla de ahorro** (routes/cuentas_proveedor.py): al pagar, **KCF usa la cuenta BBVA** del proveedor y **AGD su cuenta BCP** (el banco sale de Configuración ▸ Empresas). Si hay dos del mismo banco, gana la de la moneda del documento. Si no tiene, se usa la siguiente cuenta registrada con **aviso en rojo** ("el banco puede cobrar comisión").
+  - Se aplica en: ficha de la OC al crearla, detalle de la OC, "Pagar a" de Compras, "Pagar a" de Finanzas (CxP) y la OC impresa para el proveedor.
+- **Migración 043** (aplicada): proveedores.moneda_cuenta y banco/tipo_cuenta/moneda_cuenta/numero_cuenta/cci 2 y 3. La cuenta que ya existía queda como Cuenta 1 sin mover nada. Respaldo: respaldo_20261015.proveedores_20261028 (59 filas).
+- Botón rojo: **"Crear OC - Orden de compra (Proveedor)"** (también en la ayuda y los avisos).
+- Pastilla de la línea para stock: **"Para stock - Sin PC (Pedido del cliente)"**. El Total de cada línea queda en una sola línea ("S/ 70.00").
+- Aviso "Compra para stock": amarillo claro estándar con borde rojo a la izquierda, título rojo y viñetas cortas.
+- **Nota interna (No la ve el proveedor)** en la OC, debajo de "Notas para el proveedor". Se ve en el detalle con 🔒 y nunca sale en la OC impresa ni en el PDF. **Migración 044** (aplicada): ordenes_compra.nota_interna. Solo agrega.
+- Alta de proveedor: el código PROV-0000 ya no falla si existe un código escrito distinto.
+- Pruebas: 368 bien (y 366 + 2 omitidas en el esquema reconstruido).
