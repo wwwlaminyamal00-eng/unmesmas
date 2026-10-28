@@ -1666,7 +1666,9 @@ def api_para_recibir(oc_id):
     try:
         o = _obtener_oc(oc_id)
         items = db_query("""
-            SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, pr.codigo, pr.marca, pr.modelo
+            SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, pr.codigo, pr.marca, pr.modelo,
+                   oci.pedido_id, oci.pedido_numero, oci.cliente,
+                   oci.cantidad - COALESCE(oci.cantidad_recibida, 0) AS falta
             FROM ordenes_compra_items oci LEFT JOIN productos pr ON pr.id = oci.producto_id
             WHERE oci.orden_compra_id = %s AND COALESCE(oci.cantidad_recibida, 0) < oci.cantidad ORDER BY oci.id
         """, (oc_id,))

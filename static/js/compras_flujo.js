@@ -750,6 +750,7 @@
 
     function pintarLineas() {
         $('ocLineas').innerHTML = lineas.map((l, i) => `<tr data-linea="${i}">
+            <td class="com-item">${i + 1}</td>
             <td class="left">${l.pedido_id
                 ? `<b>${esc(l.texto)}</b>`
                 : `<div class="prod-picker com-pp" data-linea-pp="${i}"><input type="search" class="pp-input" value="${esc(l.texto)}" placeholder="Buscar producto..." autocomplete="off"><div class="pp-lista"></div></div>`}
@@ -955,17 +956,17 @@
                 ${o.nota_interna ? `<div class="inv-tip com-nota-interna">🔒 <b>Nota interna (no la ve el proveedor):</b> ${esc(o.nota_interna)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
                 <div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
-                    <tbody>${o.items.map(i => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
-                        <td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
-                        <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Stock</span>'}</td>
+                    <thead><tr><th class="com-item">Ítem</th><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
+                    <tbody>${o.items.map((i, n) => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
+                        <td class="com-item">${n + 1}</td><td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
+                        <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Para stock - Sin PC (Pedido del cliente)</span>'}</td>
                         <td class="num">${cant(i.cantidad)} ${esc(i.unidad || '')}</td><td class="num">${cant(i.cantidad_recibida)}</td>
                         <td class="num">${dinero(o.moneda, i.precio_unitario)}</td><td class="num">${dinero(o.moneda, i.total)}</td></tr>`).join('')}</tbody>
-                    <tfoot><tr><td colspan="6" class="num">Subtotal ${dinero(o.moneda, o.subtotal)} · IGV ${dinero(o.moneda, o.igv)} · <b>Total</b></td><td class="num"><b>${dinero(o.moneda, o.total)}</b></td></tr></tfoot>
+                    <tfoot><tr><td colspan="7" class="num">Subtotal ${dinero(o.moneda, o.subtotal)} · IGV ${dinero(o.moneda, o.igv)} · <b>Total</b></td><td class="num"><b>${dinero(o.moneda, o.total)}</b></td></tr></tfoot>
                 </table></div>
                 ${o.incidencias.length ? `<div class="inv-subtitulo">Diferencias</div><div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th>N° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
-                    <tbody>${o.incidencias.map(i => `<tr><td>${esc(i.numero)}</td><td><b>${esc(i.tipo)}</b></td><td class="left">${esc(i.detalle)}<small>Reportó ${esc(i.reportado_por || '')} · ${fecha(i.fecha)}</small></td>
+                    <thead><tr><th class="com-item">Ítem</th><th>N° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
+                    <tbody>${o.incidencias.map((i, n) => `<tr><td class="com-item">${n + 1}</td><td>${esc(i.numero)}</td><td><b>${esc(i.tipo)}</b></td><td class="left">${esc(i.detalle)}<small>Reportó ${esc(i.reportado_por || '')} · ${fecha(i.fecha)}</small></td>
                         <td class="num">${i.monto ? soles(i.monto) : ''}</td><td><span class="${claseEstado(i.estado === 'Abierta' ? 'pendiente' : 'registrado')}">${esc(i.estado)}</span></td>
                         <td class="left">${esc(i.resolucion || '')}${i.resuelto_por ? `<small>${esc(i.resuelto_por)}</small>` : ''}</td>
                         <td>${i.estado === 'Abierta' && PUEDE.aprobar ? `<button class="btn-mini" data-resolver="${i.id}">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
@@ -1167,6 +1168,13 @@
         } catch (e) { $('recBodyCom').innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`; }
     }
 
+    // A qué va cada línea: PV y cliente, o para stock (sin PC del cliente)
+    function paraLinea(i) {
+        return i.pedido_id || i.pedido_numero
+            ? `<span class="com-para">${esc(i.pedido_numero || '')}${i.cliente ? ' · ' + esc(i.cliente) : ''}</span>`
+            : '<span class="badge-sin-pedido">Para stock - Sin PC (Pedido del cliente)</span>';
+    }
+
     async function abrirRecepcion(id) {
         try {
             const r = await api(`/compras/api/flujo/ordenes/${id}/para_recibir`);
@@ -1182,8 +1190,11 @@
             $('recUsuario').value = '';
             $('recCourier').value = '';
             $('recObs').value = '';
-            $('recItems').innerHTML = r.items.map(i => `<tr data-item="${i.id}">
+            // Erika 28/10/2026: "Ítem" primero y "Para" (a qué PV va o si es para stock), para no confundir líneas del mismo producto
+            $('recItems').innerHTML = r.items.map((i, n) => `<tr data-item="${i.id}">
+                <td class="com-item">${n + 1}</td>
                 <td>${esc(i.codigo || '')}</td><td class="left"><b>${esc(i.producto)}</b><small>${esc([i.marca, i.modelo, i.unidad].filter(Boolean).join(' · '))}</small></td>
+                <td class="left">${paraLinea(i)}<small>Faltan llegar: <b>${cant(i.falta)}</b> ${esc(i.unidad || '')}</small></td>
                 <td><input type="number" class="inp-num com-inp-grande" data-c="buena" min="0" step="any" placeholder="?"></td>
                 <td><input type="number" class="inp-num" data-c="danada" min="0" step="any" value="0"></td>
                 <td><input type="text" class="inp-txt" data-c="lote" maxlength="120"></td>
@@ -1282,8 +1293,8 @@
             const color = { Completo: 'ok', Faltante: 'danger', Sobrante: 'warn', 'Con dañados': 'warn' };
             res.innerHTML = `<div class="inv-alerta ${r.resultado.some(x => x.estado !== 'Completo') ? 'warn' : 'ok'}"><div>${esc(r.message)}</div></div>
                 <div class="inv-subtitulo">Ahora sí: lo que se esperaba y lo que contaste</div>
-                <table class="inv-table"><thead><tr><th class="left">Nombre producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
-                <tbody>${r.resultado.map(x => `<tr><td class="left">${esc(x.producto)}</td><td class="num">${cant(x.esperado)}</td><td class="num">${cant(x.buena)}</td>
+                <table class="inv-table"><thead><tr><th class="com-item">Ítem</th><th class="left">Nombre producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
+                <tbody>${r.resultado.map((x, n) => `<tr><td class="com-item">${n + 1}</td><td class="left">${esc(x.producto)}</td><td class="num">${cant(x.esperado)}</td><td class="num">${cant(x.buena)}</td>
                     <td class="num">${cant(x.danada)}</td><td><span class="com-paso com-paso-${color[x.estado] || 'info'}">${esc(x.estado)}</span></td></tr>`).join('')}</tbody></table>
                 ${(r.pendientes_inventario || []).length ? '<div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>' : ''}`;
             $('recPie').innerHTML = `<a class="btn btn-secondary" href="/inventario?tab=entradas_salidas">Ir a Inventario ➜</a><button class="btn btn-primary" data-close="recModal">Listo</button>`;

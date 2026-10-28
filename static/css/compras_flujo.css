@@ -250,3 +250,5 @@ td.com-tot-linea { white-space: nowrap !important; min-width: 84px; }
 .com-nota-interna-campo small { color: #DC2626; }
 .com-nota-interna-campo textarea { background: #F8FAFC; border-style: dashed; }
 .com-nota-interna { background: #F1F5F9; border-left: 3px solid #64748B; }
+/* Columna "Ítem" (1, 2, 3...) en las tablas de las ventanas de Compras (Erika 28/10/2026) */
+.com-item { width: 44px; text-align: center !important; font-weight: 700; color: #475569; }
