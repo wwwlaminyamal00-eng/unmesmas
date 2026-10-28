@@ -169,7 +169,7 @@
         const r = await api('/compras/api/flujo/catalogos');
         Object.assign(cat, { empresas: r.empresas, sedes: r.sedes, proveedores: r.proveedores, usuarios: r.usuarios,
             registro: r.registro_sunat, empresaDefecto: r.empresa_defecto, usuarioId: r.usuario_id, metodos: r.metodos,
-            motivos: r.motivos_sin_pedido || [], monedasCuenta: r.monedas_cuenta || {} });
+            motivos: r.motivos_sin_pedido || [], monedasCuenta: r.monedas_cuenta || {}, bancosEmpresa: r.bancos_empresa || {} });
         document.querySelectorAll('select[data-empresas]').forEach(s => {
             s.innerHTML = (s.dataset.todas ? `<option value="">${esc(s.dataset.todas)}</option>` : '')
                 + cat.empresas.map(e => `<option value="${e.id}">${esc(e.nombre)} · ${esc(e.razon_social || '')}</option>`).join('');
@@ -227,7 +227,7 @@
             .join(' ').toLowerCase().includes(q));
         $('pedLista').innerHTML = lista.length ? lista.map(p => `
             <div class="com-pedido${pedidoResaltado && pedidoResaltado.id === p.id ? ' com-pedido-resaltado' : ''}" data-pedido="${p.id}">
-                ${pedidoResaltado && pedidoResaltado.id === p.id ? `<div class="com-resaltado-nota">👉 <b>Este es el pedido:</b> ${docsPedido(p, pedidoResaltado.desp)}<br>Sus líneas por comprar ya están marcadas. Revisa y pulsa <b>Crear orden de compra</b>.</div>` : ''}
+                ${pedidoResaltado && pedidoResaltado.id === p.id ? `<div class="com-resaltado-nota">👉 <b>Este es el pedido:</b> ${docsPedido(p, pedidoResaltado.desp)}<br>Sus líneas por comprar ya están marcadas. Revisa y pulsa <b>Crear OC - Orden de compra (Proveedor)</b>.</div>` : ''}
                 <div class="com-pedido-head">
                     <div>${docsPedido(p)} · ${esc(p.cliente || 'Sin cliente')} <small>${esc(p.ruc || '')}</small></div>
                     <div class="com-pedido-meta">${fecha(p.fecha)} · <span class="${claseEstado(p.estado)}">${esc(String(p.estado || 'Pendiente').replace(/^PC\b/, 'PV'))}</span>
@@ -297,7 +297,7 @@
 
     // "Generar compra" de Ventas ▸ Entregas (Erika 22/10/2026): ya no abre la orden de golpe. Lleva a Pedidos por comprar,
     // sombrea el pedido y SUS líneas (por línea del PV, no por producto: el mismo producto puede ir a Lima y a Arequipa),
-    // las deja marcadas y se desplaza hasta ellas. La persona revisa y pulsa "Crear orden de compra".
+    // las deja marcadas y se desplaza hasta ellas. La persona revisa y pulsa "Crear OC - Orden de compra (Proveedor)".
     async function abrirCompraDePedido(numero, despacho) {
         const url = new URL(window.location); url.searchParams.delete('pc'); url.searchParams.delete('desp'); window.history.replaceState({}, '', url);
         if (tabActual !== 'pedidos') cambiarTab('pedidos');
@@ -320,7 +320,7 @@
         }
         marcas.forEach(c => { c.checked = true; });
         contarMarcados();
-        aviso(`Pedido ${numero}: ${marcas.length} línea(s) marcadas y sombreadas. Revisa y pulsa "Crear orden de compra".`, 'success');
+        aviso(`Pedido ${numero}: ${marcas.length} línea(s) marcadas y sombreadas. Revisa y pulsa "Crear OC - Orden de compra (Proveedor)".`, 'success');
     }
 
     function crearDesdePedidos() {
@@ -450,6 +450,7 @@
         $('ocFecha').value = oc ? (oc.fecha_compromiso || '') : hoyISO(2);
         $('ocCotizacion').value = oc ? (oc.num_cotizacion || '') : '';
         $('ocNotas').value = oc ? (oc.notas || '') : '';
+        $('ocNotaInterna').value = oc ? (oc.nota_interna || '') : '';
         $('ocMotivo').value = oc ? (oc.motivo_stock || '') : '';
         $('ocMotivoCompra').value = oc && oc.motivo_compra ? oc.motivo_compra : '';
         Moneda.enlazar('oc', { fecha: () => hoyISO(), total: totalOC, alCambiar: totales });
@@ -485,7 +486,7 @@
         const sinPedido = conProducto.filter(l => !l.pedido_id);
         $('ocMotivoWrap').style.display = sinPedido.length ? '' : 'none';
         $('ocSinPedidoTxt').textContent = sinPedido.length && sinPedido.length === conProducto.length
-            ? 'COMPRA SIN PEDIDO' : 'Compra para stock (además del pedido)';
+            ? 'Compra solo para stock' : 'Compra para stock (además del PV)';
         $('ocMotivoReq').textContent = $('ocMotivoCompra').value === 'Otro' ? '(obligatorio: escribe el motivo)' : '(opcional)';
         $('ocMotivoReq').classList.toggle('neg', $('ocMotivoCompra').value === 'Otro');
         avisoSunat();
@@ -573,7 +574,7 @@
                     ? `<span class="com-ab-ok">✔ Esta orden cubre ${cant(va)} de ${esc(p.numero)}${va > p.por_comprar + 1e-9 ? ` (${cant(va - p.por_comprar)} de más)` : ''}</span>`
                     : `<span class="com-ab-mal">✖ A ${esc(p.numero)} le faltan ${cant(p.por_comprar - va)}: pide ${cant(p.pide)}, ya en otras OC ${cant(p.en_oc)}, stock asignado ${cant(p.stock_asignado)}</span>`;
             });
-            if (paraStock > 0) frases.push(`<span class="com-ab-stock">Para stock (sin pedido): ${cant(paraStock)}</span>`);
+            if (paraStock > 0) frases.push(`<span class="com-ab-stock">Para stock - Sin PC (Pedido del cliente): ${cant(paraStock)}</span>`);
             if (!deEsta.length && !paraStock) frases.push('<span class="com-ab-stock">Esta línea no está unida a un pedido.</span>');
             const otrosTxt = otros.filter(p => p.por_comprar > 0);
             return `<div class="com-ab-prod">
@@ -654,6 +655,22 @@
         pintarAbastecimiento();
     }
 
+    // Regla de ahorro (Erika 28/10/2026): KCF paga a la cuenta BBVA del proveedor y AGD a la BCP (mismo banco, sin
+    // comisión). Si no tiene, la siguiente cuenta registrada, con aviso en rojo. Igual que routes/cuentas_proveedor.py
+    function cuentaPreferida(p, empresaId, moneda) {
+        const lista = (p && p.cuentas) || [];
+        if (!lista.length) return null;
+        const emp = cat.empresas.find(e => String(e.id) === String(empresaId)) || {};
+        const nombre = emp.nombre || emp.codigo || 'la empresa';
+        const banco = (cat.bancosEmpresa || {})[String(empresaId)] || '';
+        const primera = cands => (moneda && cands.find(c => c.moneda === moneda)) || cands[0];
+        const mismas = banco ? lista.filter(c => String(c.banco || '').toUpperCase() === banco.toUpperCase()) : [];
+        const c = Object.assign({}, primera(mismas.length ? mismas : lista), { mismo_banco: mismas.length > 0, total: lista.length });
+        c.aviso = !banco ? '' : mismas.length ? `✅ Cuenta ${banco}: mismo banco que ${nombre}, sin comisión.`
+            : `⚠️ El proveedor no tiene cuenta ${banco} (banco de ${nombre}): se paga a su cuenta ${c.banco || 'de otro banco'}. El banco puede cobrar comisión.`;
+        return c;
+    }
+
     function pintarProveedor() {
         const p = provElegido;
         // Datos del proveedor (proveedores + contacto principal de proveedores_contactos), solo lectura
@@ -661,12 +678,14 @@
                          ocProvTelefono: 'telefono', ocProvEmail: 'email' };
         Object.entries(campos).forEach(([id, k]) => { if ($(id)) $(id).value = p ? (p[k] || '') : ''; });
         if (!p) { $('ocProvInfo').innerHTML = ''; return; }
-        const cuenta = p.numero_cuenta || p.cci;
+        const c = cuentaPreferida(p, $('ocEmp').value, Moneda.leer('oc').moneda);
         $('ocProvInfo').innerHTML = `<div class="com-prov-card">
             <b>${esc(p.razon_social)}</b> · RUC ${esc(p.ruc || '—')}<br>
             ${esc(p.direccion || '')}${p.contacto ? ' · ' + esc(p.contacto) : ''}${p.telefono ? ' · ' + esc(p.telefono) : ''}<br>
-            ${cuenta ? `🏦 Cuenta registrada: ${esc(p.banco || '')} ${esc(p.numero_cuenta || '')} ${p.cci ? 'CCI ' + esc(p.cci) : ''}`
-                     : '<span class="neg">⚠️ Este proveedor no tiene cuenta bancaria registrada. Pídela y regístrala en Maestros ▸ Proveedores antes de pagar.</span>'}
+            ${c ? `🏦 Se pagará a: <b>${esc(c.banco || '')}</b> ${esc(c.numero_cuenta || '')} ${c.cci ? 'CCI ' + esc(c.cci) : ''}
+                   <small>(cuenta ${c.orden} de ${c.total})</small>
+                   ${c.aviso ? `<div class="${c.mismo_banco ? 'com-cuenta-ok' : 'com-cuenta-otra'}">${esc(c.aviso)}</div>` : ''}`
+                : '<span class="neg">⚠️ Este proveedor no tiene cuenta bancaria registrada. Pídela y regístrala en Maestros ▸ Proveedores antes de pagar.</span>'}
         </div>`;
     }
 
@@ -735,10 +754,10 @@
                 ? `<b>${esc(l.texto)}</b>`
                 : `<div class="prod-picker com-pp" data-linea-pp="${i}"><input type="search" class="pp-input" value="${esc(l.texto)}" placeholder="Buscar producto..." autocomplete="off"><div class="pp-lista"></div></div>`}
                 <div class="com-info-linea" id="info-${i}"></div></td>
-            <td class="left">${l.pedido_id ? `<span class="com-para">${esc(l.para)}</span>` : '<span class="badge-sin-pedido">Para stock · sin pedido</span>'}</td>
+            <td class="left">${l.pedido_id ? `<span class="com-para">${esc(l.para)}</span>` : '<span class="badge-sin-pedido">Para stock - Sin PC (Pedido del cliente)</span>'}</td>
             <td><input type="number" class="inp-num" data-campo="cantidad" min="0" step="any" value="${esc(l.cantidad)}">${l.max ? `<small>máx. ${cant(l.max)}</small>` : ''}</td>
             <td><input type="number" class="inp-num" data-campo="precio_unitario" min="0" step="0.01" value="${esc(l.precio_unitario)}"></td>
-            <td class="num" id="tot-${i}">${soles((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0))}</td>
+            <td class="num com-tot-linea" id="tot-${i}">${soles((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0))}</td>
             <td><button class="btn-mini btn-tachito" data-quitar="${i}" title="Quitar" aria-label="Quitar">🗑️</button></td></tr>`).join('');
         lineas.forEach((l, i) => {
             const el = document.querySelector(`[data-linea-pp="${i}"]`);
@@ -864,7 +883,7 @@
             id: $('ocId').value || null, empresa_id: $('ocEmp').value, proveedor_id: provElegido.id,
             condicion_pago: $('ocCondicion').value, dias_credito: $('ocDias').value, adelanto_pct: $('ocAdelantoPct').value, modalidad_entrega: $('ocModalidad').value,
             direccion_recojo: $('ocRecojo').value, almacen_entrega_id: $('ocSede').value, fecha_compromiso: $('ocFecha').value,
-            num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value,
+            num_cotizacion: $('ocCotizacion').value, notas: $('ocNotas').value, nota_interna: $('ocNotaInterna').value,
             motivo_compra: $('ocMotivoCompra').value, motivo_stock: $('ocMotivo').value.trim(), items, enviar,
             moneda: mon.moneda, tipo_cambio: mon.tipo_cambio
         };
@@ -918,7 +937,7 @@
                 <div class="com-siguiente com-paso-${o.paso.codigo}">👉 <b>Siguiente paso:</b> ${esc(o.paso.texto)} <small>(${esc(o.paso.quien)})</small></div>
                 ${(o.avisos || []).map(a => `<div class="inv-aviso">⚠️ ${esc(a)}</div>`).join('')}
                 ${o.motivo_anulacion ? `<div class="inv-alerta danger">Anulada: ${esc(o.motivo_anulacion)}</div>` : ''}
-                ${o.motivo_compra ? `<div class="com-sin-pedido"><div class="com-sin-pedido-tit">⚠️ ${o.items.every(i => !i.pedido_id) ? 'COMPRA SIN PEDIDO' : 'Incluye compra para stock'} · Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</div></div>` : ''}
+                ${o.motivo_compra ? `<div class="com-sin-pedido"><div class="com-sin-pedido-tit">⚠️ ${o.items.every(i => !i.pedido_id) ? 'Compra solo para stock (sin PC del cliente)' : 'Incluye compra para stock'} · Motivo: ${esc(o.motivo_compra)}${o.motivo_stock && o.motivo_stock !== o.motivo_compra ? ' · ' + esc(o.motivo_stock) : ''}</div></div>` : ''}
                 ${o.pc_numeros || o.clientes_pedido ? `<div class="inv-tip com-interno">🔒 <b>Solo interno</b> (no sale en la orden del proveedor): corresponde a
                     <b>${esc(o.pc_numeros || '')}</b>${o.cotizaciones_cliente ? ` · Cotización ${esc(o.cotizaciones_cliente)}` : ''}${o.clientes_pedido ? ` · Cliente ${esc(o.clientes_pedido)}` : ''}</div>` : ''}
                 <div class="com-datos">
@@ -932,7 +951,8 @@
                     <div><small>Aprobó</small><b>${esc(o.aprobado_por || '—')}</b><span>${fecha(o.aprobado_en)}</span></div>
                     <div><small>Total</small><b>${dinero(o.moneda, o.total)}</b><span>Pagado ${dinero(o.moneda, o.pagado)} · Facturado ${dinero(o.moneda, o.facturado)}${o.moneda === 'USD' && o.tipo_cambio ? ` · TC ${Number(o.tipo_cambio).toFixed(3)} ≈ ${soles(Number(o.total) * Number(o.tipo_cambio))}` : ''}</span></div>
                 </div>
-                ${o.notas ? `<div class="inv-tip">📝 ${esc(o.notas)}</div>` : ''}
+                ${o.notas ? `<div class="inv-tip">📝 <b>Nota para el proveedor:</b> ${esc(o.notas)}</div>` : ''}
+                ${o.nota_interna ? `<div class="inv-tip com-nota-interna">🔒 <b>Nota interna (no la ve el proveedor):</b> ${esc(o.nota_interna)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
                 <div class="table-wrap"><table class="inv-table inv-mini">
                     <thead><tr><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
@@ -951,7 +971,7 @@
                         <td>${i.estado === 'Abierta' && PUEDE.aprobar ? `<button class="btn-mini" data-resolver="${i.id}">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
                 <div class="com-columnas">
                     <div><div class="inv-subtitulo">Pagos</div>${o.pagos.length ? o.pagos.map(p => `<div class="com-mov">💸 <b>${dinero(o.moneda, p.monto)}</b>${p.moneda_pago && p.moneda_pago !== (o.moneda || 'PEN') ? ` (pagado ${dinero(p.moneda_pago, p.monto_pagado)} · TC ${Number(p.tipo_cambio).toFixed(3)})` : ''} · ${esc(p.metodo || '')} ${esc(p.banco || '')} · Op. ${esc(p.numero_operacion || '—')}<small>${fecha(p.fecha)} · ${esc(p.usuario_nombre || '')}</small></div>`).join('') : '<div class="inv-tip">Sin pagos.</div>'}
-                        ${pd.numero_cuenta || pd.cci ? `<div class="inv-tip">🏦 Cuenta del proveedor: ${esc(pd.banco || '')} ${esc(pd.numero_cuenta || '')} ${pd.cci ? 'CCI ' + esc(pd.cci) : ''}</div>` : ''}</div>
+                        ${pd.numero_cuenta || pd.cci ? `<div class="inv-tip">🏦 Se paga a: ${esc(pd.banco || '')} ${esc(pd.numero_cuenta || '')} ${pd.cci ? 'CCI ' + esc(pd.cci) : ''}${pd.cuenta_aviso ? `<div class="${pd.cuenta_mismo_banco ? 'com-cuenta-ok' : 'com-cuenta-otra'}">${esc(pd.cuenta_aviso)}</div>` : ''}</div>` : ''}</div>
                     <div><div class="inv-subtitulo">Recepciones</div>${o.recepciones.length ? o.recepciones.map(r => `<div class="com-mov">📦 <b>${esc(r.numero)}</b> · Guía ${esc(r.guia_proveedor)} · ${esc(r.sede || '')}${r.con_diferencias ? ' · <b class="neg">con diferencias</b>' : ''}<small>Trajo: ${esc(r.traido_por || '')} · Recibió: ${esc(r.recibido_por || '')} · ${fecha(r.fecha)}</small></div>`).join('') : '<div class="inv-tip">Todavía no llega nada.</div>'}</div>
                     <div><div class="inv-subtitulo">Facturas</div>${o.facturas.length ? o.facturas.map(f => `<div class="com-mov">🧾 <b>${esc(f.tipo)} ${esc(f.numero)}</b> · ${dinero(f.moneda, f.monto)}${f.moneda === 'USD' && f.tipo_cambio ? ` · TC ${Number(f.tipo_cambio).toFixed(3)}` : ''} ${f.cuadra === false ? '<b class="neg">no cuadra</b>' : '✔'}<small>${fecha(f.fecha)} · vence ${fecha(f.fecha_vencimiento)} · ${esc(f.estado || '')}</small></div>`).join('') : '<div class="inv-tip">Sin factura.</div>'}</div>
                 </div>
@@ -1027,7 +1047,9 @@
     function abrirPago(o) {
         $('pagoOc').value = o.id;
         $('pagoTitulo').textContent = `Registrar pago · ${o.numero}`;
-        const p = cat.proveedores.find(x => x.id === o.proveedor_id) || o.proveedor_datos || {};
+        // 28/10/2026: la cuenta ya viene elegida por el servidor según la empresa de la OC (KCF BBVA, AGD BCP)
+        const p = (o.proveedor_datos && Object.keys(o.proveedor_datos).length ? o.proveedor_datos : null)
+            || cat.proveedores.find(x => x.id === o.proveedor_id) || {};
         let falta = Math.max(Number(o.total) - Number(o.pagado), 0);
         // Adelanto: primero se sugiere solo lo que falta del adelanto; el saldo se paga con la factura
         const conAdelanto = Number(o.adelanto_pct) > 0 && Number(o.falta_adelanto) > 0;
@@ -1042,6 +1064,7 @@
             ${fila('Banco', esc(p.banco || '—'))}
             ${fila('N° de cuenta', esc(p.numero_cuenta || '—'), 'fd-num')}
             ${fila('CCI', esc(p.cci || '—'), 'fd-num')}
+            ${p.cuenta_aviso ? `<div class="fd-nota ${p.cuenta_mismo_banco ? 'fd-ok-nota' : 'fd-alerta fd-comision'}">${esc(p.cuenta_aviso)}</div>` : ''}
             ${fila('Monto a pagar (incluye IGV)', dinero(o.moneda, o.total), 'fd-monto')}
             ${conAdelanto ? fila(`Adelanto ${Number(o.adelanto_pct)}% (pagar ahora)`, dinero(o.moneda, o.adelanto), 'fd-monto') : ''}
             ${fila(conAdelanto ? 'Falta del adelanto' : 'Falta pagar', dinero(o.moneda, falta), 'fd-monto ' + (falta > 0 ? 'fd-falta' : 'fd-ok'))}
@@ -1512,6 +1535,7 @@
         $('ocBuscar').oninput = () => { clearTimeout(tOc); tOc = setTimeout(cargarOrdenes, 300); };
         $('preBuscar').oninput = () => { clearTimeout(tPre); tPre = setTimeout(cargarPrecios, 300); };
         ['ocCondicion', 'ocModalidad', 'ocEmp', 'ocSede'].forEach(i => { $(i).onchange = ajustarForm; });
+        $('ocEmp').addEventListener('change', () => { if (provElegido) pintarProveedor(); });
         $('ocDias').oninput = () => { $('ocCondTexto').textContent = condPagoTexto('Crédito', $('ocDias').value); textoAdelanto(); };
         $('ocAdelantoPct').onchange = textoAdelanto;
         $('ocGuardar').onclick = () => guardarOC(false, $('ocGuardar'));

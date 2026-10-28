@@ -123,8 +123,11 @@
 .com-prov-campos label{font-size:11px;font-weight:800;color:#475569}
 .com-prov-campos input[readonly]{background:#fff;border:1px solid #CBD5E1;color:#0F172A;font-weight:700;width:100%}
 .com-prov-campos .inv-span2{grid-column:span 2}
-.com-sin-pedido{background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:10px 12px;margin:6px 0}
-.com-sin-pedido-tit{font-size:13px;font-weight:900;color:#78350F;margin-bottom:6px}
+.com-sin-pedido{background:#FEF9C3;border:1px solid #FDE68A;border-left:4px solid #DC2626;border-radius:10px;padding:10px 12px;margin:6px 0}
+.com-sin-pedido-tit{font-size:13px;font-weight:900;color:#B91C1C;margin-bottom:4px}
+.com-sin-pedido-lista{margin:0 0 8px 18px;padding:0;font-size:12.5px;color:#1F2937;line-height:1.5}
+.com-sin-pedido-lista .rojo{color:#DC2626}
+.com-sin-pedido-lista .azul{color:#1D4ED8}
 .com-sin-pedido .inv-span3{grid-column:span 3}
 .badge-sin-pedido{display:inline-block;background:#F59E0B;color:#111827;border:2px solid #B45309;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:950;white-space:nowrap}
 small.com-motivo{display:block;color:#92400E;font-weight:800}
@@ -235,3 +238,15 @@ small.com-motivo{display:block;color:#92400E;font-weight:800}
 .com-resumen col.c-chk{width:4%}.com-resumen col.c-prod{width:30%}.com-resumen col.c-pv{width:9%}.com-resumen col.c-oc{width:11%}
 .com-resumen col.c-stock{width:10%}.com-resumen col.c-bajo{width:11%}.com-resumen col.c-para{width:13%}.com-resumen col.c-total{width:12%}
 .com-resumen td,.com-resumen th{overflow-wrap:break-word;white-space:normal!important}
+
+/* Regla de ahorro de cuentas (Erika 28/10/2026): mismo banco en verde, otro banco (comisión) en rojo */
+.com-cuenta-ok { color: #047857; font-weight: 600; font-size: 12px; margin-top: 2px; }
+.com-cuenta-otra { color: #DC2626; font-weight: 700; font-size: 12px; margin-top: 2px; background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 6px; padding: 4px 8px; }
+/* Total de cada línea de la OC en una sola línea: "S/ 70.00" (Erika 28/10/2026) */
+td.com-tot-linea { white-space: nowrap !important; min-width: 84px; }
+
+/* Nota interna de la OC (Erika 28/10/2026): solo para el equipo */
+.com-nota-interna-campo small, .com-nota-sale { font-weight: 600; color: #64748B; }
+.com-nota-interna-campo small { color: #DC2626; }
+.com-nota-interna-campo textarea { background: #F8FAFC; border-style: dashed; }
+.com-nota-interna { background: #F1F5F9; border-left: 3px solid #64748B; }

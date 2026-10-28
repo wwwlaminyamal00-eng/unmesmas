@@ -112,28 +112,30 @@
         </div>
       </div>
 
-      <!-- Datos bancarios -->
+      <!-- Datos bancarios: hasta 3 cuentas (Erika 28/10/2026) -->
+      <style>
+        .cm-grid-cuenta { grid-template-columns: 70px 1fr 1fr 0.8fr 1.2fr 1.4fr; align-items: end; padding: 4px 0; border-bottom: 1px dashed #E5E7EB; }
+        .cm-grid-cuenta:last-child { border-bottom: 0; }
+        .cm-cuenta-n { font-weight: 700; font-size: 12px; color: #1D4ED8; padding-bottom: 8px; }
+        .cm-regla-banco { font-size: 12px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 6px 10px; margin-bottom: 6px; }
+        .cm-regla-banco .azul { color: #1D4ED8; }
+        .cm-regla-banco .rojo { color: #DC2626; font-weight: 700; }
+        @media (max-width: 900px) { .cm-grid-cuenta { grid-template-columns: 1fr 1fr; } .cm-cuenta-n { grid-column: 1 / -1; padding: 0; } }
+      </style>
       <div class="cm-section">
         <div class="cm-section-title">
           <span class="cm-bullet"></span>Datos bancarios
         </div>
         <div class="cm-box-inner">
-          <div class="cm-grid cm-grid-comercial">
+          <div class="cm-regla-banco">💡 <b>Regla de ahorro:</b> al pagar, <b>KCF</b> usa la cuenta <b class="azul">BBVA</b> del proveedor y <b>AGD</b> su cuenta <b class="azul">BCP</b> (mismo banco, sin comisión). Si no tiene, se usa la siguiente cuenta y sale un <span class="rojo">aviso en rojo</span>. Registra hasta 3 cuentas.</div>
+          <div class="cm-grid cm-grid-cuenta" data-cuenta="1">
+            <div class="cm-cuenta-n">Cuenta 1</div>
             <div class="cm-field">
               <label>BANCO</label>
               <select id="prov_banco" data-lista="bancos">
                 <option value="">Seleccione</option>
                 <option value="BCP">BCP</option>
                 <option value="BBVA">BBVA</option>
-                <option value="Interbank">Interbank</option>
-                <option value="Scotiabank">Scotiabank</option>
-                <option value="Banco de la Nación">Banco de la Nación</option>
-                <option value="BanBif">BanBif</option>
-                <option value="Pichincha">Pichincha</option>
-                <option value="MiBanco">MiBanco</option>
-                <option value="Caja Arequipa">Caja Arequipa</option>
-                <option value="Caja Piura">Caja Piura</option>
-                <option value="Otro">Otro</option>
               </select>
             </div>
             <div class="cm-field">
@@ -146,12 +148,81 @@
               </select>
             </div>
             <div class="cm-field">
+              <label>MONEDA</label>
+              <select id="prov_monedaCuenta">
+                <option value="PEN">Soles (S/)</option>
+                <option value="USD">Dólares (US$)</option>
+              </select>
+            </div>
+            <div class="cm-field">
               <label>N° CUENTA</label>
               <input id="prov_cuenta" type="text">
             </div>
             <div class="cm-field">
               <label>CCI</label>
               <input id="prov_cci" type="text">
+            </div>
+          </div>
+          <div class="cm-grid cm-grid-cuenta" data-cuenta="2">
+            <div class="cm-cuenta-n">Cuenta 2</div>
+            <div class="cm-field">
+              <label>BANCO</label>
+              <select id="prov_banco2" data-lista="bancos"><option value="">Seleccione</option></select>
+            </div>
+            <div class="cm-field">
+              <label>TIPO CUENTA</label>
+              <select id="prov_tipoCuenta2">
+                <option value="Cuenta corriente">Cuenta corriente</option>
+                <option value="Cuenta de ahorros">Cuenta de ahorros</option>
+                <option value="Detracciones">Detracciones</option>
+                <option value="Otra">Otra</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>MONEDA</label>
+              <select id="prov_monedaCuenta2">
+                <option value="PEN">Soles (S/)</option>
+                <option value="USD">Dólares (US$)</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>N° CUENTA</label>
+              <input id="prov_cuenta2" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CCI</label>
+              <input id="prov_cci2" type="text">
+            </div>
+          </div>
+          <div class="cm-grid cm-grid-cuenta" data-cuenta="3">
+            <div class="cm-cuenta-n">Cuenta 3</div>
+            <div class="cm-field">
+              <label>BANCO</label>
+              <select id="prov_banco3" data-lista="bancos"><option value="">Seleccione</option></select>
+            </div>
+            <div class="cm-field">
+              <label>TIPO CUENTA</label>
+              <select id="prov_tipoCuenta3">
+                <option value="Cuenta corriente">Cuenta corriente</option>
+                <option value="Cuenta de ahorros">Cuenta de ahorros</option>
+                <option value="Detracciones">Detracciones</option>
+                <option value="Otra">Otra</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>MONEDA</label>
+              <select id="prov_monedaCuenta3">
+                <option value="PEN">Soles (S/)</option>
+                <option value="USD">Dólares (US$)</option>
+              </select>
+            </div>
+            <div class="cm-field">
+              <label>N° CUENTA</label>
+              <input id="prov_cuenta3" type="text">
+            </div>
+            <div class="cm-field">
+              <label>CCI</label>
+              <input id="prov_cci3" type="text">
             </div>
           </div>
         </div>

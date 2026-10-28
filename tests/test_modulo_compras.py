@@ -234,3 +234,7 @@ def test_resumen_y_exportar(cx, admin):
     r = admin.get(f'/compras/flujo/ordenes/{oc}/imprimir')
     assert r.status_code == 200 and b'ORDEN DE COMPRA' in r.data
     assert admin.get(f'/compras/flujo/ordenes/{oc}/imprimir?hoja=recojo').status_code == 200
+    # Nota interna (Erika 28/10/2026): se ve en el ERP, nunca en la OC impresa para el proveedor
+    _sql("UPDATE ordenes_compra SET nota_interna = 'SECRETO INTERNO ZZ' WHERE id = %s", (oc,), fetch=False)
+    assert 'SECRETO INTERNO ZZ' not in admin.get(f'/compras/flujo/ordenes/{oc}/imprimir').get_data(as_text=True)
+    assert admin.get(f'/compras/api/flujo/ordenes/{oc}').get_json()['data']['nota_interna'] == 'SECRETO INTERNO ZZ'

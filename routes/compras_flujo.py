@@ -35,6 +35,7 @@ from routes.inventario import asegurar_tablas_inventario, ddl_con_tipo_empresa, 
     ROLES_ALMACEN, ROLES_CONTROL_INVENTARIO
 from routes.finanzas import asegurar_tablas_finanzas, ROLES_FINANZAS, METODOS_PAGO
 from routes.multiempresa import filtrar_filas, filtro_sql, empresa_para_crear, empresa_filtro, empresa_id_por_ruc
+from routes import cuentas_proveedor
 from routes.moneda import ErrorMoneda, moneda_y_tc, simbolo, en_soles, pago_en_moneda, codigo_moneda, monedas_de_cuentas
 
 compras_flujo_bp = Blueprint('compras_flujo', __name__)
@@ -89,7 +90,8 @@ ESTADOS_PC_FUERA = ('ANULADO', 'ANULADA', 'RECHAZADO', 'RECHAZADA', 'CERRADO', '
 MOTIVOS_SIN_PEDIDO = ('Stock estratégico', 'Crédito fiscal / IGV', 'Reposición de stock mínimo', 'Otro')
 # Datos internos que NUNCA van en la orden que se manda al proveedor (son confidenciales)
 CAMPOS_CONFIDENCIALES = ('pedidos', 'clientes', 'pc_numeros', 'cotizaciones_cliente', 'clientes_pedido', 'pedido_id',
-                         'motivo_compra', 'motivo_stock', 'tipo_compra', 'sin_pedido', 'cotizaciones')
+                         'motivo_compra', 'motivo_stock', 'tipo_compra', 'sin_pedido', 'cotizaciones',
+                         'nota_interna')
 
 
 class ErrorCompras(Exception):
@@ -101,6 +103,7 @@ class ErrorCompras(Exception):
 # ============================================================
 SQL_DDL_COMPRAS = """
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS flujo VARCHAR(10);
+    ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS nota_interna TEXT;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS adelanto_pct NUMERIC(5,2) DEFAULT 0;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa_id INTEGER;
     ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS almacen_entrega_id INTEGER;
@@ -395,7 +398,9 @@ def fecha_hora(v):
 
 SQL_PROVEEDORES_CON_CONTACTO = """
     SELECT p.id, p.ruc, p.razon_social, p.razon_comercial, p.direccion, p.lugar_recojo, p.condicion_pago,
-           p.tiempo_credito, p.banco, p.numero_cuenta, p.cci,
+           p.tiempo_credito, p.banco, p.numero_cuenta, p.cci, p.tipo_cuenta, p.moneda, p.moneda_cuenta,
+           p.banco2, p.tipo_cuenta2, p.moneda_cuenta2, p.numero_cuenta2, p.cci2,
+           p.banco3, p.tipo_cuenta3, p.moneda_cuenta3, p.numero_cuenta3, p.cci3,
            COALESCE(NULLIF(p.contacto, ''), pc.nombre_contacto) AS contacto,
            COALESCE(NULLIF(p.telefono, ''), pc.telefono) AS telefono,
            COALESCE(NULLIF(p.email, ''), pc.email) AS email,
@@ -411,8 +416,18 @@ SQL_PROVEEDORES_CON_CONTACTO = """
 
 def proveedores_con_contacto(where='COALESCE(p.activo, true) = true', params=(), limite=2000):
     """Proveedores con su contacto principal (tabla proveedores_contactos) para autollenar la OC:
-    razón social, RUC, dirección fiscal, contacto, teléfono y correo."""
-    return db_query(SQL_PROVEEDORES_CON_CONTACTO + ' WHERE ' + where + f' ORDER BY p.razon_social LIMIT {int(limite)}', params)
+    razón social, RUC, dirección fiscal, contacto, teléfono y correo.
+    28/10/2026: cada proveedor trae sus cuentas (hasta 3) en 'cuentas'; la pantalla elige la del banco de la empresa."""
+    cuentas_proveedor.asegurar()
+    filas = db_query(SQL_PROVEEDORES_CON_CONTACTO + ' WHERE ' + where + f' ORDER BY p.razon_social LIMIT {int(limite)}', params)
+    salida = []
+    for f in filas:
+        f = dict(f)
+        f['cuentas'] = cuentas_proveedor.cuentas(f)
+        for k in cuentas_proveedor.COLUMNAS_NUEVAS:
+            f.pop(k, None)
+        salida.append(f)
+    return salida
 
 
 # ============================================================
@@ -702,7 +717,7 @@ SQL_OC_LISTA = """
     SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
            oc.empresa_id, e.codigo AS empresa,
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
-           oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, COALESCE(oc.adelanto_pct, 0) AS adelanto_pct, oc.num_cotizacion, oc.notas,
+           oc.motivo_stock, oc.fecha_compromiso, oc.condicion_pago, oc.dias_credito, COALESCE(oc.adelanto_pct, 0) AS adelanto_pct, oc.num_cotizacion, oc.notas, oc.nota_interna,
            oc.proveedor_id, COALESCE(p.razon_social, oc.contacto_proveedor) AS proveedor, p.ruc,
            oc.subtotal, oc.igv, oc.total, COALESCE(oc.moneda, 'PEN') AS moneda, oc.tipo_cambio, oc.usuario_id, oc.creado_por_nombre, oc.aprobado_por_id, oc.aprobado_por,
            oc.aprobado_en, oc.motivo_anulacion, oc.motivo_compra, oc.created_at, oc.updated_at,
@@ -836,7 +851,9 @@ def api_catalogos():
                         'metodos': list(METODOS_PAGO), 'alerta_precio_pct': float(ALERTA_PRECIO_PCT),
                         'motivos_sin_pedido': list(MOTIVOS_SIN_PEDIDO),
                         # 24/10/2026: monedas de las cuentas de cada empresa (KCF solo soles; AGD soles y dólares)
-                        'monedas_cuenta': {str(e['id']): monedas_de_cuentas(e['id']) for e in empresas}})
+                        'monedas_cuenta': {str(e['id']): monedas_de_cuentas(e['id']) for e in empresas},
+                        # 28/10/2026 (Erika): regla de ahorro. Banco de cada empresa (KCF = BBVA, AGD = BCP)
+                        'bancos_empresa': cuentas_proveedor.bancos_por_empresa()})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1120,9 +1137,11 @@ def api_orden_detalle(oc_id):
             FROM com_incidencias i LEFT JOIN productos pr ON pr.id = i.producto_id
             WHERE i.orden_compra_id = %s ORDER BY i.id
         """, (oc_id,))]
-        prov = db_query("SELECT banco, numero_cuenta, cci, direccion, lugar_recojo, contacto, telefono FROM proveedores WHERE id = %s",
-                        (o['proveedor_id'],)) if o.get('proveedor_id') else []
-        o['proveedor_datos'] = _fila(prov[0]) if prov else {}
+        cuentas_proveedor.asegurar()
+        prov = db_query(f"SELECT {cuentas_proveedor.COLUMNAS_SQL}, moneda, direccion, lugar_recojo, contacto, telefono "
+                        "FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o.get('proveedor_id') else []
+        # 28/10/2026 (Erika): se paga a la cuenta del mismo banco que la empresa de la OC (KCF BBVA, AGD BCP)
+        o['proveedor_datos'] = _fila(cuentas_proveedor.aplicar(dict(prov[0]), o.get('empresa_id'), o.get('moneda'))) if prov else {}
         avisos = []
         if o.get('flujo') == 'v2' and o['estado'] in ('Por aprobar', 'Borrador'):
             with db_tx() as conn:
@@ -1331,8 +1350,9 @@ def api_orden_guardar():
                 oc_id = oc['id']
                 _historial(cur, oc_id, 'Creada', f"{tipo} · Total {sim} {totales['total']}"
                                                  + (f" (TC {tc})" if moneda == 'USD' else ''))
-            cur.execute("UPDATE ordenes_compra SET moneda = %s, tipo_cambio = %s, adelanto_pct = %s WHERE id = %s",
-                        (moneda, tc, adelanto_pct, oc_id))
+            # Nota interna (Erika 28/10/2026): solo la ve el equipo, nunca sale en la OC impresa para el proveedor
+            cur.execute("UPDATE ordenes_compra SET moneda = %s, tipo_cambio = %s, adelanto_pct = %s, nota_interna = %s WHERE id = %s",
+                        (moneda, tc, adelanto_pct, (d.get('nota_interna') or '').strip()[:1000] or None, oc_id))
             for i in items:
                 cur.execute("""
                     INSERT INTO ordenes_compra_items (orden_compra_id, producto_id, producto, unidad, cantidad, precio_unitario,
@@ -2071,6 +2091,8 @@ def orden_imprimir(oc_id):
         empresa = db_query("SELECT * FROM erp_empresas WHERE id = %s", (o['empresa_id'],)) if o['empresa_id'] else []
         sede = db_query("SELECT * FROM almacenes WHERE id = %s", (o['almacen_entrega_id'],)) if o['almacen_entrega_id'] else []
         prov = db_query("SELECT * FROM proveedores WHERE id = %s", (o['proveedor_id'],)) if o['proveedor_id'] else []
+        # 28/10/2026: en la OC impresa sale la cuenta del mismo banco que la empresa que compra (sin comisión)
+        prov = [cuentas_proveedor.aplicar(dict(prov[0]), o.get('empresa_id'), o.get('moneda'))] if prov else []
         # 22/10/2026: la hoja lleva modelo y marca del catálogo; si el producto no los tiene, la celda queda vacía
         items = db_query("""SELECT i.id, i.producto, i.unidad, i.cantidad, i.precio_unitario, i.total,
                                    NULLIF(TRIM(to_jsonb(p)->>'modelo'), '') AS modelo,

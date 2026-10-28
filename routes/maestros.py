@@ -802,16 +802,15 @@ def api_proveedores_guardar():
             return jsonify({"success": False, "error": "RUC obligatorio"})
 
         from database import DATABASE_URL
+        from routes import cuentas_proveedor
+        cuentas_proveedor.asegurar()  # antes de abrir la transacción (en la base de pruebas crea columnas)
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
         # Generar código correlativo
-        cur.execute("SELECT codigo_proveedor FROM proveedores WHERE codigo_proveedor LIKE 'PROV-%' ORDER BY id DESC LIMIT 1")
-        ultimo = cur.fetchone()
-        if ultimo and ultimo[0]:
-            numero = int(ultimo[0].split('-')[1]) + 1
-        else:
-            numero = 1
+        # Solo los códigos PROV-<número>: uno escrito distinto (PROV-ZZR...) ya no rompe el alta (28/10/2026)
+        cur.execute(r"SELECT COALESCE(MAX(SUBSTRING(codigo_proveedor FROM 6)::int), 0) FROM proveedores WHERE codigo_proveedor ~ '^PROV-[0-9]{1,9}$'")
+        numero = (cur.fetchone()[0] or 0) + 1
         codigo = f"PROV-{str(numero).zfill(4)}"
 
         query = """
@@ -862,6 +861,8 @@ def api_proveedores_guardar():
         cur.execute(query, params)
         result = cur.fetchone()
         proveedor_id = result[0]
+        # Erika 28/10/2026: hasta 3 cuentas bancarias (la 1 son las columnas de siempre)
+        cuentas_proveedor.guardar(cur, proveedor_id, data)
 
         # 2) INSERT contacto principal
         if data.get('contacto') or data.get('telefono') or data.get('email'):
@@ -1046,6 +1047,8 @@ def api_proveedores_obtener(id):
         proveedor['tipoDoc'] = proveedor.get('tipo_doc', 'RUC')
         proveedor['tipoCuenta'] = proveedor.get('tipo_cuenta', 'Cuenta corriente')
         proveedor['obs'] = proveedor.get('observaciones', '')
+        from routes import cuentas_proveedor
+        proveedor.update(cuentas_proveedor.para_formulario(proveedor))
 
         cur.close()
         conn.close()
@@ -1195,6 +1198,8 @@ def api_proveedores_actualizar(id):
     try:
         data = request.get_json()
         from database import DATABASE_URL
+        from routes import cuentas_proveedor
+        cuentas_proveedor.asegurar()  # antes de abrir la transacción (en la base de pruebas crea columnas)
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
@@ -1248,6 +1253,7 @@ def api_proveedores_actualizar(id):
             data.get('activo', True),
             id
         ))
+        cuentas_proveedor.guardar(cur, id, data)
 
         # 2) UPSERT contacto principal
         cur.execute("SELECT id FROM proveedores_contactos WHERE proveedor_id = %s AND principal = TRUE LIMIT 1", (id,))
