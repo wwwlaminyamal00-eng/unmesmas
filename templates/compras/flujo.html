@@ -14,7 +14,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/compras_flujo.css') }}?v=20261028c">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/compras_flujo.css') }}?v=20261028d">
 {% endblock %}
 
 {% block content %}
@@ -293,7 +293,7 @@
                 <div class="com-bloque-tit"><span>3</span> Productos <small>(precios sin IGV)</small></div>
                 <div class="table-wrap">
                     <table class="inv-table com-lineas">
-                        <thead><tr><th class="left" style="min-width:260px">Nombre producto</th><th class="left">Para</th><th>A comprar al proveedor</th><th>Precio unitario sin IGV</th><th>Total</th><th></th></tr></thead>
+                        <thead><tr><th class="com-item">Ítem</th><th class="left" style="min-width:260px">Nombre producto</th><th class="left">Para</th><th>A comprar al proveedor</th><th>Precio unitario sin IGV</th><th>Total</th><th></th></tr></thead>
                         <tbody id="ocLineas"></tbody>
                     </table>
                 </div>
@@ -403,7 +403,7 @@
             </div>
             <div class="table-wrap">
                 <table class="inv-table">
-                    <thead><tr><th>Código de producto</th><th class="left">Nombre producto</th><th>¿Cuántos llegaron <b>en buen estado</b>?</th><th>¿Cuántos <b>dañados</b>?</th><th>Lote / serie / IMEI</th><th>Vence</th><th>Comentario</th></tr></thead>
+                    <thead><tr><th class="com-item">Ítem</th><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>¿Cuántos llegaron <b>en buen estado</b>?</th><th>¿Cuántos <b>dañados</b>?</th><th>Lote / serie / IMEI</th><th>Vence</th><th>Comentario</th></tr></thead>
                     <tbody id="recItems"></tbody>
                 </table>
             </div>
@@ -483,5 +483,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261028c"></script>
+<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261028d"></script>
 {% endblock %}

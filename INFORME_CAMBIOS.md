@@ -2654,3 +2654,9 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - **Nota interna (No la ve el proveedor)** en la OC, debajo de "Notas para el proveedor". Se ve en el detalle con 🔒 y nunca sale en la OC impresa ni en el PDF. **Migración 044** (aplicada): ordenes_compra.nota_interna. Solo agrega.
 - Alta de proveedor: el código PROV-0000 ya no falla si existe un código escrito distinto.
 - Pruebas: 368 bien (y 366 + 2 omitidas en el esquema reconstruido).
+
+### 24.62 Columna "Ítem" en las ventanas de Compras (Erika, 28/10/2026 18:35)
+- **Recibir mercadería**: primera columna "Ítem" (1, 2, 3...) y nueva columna "Para": el PV y el cliente, o "Para stock - Sin PC (Pedido del cliente)". Debajo dice cuánto falta llegar. Así se distinguen dos líneas del mismo producto (una para un PV y otra para stock).
+- "Ítem" también en: líneas de la nueva OC, Productos y Diferencias del detalle de la OC, y el resultado de la recepción.
+- En el detalle de la OC, la línea para stock dice "Para stock - Sin PC (Pedido del cliente)" (antes "Stock").
+- Sin cambios en la base. Pruebas: 368 bien.
