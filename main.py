@@ -209,8 +209,8 @@ _RE_USUARIO_ID = re.compile(r'^/api/config/usuarios/[^/]+$')
 
 
 def _crea_o_elimina_usuario(ruta, metodo):
-    if metodo == 'POST' and (ruta == '/api/config/usuarios' or ruta.endswith('/activar')
-                             and ruta.startswith('/api/config/usuarios/')
+    if metodo == 'POST' and (ruta in ('/api/config/usuarios', '/api/config/usuarios/nuevo')
+                             or ruta.endswith(('/activar', '/desactivar')) and ruta.startswith('/api/config/usuarios/')
                              or ruta.startswith('/api/config/auth-sin-vincular/') and ruta.endswith('/crear')):
         return True
     if _RE_USUARIO_ID.match(ruta):

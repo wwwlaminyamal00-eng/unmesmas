@@ -1448,19 +1448,14 @@ def _es_uuid(valor):
 
 
 def _password_temporal(largo=14):
-    """Contraseña temporal aleatoria: letras mayúsculas y minúsculas, números y un símbolo."""
+    """Contraseña temporal fácil de dictar y difícil de adivinar: Xxxx-0000-Xxxx (29/10/2026).
+    Sin letras que se confunden (l, I, O, 0, 1). El parámetro largo se conserva por compatibilidad."""
     import secrets
-    import string
-    largo = max(12, largo)
-    simbolos = '#$%&*+-=?@'
-    alfabeto = string.ascii_letters + string.digits
-    while True:
-        base = [secrets.choice(alfabeto) for _ in range(largo - 1)] + [secrets.choice(simbolos)]
-        secrets.SystemRandom().shuffle(base)
-        clave = ''.join(base)
-        if (any(c.islower() for c in clave) and any(c.isupper() for c in clave)
-                and any(c.isdigit() for c in clave)):
-            return clave
+    mayus, minus, numeros = 'ABCDEFGHJKMNPQRSTUVWXYZ', 'abcdefghjkmnpqrstuvwxyz', '23456789'
+
+    def bloque():
+        return secrets.choice(mayus) + ''.join(secrets.choice(minus) for _ in range(3))
+    return f"{bloque()}-{''.join(secrets.choice(numeros) for _ in range(4))}-{bloque()}"
 
 
 def _password_aceptable(clave):
@@ -1687,6 +1682,120 @@ def activar_usuario(usuario_id):
         return jsonify({'success': True, 'message': f"Usuario '{filas[0]['usuario_sistema']}' activado. Ya puede entrar."})
     except Exception as e:
         print(f"❌ Error en activar_usuario: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# 6b. NUEVO USUARIO Y DESACTIVAR (Erika 29/10/2026)
+# Antes solo se podía crear un usuario si alguien hacía primero la cuenta en el panel de Supabase
+# (Erika no tiene ese panel) y no había botón para desactivar. Solo Erika (utils.es_duena) puede usar
+# estas rutas: lo controla main.py (_crea_o_elimina_usuario). "Eliminar" = desactivar: no se borra
+# nada, así se conserva quién hizo cada documento y la auditoría.
+# ============================================================
+@config_seguridad_bp.route('/usuarios/nuevo', methods=['POST'])
+def crear_usuario_nuevo():
+    """Crea el usuario del ERP con su cuenta de acceso, ACTIVO, con acceso a las empresas marcadas.
+    Body: usuario_sistema, nombres_apellidos, area, correo (opcional), empresas ['KCF','AGD'],
+          password o generar_password: true. Los módulos se marcan después con 🛡 Permisos."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        data = request.get_json(silent=True) or {}
+        usuario_sistema = (data.get('usuario_sistema') or '').strip()
+        if len(usuario_sistema) < 3 or ' ' in usuario_sistema:
+            return jsonify({'success': False, 'error': 'El usuario debe tener al menos 3 letras y sin espacios. Ej.: mil01kcf'}), 400
+        nombres = (data.get('nombres_apellidos') or '').strip()
+        if not nombres:
+            return jsonify({'success': False, 'error': 'Escribe el nombre de la persona.'}), 400
+        correo = (data.get('correo') or '').strip().lower() or f'{usuario_sistema.lower()}@kcf.com'
+        if db_query("""SELECT 1 FROM usuarios WHERE LOWER(usuario_sistema) = LOWER(%s) OR LOWER(usuario) = LOWER(%s)
+                       OR LOWER(correo) = %s""", (usuario_sistema, usuario_sistema, correo)):
+            return jsonify({'success': False, 'error': f"Ya existe un usuario '{usuario_sistema}' o el correo {correo}. "
+                                                       f"Si está inactivo, actívalo en vez de crear otro."}), 400
+        empresas = [str(c).strip().upper() for c in (data.get('empresas') or []) if str(c).strip()]
+        if not empresas:
+            return jsonify({'success': False, 'error': 'Marca al menos una empresa (KCF o AGD).'}), 400
+        generada = None
+        password = data.get('password') or ''
+        if not password and data.get('generar_password'):
+            password = generada = _password_temporal()
+        if not _password_aceptable(password):
+            return jsonify({'success': False, 'error': 'La contraseña debe tener al menos 8 caracteres, con letras y números. '
+                                                       'O pulsa "Generar".'}), 400
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            # Cuenta de acceso mínima (los permisos del ERP se enlazan a ella). No sirve para entrar a
+            # Supabase: el ERP valida la contraseña con usuarios.password.
+            cur.execute("SELECT id FROM auth.users WHERE LOWER(email) = %s LIMIT 1", (correo,))
+            cuenta = cur.fetchone()
+            if cuenta and db_query("SELECT 1 FROM usuarios WHERE auth_user_id::text = %s", (str(cuenta['id']),)):
+                raise ValueError(f'El correo {correo} ya pertenece a otro usuario.')
+            if not cuenta:
+                cur.execute("INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), %s) RETURNING id", (correo,))
+                cuenta = cur.fetchone()
+            auth_id = str(cuenta['id'])
+            usuario_id = _insertar_usuario(cur, {
+                'auth_user_id': auth_id, 'usuario_sistema': usuario_sistema, 'nombres_apellidos': nombres,
+                'area': (data.get('area') or '').strip() or None, 'correo': correo, 'celular': None,
+                'estado': 'activo', 'password': password, 'rol': 'usuario'})
+            cur.execute("SELECT id FROM erp_roles WHERE codigo = 'OPERATIVO_COMERCIAL_LOGISTICA' LIMIT 1")
+            rol = cur.fetchone()
+            for i, codigo in enumerate(empresas):
+                cur.execute("SELECT id FROM erp_empresas WHERE UPPER(codigo) = %s", (codigo,))
+                emp = cur.fetchone()
+                if not emp:
+                    raise ValueError(f"No existe la empresa '{codigo}'.")
+                cur.execute("""INSERT INTO erp_usuario_empresas (auth_user_id, empresa_id, rol_id, es_empresa_principal, estado)
+                               VALUES (%s, %s, %s, %s, 'activo')""", (auth_id, emp['id'], rol['id'] if rol else None, i == 0))
+                # Empieza sin ningún módulo (si no, heredaría los del rol): Erika los marca con 🛡 Permisos
+                cur.execute("""INSERT INTO erp_usuario_permisos (auth_user_id, empresa_id, submodulo_id, puede_ver, puede_crear,
+                                   puede_editar, puede_aprobar, puede_anular, puede_eliminar, puede_exportar,
+                                   puede_subir_evidencia, observacion)
+                               SELECT %s, %s, s.id, false, false, false, false, false, false, false, false, 'Usuario nuevo'
+                               FROM erp_submodulos s WHERE COALESCE(s.estado, 'activo') = 'activo'""", (auth_id, emp['id']))
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('crear_usuario', 'Usuarios', tabla='usuarios', registro_id=usuario_id, cur=conn.cursor(),
+                                detalle=f"Usuario nuevo '{usuario_sistema}' ({nombres}) en {', '.join(empresas)}. "
+                                        f"Todavía sin módulos: se marcan con 🛡 Permisos.")
+        respuesta = {'id': usuario_id, 'usuario_sistema': usuario_sistema, 'correo': correo}
+        if generada:
+            respuesta['password_generada'] = generada   # solo esta vez; en la base queda cifrada
+        return jsonify({'success': True, 'data': respuesta,
+                        'message': f"Usuario '{usuario_sistema}' creado. Ahora márcale los módulos con 🛡 Permisos."})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        print(f"❌ Error en crear_usuario_nuevo: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@config_seguridad_bp.route('/usuarios/<int:usuario_id>/desactivar', methods=['POST'])
+def desactivar_usuario(usuario_id):
+    """Desactiva un usuario: no puede entrar más y sus sesiones abiertas se cierran. No borra nada."""
+    error = _solo_admin()
+    if error:
+        return error
+    try:
+        filas = db_query("SELECT id, usuario_sistema, estado FROM usuarios WHERE id = %s", (usuario_id,))
+        if not filas:
+            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
+        if usuario_id == session.get('usuario_id'):
+            return jsonify({'success': False, 'error': 'No puedes desactivar tu propio usuario.'}), 400
+        data = request.get_json(silent=True) or {}
+        motivo = (data.get('motivo') or '').strip()
+        with db_tx() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE usuarios SET estado = 'inactivo', updated_at = NOW() WHERE id = %s", (usuario_id,))
+            from routes.sesiones import cerrar_sesiones
+            cerrar_sesiones(usuario_id, cur=cur)
+            from routes.auditoria import registrar_auditoria
+            registrar_auditoria('desactivar_usuario', 'Usuarios', tabla='usuarios', registro_id=usuario_id, cur=cur,
+                                detalle=f"Usuario '{filas[0]['usuario_sistema']}' desactivado"
+                                        + (f'. Motivo: {motivo[:300]}' if motivo else '') + '. No se borra su historial.')
+        return jsonify({'success': True, 'message': f"Usuario '{filas[0]['usuario_sistema']}' desactivado. Ya no puede entrar."})
+    except Exception as e:
+        print(f"❌ Error en desactivar_usuario: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

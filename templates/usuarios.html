@@ -22,6 +22,7 @@
                 <div class="panel-help">Filtra por empresa, nivel o usuario.</div>
             </div>
             <div class="filters">
+                {% if es_duena %}<button type="button" class="btn btn-primary" id="btnNuevoUsuario" onclick="abrirNuevoUsuario()">➕ Nuevo usuario</button>{% endif %}
                 <select id="filterEmpresaUsuarios" class="table-select">
                     <option value="TODAS">Todas las empresas</option>
                     <option value="KCF">Solo KCF</option>

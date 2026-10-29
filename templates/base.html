@@ -228,7 +228,9 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
         </style>
         {% endif %}
         <!-- Condición de pago de la factura: solo Erika la cambia (26/10/2026); el servidor también lo controla -->
-        <script>window.ES_ERIKA = {{ 'true' if es_duena_reportes else 'false' }};</script>
+        <script>window.ES_ERIKA = {{ 'true' if es_duena_reportes else 'false' }};
+        // Crear, desactivar y reactivar usuarios: solo Erika (28-29/10/2026); el servidor también lo controla
+        window.ES_DUENA = {{ 'true' if es_duena else 'false' }};</script>
         </head>
         <body data-empresa="{{ emp_ctx.codigo if emp_ctx else 'KCF' }}">
 
@@ -2643,9 +2645,11 @@ function _dibujarTablaUsuarios() {
         const celdas = `<td class="left pm-resumen">${resumen}</td>
             <td><button type="button" class="btn-mini pm-btn" data-matriz="${_esc(u.id)}" ${puedeAbrir ? '' : 'disabled'}>🛡 Permisos</button></td>`;
         const aviso = estado?.gerencia ? ' <span class="badge badge-info" title="Ve todos los módulos">👑 Todo</span>' : '';
-        const btnClave = _esAdminSistema()
+        const btnClave = (_esAdminSistema()
             ? `<br><button type="button" class="btn-clave-usuario" onclick="abrirNuevaPassword(${Number(u.id)}, '${_esc(u.usuario_sistema)}')" title="Asignar una contraseña nueva (no pide la anterior)">🔑 Nueva contraseña</button>`
-            : '';
+            : '') + (window.ES_DUENA && String(u.usuario_sistema).toLowerCase() !== String(FLASK_SESSION.user).toLowerCase()
+            ? `<br><button type="button" class="btn-clave-usuario" style="color:#DC2626;border-color:#FCA5A5;" onclick="abrirDesactivarUsuario(${Number(u.id)}, '${_esc(u.usuario_sistema)}', '${_esc(u.nombres_apellidos || '')}')" title="Ya no podrá entrar. Su historial se conserva.">🚫 Desactivar</button>`
+            : '');
         return `
         <tr>
             <td class="left"><b>${_esc(u.usuario_sistema)}</b>${aviso}${btnClave}</td>
@@ -3033,6 +3037,109 @@ async function abrirCrearUsuarioDesdeAuth(authId) {
         });
         $('caActivar').addEventListener('click', () => activarUsuarioERP(r.data.id, r.data.usuario_sistema));
         cargarCuentasAuthSinUsuario();
+    });
+}
+
+// ============================================================
+// NUEVO USUARIO Y DESACTIVAR (solo Erika, 29/10/2026)
+// ============================================================
+function _modalSimple(id, titulo, cuerpo, pie) {
+    document.getElementById(id)?.remove();
+    const m = document.createElement('div');
+    m.id = id;
+    m.className = 'modal-bg show';
+    m.innerHTML = `
+        <div class="modal" style="width:min(540px,95vw);">
+            <div class="modal-head"><div class="modal-title">${titulo}</div>
+                <button type="button" class="btn btn-secondary" data-cerrar>Cerrar</button></div>
+            <div class="modal-body" style="padding:16px;display:grid;gap:10px;" data-cuerpo>${cuerpo}</div>
+            <div class="modal-foot" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;" data-pie>${pie}</div>
+        </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target.closest('[data-cerrar]')) m.remove(); });
+    return m;
+}
+
+function abrirNuevoUsuario() {
+    const empresas = _empresasDisponibles();
+    const m = _modalSimple('modalNuevoUsuario', '➕ Nuevo usuario', `
+        <div class="form-field"><label>Nombre de la persona *</label>
+            <input type="text" id="nuNombre" autocomplete="off" placeholder="Ej.: Milagros Pérez"></div>
+        <div class="form-field"><label>Usuario para entrar * <small>(sin espacios)</small></label>
+            <input type="text" id="nuUsuario" autocomplete="off" placeholder="Ej.: mil01kcf"></div>
+        <div class="form-field"><label>Área</label>
+            <input type="text" id="nuArea" autocomplete="off" placeholder="Ej.: Comercial"></div>
+        <div class="form-field"><label>Empresas *</label>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                ${empresas.map(c => `<label style="display:inline-flex;gap:4px;align-items:center;"><input type="checkbox" class="nuEmpresa" value="${_esc(c)}" checked> ${_esc(c)}</label>`).join('')}
+            </div></div>
+        <div class="form-field"><label>Contraseña</label>
+            <div style="font-size:13px;color:#475569;">El ERP genera una contraseña segura y te la muestra <b>una sola vez</b>.</div></div>
+        <div id="nuError" style="color:#DC2626;font-weight:700;"></div>`,
+        `<button type="button" class="btn btn-primary" id="nuCrear">Crear usuario</button>`);
+    const $ = id => m.querySelector('#' + id);
+    $('nuNombre').focus();
+    $('nuCrear').addEventListener('click', async () => {
+        $('nuError').textContent = '';
+        const cuerpo = {
+            nombres_apellidos: $('nuNombre').value.trim(),
+            usuario_sistema: $('nuUsuario').value.trim(),
+            area: $('nuArea').value.trim(),
+            empresas: [...m.querySelectorAll('.nuEmpresa:checked')].map(c => c.value),
+            generar_password: true
+        };
+        if (!cuerpo.nombres_apellidos) { $('nuError').textContent = 'Escribe el nombre de la persona.'; return; }
+        if (!cuerpo.usuario_sistema) { $('nuError').textContent = 'Escribe el usuario para entrar.'; return; }
+        if (!cuerpo.empresas.length) { $('nuError').textContent = 'Marca al menos una empresa.'; return; }
+        $('nuCrear').disabled = true;
+        const r = await _permApi('/api/config/usuarios/nuevo', { method: 'POST', body: JSON.stringify(cuerpo) });
+        $('nuCrear').disabled = false;
+        if (!r.ok) { $('nuError').textContent = '❌ ' + r.error; return; }
+        const clave = r.data?.password_generada || '';
+        m.querySelector('[data-cuerpo]').innerHTML = `
+            <div style="font-size:15px;">✅ Usuario <b>${_esc(r.data.usuario_sistema)}</b> creado. Ya puede entrar.</div>
+            <div style="border:2px solid #F59E0B;background:#FFFBEB;border-radius:10px;padding:14px;">
+                <div style="font-weight:800;color:#DC2626;margin-bottom:6px;">⚠️ Anota esta contraseña: no se volverá a mostrar</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <code style="font-size:20px;letter-spacing:1px;background:#fff;padding:6px 10px;border-radius:6px;border:1px solid #FCD34D;user-select:all;">${_esc(clave)}</code>
+                    <button type="button" class="btn btn-secondary" id="nuCopiar">Copiar</button>
+                </div>
+                <ul style="margin:8px 0 0;padding-left:18px;font-size:13px;color:#1E3A8A;">
+                    <li>Usuario: <b>${_esc(r.data.usuario_sistema)}</b></li>
+                    <li>Entrégala <b>en persona</b>, no por WhatsApp.</li>
+                    <li><b style="color:#DC2626;">Todavía no ve ningún módulo:</b> pulsa <b>🛡 Permisos</b> en su fila y marca lo que verá.</li>
+                </ul>
+            </div>`;
+        m.querySelector('[data-pie]').innerHTML = `<button type="button" class="btn btn-primary" data-cerrar>Ya la anoté, cerrar</button>`;
+        $('nuCopiar').addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(clave); toast('📋 Contraseña copiada'); } catch (e) { toast('Selecciona la contraseña y cópiala a mano'); }
+        });
+        if (typeof loadUsuarios === 'function') await loadUsuarios(true);
+    });
+}
+
+function abrirDesactivarUsuario(id, usuario, nombre) {
+    const m = _modalSimple('modalDesactivarUsuario', '🚫 Desactivar usuario', `
+        <ul style="margin:0;padding-left:18px;line-height:1.7;">
+            <li>Usuario: <b style="color:#1D4ED8;">${_esc(usuario)}</b>${nombre ? ` (<b style="color:#1D4ED8;">${_esc(nombre)}</b>)` : ''}</li>
+            <li><b style="color:#DC2626;">Ya no podrá entrar al ERP.</b> Si lo tiene abierto, sale en el siguiente clic.</li>
+            <li><b>No se borra nada:</b> sus cotizaciones, facturas y la auditoría se quedan.</li>
+            <li>Si te equivocas, lo vuelves a activar en <b>Usuarios inactivos</b>.</li>
+        </ul>
+        <div class="form-field"><label>Motivo (opcional)</label><input type="text" id="duMotivo" autocomplete="off" placeholder="Ej.: terminó sus prácticas"></div>
+        <div id="duError" style="color:#DC2626;font-weight:700;"></div>`,
+        `<button type="button" class="btn btn-secondary" data-cerrar>Cancelar</button>
+         <button type="button" class="btn btn-primary" style="background:#DC2626;border-color:#DC2626;" id="duConfirmar">Sí, desactivar</button>`);
+    m.querySelector('#duConfirmar').addEventListener('click', async () => {
+        const b = m.querySelector('#duConfirmar');
+        b.disabled = true;
+        const r = await _permApi(`/api/config/usuarios/${encodeURIComponent(id)}/desactivar`,
+                                 { method: 'POST', body: JSON.stringify({ motivo: m.querySelector('#duMotivo').value.trim() }) });
+        b.disabled = false;
+        if (!r.ok) { m.querySelector('#duError').textContent = '❌ ' + r.error; return; }
+        m.remove();
+        toast(`✅ ${usuario} desactivado. Ya no puede entrar.`);
+        if (typeof loadUsuarios === 'function') await loadUsuarios(true);
     });
 }
 
