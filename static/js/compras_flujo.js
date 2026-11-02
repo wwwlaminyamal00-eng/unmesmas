@@ -46,6 +46,8 @@
         'Recibida parcial': 'Llegó una parte', 'Recibida': 'Mercadería recibida', 'Cerrada': '✔ Completa', 'Anulada': 'Anulada'
     };
     const estadoOC = e => `<span class="${claseEstado(e)}">${esc(NOMBRE_ESTADO_OC[e] || e || '')}</span>`;
+    // Erika 02/11/2026: si llegó algo dañado, se dice cuánto (no entra al stock)
+    const danadoHtml = o => Number(o.danado) > 0 ? `<span class="com-danado">🔴 Recibido con daño: ${cant(o.danado)}</span>` : '';
 
     function aviso(msg, tipo) {
         let caja = document.getElementById('comAviso');
@@ -401,7 +403,7 @@
                 <td>${esc(o.sede || '—')}<small>${o.modalidad_entrega === 'Nosotros recogemos' ? '🚚 Recogemos' : 'Proveedor entrega'}</small></td>
                 <td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
                 <td class="num">${dinero(o.moneda, o.total)}${o.moneda === 'USD' && o.tipo_cambio ? `<small>TC ${Number(o.tipo_cambio).toFixed(3)}</small>` : ''}${o.pagado > 0 ? `<small>Pagado ${dinero(o.moneda, o.pagado)}</small>` : ''}</td>
-                <td>${estadoOC(o.estado)}${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
+                <td>${estadoOC(o.estado)}${danadoHtml(o)}${o.incidencias ? `<small class="neg">${o.incidencias} diferencia(s)</small>` : ''}</td>
                 <td><div class="com-barra ${Number(o.avance_recepcion) <= 0 ? 'com-barra-0' : (Number(o.avance_recepcion) >= 100 ? 'com-barra-100' : '')}"><i style="width:${o.avance_recepcion}%"></i></div><small>${Math.round(o.avance_recepcion)}%</small></td>
                 <td class="left">${pasoHtml(o)}</td>
                 <td><button class="btn-mini sec" data-ver="${o.id}">Ver</button></td></tr>`).join('')
@@ -930,7 +932,7 @@
             const { data: o } = await api('/compras/api/flujo/ordenes/' + id);
             detalleActual = o;
             const ep = estadoPasos(o);
-            $('detTitulo').innerHTML = `${esc(o.numero)} ${estadoOC(o.estado)}`;
+            $('detTitulo').innerHTML = `${esc(o.numero)} ${estadoOC(o.estado)} ${danadoHtml(o)}`;
             const pd = o.proveedor_datos || {};
             $('detCuerpo').innerHTML = `
                 ${o.flujo === 'v2' ? `<div class="com-stepper">${PASOS.map((p, i) => `<div class="com-step ${o.estado === 'Anulada' ? 'anulada' : ep[p.k]}"><span>${ep[p.k] === 'hecho' ? '✓' : i + 1}</span><b>${p.t}</b></div>`).join('')}</div>` : ''}
@@ -956,13 +958,14 @@
                 ${o.nota_interna ? `<div class="inv-tip com-nota-interna">🔒 <b>Nota interna (no la ve el proveedor):</b> ${esc(o.nota_interna)}</div>` : ''}
                 <div class="inv-subtitulo">Productos</div>
                 <div class="table-wrap"><table class="inv-table inv-mini">
-                    <thead><tr><th class="com-item">Ítem</th><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
+                    <thead><tr><th class="com-item">Ítem</th><th>Código de producto</th><th class="left">Nombre producto</th><th class="left">Para</th><th>Pedido</th><th>Llegó bien</th><th>Llegó dañado</th><th>Precio sin IGV</th><th>Total</th></tr></thead>
                     <tbody>${o.items.map((i, n) => `<tr class="${Number(i.cantidad_recibida) < Number(i.cantidad) && o.estado === 'Recibida parcial' ? 'fila-dif' : ''}">
                         <td class="com-item">${n + 1}</td><td>${esc(i.codigo || '')}</td><td class="left">${esc(i.producto)}</td>
                         <td class="left">${i.pedido_id ? `${esc(i.cliente || '')}<small>${esc(i.pedido_numero || '')}${i.cotizacion_numero ? ' · Cot. ' + esc(i.cotizacion_numero) : ''}</small>` : '<span class="badge-sin-pedido">Para stock - Sin PC (Pedido del cliente)</span>'}</td>
                         <td class="num">${cant(i.cantidad)} ${esc(i.unidad || '')}</td><td class="num">${cant(i.cantidad_recibida)}</td>
+                        <td class="num">${Number(i.cantidad_danada) > 0 ? `<b class="neg">🔴 ${cant(i.cantidad_danada)}</b><small>no entra al stock</small>` : '0'}</td>
                         <td class="num">${dinero(o.moneda, i.precio_unitario)}</td><td class="num">${dinero(o.moneda, i.total)}</td></tr>`).join('')}</tbody>
-                    <tfoot><tr><td colspan="7" class="num">Subtotal ${dinero(o.moneda, o.subtotal)} · IGV ${dinero(o.moneda, o.igv)} · <b>Total</b></td><td class="num"><b>${dinero(o.moneda, o.total)}</b></td></tr></tfoot>
+                    <tfoot><tr><td colspan="8" class="num">Subtotal ${dinero(o.moneda, o.subtotal)} · IGV ${dinero(o.moneda, o.igv)} · <b>Total</b></td><td class="num"><b>${dinero(o.moneda, o.total)}</b></td></tr></tfoot>
                 </table></div>
                 ${o.incidencias.length ? `<div class="inv-subtitulo">Diferencias</div><div class="table-wrap"><table class="inv-table inv-mini">
                     <thead><tr><th class="com-item">Ítem</th><th>N° diferencia</th><th>Tipo</th><th class="left">Detalle</th><th>Monto</th><th>Estado</th><th class="left">Cómo se resolvió</th><th></th></tr></thead>
@@ -973,7 +976,9 @@
                 <div class="com-columnas">
                     <div><div class="inv-subtitulo">Pagos</div>${o.pagos.length ? o.pagos.map(p => `<div class="com-mov">💸 <b>${dinero(o.moneda, p.monto)}</b>${p.moneda_pago && p.moneda_pago !== (o.moneda || 'PEN') ? ` (pagado ${dinero(p.moneda_pago, p.monto_pagado)} · TC ${Number(p.tipo_cambio).toFixed(3)})` : ''} · ${esc(p.metodo || '')} ${esc(p.banco || '')} · Op. ${esc(p.numero_operacion || '—')}<small>${fecha(p.fecha)} · ${esc(p.usuario_nombre || '')}</small></div>`).join('') : '<div class="inv-tip">Sin pagos.</div>'}
                         ${pd.numero_cuenta || pd.cci ? `<div class="inv-tip">🏦 Se paga a: ${esc(pd.banco || '')} ${esc(pd.numero_cuenta || '')} ${pd.cci ? 'CCI ' + esc(pd.cci) : ''}${pd.cuenta_aviso ? `<div class="${pd.cuenta_mismo_banco ? 'com-cuenta-ok' : 'com-cuenta-otra'}">${esc(pd.cuenta_aviso)}</div>` : ''}</div>` : ''}</div>
-                    <div><div class="inv-subtitulo">Recepciones</div>${o.recepciones.length ? o.recepciones.map(r => `<div class="com-mov">📦 <b>${esc(r.numero)}</b> · Guía ${esc(r.guia_proveedor)} · ${esc(r.sede || '')}${r.con_diferencias ? ' · <b class="neg">con diferencias</b>' : ''}<small>Trajo: ${esc(r.traido_por || '')} · Recibió: ${esc(r.recibido_por || '')} · ${fecha(r.fecha)}</small></div>`).join('') : '<div class="inv-tip">Todavía no llega nada.</div>'}</div>
+                    <div><div class="inv-subtitulo">Recepciones</div>${o.recepciones.length ? o.recepciones.map(r => `<div class="com-mov">📦 <b>${esc(r.numero)}</b> · Guía ${esc(r.guia_proveedor)} · ${esc(r.sede || '')}${r.con_diferencias ? ' · <b class="neg">con diferencias</b>' : ''}
+                        <div>✅ Bien: <b>${cant(r.buenos)}</b>${Number(r.danados) > 0 ? ` · <span class="com-danado">🔴 Dañado: ${cant(r.danados)}</span>` : ''}</div>
+                        ${r.detalle_danados ? `<div class="neg">${esc(r.detalle_danados)}</div>` : ''}<small>Trajo: ${esc(r.traido_por || '')} · Recibió: ${esc(r.recibido_por || '')} · ${fecha(r.fecha)}</small></div>`).join('') : '<div class="inv-tip">Todavía no llega nada.</div>'}</div>
                     <div><div class="inv-subtitulo">Facturas</div>${o.facturas.length ? o.facturas.map(f => `<div class="com-mov">🧾 <b>${esc(f.tipo)} ${esc(f.numero)}</b> · ${dinero(f.moneda, f.monto)}${f.moneda === 'USD' && f.tipo_cambio ? ` · TC ${Number(f.tipo_cambio).toFixed(3)}` : ''} ${f.cuadra === false ? '<b class="neg">no cuadra</b>' : '✔'}<small>${fecha(f.fecha)} · vence ${fecha(f.fecha_vencimiento)} · ${esc(f.estado || '')}</small></div>`).join('') : '<div class="inv-tip">Sin factura.</div>'}</div>
                 </div>
                 <div class="inv-subtitulo">Historial (no se puede borrar)</div>
@@ -1163,7 +1168,7 @@
                 return `<tr><td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td><td class="left">${esc(o.proveedor || '')}</td>
                     <td>${o.modalidad_entrega === 'Nosotros recogemos' ? `<span class="com-recojo">🚚 Recogemos</span><small>${esc(o.direccion_recojo || '')}</small>${celdaResponsable(o)}` : 'Proveedor entrega'}</td>
                     <td>${esc(o.sede || '')}</td><td>${fecha(o.fecha_compromiso)}${o.atrasada ? '<small class="neg">ATRASADA</small>' : ''}</td>
-                    <td class="left">${esc(o.clientes || 'Stock')}</td><td>${estadoOC(o.estado)}</td><td>${accion}</td></tr>`;
+                    <td class="left">${esc(o.clientes || 'Stock')}</td><td>${estadoOC(o.estado)}${danadoHtml(o)}</td><td>${accion}</td></tr>`;
             }).join('') : '<tr><td colspan="9">No hay mercadería por llegar.</td></tr>';
         } catch (e) { $('recBodyCom').innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`; }
     }
@@ -1290,12 +1295,12 @@
             $('recCuerpo').style.display = 'none';
             const res = $('recResultado');
             res.style.display = '';
-            const color = { Completo: 'ok', Faltante: 'danger', Sobrante: 'warn', 'Con dañados': 'warn' };
+            const color = { Completo: 'ok', Faltante: 'danger', Sobrante: 'warn' };
             res.innerHTML = `<div class="inv-alerta ${r.resultado.some(x => x.estado !== 'Completo') ? 'warn' : 'ok'}"><div>${esc(r.message)}</div></div>
                 <div class="inv-subtitulo">Ahora sí: lo que se esperaba y lo que contaste</div>
                 <table class="inv-table"><thead><tr><th class="com-item">Ítem</th><th class="left">Nombre producto</th><th>Se esperaba</th><th>Contaste (buenos)</th><th>Dañados</th><th>Resultado</th></tr></thead>
                 <tbody>${r.resultado.map((x, n) => `<tr><td class="com-item">${n + 1}</td><td class="left">${esc(x.producto)}</td><td class="num">${cant(x.esperado)}</td><td class="num">${cant(x.buena)}</td>
-                    <td class="num">${cant(x.danada)}</td><td><span class="com-paso com-paso-${color[x.estado] || 'info'}">${esc(x.estado)}</span></td></tr>`).join('')}</tbody></table>
+                    <td class="num">${cant(x.danada)}</td><td><span class="com-paso com-paso-${color[x.estado] || (String(x.estado).startsWith('Recibido con daño') ? 'danger' : 'info')}">${esc(x.estado)}</span></td></tr>`).join('')}</tbody></table>
                 ${(r.pendientes_inventario || []).length ? '<div class="inv-paso">Siguiente: ve a <b>Inventario ▸ Entradas y salidas</b> y pulsa "Ingresar" en esta recepción. Si es de un pedido, quedará separada para ese cliente.</div>' : ''}`;
             $('recPie').innerHTML = `<a class="btn btn-secondary" href="/inventario?tab=entradas_salidas">Ir a Inventario ➜</a><button class="btn btn-primary" data-close="recModal">Listo</button>`;
             refrescar();

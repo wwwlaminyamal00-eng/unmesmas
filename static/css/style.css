@@ -4574,3 +4574,9 @@ table.inv-table.con-item td:nth-child(5), table.inv-table.con-item td:nth-child(
 /* Cuenta del proveedor elegida por la regla de ahorro (28/10/2026) */
 .ficha-datos .fd-nota.fd-ok-nota { background: #ECFDF5; color: #047857; font-weight: 600; }
 .ficha-datos .fd-nota.fd-comision { color: #DC2626; font-weight: 700; border: 1px solid #FCA5A5; }
+
+/* Pago al contado del PV con historial (02/11/2026) */
+.pc-pago-hist { margin-top: 6px; padding: 6px 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 11px; color: #334155; }
+.pc-pago-hist ul { margin: 4px 0 0 16px; padding: 0; }
+.pc-pago-hist .pc-azul { color: #1D4ED8; font-weight: 700; }
+.pc-pago-nota { margin-top: 4px; font-size: 10px; color: #64748B; font-weight: 600; }

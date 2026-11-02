@@ -252,3 +252,25 @@ def normalizar_banco(texto):
         if clave in palabras or (len(clave) > 3 and clave in t):
             return nombre
     return original[:80]
+
+
+def fecha_hora_lima(valor=None):
+    """Fecha y hora en hora de Lima, sin zona, para columnas 'timestamp without time zone' (Erika 02/11/2026:
+    "en la ficha factura la zona horaria no es la de Perú"). El navegador mandaba new Date().toISOString(), que es
+    hora UTC con 'Z', y la base guardaba 5 horas de más. Si llega con 'Z' o con desfase, se pasa a hora de Lima;
+    si llega sin zona (ya es hora local) o solo la fecha, se deja como está. Sin valor: ahora en Lima."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    lima = ZoneInfo(os.environ.get('ERP_ZONA_HORARIA', 'America/Lima'))
+    if not valor:
+        return datetime.now(lima).replace(tzinfo=None).isoformat(timespec='seconds')
+    if isinstance(valor, datetime):
+        return (valor.astimezone(lima).replace(tzinfo=None) if valor.tzinfo else valor).isoformat(timespec='seconds')
+    texto = str(valor).strip()
+    if re.search(r'T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$', texto):
+        try:
+            d = datetime.fromisoformat(texto.replace('Z', '+00:00'))
+            return d.astimezone(lima).replace(tzinfo=None).isoformat(timespec='seconds')
+        except ValueError:
+            return texto
+    return texto

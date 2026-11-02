@@ -408,7 +408,7 @@
         const titulo = { pagar: `Marcar "${f.nombre}" como pagado`, noaplica: `"${f.nombre}" no aplica este mes`, pendiente: `Volver "${f.nombre}" a pendiente` }[acc];
         form.innerHTML = `<td colspan="9"><div class="sun-form sun-form-linea"><b>${esc(titulo)}</b>
             ${acc === 'pagar' ? `<label>Monto pagado (S/)<input name="monto" inputmode="decimal" value="${f.monto === null ? '' : r2(f.monto)}"></label>
-            <label>Fecha de pago<input type="date" name="fecha_pago" value="${new Date().toISOString().slice(0, 10)}"></label>
+            <label>Fecha de pago<input type="date" name="fecha_pago" value="${new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Lima' }).format(new Date())}"></label>
             <label>N° de operación / NPS (del voucher)<input name="numero_operacion" maxlength="80" required></label>` : ''}
             <label class="sun-ancho">${acc === 'pendiente' ? 'Motivo (obligatorio)' : 'Observación'}<input name="observacion" maxlength="500"></label>
             <button class="btn btn-primary" type="button">Guardar</button></div></td>`;

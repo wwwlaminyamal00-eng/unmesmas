@@ -2665,3 +2665,19 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Maestros ▸ Proveedores muestra **Cuenta 1 y Cuenta 2** (se quitó la Cuenta 3). El texto dice "Registra hasta 2 cuentas".
 - En la base no se borró nada: las columnas de la cuenta 3 siguen. Hoy ningún proveedor tiene Cuenta 3 (ni Cuenta 2) guardada. Si alguna existiera, guardar el proveedor desde la pantalla no la borra y la regla de ahorro la sigue usando.
 - Pruebas: 368 bien.
+
+### 24.64 Mejoras de Erika del 02/11/2026
+**1. Factura con hora de Perú**
+- Antes la fecha de emisión de la factura se guardaba en hora UTC (5 horas de más). Ahora la pantalla manda la hora de Lima y el servidor convierte a Lima cualquier hora con zona (`utils.fecha_hora_lima`). Lo mismo en las guías.
+- Revisadas las demás fichas: SUNAT ▸ "Fecha de pago" proponía la fecha UTC (después de las 7 p. m. salía el día siguiente): corregido. Las demás ya usaban hora de Lima.
+- Datos ya guardados: 40 de 49 facturas y 4 de 46 guías tienen la hora 5 horas adelantada (ninguna cambia de día). **No se tocaron**: falta el "sí" escrito de Erika para restarles 5 horas, con respaldo previo.
+
+**2. Recibir mercadería: "Recibido con daño"**
+- El resultado de la recepción dice "Recibido con daño: 3 UND" (antes "Con dañados") y el mensaje explica que lo dañado no entra al stock y la OC sigue abierta hasta que el proveedor lo reponga.
+- La OC muestra la pastilla roja "🔴 Recibido con daño: N" en la lista, en Recibir mercadería y en el detalle. La tabla de productos tiene "Llegó bien" y "Llegó dañado (no entra al stock)". Cada recepción dice "✅ Bien: N · 🔴 Dañado: N" con el producto y el comentario.
+
+**3. PV al contado: N° de operación, banco y CCI guardados con historial**
+- Migración 045 (respaldo previo `respaldo_20261015.pedido_compra_pc_20261102`, 67 filas): columnas `pago_num_operacion`, `pago_banco`, `pago_cci`, `pago_registrado_por`, `pago_registrado_en` en `pedido_compra_pc` y tabla nueva `pv_pago_contado_historial` (no se borra; RLS activo como las demás).
+- Al guardar un PV al contado se graba el pago y una fila "Registrado"; si se cambia, "Corregido" con usuario, fecha y hora de Lima. Dejar los campos vacíos no borra lo guardado.
+- La ficha del PV muestra el historial. "Cuenta OCCI" ahora dice **CCI**. Finanzas ▸ Cuentas por cobrar muestra "Pago al contado (del PV)".
+- Pruebas: 375 bien (esquema reconstruido: 1 falla que ya venía de main, la prueba de "Nuevo usuario" necesita `auth.users` de Supabase).

@@ -378,6 +378,8 @@
         if (esCxc) {
             ficha += fila('N° PV (Pedido de venta)', esc(doc.pc_numero || '—'), 'fd-num') +
                 fila('N° PC (Pedido del cliente)', esc(pcCliente(doc.oc_cliente) || '—'), 'fd-num');
+            // Pago al contado registrado en el PV (Erika 02/11/2026): para comprobar el depósito
+            if (doc.pago_contado_pv) ficha += fila('Pago al contado (del PV)', esc(doc.pago_contado_pv), 'fd-num');
         }
         ficha += fila(esCxc ? 'Total (incluye IGV)' : 'Monto a pagar (incluye IGV)', dinero(doc, doc.total), 'fd-monto');
         if (esCxc && doc.retencion) {
