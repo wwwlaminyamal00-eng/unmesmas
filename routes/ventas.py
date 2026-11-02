@@ -28,7 +28,7 @@ from routes import descripcion_cliente as desc_cli
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
-from utils import (es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
+from utils import (fecha_hora_lima, es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
                    totales_consistentes, bloquear_numeracion, normalizar_condicion, dias_de_condicion,
                    mayuscula_inicial)
 
@@ -480,6 +480,7 @@ def guardar_guia_db(data):
             # Si la fecha NO tiene hora (solo YYYY-MM-DD), usar ahora
             if isinstance(fecha_emision, str) and len(fecha_emision) == 10 and '-' in fecha_emision:
                 fecha_emision = datetime.now().isoformat()
+        fecha_emision = fecha_hora_lima(fecha_emision)   # hora de Lima, nunca UTC (02/11/2026)
         
         fecha_traslado = data.get('fecha_traslado') or datetime.now().date().isoformat()
         
@@ -664,10 +665,8 @@ def guardar_comprobante_db(data):
     try:
         from datetime import datetime
         
-        # ✅ OBTENER FECHA Y HORA COMPLETA (mantiene la hora del frontend)
-        fecha_emision = data.get('fecha_emision')
-        if not fecha_emision:
-            fecha_emision = datetime.now().isoformat()
+        # ✅ OBTENER FECHA Y HORA COMPLETA (mantiene la hora del frontend, siempre en hora de Lima)
+        fecha_emision = fecha_hora_lima(data.get('fecha_emision'))
         
         print(f"📅 Fecha emisión guardando: {fecha_emision}")
         
@@ -2686,10 +2685,7 @@ def api_guias_guardar():
         # 🔽 RECIBIR FECHA CON HORA DEL FRONTEND
         # ============================================================
         # El frontend ya envía fecha_emision con hora completa
-        fecha_emision = data.get('fecha_emision')
-        if not fecha_emision:
-            # Fallback: usar ahora
-            fecha_emision = datetime.now().isoformat()
+        fecha_emision = fecha_hora_lima(data.get('fecha_emision'))   # hora de Lima, nunca UTC (02/11/2026)
         
         # Fecha de traslado
         fecha_traslado = data.get('fecha_traslado')
@@ -3373,7 +3369,8 @@ def api_comprobantes_guardar():
             'tipo_comprobante': data.get('tipo', 'FACTURA'),
             'serie': str(data.get('serie') or 'E001').strip().upper(),  # serie electrónica de SUNAT (Erika 25/10/2026)
             'numero': data.get('numero'),
-            'fecha_emision': data.get('fecha_emision') or datetime.now().isoformat(), 
+            # Hora de Lima siempre (antes llegaba en UTC desde el navegador: 5 horas de más; Erika 02/11/2026)
+            'fecha_emision': fecha_hora_lima(data.get('fecha_emision')),
             'moneda': moneda_comp,
             'cliente_tipo_doc': data.get('cliente_tipo_doc', 'RUC'),
             'cliente_numero_doc': data.get('ruc'),
@@ -4048,6 +4045,11 @@ def api_pedido_compra_guardar():
             _asegurar_columna_oc_cliente()
             db_execute("UPDATE pedido_compra_pc SET oc_cliente = %s WHERE id = %s",
                        (data['oc_cliente'] or None, result['id']))
+
+        if result:
+            # Erika 02/11/2026: pago al contado (N° operación, banco, CCI) guardado con historial para auditoría
+            from routes import pago_contado_pv
+            pago_contado_pv.guardar(result['id'], dict(data, condicion_pago=condicion))
 
         if result:
             # 24/10/2026 (Erika): el PV lleva la moneda y el TC de su cotización (o los que se escriban en el PV)
@@ -7350,6 +7352,11 @@ def api_pedido_compra_obtener(id):
         pc['items'] = items
         pc['items_json'] = None  # No devolver el JSON crudo
         
+        try:
+            from routes import pago_contado_pv
+            pc.update(pago_contado_pv.datos(id))   # pago al contado e historial (02/11/2026)
+        except Exception as e:
+            print(f"⚠️ Pago al contado del PV: {e}")
         return jsonify({'success': True, 'data': pc})
         
     except Exception as e:

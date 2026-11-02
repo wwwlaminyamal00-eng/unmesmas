@@ -252,3 +252,5 @@ td.com-tot-linea { white-space: nowrap !important; min-width: 84px; }
 .com-nota-interna { background: #F1F5F9; border-left: 3px solid #64748B; }
 /* Columna "Ítem" (1, 2, 3...) en las tablas de las ventanas de Compras (Erika 28/10/2026) */
 .com-item { width: 44px; text-align: center !important; font-weight: 700; color: #475569; }
+/* Recibido con daño (Erika 02/11/2026): rojo y con la cantidad */
+.com-danado { display: inline-block; margin-top: 3px; padding: 2px 8px; border-radius: 999px; background: #FEE2E2; color: #B91C1C; border: 1px solid #FCA5A5; font-size: 11px; font-weight: 800; white-space: nowrap; }

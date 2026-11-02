@@ -713,7 +713,10 @@ SQL_OC_LISTA = """
         FROM comprobantes_proveedor WHERE COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA') AND orden_compra_id IS NOT NULL
         GROUP BY orden_compra_id
     ),
-    inc AS (SELECT orden_compra_id, COUNT(*) AS abiertas FROM com_incidencias WHERE estado = 'Abierta' GROUP BY orden_compra_id)
+    inc AS (SELECT orden_compra_id, COUNT(*) AS abiertas FROM com_incidencias WHERE estado = 'Abierta' GROUP BY orden_compra_id),
+    -- Erika 02/11/2026: cuánto llegó dañado (no entra al stock; el proveedor repone o da nota de crédito)
+    dn AS (SELECT r.orden_compra_id, SUM(ri.cantidad_danada) AS danado FROM com_recepcion_items ri
+           JOIN com_recepciones r ON r.id = ri.recepcion_id GROUP BY r.orden_compra_id)
     SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
            oc.empresa_id, e.codigo AS empresa,
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
@@ -728,7 +731,7 @@ SQL_OC_LISTA = """
            COALESCE(it.lineas, 0) AS lineas, COALESCE(it.pedida, 0) AS pedida, COALESCE(it.recibida, 0) AS recibida,
            COALESCE(it.valor_recibido, 0) AS valor_recibido, it.pedidos, it.clientes, it.productos,
            COALESCE(pg.pagado, 0) AS pagado, COALESCE(fa.facturas, 0) AS facturas, COALESCE(fa.facturado, 0) AS facturado,
-           fa.cuadra, COALESCE(inc.abiertas, 0) AS incidencias
+           fa.cuadra, COALESCE(inc.abiertas, 0) AS incidencias, COALESCE(dn.danado, 0) AS danado
     FROM ordenes_compra oc
     LEFT JOIN erp_empresas e ON e.id = oc.empresa_id
     LEFT JOIN almacenes a ON a.id = oc.almacen_entrega_id
@@ -737,6 +740,7 @@ SQL_OC_LISTA = """
     LEFT JOIN pg ON pg.id = oc.id
     LEFT JOIN fa ON fa.orden_compra_id = oc.id
     LEFT JOIN inc ON inc.orden_compra_id = oc.id
+    LEFT JOIN dn ON dn.orden_compra_id = oc.id
 """
 
 
@@ -1106,7 +1110,8 @@ def api_orden_detalle(oc_id):
         items = db_query("""
             SELECT oci.id, oci.producto_id, oci.producto, oci.unidad, oci.cantidad, oci.precio_unitario, oci.total,
                    oci.pedido_id, oci.pedido_numero, oci.cliente, COALESCE(oci.cantidad_recibida, 0) AS cantidad_recibida,
-                   oci.cotizacion_numero, pr.codigo
+                   oci.cotizacion_numero, pr.codigo,
+                   (SELECT COALESCE(SUM(ri.cantidad_danada), 0) FROM com_recepcion_items ri WHERE ri.oc_item_id = oci.id) AS cantidad_danada
             FROM ordenes_compra_items oci LEFT JOIN productos pr ON pr.id = oci.producto_id
             WHERE oci.orden_compra_id = %s ORDER BY oci.id
         """, (oc_id,))
@@ -1115,7 +1120,13 @@ def api_orden_detalle(oc_id):
             "SELECT fecha, usuario, accion, detalle FROM com_historial WHERE orden_compra_id = %s ORDER BY id", (oc_id,))]
         o['recepciones'] = [_fila(r) for r in db_query("""
             SELECT r.numero, r.fecha, r.guia_proveedor, r.traido_por, r.recibido_por, r.con_diferencias, a.nombre AS sede,
-                   r.observaciones
+                   r.observaciones,
+                   (SELECT COALESCE(SUM(ri.cantidad_buena), 0) FROM com_recepcion_items ri WHERE ri.recepcion_id = r.id) AS buenos,
+                   (SELECT COALESCE(SUM(ri.cantidad_danada), 0) FROM com_recepcion_items ri WHERE ri.recepcion_id = r.id) AS danados,
+                   (SELECT string_agg(COALESCE(oci.producto, '') || ': ' || trim(to_char(ri.cantidad_danada, 'FM999999990.##'))
+                                      || COALESCE(' ' || oci.unidad, '') || COALESCE(' (' || NULLIF(ri.comentario, '') || ')', ''), '; ')
+                      FROM com_recepcion_items ri JOIN ordenes_compra_items oci ON oci.id = ri.oc_item_id
+                     WHERE ri.recepcion_id = r.id AND ri.cantidad_danada > 0) AS detalle_danados
             FROM com_recepciones r LEFT JOIN almacenes a ON a.id = r.almacen_id WHERE r.orden_compra_id = %s ORDER BY r.id
         """, (oc_id,))]
         o['pagos'] = [_fila(p) for p in db_query("""
@@ -1826,7 +1837,7 @@ def api_orden_recibir(oc_id):
                     _incidencia(cur, oc_id, 'Dañado', f"{_cant(danada)} {oi['unidad'] or ''} de {oi['producto']} llegaron dañados (guía {guia}).",
                                 rec_id, producto_id=oi['producto_id'], cantidad=danada,
                                 monto=redondear(danada * a_decimal(oi['precio_unitario'])))
-                    fila['estado'] = 'Con dañados'
+                    fila['estado'] = f'Recibido con daño: {_cant(danada)} {oi["unidad"] or ""}'.strip()
                     diferencias += 1
                 if buena > pendiente:
                     extra = buena - pendiente
@@ -1859,7 +1870,15 @@ def api_orden_recibir(oc_id):
                        + (f' · sede distinta a la de la OC' if oc['almacen_entrega_id'] and oc['almacen_entrega_id'] != almacen_id else ''))
         faltantes = [r for r in resultado if r['estado'] == 'Faltante']
         msg = f'Recepción {numero} registrada. '
-        msg += 'Llegó todo lo que faltaba. ' if completa else f'Aún falta mercadería ({len(faltantes)} producto(s)): la orden sigue abierta. '
+        danados = [r for r in resultado if str(r['estado']).startswith('Recibido con daño')]
+        if completa:
+            msg += 'Llegó todo lo que faltaba. '
+        elif faltantes:
+            msg += f'Aún falta mercadería ({len(faltantes)} producto(s)): la orden sigue abierta. '
+        else:
+            # 02/11/2026: lo dañado no entra al stock; la OC sigue abierta hasta que el proveedor lo reponga
+            msg += (f'Llegó mercadería dañada ({len(danados)} producto(s)): no entra al stock y la orden sigue abierta '
+                    'hasta que el proveedor la reponga. ')
         if ingresados:
             msg += f'Ya se sumó al inventario ({len(ingresados)} producto(s)). '
         if separados:

@@ -238,3 +238,34 @@ def test_resumen_y_exportar(cx, admin):
     _sql("UPDATE ordenes_compra SET nota_interna = 'SECRETO INTERNO ZZ' WHERE id = %s", (oc,), fetch=False)
     assert 'SECRETO INTERNO ZZ' not in admin.get(f'/compras/flujo/ordenes/{oc}/imprimir').get_data(as_text=True)
     assert admin.get(f'/compras/api/flujo/ordenes/{oc}').get_json()['data']['nota_interna'] == 'SECRETO INTERNO ZZ'
+
+
+def test_recibido_con_dano_se_ve_en_la_oc(cx, admin, monkeypatch):
+    """Erika 02/11/2026: si llega mercadería dañada debe figurar el estado y cuánto llegó dañado."""
+    body = _oc_body(cx, condicion_pago='Crédito', dias_credito=30, modalidad_entrega='Proveedor entrega',
+                    motivo_compra='Stock estratégico', enviar=True,
+                    items=[{'producto_id': cx['CAR'], 'cantidad': 10, 'precio_unitario': 50}])
+    r = cx['compra'].post('/compras/api/flujo/ordenes', json=body)
+    assert r.status_code == 200, r.get_json()
+    oc_id = r.get_json()['id']
+    assert admin.post(f'/compras/api/flujo/ordenes/{oc_id}/aprobar', json={'aprobar': True}).status_code == 200
+    items = cx['alm'].get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').get_json()['items']
+    rec = {'almacen_id': cx['BRE'], 'guia_proveedor': 'EG77-02112026', 'traido_por_tipo': 'proveedor',
+           'items': [{'oc_item_id': items[0]['id'], 'cantidad_buena': 7, 'cantidad_danada': 3,
+                      'comentario': 'Caja mojada'}],
+           'confirmar_diferencias': True, 'motivo_diferencias': 'Tres cargadores llegaron con la caja mojada'}
+    r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
+    assert r.status_code == 200, r.get_json()
+    assert any(x['estado'].startswith('Recibido con daño: 3') for x in r.get_json()['resultado'])
+    assert 'dañada' in r.get_json()['message'] and '(0 producto' not in r.get_json()['message']
+    det = admin.get(f'/compras/api/flujo/ordenes/{oc_id}').get_json()['data']
+    assert float(det['items'][0]['cantidad_danada']) == 3
+    rc = det['recepciones'][0]
+    assert float(rc['danados']) == 3 and float(rc['buenos']) == 7 and 'Caja mojada' in rc['detalle_danados']
+    from routes import compras_flujo
+    monkeypatch.setattr(compras_flujo, 'filtro_sql', lambda c: ('', ()))  # todas las empresas
+    with admin.application.test_request_context():
+        lista = compras_flujo._listar_ocs('oc.id = %s', (oc_id,))
+    assert float(lista[0]['danado']) == 3
+    js = (__import__('pathlib').Path(__file__).resolve().parent.parent / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
+    assert 'Recibido con daño' in js and 'Llegó dañado' in js

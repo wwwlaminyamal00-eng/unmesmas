@@ -189,7 +189,7 @@
                             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding:6px 10px; background:#F0FDF4; border-radius:6px; border:1px solid #86EFAC;">
                                 <div class="form-field">
                                     <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">N° Operación</label>
-                                    <input id="pcNumOperacion" placeholder="N° operación bancaria" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px;">
+                                    <input id="pcNumOperacion" maxlength="40" placeholder="N° operación bancaria" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px;">
                                 </div>
                                 <div class="form-field">
                                     <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Banco</label>
@@ -203,10 +203,12 @@
                                     </select>
                                 </div>
                                 <div class="form-field">
-                                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">Cuenta OCCI</label>
-                                    <input id="pcCuentaOCCI" placeholder="Cuenta interbancaria" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px;">
+                                    <label style="font-size:8px; font-weight:900; color:#334155; display:block; margin-bottom:1px; text-transform:uppercase;">CCI</label>
+                                    <input id="pcCuentaOCCI" maxlength="40" placeholder="CCI (Código de Cuenta Interbancario)" style="width:100%; height:24px; border-radius:5px; border:1px solid #CBD5E1; padding:0 6px; font-size:10px;">
                                 </div>
                             </div>
+                            <div id="pcPagoHistorial" class="pc-pago-hist" style="display:none"></div>
+                            <div class="pc-pago-nota">🔒 Se guarda en la base con fecha, hora y usuario. Si se corrige, queda el historial.</div>
                         </div>
                         
                         <div style="display:grid; grid-template-columns:2fr 1fr; gap:4px; margin-top:6px;">

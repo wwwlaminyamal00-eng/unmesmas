@@ -4838,7 +4838,9 @@ async function _saveComprobante(estado) {
             tipo: document.getElementById('compTipo')?.value || 'Factura',
             serie: (document.getElementById('compSerie')?.value || SERIE_FACTURA).trim().toUpperCase(),
             numero: document.getElementById('compNumero')?.value?.trim() || '',  // vacío = el servidor asigna el siguiente correlativo
-            fecha_emision: new Date().toISOString(),
+            // Hora de Lima sin zona (toISOString daba hora UTC: 5 horas de más; Erika 02/11/2026)
+            fecha_emision: new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()).replace(' ', 'T'),
             cotizacion: document.getElementById('compCotizacion')?.value || '',
             guia: document.getElementById('compGuia')?.value || '',
             pc: document.getElementById('compPC')?.value || '',
@@ -12986,6 +12988,7 @@ function cargarPCParaEdicion(pcId) {
                 setValue('pcContacto', pc.responsable || pc.cliente_contacto || '');
                 setValue('pcFecha', fechaParaInput(pc.fecha || pc.fecha_recepcion));
                 setCondicionPagoPC(pc.condicion_pago || pc.condicion_atencion || '');
+                pintarPagoContadoPV(pc);
                 setValue('pcOcCliente', pc.oc_cliente || '');
                 ponerMonedaPC(pc.moneda, pc.tipo_cambio);
                 setValue('pcMontoPC', montoSinIgv.toFixed(2));
@@ -15069,6 +15072,19 @@ function getPagoData() {
     };
 }
 
+// Al abrir un PV guardado: pone el pago al contado y muestra quién lo registró y sus cambios (02/11/2026)
+function pintarPagoContadoPV(pc) {
+    if (typeof togglePagoCampos === 'function') togglePagoCampos();
+    setPagoData({ num_operacion: pc.pago_num_operacion, banco: pc.pago_banco, cuenta_occi: pc.pago_cci });
+    const caja = document.getElementById('pcPagoHistorial');
+    if (!caja) return;
+    const h = pc.pago_historial || [];
+    caja.innerHTML = h.length ? '<b>🕓 Historial del pago</b><ul>' + h.map(x =>
+        `<li><b>${x.accion}</b> por <b>${String(x.usuario_nombre || '').replace(/</g, '&lt;')}</b> el ${fechaHoraLima(x.creado_en)}: ` +
+        `Op. <span class="pc-azul">${String(x.num_operacion || '—').replace(/</g, '&lt;')}</span> · ${String(x.banco || '—').replace(/</g, '&lt;')} · CCI <span class="pc-azul">${String(x.cci || '—').replace(/</g, '&lt;')}</span></li>`).join('') + '</ul>' : '';
+    caja.style.display = h.length ? '' : 'none';
+}
+
 // Función para establecer datos de pago al editar (si vienen de la BD)
 function setPagoData(data) {
     if (!data) return;
@@ -16364,6 +16380,10 @@ async function savePedidoCompraSAP(force) {
             distrito_entrega: document.getElementById('pcDistrito')?.value,  // solo si el formulario tiene el campo
             condicion_pago: condicionPago,
             oc_cliente: (document.getElementById('pcOcCliente')?.value || '').trim(),
+            // Pago al contado: se guarda en la base con historial (Erika 02/11/2026)
+            pago_num_operacion: getPagoData().num_operacion.trim(),
+            pago_banco: getPagoData().banco,
+            pago_cci: getPagoData().cuenta_occi.trim(),
             vendedor: document.getElementById('pcVendedor')?.value || 'Helen Blas Príncipe',
             responsable: 'Hellen',
             observaciones: document.getElementById('pcObs')?.value || '',

@@ -177,6 +177,10 @@ SQL_CXC = """
            COALESCE(NULLIF(c.orden_compra_cliente, ''),
                     (SELECT NULLIF(to_jsonb(p) ->> 'oc_cliente', '') FROM pedido_compra_pc p
                      WHERE p.numero = c.pc_vinculado ORDER BY p.id DESC LIMIT 1)) AS oc_cliente,
+           -- Pago al contado informado en el PV: N° operación, banco y CCI (Erika 02/11/2026)
+           (SELECT NULLIF(concat_ws(' · ', 'Op. ' || NULLIF(to_jsonb(p) ->> 'pago_num_operacion', ''),
+                                    NULLIF(to_jsonb(p) ->> 'pago_banco', ''), 'CCI ' || NULLIF(to_jsonb(p) ->> 'pago_cci', '')), '')
+              FROM pedido_compra_pc p WHERE p.numero = c.pc_vinculado ORDER BY p.id DESC LIMIT 1) AS pago_contado_pv,
            NULL AS oc_numero, NULL AS tipo_compra, 0 AS adelanto, NULL AS nota_registro,
            c.items_json::text AS items_txt, fc.comentario, fc.usuario_nombre AS comentario_por
     FROM comprobantes c
