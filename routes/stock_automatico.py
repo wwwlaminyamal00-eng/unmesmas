@@ -129,7 +129,7 @@ def descontar_despacho(cur, desp, empresa_id, almacen_id):
     """Saca del stock todos los productos del despacho. Si algo no alcanza lanza ErrorFaltaStock con TODOS los
     productos que faltan (pedido de Erika 20/10/2026: decir qué producto falta y en qué sede)."""
     _validar_empresa_sede(cur, empresa_id, almacen_id)
-    cur.execute("SELECT COALESCE(NULLIF(nombre_corto, ''), codigo, razon_social) AS n FROM erp_empresas WHERE id = %s", (empresa_id,))
+    cur.execute("SELECT COALESCE(NULLIF(UPPER(codigo), ''), nombre_corto, razon_social) AS n FROM erp_empresas WHERE id = %s", (empresa_id,))
     nom_empresa = (cur.fetchone() or {}).get('n') or ''
     cur.execute("SELECT nombre FROM almacenes WHERE id = %s", (almacen_id,))
     nom_sede = (cur.fetchone() or {}).get('nombre') or ''
@@ -264,7 +264,7 @@ def api_ubicaciones_despacho(did):
             cur = conn.cursor(cursor_factory=RealDictCursor)
             items, sin_codigo = _items_despacho(cur, desp)
             ids = [i['producto_id'] for i in items]
-            filas = []
+            filas, seps_otros = [], []
             if ids:
                 cur.execute("""
                     SELECT s.empresa_id, s.almacen_id, s.producto_id, s.cantidad,
@@ -276,22 +276,50 @@ def api_ubicaciones_despacho(did):
                     FROM inv_stock s WHERE s.producto_id = ANY(%s) AND s.cantidad > 0
                 """, (desp.get('cliente') or '', desp.get('pc_numero'), desp.get('pc_numero'), ids))
                 filas = cur.fetchall()
+                # Para decir PARA QUIÉN está separado lo que no se puede usar (Erika 03/11/2026)
+                cur.execute("""
+                    SELECT empresa_id, almacen_id, producto_id, cliente, documento, cantidad,
+                           to_char(vence_el, 'DD/MM/YYYY') AS vence
+                    FROM inv_separaciones
+                    WHERE producto_id = ANY(%s) AND estado = 'Activa' AND vence_el >= CURRENT_DATE AND cantidad > 0
+                      AND NOT (UPPER(TRIM(cliente)) = UPPER(TRIM(%s)) OR (COALESCE(%s, '') <> '' AND documento = %s))
+                    ORDER BY vence_el, id
+                """, (ids, desp.get('cliente') or '', desp.get('pc_numero'), desp.get('pc_numero')))
+                seps_otros = cur.fetchall()
         empresas = _empresas()
         sedes = _sedes()
-        disp = {}
+        disp, fisico, para_quien = {}, {}, {}
         for f in filas:
-            disp[(str(f['empresa_id']), f['almacen_id'], f['producto_id'])] = max(
-                a_decimal(f['cantidad']) - a_decimal(f['de_otros']), Decimal('0'))
+            k = (str(f['empresa_id']), f['almacen_id'], f['producto_id'])
+            fisico[k] = a_decimal(f['cantidad'])
+            disp[k] = max(a_decimal(f['cantidad']) - a_decimal(f['de_otros']), Decimal('0'))
+        for sp in seps_otros:
+            k = (str(sp['empresa_id']), sp['almacen_id'], sp['producto_id'])
+            para_quien.setdefault(k, []).append(
+                f"{_cant(sp['cantidad'])} para {sp['cliente'] or 'otro cliente'}"
+                + (f" ({sp['documento']})" if sp.get('documento') else '') + f" hasta el {sp['vence']}")
+        emp_desp_id = str(desp.get('empresa_id') or '')
+        emp_desp_cod = next(((e.get('codigo') or '').upper() for e in empresas if str(e['id']) == emp_desp_id),
+                            (desp.get('empresa') or '').upper())
         opciones = []
         for e in empresas:
+            # Siempre el código (KCF / AGD), nunca el nombre corto (en la base KCF dice "KC")
+            cod = (e.get('codigo') or e['nombre'] or '').upper()
+            otra = bool(emp_desp_id) and str(e['id']) != emp_desp_id
             for s in sedes:
-                faltan = [{'producto': i['descripcion'] or i['codigo'], 'pide': float(i['cantidad']),
-                           'hay': float(disp.get((str(e['id']), s['id'], i['producto_id']), 0))}
-                          for i in items if disp.get((str(e['id']), s['id'], i['producto_id']), Decimal('0')) < i['cantidad']]
-                opciones.append({'empresa_id': e['id'], 'empresa': e['nombre'], 'almacen_id': s['id'], 'sede': s['nombre'],
-                                 'alcanza': bool(items) and not faltan, 'faltan': faltan})
-        empresa_desp = (desp.get('empresa') or '').upper()
-        opciones.sort(key=lambda o: (not o['alcanza'], (o['empresa'] or '').upper() != empresa_desp))
+                faltan = []
+                for i in items:
+                    k = (str(e['id']), s['id'], i['producto_id'])
+                    if disp.get(k, Decimal('0')) < i['cantidad']:
+                        faltan.append({'producto': i['descripcion'] or i['codigo'], 'pide': float(i['cantidad']),
+                                       'hay': float(disp.get(k, 0)), 'fisico': float(fisico.get(k, 0)),
+                                       'separado': para_quien.get(k, [])})
+                alcanza = bool(items) and not faltan
+                opciones.append({'empresa_id': e['id'], 'empresa': cod, 'almacen_id': s['id'], 'sede': s['nombre'],
+                                 'alcanza': alcanza and not otra, 'hay_todo': alcanza, 'otra_empresa': otra,
+                                 'faltan': faltan, 'motivo': _motivo_opcion(cod, faltan, otra, alcanza,
+                                                                           emp_desp_cod)})
+        opciones.sort(key=lambda o: (not o['alcanza'], o['otra_empresa'], not o['hay_todo']))
         return jsonify({'success': True, 'productos': [{'producto': i['descripcion'] or i['codigo'],
                                                         'cantidad': float(i['cantidad'])} for i in items],
                         'sin_codigo': sin_codigo, 'opciones': opciones,
@@ -300,6 +328,28 @@ def api_ubicaciones_despacho(did):
         print(f'❌ Ubicaciones de despacho: {e}')
         return jsonify({'success': False, 'error': 'No se pudo consultar el stock.'}), 500
 
+
+
+def _motivo_opcion(cod, faltan, otra, alcanza, emp_desp):
+    """Por qué una empresa y sede no sirve para este despacho, en palabras simples (Erika 03/11/2026)."""
+    if otra:
+        base = f'la mercadería es de {cod}' + (f' y el despacho es de {emp_desp}' if emp_desp else '')
+        if alcanza:
+            return f'Hay stock, pero {base}. Primero registra la venta entre empresas ({cod} → {emp_desp or "la otra empresa"}) en Inventario.'
+        return f'No sirve: {base}.'
+    if alcanza:
+        return ''
+    f = faltan[0]
+    t = f"{f['producto']}: pide {f['pide']:g}"
+    if f['fisico'] <= 0:
+        t += ', hay 0'
+    elif f['separado']:
+        t += f", hay {f['fisico']:g} pero están separados ({'; '.join(f['separado'][:2])})"
+    else:
+        t += f", hay {f['fisico']:g}"
+    if len(faltan) > 1:
+        t += f' y {len(faltan) - 1} producto(s) más'
+    return t
 
 def cambiar_estado_despacho(did, nuevo_estado, empresa_id=None, almacen_id=None, motivo=None):
     """Cambia el estado del despacho moviendo el stock cuando corresponde. Devuelve (respuesta_json, código)."""
@@ -324,6 +374,16 @@ def cambiar_estado_despacho(did, nuevo_estado, empresa_id=None, almacen_id=None,
                 if eid is None or not aid:
                     return {'success': False, 'necesita_ubicacion': True,
                             'error': 'Elige de qué empresa y de qué sede sale la mercadería.'}, 400
+                if desp.get('empresa_id') and str(desp['empresa_id']) != str(eid):
+                    # 03/11/2026: un despacho de KCF no puede sacar mercadería de AGD (ni al revés) sin venta entre empresas
+                    cur.execute("SELECT id::text AS id, UPPER(codigo) AS c FROM erp_empresas WHERE id::text IN (%s, %s)",
+                                (str(desp['empresa_id']), str(eid)))
+                    cod = {f['id']: f['c'] for f in cur.fetchall()}
+                    de, a = cod.get(str(eid), 'la otra empresa'), cod.get(str(desp['empresa_id']), 'la empresa del despacho')
+                    return {'success': False, 'codigo': 'otra_empresa',
+                            'error': f'⛔ No se puede: esa mercadería es de {de} y el despacho es de {a}. '
+                                     f'Primero registra la venta entre empresas ({de} → {a}) en Inventario ▸ '
+                                     f'Traslados y ventas entre empresas; así el stock pasa a {a} y ya se puede despachar.'}, 409
                 detalle, sin_codigo = descontar_despacho(cur, desp, eid, aid)
                 msg_extra = f' Se descontó el stock de {len(detalle)} producto(s).'
                 if sin_codigo:

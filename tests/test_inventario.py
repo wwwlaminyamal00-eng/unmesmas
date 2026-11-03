@@ -136,10 +136,21 @@ def test_separacion_evita_revender(esc, vendedor):
 
 
 def test_traslado_quien_envia_no_recibe_y_faltante(esc):
-    r = esc['alm1'].post('/inventario/api/traslados', json={
-        'empresa_id': esc['KCF'], 'origen_id': esc['BRE'], 'destino_id': esc['SMP'], 'encargado': 'Motorizado Juan',
-        'guia_remision': 'T001-500', 'items': [{'producto_id': esc['IPHONE'], 'cantidad': 5}]})
-    assert r.status_code == 200
+    body = {'empresa_id': esc['KCF'], 'origen_id': esc['BRE'], 'destino_id': esc['SMP'], 'encargado': 'Motorizado Juan',
+            'guia_remision': 'T001-500', 'items': [{'producto_id': esc['IPHONE'], 'cantidad': 5}]}
+    # 03/11/2026: una guía que no existe no sirve de sustento
+    r = esc['alm1'].post('/inventario/api/traslados', json=body)
+    assert r.status_code == 400 and 'no existe' in r.get_json()['error']
+    assert _stock(esc, 'KCF', 'BRE', 'IPHONE')[0] == 5
+    # Vacía: el ERP genera la guía de remisión del traslado
+    r = esc['alm1'].post('/inventario/api/traslados', json=dict(body, guia_remision=''))
+    assert r.status_code == 200, r.get_json()
+    guia = r.get_json()['guia']
+    assert guia.startswith('T001-') and guia in r.get_json()['message']
+    g = _sql("SELECT motivo_traslado, documento_asociado, conductor_nombre FROM guias_remision WHERE documento_asociado = %s",
+             (r.get_json()['numero'],))[0]
+    assert g == ('Traslado entre establecimientos de la misma empresa', r.get_json()['numero'], 'Motorizado Juan')
+    assert _sql("SELECT guia_remision FROM inv_traslados WHERE numero = %s", (r.get_json()['numero'],))[0][0] == guia
     assert _stock(esc, 'KCF', 'BRE', 'IPHONE')[0] == 0
     tid, item = _sql("SELECT t.id, i.id FROM inv_traslados t JOIN inv_traslado_items i ON i.traslado_id=t.id "
                      "WHERE t.numero=%s", (r.get_json()['numero'],))[0]

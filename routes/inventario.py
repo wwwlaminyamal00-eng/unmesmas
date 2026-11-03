@@ -378,7 +378,7 @@ def _siguiente_numero(cur, prefijo, tabla, columna='numero'):
 
 def _empresas():
     filas = db_query("""
-        SELECT id, codigo, COALESCE(NULLIF(nombre_corto, ''), codigo, razon_social) AS nombre,
+        SELECT id, codigo, COALESCE(NULLIF(UPPER(codigo), ''), nombre_corto, razon_social) AS nombre,
                razon_social, ruc, direccion_fiscal, color_primario
         FROM erp_empresas
         WHERE COALESCE(LOWER(estado), 'activo') NOT IN ('inactivo', 'inactiva', 'anulado')
@@ -1130,6 +1130,8 @@ def api_traslados():
 
 
 def crear_traslado(cur, empresa_id, origen_id, destino_id, items, guia=None, encargado=None, observaciones=None):
+    """Todo traslado lleva guía de remisión (Erika 03/11/2026): la escrita, si sirve, o una que se genera aquí."""
+    from routes.guia_traslado import validar_guia_existente, generar_guia, ErrorGuiaTraslado
     if origen_id == destino_id:
         raise ErrorInventario('La sede de origen y la de destino deben ser distintas.')
     _validar_empresa_sede(cur, empresa_id, origen_id)
@@ -1137,6 +1139,10 @@ def crear_traslado(cur, empresa_id, origen_id, destino_id, items, guia=None, enc
     if not items:
         raise ErrorInventario('Agrega al menos un producto al traslado.')
     uid, unom = _usuario()
+    try:
+        guia = validar_guia_existente(cur, empresa_id, guia) if (guia or '').strip() else None
+    except ErrorGuiaTraslado as e:
+        raise ErrorInventario(str(e))
     numero = _siguiente_numero(cur, 'TRA', 'inv_traslados')
     cur.execute("""
         INSERT INTO inv_traslados (numero, empresa_id, origen_id, destino_id, guia_remision, encargado, observaciones,
@@ -1144,6 +1150,11 @@ def crear_traslado(cur, empresa_id, origen_id, destino_id, items, guia=None, enc
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id, numero
     """, (numero, empresa_id, origen_id, destino_id, guia, encargado, observaciones, uid, unom))
     t = cur.fetchone()
+    if not guia:
+        guia = generar_guia(cur, {'id': t['id'], 'numero': t['numero'], 'empresa_id': empresa_id, 'origen_id': origen_id,
+                                  'destino_id': destino_id, 'encargado': encargado}, items, uid)
+        cur.execute("UPDATE inv_traslados SET guia_remision = %s WHERE id = %s", (guia, t['id']))
+    t = dict(t, guia=guia)
     for it in items:
         producto_id = _entero(it.get('producto_id'), 'un producto')
         cantidad = _num(it.get('cantidad'))
@@ -1175,8 +1186,9 @@ def api_traslado_nuevo():
             t = crear_traslado(cur, empresa_id, origen_id, destino_id, d.get('items') or [],
                                (d.get('guia_remision') or '').strip() or None, d['encargado'].strip(),
                                (d.get('observaciones') or '').strip() or None)
-        return jsonify({'success': True, 'numero': t['numero'],
-                        'message': f"Traslado {t['numero']} enviado. Queda 'En camino' hasta que otra persona lo reciba en destino."})
+        return jsonify({'success': True, 'numero': t['numero'], 'guia': t['guia'],
+                        'message': f"Traslado {t['numero']} enviado con la guía de remisión {t['guia']}. "
+                                   "Queda 'En camino' hasta que otra persona lo reciba en destino."})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1196,6 +1208,9 @@ def api_traslado_recibir(tid):
                 raise ErrorInventario('Ese traslado ya fue recibido o anulado.')
             if t['enviado_por_id'] == uid and not es_admin():
                 raise ErrorInventario('Quien envía no puede recibir su propio traslado. Debe recibirlo otra persona en destino.')
+            if not (t.get('guia_remision') or '').strip():
+                raise ErrorInventario(f"El traslado {t['numero']} no tiene guía de remisión. Primero pulsa \"🧾 Generar guía\": "
+                                      'ningún traslado se recibe sin su sustento.')
             recibidas = {int(k): v for k, v in (d.get('recibido') or {}).items()}
             cur.execute("SELECT * FROM inv_traslado_items WHERE traslado_id = %s ORDER BY id", (tid,))
             items = cur.fetchall()
@@ -1230,6 +1245,41 @@ def api_traslado_recibir(tid):
         if hay_diferencia:
             msg += ' Se registró el faltante y aparecerá en Alertas para revisión.'
         return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
+@inventario_bp.route('/api/traslados/<int:tid>/guia', methods=['POST'])
+def api_traslado_guia(tid):
+    """Traslado antiguo sin guía: la genera con sus datos (o vincula una ya hecha) para que tenga sustento."""
+    from routes.guia_traslado import validar_guia_existente, generar_guia, ErrorGuiaTraslado
+    if not puede_operar():
+        return _no_autorizado('Solo el personal de almacén puede generar la guía del traslado.')
+    d = request.get_json(silent=True) or {}
+    try:
+        uid, _ = _usuario()
+        with db_tx() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT * FROM inv_traslados WHERE id = %s FOR UPDATE", (tid,))
+            t = cur.fetchone()
+            if not t:
+                raise ErrorInventario('El traslado no existe.')
+            if t['estado'] == 'Anulado':
+                raise ErrorInventario('El traslado está anulado.')
+            if (t.get('guia_remision') or '').strip():
+                raise ErrorInventario(f"El traslado {t['numero']} ya tiene la guía {t['guia_remision']}.")
+            cur.execute("SELECT producto_id, cantidad FROM inv_traslado_items WHERE traslado_id = %s ORDER BY id", (tid,))
+            items = cur.fetchall()
+            try:
+                guia = (validar_guia_existente(cur, t['empresa_id'], d.get('guia_remision'), tid)
+                        if (d.get('guia_remision') or '').strip() else generar_guia(cur, t, items, uid))
+            except ErrorGuiaTraslado as e:
+                raise ErrorInventario(str(e))
+            cur.execute("UPDATE inv_traslados SET guia_remision = %s WHERE id = %s", (guia, tid))
+            cur.execute("UPDATE inv_movimientos SET documento_numero = %s WHERE traslado_id = %s AND documento_numero IS NULL",
+                        (guia, tid))
+        return jsonify({'success': True, 'guia': guia,
+                        'message': f"Guía de remisión {guia} lista para el traslado {t['numero']}. Ya se puede recibir."})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1284,11 +1334,11 @@ def api_juntar():
                 t = crear_traslado(cur, _empresa(paso['empresa_id']), int(paso['almacen_id']), destino_id,
                                    [{'producto_id': producto_id, 'cantidad': paso['tomar']}], None, encargado,
                                    (d.get('observaciones') or 'Juntar mercadería para despacho').strip())
-                numeros.append(t['numero'])
+                numeros.append(f"{t['numero']} (guía {t['guia']})")
         if not numeros:
             raise ErrorInventario('No hace falta trasladar nada: todo está en la sede de despacho.')
         return jsonify({'success': True, 'numeros': numeros,
-                        'message': 'Traslados creados: ' + ', '.join(numeros) + '. Recuerda emitir la guía de remisión.'})
+                        'message': 'Traslados creados con su guía de remisión: ' + ', '.join(numeros) + '.'})
     except Exception as e:
         return _respuesta_error(e)
 
@@ -1337,7 +1387,7 @@ def api_intercompany():
             cur = conn.cursor(cursor_factory=RealDictCursor)
             _validar_empresa_sede(cur, compra, almacen_id)
             grupo = _siguiente_numero(cur, 'IC', 'inv_movimientos', 'grupo')
-            cur.execute("SELECT COALESCE(NULLIF(nombre_corto, ''), codigo) AS n FROM erp_empresas WHERE id IN (%s, %s) "
+            cur.execute("SELECT COALESCE(NULLIF(UPPER(codigo), ''), nombre_corto) AS n FROM erp_empresas WHERE id IN (%s, %s) "
                         "ORDER BY (id = %s) DESC", (vende, compra, vende))
             nombres = [r['n'] for r in cur.fetchall()]
             if _stock_antiguo_sin_ubicar(cur, producto_id) > 0:
