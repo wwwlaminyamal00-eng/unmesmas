@@ -2701,3 +2701,19 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Traslado antiguo TRA-20261022-0001 (KCF, 5 Silla think, en camino desde el 22/10): no se tocó. Erika (o almacén) pulsa "Generar guía" y luego "Recibir".
 - La venta entre empresas sigue permitiendo guardar sin N° de factura (queda en Alertas hasta completarlo).
 - Pruebas: 381 bien (esquema reconstruido: solo la falla de "Nuevo usuario" que ya venía de main).
+
+### 24.66 Correcciones de Erika del 03/11/2026 (tarde)
+**1. Aviso "movimientos esperan aprobación" en palabras simples** (Inventario ▸ Qué revisar hoy)
+- Antes: "MOV-… · Stock inicial · 8 Barniz … — reportó Carga inicial: Stock inicial - Barniz…".
+- Ahora explica que **mientras nadie los apruebe NO suman ni restan stock** (por eso el producto puede figurar sin stock) y qué hacer (Aprobar o Rechazar con motivo). Cada uno en viñeta: tipo, cantidad y producto en azul, empresa · sede, N° de movimiento, quién lo registró y hace cuántos días.
+- En la base real hay 2 desde el 13/10 (MOV-20261013-0012 Linterna, MOV-20261013-0013 Barniz Claro): esas 8 unidades de Barniz no cuentan hasta que Erika las apruebe o rechace.
+
+**2. PV nuevo al contado empezaba con el pago del PV anterior**
+- La ventana guardaba lo último escrito. Ahora al abrir el PV (nuevo o editar) se vacían N° de operación, banco, CCI y el historial; al editar se vuelve a poner lo de ESE PV. Además los campos no se autocompletan desde el navegador.
+
+**3. Pago al contado en la "data completa"**
+- El dato SÍ estaba guardado en la base (ej. PV-KCF-000045: Op. 21548, Caja Piura). Faltaba mostrarlo.
+- Vista completa de PV: debajo de "Contado" se ve Op., banco y CCI.
+- Botón Exportar (vista completa): 5 columnas aparte para analizar: N° operación, Banco, CCI, Pago registrado por, Pago registrado (fecha y hora). No se ven en pantalla (sin scroll horizontal), solo en el Excel.
+- Herramientas ▸ Exportar: la tabla "Pago al contado del PV (historial)" también se puede descargar.
+- Pruebas: 383 bien.

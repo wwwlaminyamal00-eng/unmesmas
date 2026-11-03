@@ -141,3 +141,24 @@ def test_traslado_antiguo_sin_guia_no_se_recibe_hasta_generarla(d3, admin):
     assert admin.post(f'/inventario/api/traslados/{tid}/recibir', json={'recibido': {str(item): 5}}).status_code == 200
     js = (RAIZ / 'static/js/inventario.js').read_text(encoding='utf-8')
     assert 'data-guia-tra' in js and 'Generar guía' in js
+
+
+def test_pv_lista_trae_el_pago_y_pv_nuevo_empieza_vacio(vendedor):
+    """Erika 03/11/2026 (tarde): el pago al contado sale en la vista completa y en el Excel; un PV nuevo no trae
+    el N° de operación, banco ni CCI del anterior."""
+    from tests.test_zz_zz_19oct_noche import _pc
+    r = _pc(vendedor, numero='', condicion_pago='Contado', pago_num_operacion='77441', pago_banco='Caja Piura',
+            pago_cci='80000000000000000077')
+    assert r.status_code == 200, r.json
+    fila = next(p for p in vendedor.get('/ventas/api/pedido-compra/listar').get_json()['data'] if p['id'] == r.json['data']['id'])
+    assert fila['pago_num_operacion'] == '77441' and fila['pago_cci'] == '80000000000000000077' and fila['pago_registrado_por']
+    js = (RAIZ / 'static/js/ventas.js').read_text(encoding='utf-8')
+    assert 'limpiarPagoContadoPV();' in js and 'function pagoContadoCeldaPV' in js
+    assert js.count('<th class="solo-excel" style="display:none">') == 5
+    from routes.herramientas import EXPORTABLES
+    assert 'pv_pago_contado_historial' in EXPORTABLES
+
+
+def test_aviso_de_movimientos_pendientes_en_palabras_simples():
+    js = (RAIZ / 'static/js/inventario.js').read_text(encoding='utf-8')
+    assert 'NO suman ni restan stock' in js and 'reportó ${esc(p.usuario_nombre)}' not in js
