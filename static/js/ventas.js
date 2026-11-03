@@ -3843,7 +3843,7 @@ async function saveGuia(estado) {
             transportista_nombre: modalidad === 'PUBLICO'
                 ? (document.getElementById('guiaTransportistaNombre')?.value || '') : '',
 
-            motivo_traslado: document.getElementById('guiaMotivo')?.value || 'VENTA',
+            motivo_traslado: document.getElementById('guiaMotivo')?.value || 'Venta',
             documento_asociado: document.getElementById('guiaCotizacion')?.value || '',
             orden_compra_cliente: document.getElementById('guiaOrdenCompra')?.value || '',
             factura: document.getElementById('guiaFactura')?.value || '',
@@ -10786,9 +10786,9 @@ function openGuiaModal(id = null) {
     const hoy = isoLima();
     
     // Generar opciones de motivos
-    const motivos = ['VENTA', 'COMPRA', 'TRANSFERENCIA ENTRE ALMACENES', 'DEVOLUCIÓN', 'CONSIGNACIÓN', 'OTRO'];
-    const motivoOptions = motivos.map(m => 
-        `<option value="${m}" ${m === 'VENTA' ? 'selected' : ''}>${m}</option>`
+    // Motivos como en SUNAT (Erika 03/11/2026)
+    const motivoOptions = MOTIVOS_TRASLADO_SUNAT.map(m =>
+        `<option value="${m}" ${m === 'Venta' ? 'selected' : ''}>${m}</option>`
     ).join('');
     
     const modalidadOptions = `
@@ -11302,7 +11302,7 @@ async function cargarGuiaParaEditar(id) {
         setValue('guiaRuc', g.ruc_destinatario);
         setSelectValue('guiaOrigen', ORIGEN_FIJO.direccion);
         setValue('guiaDestino', g.destinatario_direccion);
-        setSelectValue('guiaMotivo', g.motivo_traslado);
+        setSelectValue('guiaMotivo', motivoTrasladoSunat(g.motivo_traslado));
 
         // ---- OBSERVACIONES (id correcto: guiaObservaciones, no guiaObs) ----
         setValue('guiaObservaciones', g.observaciones);
@@ -17981,12 +17981,22 @@ async function prepararUbicacionDespacho(id) {
     const primera = opciones[0];
     window._despOpciones = opciones;
     window._despUbicacion = primera.alcanza ? `${primera.empresa_id}|${primera.almacen_id}` : '';
+    // 03/11/2026: cada opción dice POR QUÉ no alcanza (hay 0, separado para otro cliente, es de la otra empresa)
+    const escD = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const opts = opciones.map(o => {
         const valor = `${o.empresa_id}|${o.almacen_id}`;
         const texto = o.alcanza ? `✅ ${o.empresa} · ${o.sede} (hay todo)`
-                                : `⚠️ ${o.empresa} · ${o.sede} (falta ${o.faltan.length} producto(s))`;
-        return `<option value="${valor}" ${valor === window._despUbicacion ? 'selected' : ''}>${texto}</option>`;
+                    : o.otra_empresa ? `⛔ ${o.empresa} · ${o.sede}: ${o.hay_todo ? 'hay stock, pero es de ' + o.empresa : 'es de ' + o.empresa}`
+                    : `⚠️ ${o.empresa} · ${o.sede}: ${o.motivo || 'no alcanza'}`;
+        return `<option value="${valor}" ${o.otra_empresa ? 'disabled' : ''} ${valor === window._despUbicacion ? 'selected' : ''}>${escD(texto)}</option>`;
     }).join('');
+    const ningunaPropia = !opciones.some(o => o.alcanza);
+    const deOtra = opciones.find(o => o.otra_empresa && o.hay_todo);
+    const porque = ningunaPropia ? `<div style="margin-top:8px;font-size:12.5px;line-height:1.45;color:#7F1D1D;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:8px 10px">
+            <b>⛔ No alcanza el stock para despachar.</b><ul style="margin:4px 0 0 18px;padding:0">
+            ${opciones.filter(o => !o.otra_empresa).map(o => `<li><b>${escD(o.empresa)} · ${escD(o.sede)}:</b> ${escD(o.motivo || 'no alcanza')}</li>`).join('')}
+            ${deOtra ? `<li style="color:#1D4ED8"><b>${escD(deOtra.empresa)} · ${escD(deOtra.sede)}</b> sí tiene stock, pero es de <b>${escD(deOtra.empresa)}</b>. Primero registra la <b>venta entre empresas</b> en Inventario ▸ Traslados y ventas entre empresas.</li>` : ''}
+            </ul></div>` : '';
     const productos = (info.productos || []).map(p => `${p.cantidad} × ${p.producto}`).join('<br>');
     const aviso = (info.sin_codigo || []).length
         ? `<div style="color:#B45309;font-size:12px;margin-top:6px">Sin código del catálogo (no se descuentan): ${info.sin_codigo.join(', ')}</div>` : '';
@@ -17997,7 +18007,7 @@ async function prepararUbicacionDespacho(id) {
                     style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid #CBD5E1;font-size:13px">
                 ${window._despUbicacion ? '' : '<option value="" selected>— Elige empresa y sede —</option>'}${opts}
             </select>
-${aviso}
+${porque}${aviso}
         </div>`;
     return { html };
 }
@@ -18188,3 +18198,23 @@ function irAPestanaYResaltar(tab, buscarId, texto, render) {
     }, 300);
 }
 window.irAPestanaYResaltar = irAPestanaYResaltar;
+
+// ============================================================
+// Motivos de traslado de la guía de remisión, como en SUNAT (catálogo 20). Erika 03/11/2026.
+// ============================================================
+var MOTIVOS_TRASLADO_SUNAT = ['Venta', 'Compra', 'Venta con entrega a terceros',
+    'Traslado entre establecimientos de la misma empresa', 'Consignación', 'Devolución',
+    'Recojo de bienes transformados', 'Venta sujeta a confirmación del comprador',
+    'Traslado de bienes para transformación', 'Traslado emisor itinerante de comprobantes de pago',
+    'Otros (no especificados en los anteriores)'];
+function motivoTrasladoSunat(valor) {
+    const t = String(valor || '').trim();
+    if (!t || t === '01') return 'Venta';
+    const igual = MOTIVOS_TRASLADO_SUNAT.find(m => m.toUpperCase() === t.toUpperCase());
+    if (igual) return igual;
+    const antiguos = { 'TRANSFERENCIA ENTRE ALMACENES': 'Traslado entre establecimientos de la misma empresa',
+        'OTRO': 'Otros (no especificados en los anteriores)', 'DEVOLUCION': 'Devolución', 'CONSIGNACION': 'Consignación' };
+    return antiguos[t.toUpperCase()] || t;
+}
+window.MOTIVOS_TRASLADO_SUNAT = MOTIVOS_TRASLADO_SUNAT;
+window.motivoTrasladoSunat = motivoTrasladoSunat;

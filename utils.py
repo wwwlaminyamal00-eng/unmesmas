@@ -274,3 +274,44 @@ def fecha_hora_lima(valor=None):
         except ValueError:
             return texto
     return texto
+
+
+# Motivos de traslado de la guía de remisión, como en SUNAT (catálogo 20). Erika 03/11/2026.
+MOTIVOS_TRASLADO_SUNAT = [
+    ('01', 'Venta'),
+    ('02', 'Compra'),
+    ('03', 'Venta con entrega a terceros'),
+    ('04', 'Traslado entre establecimientos de la misma empresa'),
+    ('05', 'Consignación'),
+    ('06', 'Devolución'),
+    ('07', 'Recojo de bienes transformados'),
+    ('14', 'Venta sujeta a confirmación del comprador'),
+    ('17', 'Traslado de bienes para transformación'),
+    ('18', 'Traslado emisor itinerante de comprobantes de pago'),
+    ('13', 'Otros (no especificados en los anteriores)'),
+]
+MOTIVO_TRASLADO_ESTABLECIMIENTOS = 'Traslado entre establecimientos de la misma empresa'
+_MOTIVOS_ANTIGUOS = {
+    'TRANSFERENCIA ENTRE ALMACENES': MOTIVO_TRASLADO_ESTABLECIMIENTOS,
+    'TRASLADO ENTRE ESTABLECIMIENTOS': MOTIVO_TRASLADO_ESTABLECIMIENTOS,
+    'OTRO': 'Otros (no especificados en los anteriores)',
+    'OTROS': 'Otros (no especificados en los anteriores)',
+    'DEVOLUCION': 'Devolución', 'CONSIGNACION': 'Consignación',
+}
+
+
+def normalizar_motivo_traslado(valor):
+    """Texto SUNAT del motivo de traslado. Acepta el código ('01'), el texto en cualquier mayúscula o los
+    textos antiguos del ERP (VENTA, TRANSFERENCIA ENTRE ALMACENES, OTRO). Vacío = 'Venta'."""
+    t = ' '.join(str(valor or '').split())
+    if not t:
+        return 'Venta'
+    for cod, texto in MOTIVOS_TRASLADO_SUNAT:
+        if t == cod or t.upper() == texto.upper():
+            return texto
+    return _MOTIVOS_ANTIGUOS.get(t.upper(), t)
+
+
+def es_motivo_venta(valor):
+    """Venta, Venta con entrega a terceros y Venta sujeta a confirmación: la mercadería sale vendida."""
+    return normalizar_motivo_traslado(valor).upper().startswith('VENTA')

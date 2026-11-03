@@ -2681,3 +2681,23 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Al guardar un PV al contado se graba el pago y una fila "Registrado"; si se cambia, "Corregido" con usuario, fecha y hora de Lima. Dejar los campos vacíos no borra lo guardado.
 - La ficha del PV muestra el historial. "Cuenta OCCI" ahora dice **CCI**. Finanzas ▸ Cuentas por cobrar muestra "Pago al contado (del PV)".
 - Pruebas: 375 bien (esquema reconstruido: 1 falla que ya venía de main, la prueba de "Nuevo usuario" necesita `auth.users` de Supabase).
+
+### 24.65 Mejoras de Erika del 03/11/2026
+**1. "No me deja despachar y tengo 50 en stock"**
+- Caso real DESP-KCF-000010 (PV-KCF-000039, 50 × Lapiz Sony PRD-0037). KCF tiene 0: entraron 61 y salieron 61 el 27/10. Las 50 son de **AGD en Breña** y estaban separadas para EMBAJADA DE LOS ESTADOS UNIDOS (PC-AGD-000001) hasta el 29/10. El despacho se creó el 29/10, por eso ese día no alcanzaba.
+- Ahora la ventana "¿Confirmar el despacho?" dice por qué no alcanza cada empresa y sede: "hay 0", "hay 50 pero están separados (para quién y hasta cuándo)" o "es de AGD: primero registra la venta entre empresas".
+- Si hay stock libre en la empresa del despacho, deja despachar (lo separado vencido ya no cuenta).
+- Nuevo candado (servidor): un despacho de KCF no saca mercadería de AGD (ni al revés). Primero hay que registrar la venta entre empresas, para que el stock pase a la empresa que vende. Antes se podía y quedaba mal la contabilidad de las dos empresas.
+- La empresa se muestra con su código (**KCF**) en el despacho y en Inventario. En la base, Configuración ▸ Empresas dice "KC" como nombre corto de KCF: no se cambió el dato (falta el "sí" de Erika).
+
+**2. Guía de remisión: motivos de traslado como SUNAT**
+- Los 11 motivos del catálogo 20: Venta; Compra; Venta con entrega a terceros; Traslado entre establecimientos de la misma empresa; Consignación; Devolución; Recojo de bienes transformados; Venta sujeta a confirmación del comprador; Traslado de bienes para transformación; Traslado emisor itinerante de comprobantes de pago; Otros (no especificados en los anteriores).
+- Se guarda el texto de SUNAT (`utils.normalizar_motivo_traslado`). Las 47 guías existentes dicen "VENTA" y se muestran como "Venta" sin tocar la base. Las tres clases de venta piden stock.
+
+**3. Traslados: prohibido sin guía de remisión**
+- Al crear un traslado, si el campo de guía se deja vacío, el ERP genera la guía en Ventas ▸ Guías: serie T001 de esa empresa, motivo "Traslado entre establecimientos de la misma empresa", remitente y destinatario la misma empresa, punto de partida la sede de origen, punto de llegada la de destino, productos y quién lo lleva (`routes/guia_traslado.py`).
+- Si se escribe una guía, debe existir, ser de la misma empresa, tener ese motivo, no estar anulada y no ser sustento de otro traslado.
+- Un traslado sin guía no se recibe: aparece "⛔ Sin guía" con el botón "🧾 Generar guía". También "Juntar mercadería" crea sus traslados con guía.
+- Traslado antiguo TRA-20261022-0001 (KCF, 5 Silla think, en camino desde el 22/10): no se tocó. Erika (o almacén) pulsa "Generar guía" y luego "Recibir".
+- La venta entre empresas sigue permitiendo guardar sin N° de factura (queda en Alertas hasta completarlo).
+- Pruebas: 381 bien (esquema reconstruido: solo la falla de "Nuevo usuario" que ya venía de main).

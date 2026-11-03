@@ -13,7 +13,7 @@
 {% block subtitle %}Stock por empresa y por sede, kardex, traslados, separaciones y conteos.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}?v=20261103a">
 {% endblock %}
 
 {% block content %}
@@ -417,7 +417,8 @@
             <label>Quién la lleva<input type="text" id="traEncargado" maxlength="150" placeholder="Nombre de la persona o del motorizado"></label>
             <label>Sale de<select id="traOrigen" data-sedes></select></label>
             <label>Llega a<select id="traDestino" data-sedes></select></label>
-            <label>N° de guía de remisión<input type="text" id="traGuia" maxlength="40" placeholder="Ej. T001-00000123"></label>
+            <label>Guía de remisión (sustento obligatorio)<input type="text" id="traGuia" maxlength="40" placeholder="Vacío = el ERP la genera sola">
+                <small class="inv-ayuda">🧾 Ningún traslado sin guía. Déjalo vacío y el ERP crea la guía con motivo <b>"Traslado entre establecimientos de la misma empresa"</b>. Si ya la hiciste en Ventas ▸ Guías, escribe su número (ej. T001-00000123).</small></label>
             <label>Observaciones<input type="text" id="traObs" maxlength="300"></label>
             <div class="inv-full">
                 <div class="inv-subtitulo">Productos</div>
@@ -428,7 +429,7 @@
                 </div>
                 <table class="inv-table inv-mini"><thead><tr><th class="left">Nombre producto</th><th>Cantidad</th><th></th></tr></thead><tbody id="traItems"></tbody></table>
             </div>
-            <div class="inv-tip inv-full">💡 Por SUNAT, todo traslado entre locales debe ir con guía de remisión (motivo "Traslado entre establecimientos de la misma empresa"). Si aún no la tienes, regístrala apenas se emita.</div>
+            <div class="inv-tip inv-full">💡 Por SUNAT, todo traslado entre locales debe ir con guía de remisión (motivo "Traslado entre establecimientos de la misma empresa"). Sin guía no se envía ni se recibe: si la dejas vacía, el ERP la genera sola y queda en Ventas ▸ Guías.</div>
         </div>
         <div class="modal-foot">
             <button class="btn btn-secondary" data-close="traModal">Cancelar</button>
@@ -569,5 +570,5 @@ window.INV_MOTIVOS = {
     PROBLEMA: {{ motivos_problema|tojson }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario.js') }}?v=20261103a"></script>
 {% endblock %}

@@ -28,7 +28,7 @@ from routes import descripcion_cliente as desc_cli
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from routes.numeracion import con_piso, clave_pc, clave_guia, clave_comprobante
-from utils import (fecha_hora_lima, es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
+from utils import (fecha_hora_lima, normalizar_motivo_traslado, es_motivo_venta, MOTIVOS_TRASLADO_SUNAT, es_aprobador, calcular_totales, a_decimal, redondear, tasa_igv,
                    totales_consistentes, bloquear_numeracion, normalizar_condicion, dias_de_condicion,
                    mayuscula_inicial)
 
@@ -2484,7 +2484,7 @@ def api_guias_listar():
                 'pc_cliente': _pc_cliente_lista(row.get('pv_pc_cliente'), row.get('pc_numero')) or _pc_cliente_lista(row.get('orden_compra_cliente'), row.get('pc_numero')),
                 'origen': row.get('remitente_direccion'),
                 'destino': row.get('destinatario_direccion'),
-                'motivo': row.get('motivo_traslado'),
+                'motivo': normalizar_motivo_traslado(row.get('motivo_traslado')),
                 'observaciones': row.get('observaciones'),
                 'items': items,
                 'placa': row.get('placa_vehiculo'),
@@ -2620,8 +2620,7 @@ def _factura_duplicada(data, pc_origen):
 def _faltantes_stock_guia(data, empresa_id):
     """Productos de una guía de venta nueva que no tienen stock en la empresa (todas sus sedes).
     Si su despacho ya salió (Despachado/Entregado), el stock ya se descontó: no se revisa."""
-    motivo = str(data.get('motivo_traslado') or '01').strip().upper()
-    if motivo not in ('01', 'VENTA'):
+    if not es_motivo_venta(data.get('motivo_traslado')):
         return []
     claves = [str(data.get(k) or '').strip() for k in ('despacho_numero', 'pc_numero', 'documento_asociado', 'cotizacion_numero')]
     claves = [c for c in claves if c]
@@ -2663,6 +2662,8 @@ def api_guias_guardar():
     try:
         data = request.get_json()
         usuario_id = session.get('usuario_id')
+        # Motivo de traslado siempre con el texto de SUNAT (Erika 03/11/2026)
+        data['motivo_traslado'] = normalizar_motivo_traslado(data.get('motivo_traslado'))
         
         print("=" * 80)
         print("📦 API GUIAS GUARDAR - INICIO")
@@ -6606,6 +6607,9 @@ def obtener_descripcion_motivo(codigo):
         '23': 'TRASLADO POR CONSIGNACIÓN PARA MAQUILA',
         '24': 'TRASLADO POR DEVOLUCIÓN DE MAQUILA'
     }
+    # 03/11/2026: los motivos de la guía son los de SUNAT (catálogo 20); los textos antiguos se muestran igual que SUNAT
+    if codigo in dict(MOTIVOS_TRASLADO_SUNAT) or not str(codigo or '').isdigit():
+        return normalizar_motivo_traslado(codigo)
     return motivos.get(codigo, codigo)
 
 

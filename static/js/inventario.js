@@ -497,12 +497,14 @@
                 let acc = '—';
                 if (t.estado === 'En camino') {
                     const mismo = t.enviado_por_id === cat.usuarioId && !PUEDE.admin;
-                    acc = (PUEDE.operar ? `<button class="btn-mini" data-recibir="${t.id}" ${mismo ? 'disabled title="Debe recibirlo otra persona"' : ''}>Recibir</button> ` : '') +
+                    const sinGuia = !(t.guia_remision || '').trim();
+                    acc = (PUEDE.operar && sinGuia ? `<button class="btn-mini" data-guia-tra="${t.id}" data-num="${esc(t.numero)}">🧾 Generar guía</button> ` : '') +
+                        (PUEDE.operar ? `<button class="btn-mini" data-recibir="${t.id}" ${mismo ? 'disabled title="Debe recibirlo otra persona"' : sinGuia ? 'disabled title="Primero genera la guía de remisión"' : ''}>Recibir</button> ` : '') +
                         (PUEDE.aprobar ? `<button class="btn-mini danger" data-anular-tra="${t.id}" data-num="${esc(t.numero)}">Anular</button>` : '');
                 }
                 const items = (t.items || []).map(i => `${cant(i.cantidad)} ${esc(i.descripcion)}${i.cantidad_recibida != null && Number(i.cantidad_recibida) !== Number(i.cantidad) ? ` <b class="neg">(llegó ${cant(i.cantidad_recibida)})</b>` : ''}`).join('<br>');
                 return `<tr><td>${esc(t.numero)}</td><td>${fecha(t.fecha)}</td><td>${esc(t.empresa)}</td><td>${esc(t.origen)}</td><td>${esc(t.destino)}</td>
-                    <td class="left">${items}</td><td>${esc(t.guia_remision || '') || '<span class="neg">Sin guía</span>'}</td><td>${esc(t.encargado || '')}</td>
+                    <td class="left">${items}</td><td>${esc(t.guia_remision || '') || '<span class="neg">⛔ Sin guía</span>'}</td><td>${esc(t.encargado || '')}</td>
                     <td>${esc(t.enviado_por || '')}</td><td>${esc(t.recibido_por || '')}${t.recibido_en ? `<small>${fecha(t.recibido_en)}</small>` : ''}</td>
                     <td><span class="est est-${t.estado.toLowerCase().replace(/\s+/g, '-')}">${esc(t.estado)}</span>${t.horas_en_camino > 24 ? `<small class="neg">${t.horas_en_camino} h</small>` : ''}</td><td>${acc}</td></tr>`;
             }).join('') : '<tr><td colspan="12">No hay traslados.</td></tr>';
@@ -800,6 +802,10 @@
             });
         } else if (d.recibir) {
             abrirRecibir(Number(d.recibir));
+        } else if (d.guiaTra) {
+            if (!confirm(`¿Generar la guía de remisión del traslado ${d.num}?\n\n• Se crea en Ventas ▸ Guías con motivo "Traslado entre establecimientos de la misma empresa".\n• Lleva los productos, las sedes y quién lo lleva.\n• Después ya se puede recibir.`)) return;
+            try { const r = await post(`/inventario/api/traslados/${d.guiaTra}/guia`, {}); aviso(r.message, 'success'); refrescar(); }
+            catch (e) { aviso(e.message, 'error'); }
         } else if (d.anularTra) {
             pedirMotivo(`Anular ${d.num}`, 'La mercadería vuelve a la sede de origen.', async m => {
                 const r = await post(`/inventario/api/traslados/${d.anularTra}/anular`, { motivo: m }); aviso(r.message, 'success'); refrescar();

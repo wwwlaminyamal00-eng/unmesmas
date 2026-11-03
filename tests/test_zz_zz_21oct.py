@@ -39,8 +39,10 @@ def test_correlativo_no_acepta_numero_menor_o_igual(admin):
 
 
 def test_correlativo_fijado_se_usa_en_guia_y_factura_nuevas(admin, vendedor):
-    _guia(vendedor)   # asegura que exista la serie T001
-    g = _fila(admin, 'GUIA', 'T001')
+    hecha = _guia(vendedor)   # asegura que exista la serie T001
+    # 03/11/2026: los traslados generan guías T001 de cada empresa; se toma la fila de la guía recién hecha
+    g = next(f for f in admin.get('/correlativos/api/lista').json['data'] if f['documento'] == 'GUIA'
+             and f['serie'].startswith('T001') and int(f['ultimo']) == int(hecha.json['data']['numero']))
     nuevo = g['ultimo'] + 500
     r = admin.post('/correlativos/api/fijar', json={'documento': 'GUIA', 'clave': g['clave'], 'siguiente': nuevo, 'confirmacion': str(nuevo)})
     assert r.status_code == 200 and r.json['success'], r.json
