@@ -833,6 +833,12 @@ def obtener_pc_db():
                 items_json,
                 to_jsonb(pedido_compra_pc) -> 'valida_productos' AS valida_productos,
                 to_jsonb(pedido_compra_pc) ->> 'oc_cliente' AS oc_cliente,
+                -- Pago al contado del PV (Erika 03/11/2026: que se vea en la vista completa y en el Excel)
+                to_jsonb(pedido_compra_pc) ->> 'pago_num_operacion' AS pago_num_operacion,
+                to_jsonb(pedido_compra_pc) ->> 'pago_banco' AS pago_banco,
+                to_jsonb(pedido_compra_pc) ->> 'pago_cci' AS pago_cci,
+                to_jsonb(pedido_compra_pc) ->> 'pago_registrado_por' AS pago_registrado_por,
+                to_char((to_jsonb(pedido_compra_pc) ->> 'pago_registrado_en')::timestamp, 'DD/MM/YYYY HH24:MI') AS pago_registrado_en,
                 (SELECT d.estado FROM despachos d WHERE d.pc_id = pedido_compra_pc.id
                  ORDER BY d.id DESC LIMIT 1) AS despacho_estado
             FROM pedido_compra_pc

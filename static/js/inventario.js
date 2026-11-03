@@ -186,9 +186,16 @@
             const item = (nivel, titulo, detalle, accion) => al.push(`<div class="inv-alerta ${nivel}"><div><b>${titulo}</b><div>${detalle}</div></div>${accion || ''}</div>`);
 
             if (data.pendientes.length) {
-                item('warn', `🕒 ${data.pendientes.length} movimiento(s) esperan aprobación`,
-                    data.pendientes.map(p => `${esc(p.numero)} · ${esc(p.motivo_texto)} · ${cant(p.cantidad)} ${esc(p.descripcion)} (${esc(p.empresa)} / ${esc(p.sede)}) — reportó ${esc(p.usuario_nombre)}: <i>${esc(p.observaciones || '')}</i>
-                        ${PUEDE.aprobar ? `<span class="inv-acc"><button class="btn-mini" data-aprobar="${p.id}">Aprobar</button><button class="btn-mini danger" data-rechazar="${p.id}">Rechazar</button></span>` : ''}`).join('<br>'));
+                // Erika 03/11/2026: aviso en palabras simples (qué es, por qué está aquí y qué hacer)
+                const dias = f => { const d = Math.floor((Date.now() - new Date(String(f || '').replace(' ', 'T')).getTime()) / 86400000); return d > 0 ? `hace ${d} día(s)` : 'hoy'; };
+                item('warn', `🕒 ${data.pendientes.length} movimiento(s) de stock esperan aprobación de un supervisor`,
+                    `<div class="inv-pend-ayuda">Mientras nadie los apruebe, <b class="neg">NO suman ni restan stock</b>. Por eso el producto puede figurar sin stock.
+                     👉 Revisa cada uno: si es correcto, <b>Aprobar</b>; si no, <b>Rechazar</b> con el motivo.</div>
+                     <ul class="inv-pend-lista">` +
+                    data.pendientes.map(p => `<li><b>${esc(p.motivo_texto)}:</b> <span class="azul">${cant(p.cantidad)} ${esc(p.descripcion)}</span>
+                        en <b>${esc(p.empresa)} · ${esc(p.sede)}</b> (${esc(p.numero)}).
+                        Lo registró <b>${esc(p.usuario_nombre || '—')}</b> ${dias(p.fecha)}${p.observaciones ? ` · Nota: ${esc(p.observaciones)}` : ''}.
+                        ${PUEDE.aprobar ? `<span class="inv-acc"><button class="btn-mini" data-aprobar="${p.id}">Aprobar</button><button class="btn-mini danger" data-rechazar="${p.id}">Rechazar</button></span>` : ''}</li>`).join('') + '</ul>');
             }
             if (data.sin_ubicar.length) {
                 item('danger', `📦 ${data.sin_ubicar.length} producto(s) con stock antiguo sin empresa ni sede`,

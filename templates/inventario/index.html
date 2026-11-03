@@ -13,7 +13,7 @@
 {% block subtitle %}Stock por empresa y por sede, kardex, traslados, separaciones y conteos.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}?v=20261103a">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}?v=20261103b">
 {% endblock %}
 
 {% block content %}
@@ -570,5 +570,5 @@ window.INV_MOTIVOS = {
     PROBLEMA: {{ motivos_problema|tojson }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/inventario.js') }}?v=20261103a"></script>
+<script src="{{ url_for('static', filename='js/inventario.js') }}?v=20261103b"></script>
 {% endblock %}

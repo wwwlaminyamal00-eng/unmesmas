@@ -1031,6 +1031,11 @@ function renderPedidos() {
             <th>Req. Compra</th>
             <th>Observaciones</th>
             <th>Validaciones</th>
+            <th class="solo-excel" style="display:none">N° operación</th>
+            <th class="solo-excel" style="display:none">Banco</th>
+            <th class="solo-excel" style="display:none">CCI</th>
+            <th class="solo-excel" style="display:none">Pago registrado por</th>
+            <th class="solo-excel" style="display:none">Pago registrado (fecha y hora)</th>
             <th>Acciones</th>
         </tr>
     `;
@@ -1089,12 +1094,17 @@ function renderPedidos() {
             <td class="left pc-desc">${descripcionPcHTML(r)}</td>
             <td><b>${money(montoSinIgv)}</b></td>
             <td><b>${money(montoConIgv)}</b></td>
-            <td>${esc(window.normalizarCondicion(r.condicion_pago) || '-')}</td>
+            <td>${esc(window.normalizarCondicion(r.condicion_pago) || '-')}${pagoContadoCeldaPV(r)}</td>
             <td>${r.vendedor || '-'}</td>
             <td>${r.medio || '-'}</td>
             <td>${r.req_compra || '-'}</td>
             <td class="left" style="font-size:9px;">${r.observaciones || '-'}</td>
             <td style="font-size:8px; text-align:left;">${validacionesHtml}</td>
+            <td class="solo-excel" style="display:none">${esc(r.pago_num_operacion || '')}</td>
+            <td class="solo-excel" style="display:none">${esc(r.pago_banco || '')}</td>
+            <td class="solo-excel" style="display:none">${esc(r.pago_cci || '')}</td>
+            <td class="solo-excel" style="display:none">${esc(r.pago_registrado_por || '')}</td>
+            <td class="solo-excel" style="display:none">${esc(r.pago_registrado_en || '')}</td>
             <td>
                 ${menuHtml}
             </td>
@@ -12747,6 +12757,7 @@ function clearDateFilter() {
 function openPedidoCompraModalSAP(mode, id) {
     console.log('📋 openPedidoCompraModalSAP:', mode, id);
     forzarLimpiezaModalPC();
+    limpiarPagoContadoPV();   // Erika 03/11/2026: un PV nuevo no trae el N° de operación, banco ni CCI del anterior
     // Al editar, guardar sobre ESTE PV (antes quedaba en modo "cotización" y pedía elegir una o creaba otro PV)
     const _esEdicionPC = (mode === 'edit' || mode === 'editar' || (mode === 'directo' && id));
     modalMode = _esEdicionPC ? 'editar' : (mode === 'directo' ? 'directo' : 'cot');
@@ -18218,3 +18229,22 @@ function motivoTrasladoSunat(valor) {
 }
 window.MOTIVOS_TRASLADO_SUNAT = MOTIVOS_TRASLADO_SUNAT;
 window.motivoTrasladoSunat = motivoTrasladoSunat;
+
+// Erika 03/11/2026: al abrir el PV (nuevo o para editar) se vacían el pago al contado y su historial.
+// Al editar, cargarPCParaEdicion vuelve a poner lo guardado de ESE PV.
+function limpiarPagoContadoPV() {
+    ['pcNumOperacion', 'pcBanco', 'pcCuentaOCCI'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+    const h = document.getElementById('pcPagoHistorial');
+    if (h) { h.innerHTML = ''; h.style.display = 'none'; }
+}
+window.limpiarPagoContadoPV = limpiarPagoContadoPV;
+
+// Erika 03/11/2026: en la vista completa del PV se ve el pago al contado (N° operación, banco y CCI).
+// Las columnas .solo-excel no se ven en pantalla (sin scroll) pero salen separadas en el Excel para analizar.
+function pagoContadoCeldaPV(r) {
+    if (!r || !(r.pago_num_operacion || r.pago_banco || r.pago_cci)) return '';
+    const e = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    return `<div class="pv-pago-celda" style="margin-top:3px;font-size:9px;line-height:1.3;color:#1D4ED8;word-break:break-all">${r.pago_num_operacion ? `<div>Op. <b>${e(r.pago_num_operacion)}</b></div>` : ''}` +
+        `${r.pago_banco ? `<div>${e(r.pago_banco)}</div>` : ''}${r.pago_cci ? `<div title="CCI">CCI ${e(r.pago_cci)}</div>` : ''}</div>`;
+}
+window.pagoContadoCeldaPV = pagoContadoCeldaPV;
