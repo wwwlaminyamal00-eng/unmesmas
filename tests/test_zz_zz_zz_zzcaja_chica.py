@@ -73,8 +73,9 @@ def test_permiso_propio(app, admin, vendedor, base):
     _guardar(admin, uid, base['emp']['KCF'], [{'submodulo_codigo': 'CAJA_CHICA', 'puede_ver': True, 'puede_crear': True,
                                               'puede_editar': True}])
     limpiar_cache()
-    assert h.get('/caja-chica').status_code == 200
-    assert h.post('/caja-chica/api/config', json={'fondo_fijo': 900, 'responsable': 'X'}).status_code == 403
+    # Erika 04/11/2026 (noche): la caja la gestiona solo Hellen (y Erika); el permiso de la matriz no basta
+    assert h.get('/caja-chica/api/resumen').status_code == 403
+    assert 'class="menu-group" data-modulo="caja_chica"' not in h.get('/index').get_data(as_text=True)
 
 
 def test_validaciones_del_gasto(admin, kcf, gente):

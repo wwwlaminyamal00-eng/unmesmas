@@ -37,7 +37,7 @@
 {% if doc == 'vale' %}
 <div class="vale">
     {{ cabecera() }}
-    <h1>VALE DE CAJA CHICA N° {{ '%06d' % m.numero }}</h1>
+    <h1>VALE DE CAJA CHICA N° {{ m.comprobante_numero if (m.comprobante_numero or '').startswith('V-') else '%06d' % m.numero }}</h1>
     <table class="datos">
         <tr><td><b>Fecha:</b> {{ m.fecha.strftime('%d/%m/%Y') }}{% if m.hora %} · {{ m.hora.strftime('%H:%M') }}{% endif %}</td><td style="text-align:right" class="monto">S/ {{ '{:,.2f}'.format(m.egreso or m.ingreso) }}</td></tr>
         <tr><td colspan="2"><b>Son:</b> {{ letras }}</td></tr>
@@ -59,11 +59,11 @@
 {% for p in planillas %}
 <div class="hoja">
     {{ cabecera() }}
-    <h1>PLANILLA DE GASTOS DE MOVILIDAD{% if p.numero %} N° {{ p.numero }}{% endif %}</h1>
+    <h1>PLANILLA DE GASTOS DE MOVILIDAD{% if p.numero %} N° PM-{{ e.codigo }}-{{ p.numero }}{% endif %}</h1>
     {% if p.estado == 'Borrador' %}<p class="rojo" style="text-align:center">BORRADOR SIN NÚMERO: no vale para firmar. En Caja chica pulsa "Emitir planilla" para darle su N°.</p>{% endif %}
     {% if p.estado == 'Anulada' %}<p class="rojo" style="text-align:center">ANULADA: no vale.</p>{% endif %}
     <table class="datos">
-        <tr><td><b>N° de planilla:</b> {{ p.numero or '(sin emitir)' }}</td><td><b>Fecha de emisión:</b> {{ (p.emitida or ahora).strftime('%d/%m/%Y %H:%M') }}</td></tr>
+        <tr><td><b>N° de planilla:</b> {{ ('PM-' ~ e.codigo ~ '-' ~ p.numero) if p.numero else '(sin emitir)' }}</td><td><b>Fecha de emisión:</b> {{ (p.emitida or ahora).strftime('%d/%m/%Y %H:%M') }}</td></tr>
         <tr><td><b>Periodo:</b> del {{ p.desde.strftime('%d/%m/%Y') }} al {{ p.hasta.strftime('%d/%m/%Y') }}</td><td><b>Tope diario:</b> S/ {{ '{:,.2f}'.format(tope) }} (4% RMV)</td></tr>
         <tr><td><b>Nombre:</b> {{ p.nombre }}{% if p.tipo %} ({{ p.tipo }}){% endif %}</td><td><b>DNI:</b> {{ p.dni or '________' }}</td></tr>
     </table>

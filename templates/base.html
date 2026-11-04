@@ -453,6 +453,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 {% endif %}
 
                 <!-- CAJA CHICA (22/10/2026): fondo fijo, rendición semanal y arqueo; gerencia y permiso propio -->
+                {% if gestiona_caja %}
                 <div class="menu-group" data-modulo="caja_chica">
                     <div class="menu-header-wrapper">
                         <a href="/caja-chica" class="menu-header" style="text-decoration:none;flex:1;">
@@ -467,6 +468,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <a href="/caja-chica?tab=personas" class="child-btn" style="text-decoration:none;">👥 Personas y datos</a>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- REPORTES: regla de oro de Erika (25/10/2026), solo ella lo ve -->
                 {% if es_duena_reportes %}

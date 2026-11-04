@@ -294,9 +294,10 @@ def inject_request():
     except Exception:
         puede_validar = False
     # 25/10/2026: regla de oro, el menú 8 Reportes solo lo ve Erika
-    from utils import es_duena_reportes, es_duena
+    from utils import es_duena_reportes, es_duena, gestiona_caja_chica
     return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin(), puede_validar_ventas=puede_validar,
                 es_duena_reportes='usuario_id' in session and es_duena_reportes(),
+                gestiona_caja='usuario_id' in session and gestiona_caja_chica(),
                 es_duena='usuario_id' in session and es_duena())
 
 # ==========================================

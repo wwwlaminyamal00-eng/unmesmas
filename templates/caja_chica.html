@@ -8,7 +8,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/inventario.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gestion.css') }}?v=20261104d">
 <style>
     .cc-foto-mini{display:inline-block;width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #CBD5E1;vertical-align:middle}
     .cc-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
@@ -132,5 +132,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104c"></script>
+<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104d"></script>
 {% endblock %}

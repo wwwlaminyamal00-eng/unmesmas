@@ -77,6 +77,7 @@ def nombre_bonito(t):
 COMPROBANTES = ('Factura', 'Boleta', 'Recibo por honorarios', 'Ticket / voucher', 'Planilla de movilidad',
                 'Sin comprobante (vale)')
 COMPROBANTE_HISTORICO = 'No registrado (histórico)'
+COMPROBANTE_VALE = 'Sin comprobante (vale)'          # se muestra como Vale
 CON_NUMERO = ('Factura', 'Boleta', 'Recibo por honorarios')
 SUSTENTA_SUNAT = ('Factura', 'Boleta', 'Recibo por honorarios', 'Planilla de movilidad')
 TIPOS_PERSONA = ('Trabajador', 'Practicante', 'Transportista', 'Otro')
@@ -91,14 +92,9 @@ class ErrorCaja(Exception):
 # PERMISO (en el servidor)
 # ============================================================
 def puede_ver_caja():
-    if es_admin():
-        return True
-    try:
-        from routes.acceso import acceso_usuario
-        acc = acceso_usuario()
-    except Exception:
-        return False
-    return bool(acc.get('configurado') and 'caja_chica' in acc.get('modulos', set()))
+    # Erika 04/11/2026 (noche): solo la gestiona Hellen (y Erika, dueña). Ni otro administrador ni la matriz.
+    from utils import gestiona_caja_chica
+    return gestiona_caja_chica()
 
 
 @caja_chica_bp.before_request
@@ -471,6 +467,11 @@ def _leer_gasto(eid, d, conf):
     ruc = re.sub(r'\D', '', str(d.get('ruc_emisor') or ''))[:11] or None
     if tipo_c == 'Factura' and (not ruc or len(ruc) != 11):
         raise ErrorCaja('Escribe el RUC de quien emitió la factura (11 dígitos).')
+    # Erika 04/11/2026: con factura, el proveedor (Pagado a) y el N° son obligatorios
+    if tipo_c == 'Factura' and (not d.get('pagado_a') or str(d.get('pagado_a')).startswith('__')):
+        raise ErrorCaja('Con factura, en "Pagado a" escribe el proveedor que la emitió.')
+    if tipo_c == COMPROBANTE_VALE:
+        numero_c = None        # el N° del vale lo pone el sistema (V-KCF-000001)
     quien_id = d.get('quien_id')
     quien = None
     gente = {p['id']: p for p in personas(eid)}
@@ -541,11 +542,31 @@ def _aviso_movilidad(eid, conf, quien_id, fecha, excluir=None):
     return total, tope
 
 
+def _codigo_empresa(cur, eid):
+    cur.execute("SELECT codigo FROM erp_empresas WHERE id::text = %s", (str(eid),))
+    f = cur.fetchone()
+    return ((f or {}).get('codigo') or 'CAJA').upper()
+
+
+def _numero_vale(cur, eid):
+    """Correlativo propio de los vales por empresa: V-KCF-000001 (Erika 04/11/2026). Distinto de la planilla
+    de movilidad (PM-KCF-000001) y del N° de movimiento de la caja."""
+    cod = _codigo_empresa(cur, eid)
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f'caja_chica_vales:{eid}',))
+    pref = f'V-{cod}-'
+    cur.execute("""SELECT COALESCE(MAX(NULLIF(regexp_replace(substr(comprobante_numero, %s), '\\D', '', 'g'), '')::int), 0) AS n
+                   FROM caja_chica_movimientos WHERE empresa_id = %s AND comprobante_numero LIKE %s""",
+                (len(pref) + 1, str(eid), pref + '%'))
+    return f"{pref}{int(cur.fetchone()['n']) + 1:06d}"
+
+
 def registrar_gasto(eid, d):
     conf = leer_config(eid)
     g = _leer_gasto(eid, d, conf)
     with db_tx() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        if g['comprobante_tipo'] == COMPROBANTE_VALE:
+            g['comprobante_numero'] = _numero_vale(cur, eid)
         n = _siguiente(cur, 'caja_chica_movimientos', eid)
         cols = ['empresa_id', 'numero', 'tipo', 'creado_por', 'actualizado_por'] + list(g.keys())
         vals = [str(eid), n, 'Gasto', _usuario(), _usuario()] + list(g.values())
@@ -604,6 +625,10 @@ def editar_gasto(eid, mid, d):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         m = _mov(cur, eid, mid)
         _editable(cur, m)
+        if g['comprobante_tipo'] == COMPROBANTE_VALE:
+            # si ya tenía su N° de vale lo conserva; si recién pasa a vale, recibe el siguiente
+            g['comprobante_numero'] = (m['comprobante_numero'] if str(m.get('comprobante_numero') or '').startswith('V-')
+                                       else _numero_vale(cur, eid))
         cambios = [f'{k}: {_f(m[k])} → {_f(v)}' for k, v in g.items() if _f(m[k]) != _f(v)]
         if not cambios:
             return []

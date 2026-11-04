@@ -118,7 +118,7 @@
         return `<span class="ge-estado ${clase}">${esc(nomComp(m.comprobante_tipo))}</span>` +
             (m.comprobante_numero ? `<span class="ge-sub">N° ${esc(m.comprobante_numero)}</span>` : '') +
             (m.comprobante_tipo === 'Planilla de movilidad' ? (m.planilla_numero && m.planilla_estado === 'Emitida'
-                ? `<span class="ge-sub">Planilla N° ${String(m.planilla_numero).padStart(6, '0')}</span>` : '<span class="ge-sub ge-rojo">Planilla sin emitir</span>') : '');
+                ? `<span class="ge-sub">Planilla N° PM-${esc(empCodigo())}-${String(m.planilla_numero).padStart(6, '0')}</span>` : '<span class="ge-sub ge-rojo">Planilla sin emitir</span>') : '');
     }
     function estadoFila(m) {
         if (m.estado === 'Anulado') return `<span class="ge-estado gris">Anulado</span><span class="ge-sub">${esc(m.motivo_anulacion || '')}</span>`;
@@ -140,17 +140,17 @@
         const foto = m => m.tipo !== 'Gasto' || m.origen === 'Histórico' ? ''
             : m.fotos ? `<button type="button" class="ge-btn" data-fotos="${m.id}">Ver foto (${m.fotos})</button>`
             : (m.comprobante_tipo === 'Planilla de movilidad' ? '<span class="ge-sub">Se firma en la planilla</span>' : '<span class="ge-sin">Falta foto</span>');
-        $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó / pagado a</th>
+        $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó</th><th>Pagado a</th>
             <th>Descripción</th><th>N° PV / PC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
             ${lista.map(m => `<tr class="${m.estado === 'Anulado' ? 'cc-anulado' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
                 <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}</td>
                 <td>${esc(m.rubro || m.tipo)}${m.empresa_gasto && m.empresa_gasto !== empCodigo() ? `<span class="ge-sub">Gasto de ${esc(m.empresa_gasto)}</span>` : ''}</td>
-                <td>${esc(m.quien || '')}${m.pagado_a ? `<span class="ge-sub">Pagado a: ${esc(m.pagado_a)}</span>` : ''}</td>
+                <td>${esc(m.quien || '') || '<span class="ge-cero">—</span>'}</td><td>${m.pagado_a ? esc(m.pagado_a) : '<span class="ge-cero">—</span>'}</td>
                 <td style="text-align:left">${esc(m.descripcion)}${m.detalle ? `<span class="ge-sub">${esc(m.detalle)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">Obs.: ${esc(m.observacion)}</span>` : ''}</td>
                 <td class="ge-nw">${m.referencia ? esc(m.referencia) : '<span class="ge-cero">—</span>'}</td>
                 <td>${estadoComprobante(m)}${foto(m) ? `<div>${foto(m)}</div>` : ''}</td>
-                <td class="ge-nw">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
-                ${filtrado ? '' : `<td class="ge-nw"><b style="color:${num(m.saldo) < 0 ? '#E60023' : 'inherit'}">${m.saldo == null ? '' : soles(m.saldo)}</b></td>`}
+                <td class="ge-nw cc-monto">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
+                ${filtrado ? '' : `<td class="ge-nw cc-monto"><b style="color:${num(m.saldo) < 0 ? '#E60023' : '#0F172A'}">${m.saldo == null ? '' : soles(m.saldo)}</b></td>`}
                 <td>${estadoFila(m)}<span class="ge-sub">${esc(m.creado_por || '')} · ${fecha(m.creado_en)}</span>${(m.historial || []).length > 1 ? `<button type="button" class="ge-btn" data-historial="${m.id}">Historial</button>` : ''}</td>
                 <td>${m.estado === 'Anulado' ? '' : [
                     m.tipo === 'Gasto' && m.origen !== 'Histórico' ? `<button type="button" class="ge-btn" data-foto="${m.id}">Subir foto</button>` : '',
@@ -224,16 +224,39 @@
             <label>Tipo de comprobante<select name="comprobante_tipo" required>${opciones(OPC.comprobantes, m.comprobante_tipo, 'Elige...')}</select></label>
             <label data-cc="numero">N° de comprobante<input name="comprobante_numero" maxlength="40" value="${esc(m.comprobante_numero || '')}" placeholder="Ej.: F001-000123"></label>
             <label data-cc="ruc">RUC de quien emitió<input name="ruc_emisor" maxlength="11" inputmode="numeric" value="${esc(m.ruc_emisor || '')}"></label>
-            <label data-cc="autoriza">Autorizado por <small>(gasto mayor a S/ ${OPC.topeAviso})</small><input name="autorizado_por" maxlength="150" value="${esc(m.autorizado_por || '')}" placeholder="Ej.: Erika por WhatsApp"></label>
+            <label>Autorizado por<input name="autorizado_por" maxlength="150" value="${esc(m.id ? (m.autorizado_por || '') : (m.autorizado_por || 'Erika'))}" placeholder="Erika"></label>
             <label style="grid-column:1/-1">Observación <small>(opcional)</small><textarea name="observacion" maxlength="1000" rows="3">${esc(m.observacion || '')}</textarea></label>
             ${m.id ? '' : '<label style="grid-column:1/-1">Foto del voucher o comprobante <small>(puedes subirla después)</small><input type="file" name="foto" accept="image/*,.pdf" capture="environment"></label>'}
-            <div class="ge-sub" data-cc="tip" style="grid-column:1/-1"></div>`;
+            <div data-cc="tip" style="grid-column:1/-1"></div>
+            <div class="cc-regla" style="grid-column:1/-1">🔒 <b>Todo gasto debe estar autorizado por Erika antes de hacerse.</b> Si no fue autorizado, puede ser observado o no reconocido por la caja.</div>`;
     }
     function leerGasto() {
         const d = leerForm();
         if (d.pagado_a === '__otro') d.pagado_a = (d.pagado_a_otro || '').trim();
         delete d.pagado_a_otro;
         return d;
+    }
+    // Erika 04/11/2026: aviso corto según el rubro y el comprobante elegido (verde = correcto, ámbar = ojo, rojo = no va)
+    function avisoComprobante(rubro, tipo) {
+        const caja = (nivel, lineas) => `<div class="cc-aviso cc-aviso-${nivel}"><ul>${lineas.map(l => `<li>${l}</li>`).join('')}</ul></div>`;
+        const MOV = 'Movilidad operativa del personal', FLETE = 'Flete y transporte de mercadería', VALE = 'Sin comprobante (vale)';
+        if (rubro === MOV) {
+            if (!tipo) return caja('info', ['Pasajes del personal (bus, colectivo, taxi, Yango) → corresponde <b>Planilla de movilidad</b>.']);
+            if (tipo === 'Planilla de movilidad') return caja('ok', ['✔ Correcto. Sí se descuenta ante SUNAT (tope ' + soles(R.config.tope_movilidad) + ' por persona al día).', 'Al cerrar la semana: <b>🧾 Planillas de movilidad ▸ Emitir</b>. Sale numerada (PM) y la firma quien viajó.']);
+            if (tipo === 'Factura') return caja('ok', ['✔ Bien: factura del taxi o app al RUC de la empresa.']);
+            return caja('warn', ['Para pasajes corresponde <b>Planilla de movilidad</b>.', `Con ${esc(nomComp(tipo))} <b>no se descuenta</b> ante SUNAT.`]);
+        }
+        if (rubro === FLETE) {
+            if (!tipo) return caja('info', ['El flete es un servicio contratado → pide <b>factura</b> (o recibo por honorarios) al transportista.', 'Si no te da, usa <b>Vale</b>.']);
+            if (tipo === 'Planilla de movilidad') return caja('mal', ['✖ El flete <b>no</b> va en planilla de movilidad: esa es solo para pasajes del personal.', 'Elige Factura, Recibo por honorarios o Vale.']);
+            if (tipo === 'Factura' || tipo === 'Recibo por honorarios') return caja('ok', ['✔ Correcto. Recuperas el IGV (factura) y se descuenta de la renta.', 'Escribe el N° y el RUC del transportista.']);
+            if (tipo === VALE) return caja('warn', ['El vale <b>no se descuenta</b> ante SUNAT. Úsalo solo si el transportista no da comprobante.', 'Imprime el vale (sale con su N° V) y que lo firme el transportista.']);
+            return caja('warn', [`${esc(nomComp(tipo))} no da crédito de IGV. Mejor pide <b>factura</b> al transportista.`]);
+        }
+        if (tipo === 'Planilla de movilidad') return caja('mal', ['✖ La planilla de movilidad es solo para <b>pasajes del personal</b> (rubro Movilidad).']);
+        if (tipo === VALE) return caja('warn', ['Vale = gasto sin comprobante (gaseosa, recarga…). <b>No se descuenta</b> ante SUNAT.', 'Sale con su N° de vale (V) para que lo firme quien recibió el dinero.']);
+        if (tipo === 'Factura') return caja('ok', ['✔ Escribe el <b>proveedor</b>, su <b>RUC</b> y el <b>N° de factura</b>.']);
+        return '';
     }
     function ajustarForm() {
         const f = $('#ccModalForm');
@@ -242,7 +265,6 @@
         const monto = num(f.monto && f.monto.value);
         const n = $('[data-cc=numero]', f); if (n) n.hidden = !OPC.conNumero.includes(tipo);
         const r = $('[data-cc=ruc]', f); if (r) r.hidden = tipo !== 'Factura';
-        const a = $('[data-cc=autoriza]', f); if (a) a.hidden = monto <= OPC.topeAviso;
         // Erika 04/11/2026: en flete "Pagado a" es el transportista contratado: sin "No aplica" ni el personal
         const esFlete = f.rubro && f.rubro.value === 'Flete y transporte de mercadería';
         if (f.pagado_a) {
@@ -261,8 +283,14 @@
         const po = $('[data-cc=pagado-otro]', f); if (po) po.hidden = !f.pagado_a || f.pagado_a.value !== '__otro';
         const dot = $('[data-cc=desc-otro]', f); if (dot) dot.hidden = !f.descripcion || f.descripcion.value !== 'Otro (escribir)';
         const det = $('[data-cc=detalle]', f); if (det) det.hidden = !OPC.pidenDetalle.includes(f.rubro.value);
+        // Erika 04/11/2026: "Pagado a" se llama "Proveedor" cuando hay factura
+        const lblPag = f.pagado_a && f.pagado_a.closest('label');
+        if (lblPag && lblPag.firstChild) lblPag.firstChild.textContent = tipo === 'Factura' ? 'Proveedor (de la factura)' : 'Pagado a';
         const tip = $('[data-cc=tip]', f);
         if (tip) {
+            tip.innerHTML = avisoComprobante(f.rubro.value, tipo);
+        }
+        if (false) {
             const rubro = f.rubro.value;
             tip.innerHTML = tipo === 'Sin comprobante (vale)' ? '⚠ Vale = gasto sin comprobante (gaseosa, recarga, comisión del banco...). <b>No se descuenta ante SUNAT.</b> Si puedes, pide boleta o factura. Imprime el vale y que lo firme quien recibió el dinero.'
                 : tipo === 'Planilla de movilidad' ? `Solo pasajes del personal (bus, colectivo, taxi, Yango). Tope: <b>${soles(R.config.tope_movilidad)}</b> por persona al día. Al final de la semana pulsa <b>🧾 Planillas de movilidad ▸ Emitir</b>: sale numerada y la firma quien viajó.`
@@ -341,7 +369,7 @@
         try { lista = (await api('/caja-chica/api/planillas?empresa_id=' + encodeURIComponent(empresa()))).data; } catch (e) { aviso(e.message, 'error'); }
         const pend = movs.filter(m => m.estado === 'Activo' && m.comprobante_tipo === 'Planilla de movilidad' && !(m.planilla_numero && m.planilla_estado === 'Emitida'));
         const tabla = lista.length ? `<table class="inv-table ge-tabla"><thead><tr><th>N° planilla</th><th>Persona</th><th>Periodo</th><th>Pasajes</th><th>Total (S/)</th><th>Estado</th><th>Emitida</th><th>Acciones</th></tr></thead><tbody>
-            ${lista.map(p => `<tr class="${p.estado === 'Anulada' ? 'cc-anulado' : ''}"><td><b>${String(p.numero).padStart(6, '0')}</b></td><td>${esc(p.quien)}</td>
+            ${lista.map(p => `<tr class="${p.estado === 'Anulada' ? 'cc-anulado' : ''}"><td><b>PM-${esc(empCodigo())}-${String(p.numero).padStart(6, '0')}</b></td><td>${esc(p.quien)}</td>
                 <td class="ge-nw">${fecha(p.desde)} al ${fecha(p.hasta)}</td><td>${p.pasajes}</td><td>${soles(p.total)}</td>
                 <td>${p.estado === 'Emitida' ? '<span class="ge-estado verde">✔ Emitida</span>' : `<span class="ge-estado gris">Anulada</span><span class="ge-sub">${esc(p.motivo_anulacion || '')}</span>`}</td>
                 <td><span class="ge-sub">${esc(p.emitida_por || '')} · ${fecha(p.emitida_en)}</span></td>
