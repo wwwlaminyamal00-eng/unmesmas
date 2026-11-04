@@ -2751,3 +2751,10 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - OC impresa: sello "✔ APROBADA por [nombre] · dd/mm/aaaa hh:mm (hora de Lima)" y fecha bajo "Aprobó". La hoja borrador sale con marca de agua "NO APROBADA" y aviso rojo. Imprimir sin aprobar sigue bloqueado (409).
 - Inventario: aviso de movimientos por aprobar en viñetas cortas (qué es, qué pasa si no haces nada, qué botón pulsar) + tabla (N°, producto, cantidad, empresa, sede, quién y cuándo, nota, Aprobar/Rechazar). Rechazar no borra nada.
 - Sin cambios en la base. Pruebas: 391 pasan.
+
+## 24.71 Ventana de diferencias y PDF de la OC más ordenado (04/11/2026)
+- Recibir mercadería: la ventana "Lo contado no coincide con la OC" pasa a una línea con OC · proveedor · empresa, una tabla Nombre producto / Pedido / Contado / Diferencia (rojo solo la diferencia), dos líneas de instrucción y el campo "Qué pasó (obligatorio)".
+- PDF de la OC: "Tiempo de entrega: N día(s) · a más tardar el dd/mm/aaaa"; título "Ítems" y columna Ítem; bloque "Emitir factura a:" en puntos (razón social y RUC, N° de OC, guía con punto de llegada y solo con guía, pago solo a cuenta registrada).
+- "Datos para la transferencia" queda solo como dato interno en pantalla: ya no sale al imprimir ni en el PDF.
+- KCF y AGD con diseños distintos: KCF igual que antes (letra Arial, recuadro rojo); AGD con franja naranja arriba, letra con serifa, encabezado de tabla naranja y cajas con borde lateral.
+- El nombre del aprobador en las OC de AGD NO se cambió (pendiente de decisión de Erika). 393 pruebas.
