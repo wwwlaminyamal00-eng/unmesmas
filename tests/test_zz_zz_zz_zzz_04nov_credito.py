@@ -59,3 +59,19 @@ def test_pantallas_credito_y_aviso_stock():
     assert 'credito: cargarCredito' in js and '/compras/api/flujo/credito' in js
     inv = (RAIZ / 'static/js/inventario.js').read_text(encoding='utf-8')
     assert 'inv-pend-tabla' in inv and 'no existe físicamente' in inv and 'No se borra nada' in inv
+
+
+def test_ventana_diferencias_recepcion_en_tabla():
+    # Erika 04/11/2026: "más claro y ordenado, sin mucho floro, mejor colorimetría"
+    js = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
+    i = js.index('function ventanaDiferencias')
+    v = js[i:js.index('async function guardarRecepcion', i)]
+    assert 'Lo contado no coincide con la OC' in v and '>Pedido</th>' in v and '>Contado</th>' in v and '>Diferencia</th>' in v
+    assert 'no se grabó nada' in v and 'data-motivo' in v and 'Aviso.rojo' not in v
+
+
+def test_pdf_oc_ordenado_y_distinto_por_empresa():
+    # Erika 04/11/2026: tiempo de entrega, "Ítems", "Emitir factura a:" en puntos, datos bancarios solo internos, KCF ≠ AGD
+    t = (RAIZ / 'templates/compras/imprimir_oc.html').read_text(encoding='utf-8')
+    assert 'Tiempo de entrega' in t and '>Ítems</div>' in t and 'Emitir factura a:' in t
+    assert '<div class="transfer no-print">' in t and "== 'AGD'" in t

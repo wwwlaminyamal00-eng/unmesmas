@@ -36,7 +36,25 @@
     .no-aprobada{position:fixed;top:40%;left:0;right:0;text-align:center;transform:rotate(-24deg);font-size:84px;font-weight:900;
         color:rgba(220,38,38,.22);border:none;pointer-events:none;letter-spacing:4px;z-index:5}
     .no-aprobada-aviso{border:3px solid #DC2626;color:#B91C1C;background:#FEF2F2;border-radius:8px;padding:8px 12px;margin:10px 0;font-weight:bold}
-    @media print{.no-print{display:none}body{margin:0;max-width:none}}
+    /* Erika 04/11/2026: más orden ("Ítems", "Emitir factura a", tiempo de entrega) */
+    .seccion{margin:14px 0 4px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:{{ empresa.color_primario or '#1E3A8A' }}}
+    .nota ul{margin:4px 0 0 18px;padding:0}
+    .nota li{margin:2px 0}
+    .interno{font-size:11px;color:#B91C1C;font-weight:bold}
+    {% if (empresa.codigo or o.empresa) == 'AGD' %}
+    /* Erika 04/11/2026: AGD con un diseño totalmente distinto al de KCF: franja de color arriba, letra con serifa,
+       encabezado de tabla en color y cajas sin bordes redondeados */
+    body{font-family:Georgia,'Times New Roman',serif}
+    .cab{background:{{ empresa.color_primario or '#FC6200' }};color:#fff;border:none;padding:16px 18px;border-radius:0}
+    .cab h1{font-size:20px;letter-spacing:1px}
+    .doc{background:#fff;color:#0F172A;border:none;border-radius:0}
+    .doc .titulo{color:{{ empresa.color_primario or '#FC6200' }}}
+    .caja{border:none;border-left:5px solid {{ empresa.color_primario or '#FC6200' }};border-radius:0;background:#FFF7F0}
+    th{background:{{ empresa.color_primario or '#FC6200' }};color:#fff;border-color:{{ empresa.color_primario or '#FC6200' }}}
+    .nota{border:none;border-left:5px solid {{ empresa.color_primario or '#FC6200' }};border-radius:0;background:#FFF7F0}
+    .sello{border-radius:0}
+    {% endif %}
+    @media print{.no-print{display:none !important}body{margin:0;max-width:none}}
 </style>
 </head>
 <body>
@@ -72,32 +90,35 @@
         <h3>Condiciones</h3>
         Pago: <b>{{ o.condicion_pago }}</b>{% if pago %} · Adelanto {{ pago.pct }}%: {{ sim }} {{ '%.2f'|format(pago.adelanto) }} · Saldo {{ pago.saldo_pct }}% {{ pago.cuando }}: {{ sim }} {{ '%.2f'|format(pago.saldo) }}{% endif %}<br>
         {% if (o.moneda or 'PEN') == 'USD' %}Moneda: <b>Dólares americanos (US$)</b><br>{% endif %}
-        Entrega: <b>{{ o.modalidad_entrega }}</b> · Fecha: <b>{{ o.fecha_compromiso.strftime('%d/%m/%Y') if o.fecha_compromiso else '' }}</b><br>
+        Entrega: <b>{{ o.modalidad_entrega }}</b><br>
+        {% if o.fecha_compromiso %}{% set _dias = (o.fecha_compromiso - (o.fecha.date() if o.fecha.date is defined else o.fecha)).days if o.fecha else None %}
+        Tiempo de entrega: <b>{% if _dias is not none and _dias >= 0 %}{{ _dias }} día(s) · {% endif %}a más tardar el {{ o.fecha_compromiso.strftime('%d/%m/%Y') }}</b><br>{% endif %}
         {% if o.modalidad_entrega == 'Proveedor entrega' %}Entregar en: <b>{{ sede.nombre }}</b> — {{ sede.direccion or '' }}{% else %}Recogemos en: {{ o.direccion_recojo }}{% endif %}<br>
         {% if o.num_cotizacion %}Su cotización: {{ o.num_cotizacion }}{% endif %}
         {% endif %}
     </div>
 </div>
 
+<div class="seccion">Ítems</div>
 <table>
-    <thead><tr><th>Producto</th><th>Modelo</th><th>Marca</th><th>Unidad de medida</th><th>Cantidad</th>
+    <thead><tr><th>Ítem</th><th>Producto</th><th>Modelo</th><th>Marca</th><th>Unidad de medida</th><th>Cantidad</th>
         {% if hoja != 'recojo' %}<th>Precio unitario sin IGV</th><th>Total</th>{% else %}<th>Recogido (contar con el proveedor)</th><th>Observación</th>{% endif %}</tr></thead>
     <tbody>
     {% for i in items %}
-    <tr><td>{{ i.producto }}</td><td>{{ i.modelo or '' }}</td><td>{{ i.marca or '' }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>
+    <tr><td class="n" style="text-align:center">{{ loop.index }}</td><td>{{ i.producto }}</td><td>{{ i.modelo or '' }}</td><td>{{ i.marca or '' }}</td><td>{{ i.unidad or 'UND' }}</td><td class="n">{{ '%g'|format(i.cantidad|float) }}</td>
         {% if hoja != 'recojo' %}<td class="n">{{ sim }} {{ '%.2f'|format(i.precio_unitario|float) }}</td><td class="n">{{ sim }} {{ '%.2f'|format(i.total|float) }}</td>
         {% else %}<td class="vacio"></td><td></td>{% endif %}</tr>
     {% endfor %}
     </tbody>
     {% if hoja != 'recojo' %}
     <tfoot>
-        <tr class="tot"><td colspan="6" class="n">Subtotal</td><td class="n">{{ sim }} {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
-        <tr class="tot"><td colspan="6" class="n">IGV</td><td class="n">{{ sim }} {{ '%.2f'|format(o.igv|float) }}</td></tr>
-        <tr class="tot"><td colspan="6" class="n">TOTAL</td><td class="n">{{ sim }} {{ '%.2f'|format(o.total|float) }}</td></tr>
+        <tr class="tot"><td colspan="7" class="n">Subtotal</td><td class="n">{{ sim }} {{ '%.2f'|format(o.subtotal|float) }}</td></tr>
+        <tr class="tot"><td colspan="7" class="n">IGV</td><td class="n">{{ sim }} {{ '%.2f'|format(o.igv|float) }}</td></tr>
+        <tr class="tot"><td colspan="7" class="n">TOTAL</td><td class="n">{{ sim }} {{ '%.2f'|format(o.total|float) }}</td></tr>
         {% if pago %}
         {# Erika 26 y 27/10/2026: con adelanto, debajo del TOTAL van el adelanto y lo que se paga después #}
-        <tr class="tot pago-adelanto"><td colspan="6" class="n">Adelanto {{ pago.pct }}% (antes de la entrega)</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.adelanto) }}</td></tr>
-        <tr class="tot pago-adelanto"><td colspan="6" class="n">Saldo {{ pago.saldo_pct }}% {{ pago.cuando }}</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.saldo) }}</td></tr>
+        <tr class="tot pago-adelanto"><td colspan="7" class="n">Adelanto {{ pago.pct }}% (antes de la entrega)</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.adelanto) }}</td></tr>
+        <tr class="tot pago-adelanto"><td colspan="7" class="n">Saldo {{ pago.saldo_pct }}% {{ pago.cuando }}</td><td class="n">{{ sim }} {{ '%.2f'|format(pago.saldo) }}</td></tr>
         {% endif %}
     </tfoot>
     {% endif %}
@@ -109,15 +130,19 @@
 </div>
 <div class="firmas"><div>Entregó (proveedor)</div><div>Recogió (nombre y DNI)</div><div>Recibió en sede</div></div>
 {% else %}
+<div class="seccion">Emitir factura a:</div>
 <div class="nota">
-    Facturar a <b>{{ empresa.razon_social or o.empresa }}</b>, RUC {{ empresa.ruc or '—' }}, indicando el N° de orden <b>{{ o.numero }}</b>.
-    La guía de remisión debe indicar como punto de llegada: {{ sede.nombre }} ({{ sede.direccion or '' }}).
-    Solo se recibe mercadería con guía. Pagamos únicamente a la cuenta bancaria registrada del proveedor.
-    {% if o.notas %}<br>Notas: {{ o.notas }}{% endif %}
+    <ul>
+        <li><b>{{ empresa.razon_social or o.empresa }}</b> · RUC <b>{{ empresa.ruc or '—' }}</b></li>
+        <li>Indicar el N° de orden de compra: <b>{{ o.numero }}</b></li>
+        <li>Guía de remisión con punto de llegada: <b>{{ sede.nombre }}</b>{% if sede.direccion %} ({{ sede.direccion }}){% endif %}. <b>Solo se recibe mercadería con guía.</b></li>
+        <li>Pagamos <b>únicamente a la cuenta bancaria registrada</b> del proveedor.</li>
+        {% if o.notas %}<li>Notas: {{ o.notas }}</li>{% endif %}
+    </ul>
 </div>
-{# Sin cuenta registrada el aviso es solo interno: no sale impreso para el proveedor #}
-<div class="transfer{% if not (prov.numero_cuenta or prov.cci) %} no-print{% endif %}">
-    <h3>Datos para la transferencia</h3>
+{# Erika 04/11/2026 ("no sé si eso debería ir en el PDF"): los datos bancarios son solo para uso interno, no salen impresos #}
+<div class="transfer no-print">
+    <h3>Datos para la transferencia <span class="interno">· uso interno: no sale al imprimir ni en el PDF</span></h3>
     {% if prov.numero_cuenta or prov.cci %}
     Titular: <b>{{ prov.razon_social or o.proveedor }}</b> · RUC {{ prov.ruc or '—' }}<br>
     Banco: <b>{{ prov.banco or '—' }}</b><br>

@@ -1274,39 +1274,44 @@
             const f = document.createElement('div');
             f.id = 'ventanaDifRec';
             f.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
-            // Erika 28/10/2026 00:31: aviso contundente, en viñetas, azul = datos de la OC, rojo = la diferencia
+            // Erika 04/11/2026: "más claro y ordenado, sin mucho floro, mejor colorimetría":
+            // una línea con la OC, una tabla Pedido / Contado / Diferencia (rojo solo la diferencia) y una instrucción
             const o = window._recOrden || {};
-            const uni = (u) => (!u || /^(ZZ|NIU|UND|UNIDAD|UNIDADES)$/i.test(u)) ? 'unidades' : u;
+            const uni = (u) => (!u || /^(ZZ|NIU|UND|UNIDAD|UNIDADES)$/i.test(u)) ? 'und' : u;
             const n = (x) => Number(x || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+            const td = 'padding:8px 10px;border-bottom:1px solid #E2E8F0;text-align:center';
             const filas = difs.map(x => {
                 const u = uni(x.unidad);
-                if (x.tipo === 'Dañado') return `<li><b>${esc(x.producto)}</b>: <b class="aviso-rojo-txt">${n(x.danada)} ${esc(u)} dañados</b></li>`;
-                const reg = Number(x.registras || 0) + Number(x.danada || 0);
+                const danada = Number(x.danada || 0);
+                const reg = Number(x.registras || 0) + danada;
                 const dif = Math.abs(Number(x.pide || 0) - reg);
-                return `<li><b>${esc(x.producto)}</b><ul class="aviso-lista">
-                    <li>La OC fue emitida por <b class="aviso-azul">${n(x.pide)} ${esc(u)}</b>.</li>
-                    <li>Estás registrando <b class="aviso-azul">${n(reg)} ${esc(u)}</b>.</li>
-                    <li><b class="aviso-rojo-txt">Diferencia: ${n(dif)} ${esc(u)} ${x.tipo === 'Sobra' ? 'de MÁS' : 'FALTAN'}</b></li></ul></li>`;
+                const difTxt = x.tipo === 'Dañado' ? `${n(danada)} ${esc(u)} dañados`
+                    : `${x.tipo === 'Sobra' ? '+' : '−'}${n(dif)} ${esc(u)} ${x.tipo === 'Sobra' ? 'de más' : 'faltan'}`;
+                return `<tr><td style="${td};text-align:left;font-weight:700">${esc(x.producto)}</td>
+                    <td style="${td}">${n(x.pide)}</td><td style="${td}">${n(reg)}${danada ? `<div style="font-size:11px;color:#64748B">${n(danada)} dañados</div>` : ''}</td>
+                    <td style="${td}"><span style="display:inline-block;background:#FEE2E2;color:#B91C1C;font-weight:900;border-radius:6px;padding:2px 8px;white-space:nowrap">${difTxt}</span></td></tr>`;
             }).join('');
-            f.innerHTML = `<div role="alertdialog" style="background:#fff;border:4px solid #DC2626;border-radius:14px;max-width:620px;width:100%;max-height:92vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#0F172A">
-                <div style="font-size:20px;font-weight:900;margin-bottom:8px;color:#B91C1C">⛔ Lo que contaste NO coincide con la orden de compra</div>
-                <ul class="aviso-lista aviso-docs">
-                    ${o.numero ? `<li>Orden de compra (Proveedor): <b class="aviso-azul">${esc(o.numero)}</b></li>` : ''}
-                    ${o.proveedor ? `<li>Proveedor: <b class="aviso-azul">${esc(o.proveedor)}</b></li>` : ''}
-                    ${o.empresa ? `<li>Empresa: <b class="aviso-azul">${esc(o.empresa)}</b></li>` : ''}</ul>
-                <ul class="aviso-lista" style="font-size:14.5px;line-height:1.5">${filas}</ul>
-                <div style="font-size:16px;font-weight:900;margin:10px 0 6px">¿Estás seguro de que contaste bien?</div>
-                ${Aviso.rojo(['Todavía <b>NO se grabó nada</b>. Si fue un error al escribir, pulsa <b>Volver a contar</b>.',
-                              'Si de verdad llegó así: <b>coordina con el proveedor</b> y <b>avisa a tu jefe inmediato</b>.',
-                              'Al confirmar, queda en el historial con tu nombre, fecha y hora, y le <b>sale el aviso a la jefa</b> en Hoy en Compras.'])}
-                <label style="display:block;font-size:13px;font-weight:800;margin:12px 0">Explica qué pasó <span style="color:#DC2626">(obligatorio)</span>
-                    <input type="text" data-motivo maxlength="300" placeholder="Ej. el proveedor mandó 8; dice que manda 12 el viernes" style="width:100%;margin-top:4px;padding:8px;border:2px solid #DC2626;border-radius:8px"></label>
-                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+            const th = 'padding:8px 10px;background:#F1F5F9;color:#334155;font-size:12px;text-align:center;border-bottom:2px solid #CBD5E1';
+            const docs = [o.numero, o.proveedor, o.empresa].filter(Boolean).map(esc).join(' · ');
+            f.innerHTML = `<div role="alertdialog" style="background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#0F172A;border-top:8px solid #DC2626">
+                <div style="padding:18px 20px 0">
+                <div style="font-size:19px;font-weight:900;color:#0F172A">⚠️ Lo contado no coincide con la OC</div>
+                ${docs ? `<div style="font-size:13px;color:#475569;margin-top:2px">${docs}</div>` : ''}
+                <table style="width:100%;border-collapse:collapse;margin:14px 0 10px;font-size:14px">
+                    <thead><tr><th style="${th};text-align:left">Nombre producto</th><th style="${th}">Pedido</th><th style="${th}">Contado</th><th style="${th}">Diferencia</th></tr></thead>
+                    <tbody>${filas}</tbody></table>
+                <div style="background:#F8FAFC;border-radius:8px;padding:8px 12px;font-size:13.5px;line-height:1.5">
+                    Aún <b>no se grabó nada</b>. ¿Te equivocaste? → <b>Volver a contar</b>.<br>
+                    ¿Llegó así? → escribe qué pasó y <b>Confirmar</b>. Se avisa a la jefa con tu nombre y hora.</div>
+                <label style="display:block;font-size:13px;font-weight:800;margin:12px 0 4px">Qué pasó <span style="color:#DC2626">(obligatorio)</span>
+                    <input type="text" data-motivo maxlength="300" placeholder="Ej. el proveedor mandó 8; manda 12 el viernes" style="width:100%;margin-top:4px;padding:9px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px"></label>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding:12px 20px 18px">
                     <button type="button" data-r="0" style="padding:10px 18px;border-radius:10px;border:0;background:#16A34A;color:#fff;font-weight:900;cursor:pointer">🔁 Volver a contar</button>
-                    <button type="button" data-r="1" disabled style="padding:10px 18px;border-radius:10px;border:2px solid #B91C1C;background:#fff;color:#B91C1C;font-weight:800;cursor:pointer;opacity:.45">Confirmar con diferencia</button></div></div>`;
+                    <button type="button" data-r="1" disabled style="padding:10px 18px;border-radius:10px;border:0;background:#DC2626;color:#fff;font-weight:800;cursor:pointer;opacity:.4">Confirmar con diferencia</button></div></div>`;
             document.body.appendChild(f);
             const inp = f.querySelector('[data-motivo]'), si = f.querySelector('button[data-r="1"]');
-            inp.oninput = () => { const ok = inp.value.trim().length >= 5; si.disabled = !ok; si.style.opacity = ok ? '1' : '.45'; };
+            inp.oninput = () => { const ok = inp.value.trim().length >= 5; si.disabled = !ok; si.style.opacity = ok ? '1' : '.4'; };
             f.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => {
                 const motivo = inp.value.trim();
                 if (b.dataset.r === '1' && motivo.length < 5) { inp.focus(); return; }

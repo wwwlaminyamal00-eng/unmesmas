@@ -98,10 +98,12 @@ def test_reporte_cumplimiento_solo_erika(admin, vendedor):
 def test_avisos_en_vinetas_en_todos_los_modulos():
     base = (RAIZ / 'templates/base.html').read_text(encoding='utf-8')
     assert 'js/avisos.js' in base
-    for f in ('ventas.js', 'compras.js', 'herramientas.js', 'maestros.js', 'compras_flujo.js'):
+    # 04/11/2026: la ventana de diferencias de Compras pasó a tabla corta (Erika: "sin mucho floro")
+    for f in ('ventas.js', 'compras.js', 'herramientas.js', 'maestros.js'):
         assert 'Aviso.' in (RAIZ / 'static/js' / f).read_text(encoding='utf-8'), f
     cf = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
-    assert 'La OC fue emitida por' in cf and 'avisa a tu jefe inmediato' in cf and '(obligatorio)' in cf
+    # 04/11/2026: Erika pidió la ventana de diferencias más corta (tabla Pedido / Contado / Diferencia)
+    assert 'Lo contado no coincide con la OC' in cf and 'Se avisa a la jefa' in cf and '(obligatorio)' in cf
 
 
 def _cliente_zz(ruc, direccion):
