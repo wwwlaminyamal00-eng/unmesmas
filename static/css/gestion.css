@@ -197,3 +197,14 @@ details.ic-plegable .inv-title small{font-size:12px;color:#64748B;font-weight:80
 #segAbiertas .ge-tabla td .ge-sub{font-size:10.5px}
 #segAbiertas .ge-btn{font-size:11px;padding:5px 8px;white-space:normal;line-height:1.2;width:100px;display:inline-block}
 #segAbiertas .ge-btn{height:auto !important;min-height:0 !important}
+
+/* Caja chica (Erika 04/11/2026 noche): avisos por rubro, frase de autorización, montos más grandes */
+.cc-aviso { grid-column: 1 / -1; border-radius: 8px; padding: 8px 12px; font-size: 13px; border: 1px solid; }
+.cc-aviso ul { margin: 0; padding-left: 18px; }
+.cc-aviso li { margin: 2px 0; }
+.cc-aviso-info { background: #EFF6FF; border-color: #BFDBFE; color: #1E3A8A; }
+.cc-aviso-ok   { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
+.cc-aviso-warn { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+.cc-aviso-mal  { background: #FEF2F2; border-color: #FECACA; color: #B91C1C; }
+.cc-regla { font-size: 12px; color: #475569; background: #F8FAFC; border-left: 3px solid #94A3B8; padding: 6px 10px; border-radius: 4px; }
+.cc-monto b { font-size: 15px; }

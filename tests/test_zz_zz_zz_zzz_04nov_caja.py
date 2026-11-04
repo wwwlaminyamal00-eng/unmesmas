@@ -90,7 +90,7 @@ def test_planilla_de_movilidad_numerada(admin, agd, gente4):
     assert r.status_code == 400 and 'ya tienen planilla' in r.json['error']
     ids = ','.join(str(x['id']) for x in emitidas)
     html = admin.get(f'/caja-chica/imprimir/movilidad?empresa_id={agd}&ids={ids}').get_data(as_text=True)
-    assert f"N° {emitidas[0]['numero']:06d}" in html and '70000011' in html and 'Komatsu Lurín' in html and '00:40' in html
+    assert 'N° PM-' in html and f"-{emitidas[0]['numero']:06d}" in html and '70000011' in html and 'Komatsu Lurín' in html and '00:40' in html
     assert 'BORRADOR' not in html
     # Sus pasajes ya no se editan
     m = next(x for x in _movs(admin, agd) if x['quien'] == 'Milagros Salazar' and x['comprobante_tipo'] == 'Planilla de movilidad')
@@ -131,3 +131,29 @@ def test_caja_noche_sin_hora_sin_itf_vale_y_flete():
     assert "'Sin comprobante (vale)': 'Vale'" in js and 'data-solo-flete' in js and '<b>Pagado a</b>: el transportista' in js
     src = (raiz / 'routes/caja_chica.py').read_text(encoding='utf-8')
     assert 'En flete, en "Pagado a" elige al transportista' in src
+
+
+def test_caja_vale_correlativo_factura_con_proveedor_y_solo_hellen(admin, agd, gente4):
+    # Erika 04/11/2026 (noche): correlativo propio del vale por empresa, factura con proveedor, solo Hellen y Erika
+    cod = sql("SELECT codigo FROM erp_empresas WHERE id::text = %s", (agd,))[0][0]
+    q = gente4['milagros']
+    r1 = _g(admin, agd, q, rubro='Útiles, impresiones y oficina', comprobante_tipo='Sin comprobante (vale)',
+            descripcion='Cinta de embalaje', detalle='', monto='4.00', comprobante_numero='lo-que-sea')
+    assert r1.status_code == 200, r1.json
+    r2 = _g(admin, agd, q, rubro='Útiles, impresiones y oficina', comprobante_tipo='Sin comprobante (vale)',
+            descripcion='Plumones', detalle='', monto='5.00')
+    assert r2.status_code == 200, r2.json
+    nums = [f[0] for f in sql(
+        """SELECT comprobante_numero FROM caja_chica_movimientos WHERE empresa_id::text = %s
+           AND comprobante_numero LIKE %s ORDER BY id""", (agd, f'V-{cod}-%'))]
+    assert len(nums) >= 2 and nums[-1] == f'V-{cod}-' + str(int(nums[-2][-6:]) + 1).zfill(6), nums
+    r = _g(admin, agd, q, rubro='Útiles, impresiones y oficina', comprobante_tipo='Factura', comprobante_numero='F001-9',
+           ruc_emisor='20100000001', descripcion='Tóner', detalle='', monto='40.00', pagado_a='')
+    assert r.status_code == 400 and 'proveedor' in r.json['error']
+    from utils import USUARIOS_CAJA_CHICA
+    assert 'hel02kcf' in USUARIOS_CAJA_CHICA and 'eri01kcf' in USUARIOS_CAJA_CHICA
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parent.parent
+    assert '{% if gestiona_caja %}' in (raiz / 'templates/base.html').read_text(encoding='utf-8')
+    js = (raiz / 'static/js/caja_chica.js').read_text(encoding='utf-8')
+    assert '<th>Quién gastó</th><th>Pagado a</th>' in js and 'autorizado por Erika' in js and 'PM-' in js

@@ -2773,3 +2773,12 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Flete: "Pagado a" muestra solo transportistas (Personas tipo Transportista), proveedores con RUC del maestro y "Otro (escribir)"; sin "No aplica" ni el personal. Al elegir un proveedor se llena su RUC. El servidor exige "Pagado a" en flete. Ayuda: "Quién gastó: quien dio el dinero. Pagado a: el transportista."
 - Saldo KCF −S/ 862.44 verificado: es la suma real (saldo inicial 134.61 + reposiciones 13,761.40 + devolución 62.80 − gastos 14,821.25). Desde la última reposición (20/10) se gastó más que el fondo; incluye fletes de S/ 300 (03/11) y S/ 500 (04/11).
 - Sin migraciones. 397 pruebas.
+
+## 24.74 Caja chica: solo Hellen, correlativos V-/PM-, avisos y columnas (04/11/2026 noche)
+- Acceso: Caja chica la gestionan **solo hel02kcf (Hellen) y eri01kcf (Erika)**, lista `USUARIOS_CAJA_CHICA` (variable de entorno opcional). El menú se oculta para todos los demás, aunque sean administradores o tengan el permiso en la matriz. Estrella se agrega después con solo añadir est01kcf a la lista.
+- Correlativos por empresa: el vale toma su propio N° **V-KCF-000001** (V-AGD-… en AGD) al guardarse; la planilla de movilidad se muestra como **PM-KCF-000001**. Los vales ya registrados conservan lo que tenían; al editar un vale con N° V- se mantiene.
+- Avisos según rubro y comprobante (azul información, verde correcto, ámbar cuidado, rojo no corresponde): Movilidad → Planilla de movilidad; Flete → factura o recibo por honorarios, si no Vale (no se descuenta ante SUNAT); flete no va en planilla.
+- "Autorizado por" sale siempre y viene con "Erika"; frase: "Todo gasto debe estar autorizado por Erika antes de hacerse. Si no fue autorizado, puede ser observado o no reconocido por la caja."
+- Con Factura, el servidor exige el proveedor ("Pagado a"), RUC y N° de factura. La foto del voucher sigue opcional.
+- Lista: "Quién gastó" y "Pagado a" en columnas separadas; monto y saldo más grandes.
+- Sin migraciones. 398 pruebas.

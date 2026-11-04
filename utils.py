@@ -83,6 +83,15 @@ def recibe_mercaderia():
     return (session.get('usuario') or '').strip().lower() in USUARIOS_RECIBEN_MERCADERIA
 
 
+# Erika 04/11/2026 (noche): "la caja chica lo gestiona Hellen. Es la única [...] y nadie más". Erika es la dueña.
+# Por usuario (no por rol ni por la matriz). Estrella podría ser la segunda más adelante: se agrega aquí (est01kcf).
+USUARIOS_CAJA_CHICA = _lista_env('USUARIOS_CAJA_CHICA', 'eri01kcf,hel02kcf')
+
+
+def gestiona_caja_chica():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_CAJA_CHICA
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 
