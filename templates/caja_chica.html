@@ -60,10 +60,10 @@
             <div class="cc-filtros">
                 <label>Desde<input type="date" id="ccDesde"></label>
                 <label>Hasta<input type="date" id="ccHasta"></label>
-                <label>Buscar<input type="search" id="ccBuscar" placeholder="Persona, destino, N° PV, N° comprobante..."></label>
+                <label>Buscar<input type="search" id="ccBuscar" placeholder="Persona, destino, N° PV / PC, N° comprobante..."></label>
                 <label class="ge-check" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="ccAnulados"> Ver anulados</label>
                 <button type="button" class="btn btn-secondary" id="ccIngreso">+ Depósito o devolución</button>
-                <button type="button" class="btn btn-secondary" id="ccMovilidad">🖨 Planilla de movilidad</button>
+                <button type="button" class="btn btn-secondary" id="ccMovilidad">🧾 Planillas de movilidad</button>
             </div>
             <div id="ccMovs"></div>
         </div>
@@ -122,11 +122,13 @@
         tiposPersona: {{ tipos_persona | list | tojson }},
         conNumero: {{ con_numero | list | tojson }},
         sustenta: {{ sustenta | list | tojson }},
-        topeAviso: {{ tope_aviso }}
+        topeAviso: {{ tope_aviso }},
+        descripciones: {{ descripciones | list | tojson }},
+        pidenDetalle: {{ piden_detalle | list | tojson }}
     };
 </script>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/caja_chica.js') }}"></script>
+<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104a"></script>
 {% endblock %}
