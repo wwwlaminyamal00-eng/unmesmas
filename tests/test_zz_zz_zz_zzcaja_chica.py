@@ -39,7 +39,8 @@ def gente(admin, kcf):
 
 def _gasto(cli, kcf, quien, **kw):
     d = {'empresa_id': kcf, 'fecha': HOY.isoformat(), 'rubro': 'Movilidad del personal (pasajes)', 'monto': '3.50',
-         'quien_id': quien, 'descripcion': 'Pasaje de Oficina a Malvinas', 'comprobante_tipo': 'Planilla de movilidad'}
+         'quien_id': quien, 'descripcion': 'Pasaje de Oficina a Malvinas', 'comprobante_tipo': 'Planilla de movilidad',
+         'detalle': 'Oficina SMP → Malvinas'}
     d.update(kw)
     return cli.post('/caja-chica/api/gasto', json=d)
 
@@ -85,7 +86,7 @@ def test_validaciones_del_gasto(admin, kcf, gente):
     assert r.status_code == 400 and 'DNI' in r.json['error']
     r = _gasto(admin, kcf, gente['Franklin'])
     assert r.status_code == 400 and 'transportistas' in r.json['error']
-    r = _gasto(admin, kcf, gente['Luis'], rubro='Taxi')
+    r = _gasto(admin, kcf, gente['Luis'], rubro='Refrigerios y atenciones')
     assert r.status_code == 400 and 'solo para pasajes' in r.json['error']
     r = _gasto(admin, kcf, gente['Luis'], rubro='Flete y transporte de carga', comprobante_tipo='Factura', monto='50')
     assert r.status_code == 400 and 'N° de la factura' in r.json['error']
@@ -141,14 +142,14 @@ def test_rendicion_observar_y_aprobar(admin, kcf, gente):
     gasto = next(m for m in movs if m['tipo'] == 'Gasto')
     r = admin.put(f'/caja-chica/api/gasto/{gasto["id"]}', json={'empresa_id': kcf, 'fecha': HOY.isoformat(),
                   'rubro': 'Movilidad del personal (pasajes)', 'monto': '20', 'quien_id': gente['Luis'],
-                  'descripcion': 'Cambio', 'comprobante_tipo': 'Planilla de movilidad'})
+                  'descripcion': 'Cambio', 'comprobante_tipo': 'Planilla de movilidad', 'detalle': 'A → B'})
     assert r.status_code == 400 and 'ya no se cambia' in r.json['error']
     # Observar: los gastos vuelven a quedar libres y se pueden corregir
     r = admin.post(f'/caja-chica/api/rendicion/{rid}/observar', json={'empresa_id': kcf, 'motivo': 'Falta la foto del taxi'})
     assert r.status_code == 200
     r = admin.put(f'/caja-chica/api/gasto/{gasto["id"]}', json={'empresa_id': kcf, 'fecha': HOY.isoformat(),
                   'rubro': 'Movilidad del personal (pasajes)', 'monto': '19', 'quien_id': gente['Luis'],
-                  'descripcion': 'Pasaje corregido', 'comprobante_tipo': 'Planilla de movilidad'})
+                  'descripcion': 'Pasaje corregido', 'comprobante_tipo': 'Planilla de movilidad', 'detalle': 'A → B'})
     assert r.status_code == 200, r.json
     r = admin.post('/caja-chica/api/rendicion', json={'empresa_id': kcf, 'hasta': HOY.isoformat()})
     assert r.status_code == 200

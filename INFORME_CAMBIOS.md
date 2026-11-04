@@ -2717,3 +2717,15 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Botón Exportar (vista completa): 5 columnas aparte para analizar: N° operación, Banco, CCI, Pago registrado por, Pago registrado (fecha y hora). No se ven en pantalla (sin scroll horizontal), solo en el Excel.
 - Herramientas ▸ Exportar: la tabla "Pago al contado del PV (historial)" también se puede descargar.
 - Pruebas: 383 bien.
+
+### 24.67 Caja chica: mejoras de Erika del 04/11/2026 (migración 046)
+1. **Hora del gasto**: campo Hora (hora de Lima, se llena sola; no puede ser futura). Sale en la lista, el vale, la rendición y la planilla.
+2. **Columnas separadas**: "Descripción" (con "de dónde a dónde" debajo) y "N° PV / PC" en su propia columna.
+3. **Rubros** (criterio tributario): "Flete y transporte de carga" pasa a **"Flete y transporte de mercadería"** (transportista o motorizado contratado; pedir factura) y "Movilidad del personal (pasajes)" pasa a **"Movilidad operativa del personal"** (bus, colectivo, taxi o Yango de quien entrega, recoge o hace un trámite). "Taxi" deja de ser rubro: es un medio de movilidad. Los gastos ya guardados con los nombres anteriores NO se cambian en la base; el ERP los muestra y suma con el nombre nuevo.
+4. **"Pagado a" con lista**: personal en orden alfabético (Adriana Villalobos, Estrella Santos, Hellen Blas, Luis Chicasaca, Milagros Salazar, Sebastian Diaz), transportistas y "Otro (escribir)". Todos los nombres con mayúscula inicial. En la base real se agregaron Milagros Salazar y Adriana Villalobos (practicantes, KCF).
+5. **Descripción como lista**: Entrega a cliente, Recojo de productos de proveedores, Traslado entre sedes (SMP - Breña), Trámite en banco, Trámite en SUNAT/municipalidad, Compra de útiles, Compra urgente para un pedido, Refrigerio o atención, Recarga de celular, Otro (escribir). En flete y movilidad es obligatorio "De dónde a dónde".
+6. **Observación más amplia**: cuadro de 3 líneas a todo el ancho, hasta 1000 caracteres.
+7. **Planilla de movilidad numerada**: botón "🧾 Planillas de movilidad" ▸ "Emitir": una planilla por persona con N° correlativo por empresa (000001, 000002...). Sus pasajes quedan amarrados y ya no se editan; la gerencia puede anularla (el N° no se reutiliza) y emitir otra. Lo que aún no tiene planilla sale como "BORRADOR SIN NÚMERO" y en la lista como "Planilla sin emitir". El vale queda para gastos sin comprobante (gaseosa, recarga, comisión del banco).
+- Migración 046: tabla `caja_chica_planillas` y columnas `hora`, `detalle`, `planilla_id` en `caja_chica_movimientos`. Respaldo previo: `respaldo_20261015.caja_chica_movimientos_pre046` y `caja_chica_personas_pre046`. No se cambió ni borró ningún dato existente.
+- Pendiente de Erika: escribir el DNI de cada persona en Caja chica ▸ Personas (hoy nadie tiene DNI y sin DNI no se puede usar la planilla de movilidad).
+- Pruebas: 387 bien.

@@ -7,7 +7,7 @@
     const num = v => Number(v || 0);
     const soles = v => (num(v) < 0 ? '-' : '') + 'S/ ' + Math.abs(num(v)).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const TABS = ['gastos', 'rendicion', 'arqueo', 'personas'];
-    const OPC = window.CC_OPCIONES || { rubros: [], comprobantes: [], tiposPersona: [], conNumero: [], sustenta: [], topeAviso: 100 };
+    const OPC = Object.assign({ rubros: [], comprobantes: [], tiposPersona: [], conNumero: [], sustenta: [], topeAviso: 100, descripciones: [], pidenDetalle: [] }, window.CC_OPCIONES || {});
     const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
     let APP = null;
     let tab = 'gastos';
@@ -113,7 +113,9 @@
         if (m.comprobante_tipo === 'No registrado (histórico)') return '<span class="ge-estado gris">No registrado</span>';
         const clase = m.sustenta ? 'verde' : 'rojo';
         return `<span class="ge-estado ${clase}">${esc(m.comprobante_tipo)}</span>` +
-            (m.comprobante_numero ? `<span class="ge-sub">N° ${esc(m.comprobante_numero)}</span>` : '');
+            (m.comprobante_numero ? `<span class="ge-sub">N° ${esc(m.comprobante_numero)}</span>` : '') +
+            (m.comprobante_tipo === 'Planilla de movilidad' ? (m.planilla_numero && m.planilla_estado === 'Emitida'
+                ? `<span class="ge-sub">Planilla N° ${String(m.planilla_numero).padStart(6, '0')}</span>` : '<span class="ge-sub ge-rojo">Planilla sin emitir</span>') : '');
     }
     function estadoFila(m) {
         if (m.estado === 'Anulado') return `<span class="ge-estado gris">Anulado</span><span class="ge-sub">${esc(m.motivo_anulacion || '')}</span>`;
@@ -136,12 +138,13 @@
             : m.fotos ? `<button type="button" class="ge-btn" data-fotos="${m.id}">Ver foto (${m.fotos})</button>`
             : (m.comprobante_tipo === 'Planilla de movilidad' ? '<span class="ge-sub">Se firma en la planilla</span>' : '<span class="ge-sin">Falta foto</span>');
         $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó / pagado a</th>
-            <th>Descripción y N° PV / OC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            <th>Descripción</th><th>N° PV / PC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
             ${lista.map(m => `<tr class="${m.estado === 'Anulado' ? 'cc-anulado' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
-                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}</td>
+                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}${m.hora ? `<span class="ge-sub">${esc(m.hora)}</span>` : ''}</td>
                 <td>${esc(m.rubro || m.tipo)}${m.empresa_gasto && m.empresa_gasto !== empCodigo() ? `<span class="ge-sub">Gasto de ${esc(m.empresa_gasto)}</span>` : ''}</td>
                 <td>${esc(m.quien || '')}${m.pagado_a ? `<span class="ge-sub">Pagado a: ${esc(m.pagado_a)}</span>` : ''}</td>
-                <td style="text-align:left">${esc(m.descripcion)}${m.referencia ? `<span class="ge-sub">${esc(m.referencia)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">${esc(m.observacion)}</span>` : ''}</td>
+                <td style="text-align:left">${esc(m.descripcion)}${m.detalle ? `<span class="ge-sub">${esc(m.detalle)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">Obs.: ${esc(m.observacion)}</span>` : ''}</td>
+                <td class="ge-nw">${m.referencia ? esc(m.referencia) : '<span class="ge-cero">—</span>'}</td>
                 <td>${estadoComprobante(m)}${foto(m) ? `<div>${foto(m)}</div>` : ''}</td>
                 <td class="ge-nw">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
                 ${filtrado ? '' : `<td class="ge-nw"><b style="color:${num(m.saldo) < 0 ? '#E60023' : 'inherit'}">${m.saldo == null ? '' : soles(m.saldo)}</b></td>`}
@@ -189,27 +192,42 @@
         return j;
     }
 
+    const horaAhora = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false });
     function formGasto(m) {
-        m = m || { fecha: hoy(), empresa_gasto: empCodigo() };
-        const personal = gente.filter(p => p.activo && p.tipo !== 'Transportista' || (m.quien_id && p.id === m.quien_id));
-        const transportistas = gente.filter(p => p.activo && p.tipo === 'Transportista');
+        m = m || { fecha: hoy(), hora: horaAhora(), empresa_gasto: empCodigo() };
+        const personal = gente.filter(p => (p.activo && p.tipo !== 'Transportista') || (m.quien_id && p.id === m.quien_id));
+        const pagables = gente.filter(p => p.activo || p.nombre === m.pagado_a);
+        const enLista = !m.pagado_a || pagables.some(p => p.nombre === m.pagado_a);
+        const grupo = (titulo, lista) => lista.length ? `<optgroup label="${esc(titulo)}">${lista.map(p => `<option value="${esc(p.nombre)}" ${p.nombre === m.pagado_a ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</optgroup>` : '';
+        const descEnLista = !m.descripcion || OPC.descripciones.includes(m.descripcion);
         const empresas = $$('#ccEmpresa option').map(o => o.textContent);
         return `<label>Fecha<input type="date" name="fecha" required max="${hoy()}" value="${esc(m.fecha)}"></label>
+            <label>Hora<input type="time" name="hora" required value="${esc(m.hora || '')}"></label>
             <label>Empresa dueña del gasto<select name="empresa_gasto">${opciones(empresas, m.empresa_gasto || empCodigo())}</select></label>
             <label>Rubro<select name="rubro" required>${opciones(OPC.rubros, m.rubro, 'Elige...')}</select></label>
             <label>Monto (S/)<input type="number" name="monto" required min="0.01" step="0.01" value="${m.egreso ?? ''}"></label>
             <label>Quién gastó<select name="quien_id" required><option value="">Elige...</option>${personal.map(p => `<option value="${p.id}" ${p.id === m.quien_id ? 'selected' : ''}>${esc(p.nombre)} (${esc(p.tipo)})</option>`).join('')}</select></label>
-            <label>Pagado a <small>(transportista, tienda...)</small><input name="pagado_a" maxlength="150" list="ccListaPagados" value="${esc(m.pagado_a || '')}">
-                <datalist id="ccListaPagados">${transportistas.map(p => `<option value="${esc(p.nombre)}">`).join('')}</datalist></label>
-            <label style="grid-column:1/-1">Descripción <small>(de dónde a dónde, o para qué)</small><input name="descripcion" required maxlength="500" value="${esc(m.descripcion || '')}" placeholder="Ej.: Pasaje de Oficina a Malvinas para recoger guantes de Prosinfer"></label>
-            <label>N° PV / OC / despacho <small>(si es de un pedido)</small><input name="referencia" maxlength="150" value="${esc(m.referencia || '')}" placeholder="Ej.: PV-KCF-000123"></label>
+            <label>Pagado a<select name="pagado_a"><option value="">— No aplica —</option>
+                ${grupo('Personal', pagables.filter(p => p.tipo !== 'Transportista' && p.tipo !== 'Otro'))}${grupo('Transportistas', pagables.filter(p => p.tipo === 'Transportista'))}${grupo('Otros', pagables.filter(p => p.tipo === 'Otro'))}
+                <option value="__otro" ${enLista ? '' : 'selected'}>Otro (escribir: tienda, empresa...)</option></select></label>
+            <label data-cc="pagado-otro">Escribe a quién se pagó<input name="pagado_a_otro" maxlength="150" value="${enLista ? '' : esc(m.pagado_a)}" placeholder="Ej.: Tienda Sodimac"></label>
+            <label>Descripción<select name="descripcion" required>${opciones(OPC.descripciones, descEnLista ? m.descripcion : 'Otro (escribir)', 'Elige...')}</select></label>
+            <label data-cc="desc-otro">Escribe la descripción<input name="descripcion_otro" maxlength="500" value="${descEnLista ? '' : esc(m.descripcion)}"></label>
+            <label data-cc="detalle" style="grid-column:1/-1">De dónde a dónde <small>(lo pide la planilla de movilidad)</small><input name="detalle" maxlength="300" value="${esc(m.detalle || '')}" placeholder="Ej.: Oficina SMP → Komatsu Lurín → Oficina SMP"></label>
+            <label>N° PV / PC <small>(si es de un pedido)</small><input name="referencia" maxlength="150" value="${esc(m.referencia || '')}" placeholder="Ej.: PV-KCF-000123"></label>
             <label>Tipo de comprobante<select name="comprobante_tipo" required>${opciones(OPC.comprobantes, m.comprobante_tipo, 'Elige...')}</select></label>
             <label data-cc="numero">N° de comprobante<input name="comprobante_numero" maxlength="40" value="${esc(m.comprobante_numero || '')}" placeholder="Ej.: F001-000123"></label>
             <label data-cc="ruc">RUC de quien emitió<input name="ruc_emisor" maxlength="11" inputmode="numeric" value="${esc(m.ruc_emisor || '')}"></label>
             <label data-cc="autoriza">Autorizado por <small>(gasto mayor a S/ ${OPC.topeAviso})</small><input name="autorizado_por" maxlength="150" value="${esc(m.autorizado_por || '')}" placeholder="Ej.: Erika por WhatsApp"></label>
-            <label>Observación <small>(opcional)</small><input name="observacion" maxlength="500" value="${esc(m.observacion || '')}"></label>
+            <label style="grid-column:1/-1">Observación <small>(opcional)</small><textarea name="observacion" maxlength="1000" rows="3">${esc(m.observacion || '')}</textarea></label>
             ${m.id ? '' : '<label style="grid-column:1/-1">Foto del voucher o comprobante <small>(puedes subirla después)</small><input type="file" name="foto" accept="image/*,.pdf" capture="environment"></label>'}
             <div class="ge-sub" data-cc="tip" style="grid-column:1/-1"></div>`;
+    }
+    function leerGasto() {
+        const d = leerForm();
+        if (d.pagado_a === '__otro') d.pagado_a = (d.pagado_a_otro || '').trim();
+        delete d.pagado_a_otro;
+        return d;
     }
     function ajustarForm() {
         const f = $('#ccModalForm');
@@ -219,20 +237,23 @@
         const n = $('[data-cc=numero]', f); if (n) n.hidden = !OPC.conNumero.includes(tipo);
         const r = $('[data-cc=ruc]', f); if (r) r.hidden = tipo !== 'Factura';
         const a = $('[data-cc=autoriza]', f); if (a) a.hidden = monto <= OPC.topeAviso;
+        const po = $('[data-cc=pagado-otro]', f); if (po) po.hidden = !f.pagado_a || f.pagado_a.value !== '__otro';
+        const dot = $('[data-cc=desc-otro]', f); if (dot) dot.hidden = !f.descripcion || f.descripcion.value !== 'Otro (escribir)';
+        const det = $('[data-cc=detalle]', f); if (det) det.hidden = !OPC.pidenDetalle.includes(f.rubro.value);
         const tip = $('[data-cc=tip]', f);
         if (tip) {
             const rubro = f.rubro.value;
-            tip.innerHTML = tipo === 'Sin comprobante (vale)' ? '⚠ Sin comprobante el gasto no se descuenta ante SUNAT. Imprime el vale y que lo firme quien recibió el dinero.'
-                : tipo === 'Planilla de movilidad' ? `Solo pasajes del personal. Tope: ${soles(R.config.tope_movilidad)} por persona al día. Cada persona firma su planilla con su DNI.`
-                : (rubro === 'Movilidad del personal (pasajes)' ? 'Para pasajes del personal elige "Planilla de movilidad".'
-                : (rubro === 'Flete y transporte de carga' && tipo !== 'Factura' ? 'Pide factura al transportista (con RUC): recuperas IGV y descuentas renta.' : ''));
+            tip.innerHTML = tipo === 'Sin comprobante (vale)' ? '⚠ Vale = gasto sin comprobante (gaseosa, recarga, comisión del banco...). <b>No se descuenta ante SUNAT.</b> Si puedes, pide boleta o factura. Imprime el vale y que lo firme quien recibió el dinero.'
+                : tipo === 'Planilla de movilidad' ? `Solo pasajes del personal (bus, colectivo, taxi, Yango). Tope: <b>${soles(R.config.tope_movilidad)}</b> por persona al día. Al final de la semana pulsa <b>🧾 Planillas de movilidad ▸ Emitir</b>: sale numerada y la firma quien viajó.`
+                : (rubro === 'Movilidad operativa del personal' ? 'Para pasajes del personal sin factura elige <b>"Planilla de movilidad"</b>. Si el taxi o la app te da factura al RUC de la empresa, mejor: elige "Factura".'
+                : (rubro === 'Flete y transporte de mercadería' && tipo !== 'Factura' ? '💰 Pide <b>factura</b> al transportista (con RUC): recuperas el 18% de IGV y descuentas renta.' : ''));
         }
     }
     function abrirGasto(m) {
         const det = m ? `Gasto N° ${m.numero} · creado por ${esc(m.creado_por || '')} el ${fecha(m.creado_en)}` + (m.actualizado_en !== m.creado_en ? ` · modificado por ${esc(m.actualizado_por || '')} el ${fecha(m.actualizado_en)}` : '')
             : `Caja de <b>${esc(empCodigo())}</b> · saldo ${soles(R.saldo)}`;
         abrirModal(m ? `Editar gasto N° ${m.numero}` : 'Registrar gasto', det, formGasto(m), 'Guardar', async () => {
-            const d = leerForm();
+            const d = leerGasto();
             const archivo = $('#ccModalForm input[name=foto]');
             if (m) return enviar('/caja-chica/api/gasto/' + m.id, 'PUT', d);
             const j = await api('/caja-chica/api/gasto', { method: 'POST', body: d });
@@ -292,13 +313,40 @@
              <label style="grid-column:1/-1">Descripción<input name="descripcion" required maxlength="500" placeholder="Ej.: Depósito para completar el fondo fijo de S/ 600"></label>`, 'Registrar',
             async () => { const d = leerForm(); await enviar('/caja-chica/api/ingreso', 'POST', d); });
     }
-    function abrirMovilidad() {
+    async function abrirMovilidad() {
         const h = hoy();
         const lunes = new Date(h + 'T12:00:00'); lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
-        abrirModal('Imprimir planilla de movilidad', 'Sale una planilla por persona con sus pasajes del periodo. Cada uno la firma con su nombre y DNI reales.',
+        let lista = [];
+        try { lista = (await api('/caja-chica/api/planillas?empresa_id=' + encodeURIComponent(empresa()))).data; } catch (e) { aviso(e.message, 'error'); }
+        const pend = movs.filter(m => m.estado === 'Activo' && m.comprobante_tipo === 'Planilla de movilidad' && !(m.planilla_numero && m.planilla_estado === 'Emitida'));
+        const tabla = lista.length ? `<table class="inv-table ge-tabla"><thead><tr><th>N° planilla</th><th>Persona</th><th>Periodo</th><th>Pasajes</th><th>Total (S/)</th><th>Estado</th><th>Emitida</th><th>Acciones</th></tr></thead><tbody>
+            ${lista.map(p => `<tr class="${p.estado === 'Anulada' ? 'cc-anulado' : ''}"><td><b>${String(p.numero).padStart(6, '0')}</b></td><td>${esc(p.quien)}</td>
+                <td class="ge-nw">${fecha(p.desde)} al ${fecha(p.hasta)}</td><td>${p.pasajes}</td><td>${soles(p.total)}</td>
+                <td>${p.estado === 'Emitida' ? '<span class="ge-estado verde">✔ Emitida</span>' : `<span class="ge-estado gris">Anulada</span><span class="ge-sub">${esc(p.motivo_anulacion || '')}</span>`}</td>
+                <td><span class="ge-sub">${esc(p.emitida_por || '')} · ${fecha(p.emitida_en)}</span></td>
+                <td class="ge-nw">${p.estado === 'Emitida' ? `<button type="button" class="ge-btn" data-imp-planilla="${p.id}">🖨 Imprimir</button>${esAdmin() ? `<button type="button" class="ge-btn" data-anular-planilla="${p.id}">Anular</button>` : ''}` : ''}</td></tr>`).join('')}
+            </tbody></table>` : '<div class="inv-vacio">Todavía no hay planillas emitidas.</div>';
+        abrirModal('🧾 Planillas de movilidad', `<ul class="ge-vac-lista">
+                <li>Cada persona tiene <b>su propia planilla</b> con <b>N° automático</b> (000001, 000002...).</li>
+                <li>Al <b>emitir</b>, sus pasajes quedan amarrados a ese N° y <b style="color:#E60023">ya no se editan</b>.</li>
+                <li>Imprime y que <b>la persona que viajó</b> la firme con su nombre y DNI. Sube la foto de la hoja firmada.</li>
+                ${pend.length ? `<li style="color:#E60023"><b>${pend.length} pasaje(s) sin planilla</b> en la lista.</li>` : ''}</ul>`,
             `<label>Desde<input type="date" name="desde" required value="${lunes.toISOString().slice(0, 10)}"></label>
-             <label>Hasta<input type="date" name="hasta" required value="${h}"></label>`, 'Abrir para imprimir',
-            async () => { const d = leerForm(); imprimir('/caja-chica/imprimir/movilidad', { desde: d.desde, hasta: d.hasta }); cerrarModal(); });
+             <label>Hasta<input type="date" name="hasta" required max="${h}" value="${h}"></label>
+             <div style="grid-column:1/-1">${tabla}</div>`, 'Emitir planillas de esas fechas',
+            async () => {
+                const d = leerForm();
+                const j = await api('/caja-chica/api/planillas', { method: 'POST', body: d });
+                aviso(j.message, 'success');
+                imprimir('/caja-chica/imprimir/movilidad', { ids: j.data.map(x => x.id).join(',') });
+                cerrarModal();
+                await cargar();
+            });
+    }
+    function abrirAnularPlanilla(pid) {
+        abrirModal('Anular planilla de movilidad', 'El N° no se vuelve a usar. Sus pasajes quedan libres para corregirlos y emitir otra planilla.',
+            '<label style="grid-column:1/-1">¿Por qué se anula?<input name="motivo" required maxlength="500" placeholder="Ej.: monto del pasaje del martes mal escrito"></label>', 'Anular',
+            async () => { const d = leerForm(); await enviar(`/caja-chica/api/planillas/${pid}/anular`, 'POST', d); });
     }
 
     // ============================================================
@@ -339,7 +387,7 @@
             ${rubros.map(x => `<tr><td>${esc(x.rubro)}</td><td>${x.n}</td><td>${soles(x.total)}</td><td>${num(x.sin_sustento) ? soles(x.sin_sustento) : '—'}</td></tr>`).join('')}
             </tbody></table>
             <details><summary>Ver los ${gastos.length} gastos</summary><table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Descripción</th><th>Comprobante</th><th>Foto</th><th>S/</th></tr></thead><tbody>
-            ${gastos.map(g => `<tr><td>${g.numero}</td><td>${fecha(g.fecha)}</td><td>${esc(g.quien || '')}</td><td style="text-align:left">${esc(g.descripcion)}</td>
+            ${gastos.map(g => `<tr><td>${g.numero}</td><td>${fecha(g.fecha)}</td><td>${esc(g.quien || '')}</td><td style="text-align:left">${esc(g.descripcion)}${g.detalle ? `<span class="ge-sub">${esc(g.detalle)}</span>` : ''}</td>
                 <td>${esc(g.comprobante_tipo || '')}</td><td>${g.fotos ? '✔' : (g.comprobante_tipo === 'Planilla de movilidad' ? 'Planilla' : '<span class="ge-sin">Falta</span>')}</td><td>${soles(g.egreso)}</td></tr>`).join('')}
             </tbody></table></details></div>`;
         if (!paraAprobar) return abrirModal(`Rendición N° ${r.numero}`, `${fecha(r.desde)} al ${fecha(r.hasta)} · ${esc(r.estado)} · total ${soles(r.total_gastado)}`, tabla, null, null);
@@ -464,7 +512,7 @@
         $('#ccEmpresa').addEventListener('change', cargar);
         $('#ccNuevoGasto').addEventListener('click', () => abrirGasto(null));
         $('#ccIngreso').addEventListener('click', abrirIngreso);
-        $('#ccMovilidad').addEventListener('click', abrirMovilidad);
+        $('#ccMovilidad').addEventListener('click', () => abrirMovilidad().catch(e => aviso(e.message, 'error')));
         $('#ccNuevaPersona').addEventListener('click', () => abrirPersona(null));
         ['#ccDesde', '#ccHasta', '#ccAnulados'].forEach(s => $(s).addEventListener('change', cargarMovs));
         let t = null;
@@ -491,6 +539,8 @@
                 else if (b.dataset.anular) abrirAnular(mov(b.dataset.anular));
                 else if (b.dataset.historial) verHistorial(mov(b.dataset.historial));
                 else if (b.dataset.vale) imprimir('/caja-chica/imprimir/vale/' + b.dataset.vale);
+                else if (b.dataset.impPlanilla) imprimir('/caja-chica/imprimir/movilidad', { ids: b.dataset.impPlanilla });
+                else if (b.dataset.anularPlanilla) abrirAnularPlanilla(+b.dataset.anularPlanilla);
                 else if (b.dataset.verRend) await verRendicion(+b.dataset.verRend, false);
                 else if (b.dataset.impRend) imprimir('/caja-chica/imprimir/rendicion/' + b.dataset.impRend);
                 else if (b.dataset.aprobar) await verRendicion(+b.dataset.aprobar, true);

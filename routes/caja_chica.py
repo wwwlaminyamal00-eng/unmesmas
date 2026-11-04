@@ -19,7 +19,7 @@
 import io
 import re
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as dtime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -42,10 +42,34 @@ CERO = Decimal('0')
 FONDO_POR_DEFECTO = Decimal('600')
 RMV_POR_DEFECTO = Decimal('1230')        # RMV desde el 01/10/2026 (El Peruano, 28/09/2026). Se cambia en Configurar.
 TOPE_AVISO = Decimal('100')              # gasto mayor: debe decir quién lo autorizó
-RUBROS = ('Flete y transporte de carga', 'Movilidad del personal (pasajes)', 'Taxi', 'Parihuelas y embalaje',
-          'Útiles, impresiones y oficina', 'Compras urgentes para pedidos', 'Servicios (teléfono, internet)',
-          'Refrigerios y atenciones', 'Gastos bancarios (ITF)', 'Seguros y tributos', 'Otros (explicar)')
-RUBRO_MOVILIDAD = 'Movilidad del personal (pasajes)'
+# Rubros (Erika 04/11/2026): se separa el transporte de la MERCADERÍA (servicio contratado a un transportista o
+# motorizado) de la MOVILIDAD DEL PERSONAL (pasajes de bus, colectivo, taxi o Yango de quien va a entregar, recoger o
+# hacer un trámite). Que el practicante lleve el producto no vuelve "flete" su pasaje.
+RUBRO_FLETE = 'Flete y transporte de mercadería'
+RUBRO_MOVILIDAD = 'Movilidad operativa del personal'
+RUBROS = (RUBRO_FLETE, RUBRO_MOVILIDAD, 'Parihuelas y embalaje', 'Útiles, impresiones y oficina',
+          'Compras urgentes para pedidos', 'Servicios (teléfono, internet)', 'Refrigerios y atenciones',
+          'Gastos bancarios (ITF)', 'Seguros y tributos', 'Otros (explicar)')
+# Nombres anteriores: los gastos ya guardados no se tocan en la base; se muestran con el nombre nuevo.
+RUBROS_RENOMBRADOS = {'Flete y transporte de carga': RUBRO_FLETE, 'Movilidad del personal (pasajes)': RUBRO_MOVILIDAD}
+RUBROS_ANTERIORES = dict(RUBROS_RENOMBRADOS, Taxi=RUBRO_MOVILIDAD)     # "Taxi" ya no es rubro: es un medio de movilidad
+# Descripción como lista (Erika 04/11/2026). "Otro (escribir)" deja escribirla.
+DESCRIPCION_OTRO = 'Otro (escribir)'
+DESCRIPCIONES = ('Entrega a cliente', 'Recojo de productos de proveedores', 'Traslado entre sedes (SMP - Breña)',
+                 'Trámite en banco', 'Trámite en SUNAT, municipalidad u otra entidad', 'Compra de útiles o materiales',
+                 'Compra urgente para un pedido', 'Refrigerio o atención', 'Recarga de celular', DESCRIPCION_OTRO)
+PIDEN_DETALLE = (RUBRO_FLETE, RUBRO_MOVILIDAD)    # de dónde a dónde: lo pide la planilla de movilidad
+
+
+def rubro_actual(rubro):
+    return RUBROS_RENOMBRADOS.get(rubro, rubro)
+
+
+def nombre_bonito(t):
+    """'LUIS CHICASACA' -> 'Luis Chicasaca' (Erika: mayúscula inicial y lo demás en minúscula)."""
+    return ' '.join(p[:1].upper() + p[1:].lower() for p in str(t or '').split())
+
+
 COMPROBANTES = ('Factura', 'Boleta', 'Recibo por honorarios', 'Ticket / voucher', 'Planilla de movilidad',
                 'Sin comprobante (vale)')
 COMPROBANTE_HISTORICO = 'No registrado (histórico)'
@@ -201,6 +225,29 @@ SQL_DDL_CAJA = """
     ALTER TABLE caja_chica_movimientos ENABLE ROW LEVEL SECURITY;
     ALTER TABLE caja_chica_fotos ENABLE ROW LEVEL SECURITY;
     ALTER TABLE caja_chica_arqueos ENABLE ROW LEVEL SECURITY;
+    -- 046 (04/11/2026): hora del gasto, de dónde a dónde y planilla de movilidad numerada
+    CREATE TABLE IF NOT EXISTS caja_chica_planillas (
+        id SERIAL PRIMARY KEY,
+        empresa_id VARCHAR(64) NOT NULL,
+        numero INTEGER NOT NULL,
+        quien_id INTEGER REFERENCES caja_chica_personas(id),
+        quien VARCHAR(150) NOT NULL,
+        dni VARCHAR(15),
+        tipo_persona VARCHAR(20),
+        desde DATE NOT NULL,
+        hasta DATE NOT NULL,
+        total NUMERIC(12,2) NOT NULL DEFAULT 0,
+        estado VARCHAR(10) NOT NULL DEFAULT 'Emitida' CHECK (estado IN ('Emitida', 'Anulada')),
+        motivo_anulacion TEXT,
+        emitida_por VARCHAR(150),
+        emitida_en TIMESTAMP DEFAULT NOW(),
+        historial JSONB NOT NULL DEFAULT '[]'::jsonb
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_caja_chica_planilla ON caja_chica_planillas (empresa_id, numero);
+    ALTER TABLE caja_chica_planillas ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS hora TIME;
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS detalle VARCHAR(300);
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS planilla_id INTEGER REFERENCES caja_chica_planillas(id);
 """
 _tablas = {'ok': False}
 _lock = threading.Lock()
@@ -239,6 +286,8 @@ def _n(v):
 def _f(v):
     if isinstance(v, datetime):
         return v.strftime('%Y-%m-%d %H:%M')
+    if isinstance(v, dtime):
+        return v.strftime('%H:%M')
     if isinstance(v, date):
         return v.isoformat()
     if isinstance(v, Decimal):
@@ -339,11 +388,20 @@ def personas(eid, solo_activas=False):
     sql = "SELECT * FROM caja_chica_personas WHERE empresa_id = %s"
     if solo_activas:
         sql += " AND activo"
-    return db_query(sql + " ORDER BY activo DESC, tipo, nombre", (str(eid),))
+    filas = db_query(sql, (str(eid),))
+    # Orden alfabético (Erika 04/11/2026), con mayúscula inicial
+    for p in filas:
+        p['nombre'] = nombre_bonito(p['nombre'])
+    return sorted(filas, key=lambda p: (not p['activo'], _sin_tildes(p['nombre'])))
+
+
+def _sin_tildes(t):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c) != 'Mn')
 
 
 def guardar_persona(eid, d, pid=None):
-    nombre = _txt(d, 'nombre', 150, True, 'el nombre')
+    nombre = nombre_bonito(_txt(d, 'nombre', 150, True, 'el nombre'))
     tipo = d.get('tipo')
     if tipo not in TIPOS_PERSONA:
         raise ErrorCaja('Elige el tipo: trabajador, practicante, transportista u otro.')
@@ -387,11 +445,17 @@ def _leer_gasto(eid, d, conf):
     cerrada = _ultima_aprobada(eid)
     if cerrada and fecha <= cerrada:
         raise ErrorCaja(f'La semana hasta el {cerrada:%d/%m/%Y} ya fue aprobada y está cerrada. Usa una fecha posterior.')
-    rubro = d.get('rubro')
+    hora = _hora(d.get('hora'), fecha, hoy)
+    rubro = RUBROS_ANTERIORES.get(d.get('rubro'), d.get('rubro'))
     if rubro not in RUBROS:
         raise ErrorCaja('Elige el rubro.')
-    descripcion = _txt(d, 'descripcion', 500, True, 'la descripción (de dónde a dónde o para qué)')
-    if rubro == 'Otros (explicar)' and len(descripcion) < 10:
+    descripcion = _txt(d, 'descripcion', 500, True, 'la descripción (elige de la lista)')
+    if descripcion == DESCRIPCION_OTRO:
+        descripcion = _txt(d, 'descripcion_otro', 500, True, 'la descripción: escríbela')
+    detalle = _txt(d, 'detalle', 300)
+    if rubro in PIDEN_DETALLE and not detalle:
+        raise ErrorCaja('Escribe de dónde a dónde fue (ej.: Oficina SMP → Komatsu Lurín → Oficina).')
+    if rubro == 'Otros (explicar)' and len(f"{descripcion} {detalle or ''}") < 10:
         raise ErrorCaja('En "Otros" explica bien en qué se gastó.')
     monto = _monto(d.get('monto'))
     tipo_c = d.get('comprobante_tipo')
@@ -422,7 +486,8 @@ def _leer_gasto(eid, d, conf):
     if tipo_c == 'Planilla de movilidad':
         p = gente[quien_id]
         if rubro != RUBRO_MOVILIDAD:
-            raise ErrorCaja('La planilla de movilidad es solo para pasajes del personal (rubro "Movilidad del personal").')
+            raise ErrorCaja('La planilla de movilidad es solo para pasajes del personal (rubro "Movilidad operativa del personal"). '
+                            'Un transportista contratado va en "Flete" con su factura; una gaseosa o recarga va con vale o boleta.')
         if p['tipo'] not in ('Trabajador', 'Practicante'):
             raise ErrorCaja('La planilla de movilidad es solo para el personal (trabajadores y practicantes), no para transportistas.')
         if not p['dni']:
@@ -434,10 +499,26 @@ def _leer_gasto(eid, d, conf):
     autorizado = _txt(d, 'autorizado_por', 150)
     if monto > TOPE_AVISO and not autorizado:
         raise ErrorCaja(f'Gasto mayor a S/ {TOPE_AVISO:.0f}: escribe quién lo autorizó (ej.: Erika por WhatsApp).')
-    return {'fecha': fecha, 'rubro': rubro, 'descripcion': descripcion, 'egreso': monto, 'comprobante_tipo': tipo_c,
+    return {'fecha': fecha, 'hora': hora, 'rubro': rubro, 'descripcion': descripcion, 'detalle': detalle,
+            'egreso': monto, 'comprobante_tipo': tipo_c,
             'comprobante_numero': numero_c, 'ruc_emisor': ruc, 'quien_id': quien_id, 'quien': quien,
-            'pagado_a': _txt(d, 'pagado_a', 150), 'referencia': _txt(d, 'referencia', 150),
-            'empresa_gasto': empresa_gasto, 'autorizado_por': autorizado, 'observacion': _txt(d, 'observacion', 500)}
+            'pagado_a': (None if str(d.get('pagado_a') or '').startswith('__') else _txt(d, 'pagado_a', 150)),
+            'referencia': _txt(d, 'referencia', 150),
+            'empresa_gasto': empresa_gasto, 'autorizado_por': autorizado, 'observacion': _txt(d, 'observacion', 1000)}
+
+
+def _hora(txt, fecha, hoy):
+    """Hora del gasto (Lima). Vacía = la hora de ahora."""
+    t = str(txt or '').strip()[:5]
+    if not t:
+        return _ahora().time().replace(second=0, microsecond=0)
+    try:
+        h = datetime.strptime(t, '%H:%M').time()
+    except ValueError:
+        raise ErrorCaja('La hora no es válida (ej.: 14:30).')
+    if fecha == hoy and h > (_ahora() + timedelta(minutes=5)).time():
+        raise ErrorCaja('La hora no puede ser futura.')
+    return h
 
 
 def _aviso_movilidad(eid, conf, quien_id, fecha, excluir=None):
@@ -501,6 +582,12 @@ def _editable(cur, m):
         r = cur.fetchone()
         if r and r['estado'] != 'Observada':
             raise ErrorCaja(f'Ese gasto está en la rendición N° {r["numero"]} ({r["estado"].lower()}): ya no se cambia.')
+    if m.get('planilla_id'):
+        cur.execute("SELECT numero, estado FROM caja_chica_planillas WHERE id = %s", (m['planilla_id'],))
+        p = cur.fetchone()
+        if p and p['estado'] == 'Emitida':
+            raise ErrorCaja(f'Ese pasaje ya está en la planilla de movilidad N° {p["numero"]:06d}: ya no se cambia. '
+                            'Si hay un error, la gerencia anula esa planilla y se emite otra.')
 
 
 def editar_gasto(eid, mid, d):
@@ -590,8 +677,10 @@ def registrar_ingreso(eid, d):
 def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=False):
     par = [str(eid)]
     sql = """SELECT m.*, r.numero AS rendicion_numero, r.estado AS rendicion_estado,
+                    pl.numero AS planilla_numero, pl.estado AS planilla_estado,
                     (SELECT COUNT(*) FROM caja_chica_fotos f WHERE f.movimiento_id = m.id) AS fotos
              FROM caja_chica_movimientos m LEFT JOIN caja_chica_rendiciones r ON r.id = m.rendicion_id
+             LEFT JOIN caja_chica_planillas pl ON pl.id = m.planilla_id
              WHERE m.empresa_id = %s"""
     if not incluir_anulados:
         sql += " AND m.estado = 'Activo'"
@@ -603,9 +692,9 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
         par.append(hasta)
     if q:
         sql += """ AND (m.descripcion ILIKE %s OR m.quien ILIKE %s OR m.pagado_a ILIKE %s OR m.referencia ILIKE %s
-                   OR m.rubro ILIKE %s OR m.comprobante_numero ILIKE %s OR m.numero::text = %s)"""
-        par += [f'%{q}%'] * 6 + [q.strip()]
-    filas = db_query(sql + " ORDER BY m.fecha, m.numero", par)
+                   OR m.rubro ILIKE %s OR m.comprobante_numero ILIKE %s OR m.detalle ILIKE %s OR m.numero::text = %s)"""
+        par += [f'%{q}%'] * 7 + [q.strip()]
+    filas = db_query(sql + " ORDER BY m.fecha, m.hora NULLS FIRST, m.numero", par)
     # Saldo acumulado: se calcula sobre todos los movimientos activos, en orden de fecha
     previo = CERO
     if desde:
@@ -614,13 +703,15 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
     acumulado = previo
     for m in filas:
         item = {k: _f(v) for k, v in m.items() if k != 'historial'}
+        item['rubro'] = rubro_actual(m['rubro'])
         if m['estado'] == 'Activo':
             acumulado += a_decimal(m['ingreso']) - a_decimal(m['egreso'])
             item['saldo'] = _n(acumulado) if not q else None
         item['historial'] = m['historial'] or []
         item['sustenta'] = m['comprobante_tipo'] in SUSTENTA_SUNAT
         item['bloqueado'] = bool(m['origen'] == 'Histórico' or m['tipo'] != 'Gasto' or
-                                 (m['rendicion_id'] and m['rendicion_estado'] != 'Observada') or m['estado'] == 'Anulado')
+                                 (m['rendicion_id'] and m['rendicion_estado'] != 'Observada') or m['estado'] == 'Anulado'
+                                 or (m['planilla_id'] and m['planilla_estado'] == 'Emitida'))
         salida.append(item)
     return salida, _n(previo)
 
@@ -642,6 +733,14 @@ def resumen(e):
                          AND origen = 'ERP' AND rendicion_id IS NULL""", (eid,))[0]
     rend = db_query("""SELECT * FROM caja_chica_rendiciones WHERE empresa_id = %s ORDER BY numero DESC LIMIT 30""", (eid,))
     arq = db_query("""SELECT * FROM caja_chica_arqueos WHERE empresa_id = %s ORDER BY fecha DESC, id DESC LIMIT 10""", (eid,))
+    juntos = {}
+    for x in mes:      # nombres anteriores de rubro se suman al nombre nuevo
+        k = rubro_actual(x['rubro'])
+        j = juntos.setdefault(k, {'rubro': k, 'n': 0, 'total': CERO, 'sin_sustento': CERO})
+        j['n'] += x['n']
+        j['total'] += a_decimal(x['total'])
+        j['sin_sustento'] += a_decimal(x['sin_sustento'])
+    mes = sorted(juntos.values(), key=lambda x: -x['total'])
     total_mes = sum((a_decimal(x['total']) for x in mes), CERO)
     sin_mes = sum((a_decimal(x['sin_sustento']) for x in mes), CERO)
     hist = db_query("""SELECT COUNT(*) AS n, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM caja_chica_movimientos
@@ -821,7 +920,8 @@ def detalle_rendicion(eid, rid):
                              ORDER BY fecha, numero""", (rid,))
     por_rubro = {}
     for g in gastos:
-        x = por_rubro.setdefault(g['rubro'], {'rubro': g['rubro'], 'n': 0, 'total': CERO, 'sin_sustento': CERO})
+        x = por_rubro.setdefault(rubro_actual(g['rubro']), {'rubro': rubro_actual(g['rubro']), 'n': 0, 'total': CERO,
+                                                            'sin_sustento': CERO})
         x['n'] += 1
         x['total'] += a_decimal(g['egreso'])
         if g['comprobante_tipo'] not in SUSTENTA_SUNAT:
@@ -855,6 +955,121 @@ def registrar_arqueo(eid, d):
                     explicacion, hecho_por) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
              (str(eid), fecha, sistema, vals['efectivo'], vals['saldo_cuenta'], vals['vales'], dif, explicacion, _usuario()))
     return sistema, dif
+
+
+# ============================================================
+# PLANILLA DE MOVILIDAD NUMERADA (Erika 04/11/2026)
+#   Una planilla por persona y periodo, con N° correlativo por empresa (000001, 000002...). Al emitirla, sus pasajes
+#   quedan amarrados a ese número y ya no se editan; si hay un error, la gerencia la anula (el número no se reutiliza)
+#   y se emite otra. La persona que viajó la firma con su nombre y DNI reales.
+# ============================================================
+def emitir_planillas(eid, d):
+    desde = _fecha(d.get('desde'), 'la fecha desde')
+    hasta = _fecha(d.get('hasta'), 'la fecha hasta')
+    if hasta < desde:
+        raise ErrorCaja('La fecha "hasta" es anterior a "desde".')
+    if (hasta - desde).days > 31:
+        raise ErrorCaja('Una planilla cubre como máximo un mes.')
+    solo = d.get('quien_id')
+    solo = int(solo) if str(solo or '').isdigit() else None
+    emitidas = []
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f'caja_chica_planillas:{eid}',))
+        par = [str(eid), desde, hasta]
+        sql = """SELECT m.id, m.quien_id, m.quien, m.egreso, p.dni, p.tipo AS tipo_persona, p.nombre
+                   FROM caja_chica_movimientos m JOIN caja_chica_personas p ON p.id = m.quien_id
+                   WHERE m.empresa_id = %s AND m.estado = 'Activo' AND m.comprobante_tipo = 'Planilla de movilidad'
+                     AND m.planilla_id IS NULL AND m.fecha BETWEEN %s AND %s"""
+        if solo:
+            sql += " AND m.quien_id = %s"
+            par.append(solo)
+        cur.execute(sql + " ORDER BY p.nombre, m.fecha, m.hora NULLS FIRST, m.numero FOR UPDATE OF m", par)
+        grupos = {}
+        for f in cur.fetchall():
+            grupos.setdefault(f['quien_id'], []).append(f)
+        if not grupos:
+            raise ErrorCaja('No hay pasajes nuevos con "Planilla de movilidad" en esas fechas (o ya tienen planilla).')
+        for qid, filas in grupos.items():
+            n = _siguiente(cur, 'caja_chica_planillas', eid)
+            total = sum((a_decimal(f['egreso']) for f in filas), CERO)
+            cur.execute("""INSERT INTO caja_chica_planillas (empresa_id, numero, quien_id, quien, dni, tipo_persona, desde, hasta,
+                               total, emitida_por, emitida_en, historial)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (str(eid), n, qid, nombre_bonito(filas[0]['nombre']), filas[0]['dni'], filas[0]['tipo_persona'],
+                         desde, hasta, total, _usuario(), _ahora(), _evento('Emitida', total=float(total))))
+            pid = cur.fetchone()['id']
+            cur.execute("""UPDATE caja_chica_movimientos SET planilla_id = %s, historial = historial || %s
+                           WHERE id = ANY(%s)""", (pid, _evento('En planilla de movilidad', numero=n), [f['id'] for f in filas]))
+            emitidas.append({'id': pid, 'numero': n, 'quien': nombre_bonito(filas[0]['nombre']), 'total': float(total)})
+    return emitidas
+
+
+def lista_planillas(eid, limite=60):
+    filas = db_query("""SELECT pl.*, (SELECT COUNT(*) FROM caja_chica_movimientos m WHERE m.planilla_id = pl.id) AS pasajes
+                         FROM caja_chica_planillas pl WHERE empresa_id = %s ORDER BY numero DESC LIMIT %s""", (str(eid), limite))
+    return [{**{k: _f(v) for k, v in f.items() if k != 'historial'}, 'historial': f['historial'] or []} for f in filas]
+
+
+def anular_planilla(eid, pid, motivo):
+    if not es_admin():
+        raise ErrorCaja('Solo la gerencia anula una planilla de movilidad.')
+    motivo = (motivo or '').strip()
+    if len(motivo) < 5:
+        raise ErrorCaja('Escribe el motivo de la anulación.')
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM caja_chica_planillas WHERE id = %s AND empresa_id = %s FOR UPDATE", (pid, str(eid)))
+        p = cur.fetchone()
+        if not p:
+            raise ErrorCaja('No se encontró esa planilla.')
+        if p['estado'] == 'Anulada':
+            raise ErrorCaja('Esa planilla ya estaba anulada.')
+        cur.execute("""UPDATE caja_chica_planillas SET estado = 'Anulada', motivo_anulacion = %s, historial = historial || %s
+                       WHERE id = %s""", (motivo[:500], _evento('Anulada', motivo=motivo[:500]), pid))
+        cur.execute("""UPDATE caja_chica_movimientos SET planilla_id = NULL, historial = historial || %s
+                       WHERE planilla_id = %s""", (_evento('Planilla de movilidad anulada', numero=p['numero']), pid))
+    return p['numero']
+
+
+def _planillas_para_imprimir(eid, conf, ids=None, desde=None, hasta=None):
+    """Planillas emitidas (por id) o, si se pide por fechas, las emitidas del periodo más un BORRADOR de lo pendiente."""
+    tope = tope_movilidad(conf)
+    salida = []
+    if ids:
+        cab = db_query("""SELECT * FROM caja_chica_planillas WHERE empresa_id = %s AND id = ANY(%s) ORDER BY numero""",
+                       (str(eid), ids))
+    else:
+        cab = db_query("""SELECT * FROM caja_chica_planillas WHERE empresa_id = %s AND estado = 'Emitida'
+                           AND desde <= %s AND hasta >= %s ORDER BY numero""", (str(eid), hasta, desde))
+    for c in cab:
+        filas = db_query("""SELECT * FROM caja_chica_movimientos WHERE planilla_id = %s
+                             ORDER BY fecha, hora NULLS FIRST, numero""", (c['id'],))
+        salida.append({'numero': f"{c['numero']:06d}", 'estado': c['estado'], 'nombre': c['quien'], 'dni': c['dni'],
+                       'tipo': c['tipo_persona'], 'desde': c['desde'], 'hasta': c['hasta'], 'filas': filas,
+                       'emitida': c['emitida_en'], 'emitida_por': c['emitida_por']})
+    if not ids:
+        pend = db_query("""SELECT m.*, p.dni, p.tipo AS tipo_persona, p.nombre FROM caja_chica_movimientos m
+                            JOIN caja_chica_personas p ON p.id = m.quien_id
+                            WHERE m.empresa_id = %s AND m.estado = 'Activo' AND m.comprobante_tipo = 'Planilla de movilidad'
+                              AND m.planilla_id IS NULL AND m.fecha BETWEEN %s AND %s
+                            ORDER BY p.nombre, m.fecha, m.hora NULLS FIRST, m.numero""", (str(eid), desde, hasta))
+        borr = {}
+        for f in pend:
+            borr.setdefault(f['quien_id'], {'numero': None, 'estado': 'Borrador', 'nombre': nombre_bonito(f['nombre']),
+                                            'dni': f['dni'], 'tipo': f['tipo_persona'], 'desde': desde, 'hasta': hasta,
+                                            'filas': []})['filas'].append(f)
+        salida += list(borr.values())
+    for p in salida:
+        dias = {}
+        for f in p['filas']:
+            dias[f['fecha']] = dias.get(f['fecha'], CERO) + a_decimal(f['egreso'])
+        p['total'] = sum(dias.values(), CERO)
+        p['excede'] = {d: t for d, t in dias.items() if t > tope}
+        p['deducible'] = sum((min(t, tope) for t in dias.values()), CERO)
+        for f in p['filas']:
+            f['rubro'] = rubro_actual(f['rubro'])
+    return salida, tope
 
 
 # ============================================================
@@ -909,7 +1124,8 @@ def leer_historico(contenido):
             raise ErrorCaja(f'Fila {i}: debe tener ingreso o egreso, no los dos.')
         tipo = str(v('tipo') or '').strip()
         tipo = 'Gasto' if eg > 0 else ('Devolución' if tipo.lower().startswith('devol') else 'Reposición')
-        rubro = v('rubro') if v('rubro') in RUBROS else (('Otros (explicar)') if eg > 0 else None)
+        rubro = rubro_actual(v('rubro'))
+        rubro = rubro if (rubro in RUBROS or rubro == 'Taxi') else (('Otros (explicar)') if eg > 0 else None)
         comp = v('comp')
         comp = comp if comp in COMPROBANTES else (COMPROBANTE_HISTORICO if eg > 0 else None)
         filas.append({'fecha': f, 'tipo': tipo, 'empresa_gasto': (str(v('empresa') or '').upper()[:10] or None),
@@ -973,6 +1189,7 @@ def pagina():
     activa = empresa_actual()
     return render_template('caja_chica.html', empresas=emps, empresa_activa=activa['id'] if activa else None,
                            es_admin=es_admin(), rubros=RUBROS, comprobantes=COMPROBANTES, tipos_persona=TIPOS_PERSONA,
+                           descripciones=DESCRIPCIONES, piden_detalle=PIDEN_DETALLE,
                            con_numero=CON_NUMERO, sustenta=SUSTENTA_SUNAT, tope_aviso=float(TOPE_AVISO))
 
 
@@ -1188,37 +1405,55 @@ def imprimir_vale(mid):
     m = db_query("SELECT * FROM caja_chica_movimientos WHERE id = %s AND empresa_id = %s", (mid, str(e['id'])))
     if not m:
         return Response('No encontrado', status=404)
-    return render_template('caja_chica_imprimir.html', doc='vale', e=e, m=m[0], letras=_letras(m[0]['egreso'] or m[0]['ingreso']),
+    return render_template('caja_chica_imprimir.html', doc='vale', e=e, m=m[0], rubro=rubro_actual(m[0]['rubro']),
+                           letras=_letras(m[0]['egreso'] or m[0]['ingreso']),
                            conf=leer_config(str(e['id'])), ahora=_ahora())
 
 
 @caja_chica_bp.route('/caja-chica/imprimir/movilidad')
 def imprimir_movilidad():
-    """Una planilla por persona (cada uno firma la suya) con sus pasajes del periodo."""
+    """Planillas de movilidad: por N° (ids=1,2) o por fechas (las emitidas del periodo y un borrador de lo pendiente)."""
     try:
         e = _empresa(request.args.get('empresa_id'))
-        desde = _fecha(request.args.get('desde'), 'la fecha desde')
-        hasta = _fecha(request.args.get('hasta'), 'la fecha hasta')
+        ids = [int(x) for x in (request.args.get('ids') or '').split(',') if x.strip().isdigit()]
+        desde = hasta = None
+        if not ids:
+            desde = _fecha(request.args.get('desde'), 'la fecha desde')
+            hasta = _fecha(request.args.get('hasta'), 'la fecha hasta')
     except ErrorCaja as ex:
         return Response(str(ex), status=400)
     conf = leer_config(str(e['id']))
-    filas = db_query("""SELECT m.*, p.dni, p.tipo AS tipo_persona FROM caja_chica_movimientos m
-                        JOIN caja_chica_personas p ON p.id = m.quien_id
-                        WHERE m.empresa_id = %s AND m.estado = 'Activo' AND m.comprobante_tipo = 'Planilla de movilidad'
-                          AND m.fecha BETWEEN %s AND %s ORDER BY m.quien, m.fecha, m.numero""", (str(e['id']), desde, hasta))
-    tope = tope_movilidad(conf)
-    planillas = {}
-    for f in filas:
-        p = planillas.setdefault(f['quien_id'], {'nombre': f['quien'], 'dni': f['dni'], 'tipo': f['tipo_persona'],
-                                                 'filas': [], 'total': CERO, 'dias': {}})
-        p['filas'].append(f)
-        p['total'] += a_decimal(f['egreso'])
-        p['dias'][f['fecha']] = p['dias'].get(f['fecha'], CERO) + a_decimal(f['egreso'])
-    for p in planillas.values():
-        p['excede'] = {d: t for d, t in p['dias'].items() if t > tope}
-        p['deducible'] = sum((min(t, tope) for t in p['dias'].values()), CERO)
-    return render_template('caja_chica_imprimir.html', doc='movilidad', e=e, conf=conf, planillas=list(planillas.values()),
+    planillas, tope = _planillas_para_imprimir(str(e['id']), conf, ids or None, desde, hasta)
+    return render_template('caja_chica_imprimir.html', doc='movilidad', e=e, conf=conf, planillas=planillas,
                            desde=desde, hasta=hasta, tope=tope, ahora=_ahora())
+
+
+@caja_chica_bp.route('/caja-chica/api/planillas')
+def api_planillas():
+    e = _empresa(request.args.get('empresa_id'))
+    return jsonify({'success': True, 'data': lista_planillas(str(e['id']))})
+
+
+@caja_chica_bp.route('/caja-chica/api/planillas', methods=['POST'])
+def api_emitir_planillas():
+    try:
+        d = _json()
+        e = _empresa(d.get('empresa_id'))
+        emitidas = emitir_planillas(str(e['id']), d)
+        nums = ', '.join(f"N° {x['numero']:06d} ({x['quien']})" for x in emitidas)
+        return jsonify({'success': True, 'data': emitidas, 'message': f'Planilla(s) de movilidad emitida(s): {nums}.'})
+    except ErrorCaja as ex:
+        return _err(ex)
+
+
+@caja_chica_bp.route('/caja-chica/api/planillas/<int:pid>/anular', methods=['POST'])
+def api_anular_planilla(pid):
+    try:
+        d = _json()
+        n = anular_planilla(str(_empresa(d.get('empresa_id'))['id']), pid, d.get('motivo'))
+        return jsonify({'success': True, 'message': f'Planilla N° {n:06d} anulada. Sus pasajes quedaron libres para corregirlos y emitir otra.'})
+    except ErrorCaja as ex:
+        return _err(ex)
 
 
 @caja_chica_bp.route('/caja-chica/imprimir/rendicion/<int:rid>')
