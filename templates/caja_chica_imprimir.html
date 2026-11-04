@@ -97,7 +97,7 @@
 <h2>Detalle</h2>
 <table><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Pagado a</th><th>Descripción</th><th>N° PV / PC</th><th>Comprobante</th><th>S/</th></tr></thead><tbody>
 {% for g in gastos %}<tr><td>{{ g.numero }}</td><td>{{ g.fecha.strftime('%d/%m/%Y') }}{% if g.hora %} {{ g.hora.strftime('%H:%M') }}{% endif %}</td><td>{{ g.quien or '' }}</td><td>{{ g.pagado_a or '' }}</td><td class="l">{{ g.descripcion }}{% if g.detalle %} · {{ g.detalle }}{% endif %}</td><td>{{ g.referencia or '' }}</td>
-<td>{{ g.comprobante_tipo }}{% if g.comprobante_numero %} {{ g.comprobante_numero }}{% endif %}{% if g.comprobante_tipo not in sustenta %} <span class="rojo">●</span>{% endif %}</td><td>{{ '{:,.2f}'.format(g.egreso) }}</td></tr>{% endfor %}
+<td>{{ g.comprobante_tipo }}{% if g.comprobante_numero %} {{ g.comprobante_numero }}{% endif %}{% if g.comprobante_tipo not in sustenta %} <span class="rojo">●</span>{% endif %}</td><td>{% if g.ingreso and g.ingreso > 0 %}− {{ '{:,.2f}'.format(g.ingreso) }}{% else %}{{ '{:,.2f}'.format(g.egreso) }}{% endif %}</td></tr>{% endfor %}
 </tbody></table>
 <div class="firmas"><div>Rindió<br>{{ conf.responsable or 'Responsable de caja' }}</div><div>Aprobó<br>Gerencia</div></div>
 
