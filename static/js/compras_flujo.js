@@ -417,6 +417,54 @@
     }
 
     // ========================================================
+    // OC AL CRÉDITO (Erika 04/11/2026)
+    // ========================================================
+    let creditoCache = null;
+    const sumaMonedas = (obj, campo) => Object.keys(obj || {}).filter(m => Number(obj[m][campo]) > 0)
+        .map(m => dinero(m, obj[m][campo])).join(' + ') || 'S/ 0.00';
+    async function cargarCredito() {
+        try {
+            creditoCache = await api('/compras/api/flujo/credito');
+            const t = creditoCache.totales || {};
+            $('crKpiDeuda').textContent = sumaMonedas(t, 'deuda');
+            $('crKpiVencido').textContent = sumaMonedas(t, 'vencido');
+            const nSin = Object.values(t).reduce((s, x) => s + Number(x.n_sin_aprobar || 0), 0);
+            $('crKpiSin').textContent = nSin;
+            $('crKpiSinMonto').textContent = sumaMonedas(t, 'sin_aprobar') + ' sin validez todavía';
+            const provs = creditoCache.proveedores || [];
+            $('crKpiProv').textContent = provs.filter(p => p.deuda > 0).length;
+            $('crProvBody').innerHTML = provs.length ? provs.map(p => `<tr>
+                <td class="left"><b>${esc(p.proveedor || '—')}</b></td><td>${esc(p.ruc || '—')}</td><td>${p.ocs}</td>
+                <td class="num">${p.deuda > 0 ? `<b>${dinero(p.moneda, p.deuda)}</b>` : '—'}</td>
+                <td class="num">${p.vencido > 0 ? `<b class="neg">${dinero(p.moneda, p.vencido)}</b>` : '—'}</td>
+                <td class="num">${p.n_sin_aprobar ? `<span class="neg">${dinero(p.moneda, p.sin_aprobar)} (${p.n_sin_aprobar})</span>` : '—'}</td></tr>`).join('')
+                : '<tr><td colspan="6">No hay OC al crédito.</td></tr>';
+            pintarCredito();
+        } catch (e) { $('crBody').innerHTML = `<tr><td colspan="11">${esc(e.message)}</td></tr>`; }
+    }
+    function pintarCredito() {
+        if (!creditoCache) return;
+        const f = $('crFiltro').value, q = $('crBuscar').value.trim().toLowerCase();
+        const data = (creditoCache.data || []).filter(o =>
+            (!f || (f === 'sin' && !o.aprobada) || (f === 'deuda' && o.saldo > 0) || (f === 'vencida' && o.vencida)
+                || (f === 'pagada' && o.aprobada && o.saldo <= 0.005))
+            && (!q || `${o.numero} ${o.proveedor} ${o.ruc}`.toLowerCase().includes(q)));
+        $('crBody').innerHTML = data.length ? data.map(o => `<tr class="com-fila" data-ver="${o.id}">
+            <td><b>${esc(o.numero)}</b></td><td><b>${esc(o.empresa || '—')}</b></td>
+            <td class="left">${esc(o.proveedor || '')}<small>${esc(o.ruc || '')}</small></td>
+            <td class="num">${dinero(o.moneda, o.total)}</td>
+            <td>${o.aprobada ? estadoOC(o.estado) : `<span class="com-no-aprobada">🔴 NO APROBADA</span><small>${esc(o.estado)}</small>`}</td>
+            <td>${esc(o.creado_por)}<small>${esc(o.creada_en)}</small></td>
+            <td>${o.aprobada ? `<b>${esc(o.aprobado_por || '—')}</b><small>${esc(o.aprobado_en)}</small>` : '<span class="neg">Falta firma</span>'}</td>
+            <td>${o.dias_credito || '—'}</td>
+            <td>${o.vencida ? `<b class="neg">${esc(o.vence_txt)}</b><small class="neg">VENCIDA</small>` : esc(o.vence_txt)}${o.vence_estimado ? '<small>Estimado (sin factura)</small>' : ''}</td>
+            <td class="num">${o.pagado > 0 ? dinero(o.moneda, o.pagado) : '—'}</td>
+            <td class="num">${o.aprobada ? (o.saldo > 0 ? `<b>${dinero(o.moneda, o.saldo)}</b>` : '<span class="pos">Pagada</span>') : '—'}</td></tr>`).join('')
+            : '<tr><td colspan="11">No hay OC al crédito con este filtro.</td></tr>';
+        $('crFoot').textContent = `${data.length} OC al crédito`;
+    }
+
+    // ========================================================
     // FORMULARIO DE ORDEN DE COMPRA
     // ========================================================
     function sedeDeclarada(empresaId, sedeId) {
@@ -1452,7 +1500,7 @@
     // ========================================================
     // NAVEGACIÓN Y EVENTOS
     // ========================================================
-    const cargadores = { hoy: cargarHoy, pedidos: cargarPedidos, ordenes: cargarOrdenes, recibir: cargarRecibir, facturas: cargarFacturas, precios: cargarPrecios };
+    const cargadores = { hoy: cargarHoy, pedidos: cargarPedidos, ordenes: cargarOrdenes, credito: cargarCredito, recibir: cargarRecibir, facturas: cargarFacturas, precios: cargarPrecios };
 
     function cambiarTab(tab, push = true) {
         if (!cargadores[tab]) tab = 'hoy';
@@ -1546,6 +1594,8 @@
         $('btnLineaStock').onclick = () => { lineas.push(lineaVacia()); pintarLineas(); ajustarForm(); };
         $('pedTodos').onchange = cargarPedidos;
         $('pedBuscar').oninput = pintarPedidos;
+        $('crFiltro').onchange = pintarCredito;
+        $('crBuscar').oninput = pintarCredito;
         ['ocEmpresa', 'ocPaso', 'ocSinPedido'].forEach(i => { if ($(i)) $(i).onchange = cargarOrdenes; });
         $('ocMotivoCompra').onchange = ajustarForm;
         let tOc;

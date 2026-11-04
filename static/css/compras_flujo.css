@@ -254,3 +254,7 @@ td.com-tot-linea { white-space: nowrap !important; min-width: 84px; }
 .com-item { width: 44px; text-align: center !important; font-weight: 700; color: #475569; }
 /* Recibido con daño (Erika 02/11/2026): rojo y con la cantidad */
 .com-danado { display: inline-block; margin-top: 3px; padding: 2px 8px; border-radius: 999px; background: #FEE2E2; color: #B91C1C; border: 1px solid #FCA5A5; font-size: 11px; font-weight: 800; white-space: nowrap; }
+
+/* Erika 04/11/2026: OC al crédito sin aprobar = sin validez (rojo encendido) */
+.com-no-aprobada{display:inline-block;background:#FF1744;color:#fff;font-weight:900;border-radius:6px;padding:2px 8px;font-size:11px;white-space:nowrap}
+#sec-credito .pos{color:#00A86B;font-weight:900}

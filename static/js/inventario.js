@@ -188,14 +188,22 @@
             if (data.pendientes.length) {
                 // Erika 03/11/2026: aviso en palabras simples (qué es, por qué está aquí y qué hacer)
                 const dias = f => { const d = Math.floor((Date.now() - new Date(String(f || '').replace(' ', 'T')).getTime()) / 86400000); return d > 0 ? `hace ${d} día(s)` : 'hoy'; };
-                item('warn', `🕒 ${data.pendientes.length} movimiento(s) de stock esperan aprobación de un supervisor`,
-                    `<div class="inv-pend-ayuda">Mientras nadie los apruebe, <b class="neg">NO suman ni restan stock</b>. Por eso el producto puede figurar sin stock.
-                     👉 Revisa cada uno: si es correcto, <b>Aprobar</b>; si no, <b>Rechazar</b> con el motivo.</div>
-                     <ul class="inv-pend-lista">` +
-                    data.pendientes.map(p => `<li><b>${esc(p.motivo_texto)}:</b> <span class="azul">${cant(p.cantidad)} ${esc(p.descripcion)}</span>
-                        en <b>${esc(p.empresa)} · ${esc(p.sede)}</b> (${esc(p.numero)}).
-                        Lo registró <b>${esc(p.usuario_nombre || '—')}</b> ${dias(p.fecha)}${p.observaciones ? ` · Nota: ${esc(p.observaciones)}` : ''}.
-                        ${PUEDE.aprobar ? `<span class="inv-acc"><button class="btn-mini" data-aprobar="${p.id}">Aprobar</button><button class="btn-mini danger" data-rechazar="${p.id}">Rechazar</button></span>` : ''}</li>`).join('') + '</ul>');
+                // Erika 04/11/2026: "mejor orden y revalidación y frases cortas que ayuden": viñetas + tabla
+                item('warn', `🕒 ${data.pendientes.length} movimiento(s) de stock esperan tu revisión`,
+                    `<ul class="inv-pend-pasos">
+                        <li><b>¿Qué es?</b> Alguien anotó una entrada o salida de stock y falta que un supervisor la <b>confirme</b>.</li>
+                        <li><b>Si nadie hace nada:</b> el stock <b class="neg">no cambia</b>. El producto puede figurar <b class="neg">sin stock</b>.</li>
+                        <li><b>Revisa en el almacén:</b> ¿el producto está ahí, con esa cantidad?</li>
+                        <li>✅ <b>Sí está</b> → pulsa <b>Aprobar</b>.</li>
+                        <li>❌ <b>No está</b> → pulsa <b>Rechazar</b> y escribe el motivo (ej. <span class="azul">"no existe físicamente"</span>). <b>No se borra nada</b>: queda en el historial.</li>
+                     </ul>
+                     <div class="table-wrap"><table class="inv-table inv-pend-tabla"><thead><tr><th>N° movimiento</th><th>Qué se anotó</th><th class="left">Producto</th><th>Cantidad</th><th>Empresa</th><th>Sede</th><th>Quién y cuándo</th><th class="left">Nota</th>${PUEDE.aprobar ? '<th>Acción</th>' : ''}</tr></thead><tbody>` +
+                    data.pendientes.map(p => `<tr><td><b>${esc(p.numero)}</b></td><td>${esc(p.motivo_texto)}</td>
+                        <td class="left"><span class="azul">${esc(p.descripcion)}</span><small>${esc(p.codigo || '')}</small></td>
+                        <td><b>${cant(p.cantidad)}</b></td><td><b>${esc(p.empresa || '—')}</b></td><td>${esc(p.sede || '—')}</td>
+                        <td>${esc(p.usuario_nombre || '—')}<small>${fecha(p.fecha)} · ${dias(p.fecha)}</small></td>
+                        <td class="left">${esc(p.observaciones || '—')}</td>
+                        ${PUEDE.aprobar ? `<td><span class="inv-acc"><button class="btn-mini" data-aprobar="${p.id}">Aprobar</button><button class="btn-mini danger" data-rechazar="${p.id}">Rechazar</button></span></td>` : ''}</tr>`).join('') + '</tbody></table></div>');
             }
             if (data.sin_ubicar.length) {
                 item('danger', `📦 ${data.sin_ubicar.length} producto(s) con stock antiguo sin empresa ni sede`,
@@ -800,7 +808,7 @@
         } else if (d.aprobar) {
             guardarCon(b, async () => { const r = await post(`/inventario/api/movimientos/${d.aprobar}/aprobar`, { aprobar: true }); aviso(r.message, 'success'); refrescar(); });
         } else if (d.rechazar) {
-            pedirMotivo('Rechazar movimiento', 'El stock no cambiará. Quien lo reportó verá el motivo.', async m => {
+            pedirMotivo('Rechazar movimiento', 'El stock no cambiará y no se borra nada: queda en el historial con tu motivo. Ejemplo: "no existe físicamente".', async m => {
                 const r = await post(`/inventario/api/movimientos/${d.rechazar}/aprobar`, { aprobar: false, motivo: m }); aviso(r.message, 'success'); refrescar();
             });
         } else if (d.revertir) {

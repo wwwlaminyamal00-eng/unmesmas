@@ -30,12 +30,23 @@
     .transfer h3{margin:0 0 4px;font-size:13px;text-transform:uppercase}
     .transfer .dato{font-family:Consolas,'Courier New',monospace;font-size:14px;font-weight:bold;user-select:all;-webkit-user-select:all;cursor:text}
     .transfer .falta{color:#B91C1C;font-weight:bold}
+    /* Erika 04/11/2026: "esa oc debe tener una firma": sello de aprobación con nombre, fecha y hora de Lima */
+    .sello{display:inline-block;border:3px solid #059669;color:#065F46;border-radius:8px;padding:6px 14px;margin-top:14px;font-weight:bold;line-height:1.5}
+    .sello b{font-size:14px}
+    .no-aprobada{position:fixed;top:40%;left:0;right:0;text-align:center;transform:rotate(-24deg);font-size:84px;font-weight:900;
+        color:rgba(220,38,38,.22);border:none;pointer-events:none;letter-spacing:4px;z-index:5}
+    .no-aprobada-aviso{border:3px solid #DC2626;color:#B91C1C;background:#FEF2F2;border-radius:8px;padding:8px 12px;margin:10px 0;font-weight:bold}
     @media print{.no-print{display:none}body{margin:0;max-width:none}}
 </style>
 </head>
 <body>
 {% set sim = 'US$' if (o.moneda or 'PEN') == 'USD' else 'S/' %}
 <p class="no-print"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></p>
+{% set sin_aprobar = o.estado in ('Borrador', 'Por aprobar') %}
+{% if sin_aprobar %}
+<div class="no-aprobada">NO APROBADA</div>
+<div class="no-aprobada-aviso">🔴 Esta orden NO está aprobada: no tiene validez y no se envía al proveedor.{% set _c = (o.condicion_pago or '')|lower %}{% if 'crédito' in _c or 'credito' in _c %} Es al crédito: solo Erika o Hellen pueden aprobarla.{% endif %}</div>
+{% endif %}
 <div class="cab">
     <div>
         <h1>{{ empresa.razon_social or o.empresa }}</h1>
@@ -117,7 +128,10 @@
     {% endif %}
 </div>
 {% if declarada == false %}<p class="no-print" style="color:#B91C1C"><b>Aviso interno:</b> {{ sede.nombre }} no está declarada en SUNAT para esta empresa.</p>{% endif %}
-<div class="firmas"><div>Elaboró: {{ o.creado_por_nombre or '' }}</div><div>Aprobó: {{ o.aprobado_por or '' }}</div><div>Proveedor (conformidad)</div></div>
+{% if not sin_aprobar and o.aprobado_por %}
+<div class="sello">✔ APROBADA por <b>{{ o.aprobado_por }}</b>{% if o.aprobado_en %} · {{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') if o.aprobado_en.strftime is defined else o.aprobado_en }} (hora de Lima){% endif %}</div>
+{% endif %}
+<div class="firmas"><div>Elaboró: {{ o.creado_por_nombre or '' }}</div><div>Aprobó: {{ '' if sin_aprobar else (o.aprobado_por or '') }}{% if not sin_aprobar and o.aprobado_en and o.aprobado_en.strftime is defined %}<br><small>{{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}</div><div>Proveedor (conformidad)</div></div>
 {% endif %}
 </body>
 </html>
