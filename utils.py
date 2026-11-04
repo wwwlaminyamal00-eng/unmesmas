@@ -92,6 +92,14 @@ def gestiona_caja_chica():
     return (session.get('usuario') or '').strip().lower() in USUARIOS_CAJA_CHICA
 
 
+# Erika 04/11/2026 (noche): Luis, Sebastián y Estrella solo anotan SUS gastos como borrador; Hellen los valida.
+USUARIOS_CAJA_BORRADOR = _lista_env('USUARIOS_CAJA_BORRADOR', 'luis01kcf,sebas01kcf,est01kcf')
+
+
+def reporta_caja_chica():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_CAJA_BORRADOR
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 

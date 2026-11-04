@@ -453,7 +453,7 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                 {% endif %}
 
                 <!-- CAJA CHICA (22/10/2026): fondo fijo, rendición semanal y arqueo; gerencia y permiso propio -->
-                {% if gestiona_caja %}
+                {% if gestiona_caja or reporta_caja %}
                 <div class="menu-group" data-modulo="caja_chica">
                     <div class="menu-header-wrapper">
                         <a href="/caja-chica" class="menu-header" style="text-decoration:none;flex:1;">
@@ -462,10 +462,14 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
                         <span class="caret-toggle">›</span>
                     </div>
                     <div class="menu-children">
+                        {% if gestiona_caja %}
                         <a href="/caja-chica?tab=gastos" class="child-btn" style="text-decoration:none;">🧾 Gastos</a>
                         <a href="/caja-chica?tab=rendicion" class="child-btn" style="text-decoration:none;">📤 Rendición y reposición</a>
                         <a href="/caja-chica?tab=arqueo" class="child-btn" style="text-decoration:none;">🔢 Arqueo</a>
                         <a href="/caja-chica?tab=personas" class="child-btn" style="text-decoration:none;">👥 Personas y datos</a>
+                        {% else %}
+                        <a href="/caja-chica" class="child-btn" style="text-decoration:none;">🧾 Mis gastos</a>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
