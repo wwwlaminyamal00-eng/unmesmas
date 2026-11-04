@@ -2729,3 +2729,8 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Migración 046: tabla `caja_chica_planillas` y columnas `hora`, `detalle`, `planilla_id` en `caja_chica_movimientos`. Respaldo previo: `respaldo_20261015.caja_chica_movimientos_pre046` y `caja_chica_personas_pre046`. No se cambió ni borró ningún dato existente.
 - Pendiente de Erika: escribir el DNI de cada persona en Caja chica ▸ Personas (hoy nadie tiene DNI y sin DNI no se puede usar la planilla de movilidad).
 - Pruebas: 387 bien.
+
+### 24.68 Caja chica más liviana (Erika 04/11/2026: "el ERP está muy saturado")
+- La lista cargaba los 836 movimientos de una vez (831 del histórico de Excel). Ahora por defecto muestra los **últimos 30 días** (hoy 89 movimientos, ~11%).
+- Botón "📚 Ver todo (histórico)" para ver todo; vuelve con "🗓 Ver solo últimos 30 días". Debajo de la tabla dice desde qué fecha se ve y el saldo anterior.
+- No se borró ni anuló nada: los movimientos son sustento ante SUNAT (se guardan 5 años).
