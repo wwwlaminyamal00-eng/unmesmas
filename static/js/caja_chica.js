@@ -13,6 +13,8 @@
     let tab = 'gastos';
     let R = null;          // resumen
     let movs = [];
+    let saldoAnt = 0;
+    const BORR = () => APP && APP.dataset.modo === 'borrador';      // Luis, Sebastián, Estrella: solo sus borradores
     let gente = [];
     let alGuardar = null;
 
@@ -57,6 +59,18 @@
     }
 
     async function cargar() {
+        if (BORR()) {
+            try {
+                const e = encodeURIComponent(empresa());
+                const [j, p] = await Promise.all([api('/caja-chica/api/mis-gastos?empresa_id=' + e), api('/caja-chica/api/personas?empresa_id=' + e)]);
+                R = { config: j.data.config, saldo: null, historico: { n: 1 }, detalles_previos: j.data.detalles_previos, pendientes: {}, rendiciones: [], arqueos: [] };
+                gente = p.data;
+                movs = j.data.filas.slice().reverse();
+                llenarFiltros();
+                pintarMovs(0);
+            } catch (e) { $('#ccMovs').innerHTML = `<div class="inv-vacio">⚠ ${esc(e.message)}</div>`; }
+            return;
+        }
         $('#ccKpis').innerHTML = '<div class="inv-vacio">Cargando...</div>';
         try {
             const e = encodeURIComponent(empresa());
@@ -80,7 +94,9 @@
         try {
             const j = await api('/caja-chica/api/movimientos?' + q);
             movs = j.data.filas;
-            pintarMovs(j.data.saldo_anterior);
+            saldoAnt = j.data.saldo_anterior;
+            llenarFiltros();
+            pintarMovs(saldoAnt);
         } catch (e) {
             $('#ccMovs').innerHTML = `<div class="inv-vacio">⚠ ${esc(e.message)}</div>`;
         }
@@ -92,6 +108,7 @@
         const avisos = [];
         if (!c.configurado) avisos.push('Define el fondo fijo, la responsable y la cuenta de la caja en <b>Personas y datos</b>' + (esAdmin() ? '.' : ' (lo hace la gerencia).'));
         if (R.saldo < 0) avisos.push(`El saldo está en <b>${soles(R.saldo)}</b>: alguien adelantó dinero propio. Envía la rendición para que se reponga.`);
+        (R.por_validar || []).forEach(x => avisos.push(`📝 ${esc(x.creado_por)} anotó <b>${x.n}</b> gasto(s) por <b>${soles(x.total)}</b> que esperan tu validación: búscalos con <b>📝 Por validar</b> en la lista.`));
         if (R.pendientes.sin_foto) avisos.push(`${R.pendientes.sin_foto} gasto(s) sin foto del voucher. Súbela con el botón 📷 de cada fila.`);
         const porAprobar = R.rendiciones.find(x => x.estado === 'Por aprobar');
         if (porAprobar && esAdmin()) avisos.push(`La rendición N° ${porAprobar.numero} (${soles(porAprobar.total_gastado)}) espera tu aprobación: pestaña <b>Rendición y reposición</b>.`);
@@ -122,6 +139,9 @@
                 ? `<span class="ge-sub">Planilla N° PM-${esc(empCodigo())}-${String(m.planilla_numero).padStart(6, '0')}</span>` : '<span class="ge-sub ge-rojo">Planilla sin emitir</span>') : '');
     }
     function estadoFila(m) {
+        if (m.estado === 'Borrador') return `<span class="ge-estado amarillo">📝 Por validar</span>${BORR() ? '<span class="ge-sub">Hellen lo revisa</span>' : ''}`;
+        if (m.estado === 'Rechazado') return `<span class="ge-estado rojo">✖ Devuelto</span><span class="ge-sub ge-rojo">${esc(m.motivo_anulacion || '')}</span>${BORR() ? '<span class="ge-sub">Corrígelo con Editar</span>' : ''}`;
+        if (BORR()) return `<span class="ge-estado verde">✔ Validado</span>${m.validado_por ? `<span class="ge-sub">${esc(m.validado_por)}</span>` : ''}`;
         if (m.estado === 'Anulado') return `<span class="ge-estado gris">Anulado</span><span class="ge-sub">${esc(m.motivo_anulacion || '')}</span>`;
         if (m.origen === 'Histórico') return '<span class="ge-estado gris">Histórico</span>';
         if (m.es_ajuste) return `<span class="ge-estado amarillo">🔧 Ajuste</span>${m.rendicion_id ? `<span class="ge-sub">${m.rendicion_estado === 'Aprobada' ? '🔒 Aprobado' : 'Enviado'} N° ${m.rendicion_numero}</span>` : '<span class="ge-sub ge-rojo">Por rendir</span>'}`;
@@ -130,22 +150,42 @@
         if (m.rendicion_estado === 'Aprobada') return `<span class="ge-estado verde">🔒 Aprobado N° ${m.rendicion_numero}</span>`;
         return `<span class="ge-estado amarillo">Enviado N° ${m.rendicion_numero}</span>`;
     }
+    function llenarFiltros() {
+        const llenar = (sel, valores) => {
+            const el = $(sel); if (!el) return;
+            const actual = el.value;
+            const unicos = [...new Set(valores.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+            el.innerHTML = '<option value="">Todos</option>' + unicos.map(v => `<option value="${esc(v)}" ${v === actual ? 'selected' : ''}>${esc(v)}</option>`).join('');
+        };
+        llenar('#ccFRubro', movs.filter(m => m.tipo === 'Gasto').map(m => m.rubro));
+        llenar('#ccFQuien', movs.map(m => m.quien));
+        llenar('#ccFPagado', movs.map(m => m.pagado_a));
+    }
     function pintarMovs(saldoAnterior) {
         if (!movs.length) {
+            if (BORR()) { $('#ccMovs').innerHTML = '<div class="inv-vacio">Todavía no anotas gastos. Pulsa <b>+ Registrar gasto</b>.</div>'; return; }
             $('#ccMovs').innerHTML = R.historico.n || R.saldo
                 ? '<div class="inv-vacio">No hay movimientos con ese filtro.</div>'
                 : `<div class="inv-vacio">La caja de ${esc(empCodigo())} está vacía. Usa <b>+ Registrar gasto</b>, o carga tu Excel histórico en <b>Personas y datos</b>.</div>`;
             return;
         }
-        const filtrado = $('#ccBuscar').value.trim() !== '';
-        const lista = movs.slice().reverse();          // lo más reciente arriba
+        const fR = $('#ccFRubro').value, fQ = $('#ccFQuien').value, fP = $('#ccFPagado').value;
+        const filtrado = BORR() || $('#ccBuscar').value.trim() !== '' || !!(fR || fQ || fP);
+        const lista = movs.slice().reverse().filter(m => (!fR || m.rubro === fR) && (!fQ || m.quien === fQ) && (!fP || m.pagado_a === fP));
+        // Erika 04/11/2026: total al pie de lo que se ve (filtrado por rubro, persona...)
+        const activos = lista.filter(m => m.estado === 'Activo' || (BORR() && m.estado === 'Borrador'));
+        const gastos = activos.filter(m => m.tipo === 'Gasto');
+        const tot = gastos.reduce((s, m) => s + num(m.egreso), 0) - activos.filter(m => m.es_ajuste).reduce((s, m) => s + num(m.ingreso), 0);
+        const sinS = gastos.filter(m => !m.sustenta).reduce((s, m) => s + num(m.egreso), 0);
+        const ingresos = activos.filter(m => m.tipo !== 'Gasto' && !m.es_ajuste).reduce((s, m) => s + num(m.ingreso), 0);
+        const porValidar = lista.filter(m => m.estado === 'Borrador');
         const foto = m => m.tipo !== 'Gasto' || m.origen === 'Histórico' ? ''
             : m.fotos ? `<button type="button" class="ge-btn" data-fotos="${m.id}">Ver foto (${m.fotos})</button>`
             : (m.comprobante_tipo === 'Planilla de movilidad' ? '<span class="ge-sub">Se firma en la planilla</span>' : '<span class="ge-sin">Falta foto</span>');
         $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó</th><th>Pagado a</th>
             <th>Descripción</th><th>N° PV / PC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
-            ${lista.map(m => `<tr class="${m.estado === 'Anulado' ? 'cc-anulado' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
-                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}</td>
+            ${lista.map(m => `<tr class="${m.estado === 'Anulado' || m.estado === 'Rechazado' && !BORR() ? 'cc-anulado' : m.estado === 'Borrador' ? 'cc-borrador' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
+                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}${m.hora ? `<span class="ge-sub">${esc(String(m.hora).slice(0, 5))}</span>` : ''}</td>
                 <td>${esc(m.rubro || m.tipo)}${m.empresa_gasto && m.empresa_gasto !== empCodigo() ? `<span class="ge-sub">Gasto de ${esc(m.empresa_gasto)}</span>` : ''}</td>
                 <td>${esc(m.quien || '') || '<span class="ge-cero">—</span>'}</td><td>${m.pagado_a ? esc(m.pagado_a) : '<span class="ge-cero">—</span>'}</td>
                 <td style="text-align:left">${esc(m.descripcion)}${m.detalle ? `<span class="ge-sub">${esc(m.detalle)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">Obs.: ${esc(m.observacion)}</span>` : ''}</td>
@@ -154,15 +194,24 @@
                 <td class="ge-nw cc-monto">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>${m.es_ajuste ? '<span class="ge-sub">vuelve a la caja</span>' : ''}` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
                 ${filtrado ? '' : `<td class="ge-nw cc-monto"><b style="color:${num(m.saldo) < 0 ? '#E60023' : '#0F172A'}">${m.saldo == null ? '' : soles(m.saldo)}</b></td>`}
                 <td>${estadoFila(m)}<span class="ge-sub">${esc(m.creado_por || '')} · ${fecha(m.creado_en)}</span>${m.editado ? `<span class="ge-sub ge-rojo">✏️ Cambiado ${m.editado} vez${m.editado > 1 ? 'es' : ''}</span>` : ''}${(m.historial || []).length > 1 ? `<button type="button" class="ge-btn" data-historial="${m.id}">Historial</button>` : ''}</td>
-                <td>${m.estado === 'Anulado' ? '' : [
+                <td>${m.estado === 'Anulado' ? '' : BORR() ? [
+                    !m.bloqueado ? `<button type="button" class="ge-btn" data-foto="${m.id}">Subir foto</button>` : '',
+                    !m.bloqueado ? `<button type="button" class="ge-btn" data-editar="${m.id}">Editar</button>` : ''
+                ].join('') : m.estado === 'Rechazado' ? '' : m.estado === 'Borrador' ? [
+                    `<button type="button" class="ge-btn cc-btn-ok" data-validar="${m.id}">✔ Validar</button>`,
+                    `<button type="button" class="ge-btn" data-editar="${m.id}">Editar</button>`,
+                    `<button type="button" class="ge-btn" data-rechazar="${m.id}">✖ Devolver</button>`,
+                    `<button type="button" class="ge-btn" data-foto="${m.id}">Subir foto</button>`
+                ].join('') : [
                     m.tipo === 'Gasto' && m.origen !== 'Histórico' ? `<button type="button" class="ge-btn" data-foto="${m.id}">Subir foto</button>` : '',
                     !m.bloqueado ? `<button type="button" class="ge-btn" data-editar="${m.id}">Editar</button>` : '',
                     m.tipo === 'Gasto' ? `<button type="button" class="ge-btn" data-vale="${m.id}">Vale</button>` : '',
                     m.anulable ? `<button type="button" class="ge-btn" data-anular="${m.id}">Anular</button>` : '',
                     m.ajustable ? `<button type="button" class="ge-btn" data-ajustar="${m.id}">🔧 Ajustar</button>` : ''
                 ].join('')}</td></tr>`).join('')}
-            </tbody></table>
-            ${$('#ccDesde').value ? `<div class="ge-sub">Se ve desde el ${fecha($('#ccDesde').value)}${saldoAnterior ? ` · saldo antes de esa fecha: ${soles(saldoAnterior)}` : ''}. Lo anterior sigue guardado: pulsa <b>📚 Ver todo (histórico)</b>.</div>` : ''}`;
+            </tbody><tfoot><tr class="cc-total"><td colspan="${filtrado ? 8 : 8}" style="text-align:right">Total de lo que se ve${fR || fQ || fP ? ' (filtrado)' : ''}: <b>${gastos.length}</b> gasto(s)${ingresos ? ` · ingresos <b style="color:#0D9488">+ ${soles(ingresos)}</b>` : ''}${sinS ? ` · sin sustento SUNAT <b class="ge-rojo">${soles(sinS)}</b>` : ''}${porValidar.length && !BORR() ? ` · 📝 ${porValidar.length} por validar (aún no cuentan)` : ''}</td>
+                <td class="ge-nw cc-monto"><b style="color:#7C3AED">− ${soles(tot)}</b></td><td colspan="${filtrado ? 2 : 3}"></td></tr></tfoot></table>
+            ${$('#ccDesde').value && !BORR() ? `<div class="ge-sub">Se ve desde el ${fecha($('#ccDesde').value)}${saldoAnterior ? ` · saldo antes de esa fecha: ${soles(saldoAnterior)}` : ''}. Lo anterior sigue guardado: pulsa <b>📚 Ver todo (histórico)</b>.</div>` : ''}`;
     }
 
     // ============================================================
@@ -222,13 +271,14 @@
             <label data-cc="pagado-otro">Escribe a quién se pagó<input name="pagado_a_otro" maxlength="150" value="${enLista ? '' : esc(m.pagado_a)}" placeholder="Ej.: Tienda Sodimac"></label>
             <label>Descripción<select name="descripcion" required>${opciones(OPC.descripciones, descEnLista ? m.descripcion : 'Otro (escribir)', 'Elige...')}</select></label>
             <label data-cc="desc-otro">Escribe la descripción<input name="descripcion_otro" maxlength="500" value="${descEnLista ? '' : esc(m.descripcion)}"></label>
-            <label data-cc="detalle" style="grid-column:1/-1">De dónde a dónde <small>(lo pide la planilla de movilidad)</small><input name="detalle" maxlength="300" value="${esc(m.detalle || '')}" placeholder="Ej.: Oficina SMP → Komatsu Lurín → Oficina SMP"></label>
+            <label data-cc="detalle" style="grid-column:1/-1">De dónde a dónde <small>(lo pide la planilla de movilidad)</small><input name="detalle" maxlength="300" list="ccDetalles" value="${esc(m.detalle || '')}" placeholder="Escribe o elige uno ya usado (ej.: Oficina SMP → Komatsu Lurín → Oficina SMP)"></label>
+            <datalist id="ccDetalles">${((R && R.detalles_previos) || []).map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist>
             <label>N° PV / PC <small>(si es de un pedido)</small><input name="referencia" maxlength="150" value="${esc(m.referencia || '')}" placeholder="Ej.: PV-KCF-000123"></label>
             <label>Tipo de comprobante<select name="comprobante_tipo" required>${opciones(OPC.comprobantes, m.comprobante_tipo, 'Elige...')}</select></label>
             <label data-cc="numero">N° de comprobante<input name="comprobante_numero" maxlength="40" value="${esc(m.comprobante_numero || '')}" placeholder="Ej.: F001-000123"></label>
             <label data-cc="ruc">RUC de quien emitió<input name="ruc_emisor" maxlength="11" inputmode="numeric" value="${esc(m.ruc_emisor || '')}"></label>
             <label>Autorizado por<input name="autorizado_por" maxlength="150" value="${esc(m.id ? (m.autorizado_por || '') : (m.autorizado_por || 'Erika'))}" placeholder="Erika"></label>
-            <label style="grid-column:1/-1">Observación <small>(opcional)</small><textarea name="observacion" maxlength="1000" rows="3">${esc(m.observacion || '')}</textarea></label>
+            <label style="grid-column:1/-1">Observación <small>(opcional)</small><textarea name="observacion" maxlength="1000" rows="2" placeholder="Solo si hace falta (ej.: pagó con Yape)">${esc(m.observacion || '')}</textarea></label>
             ${m.id ? '' : '<label style="grid-column:1/-1">Foto del voucher o comprobante <small>(puedes subirla después)</small><input type="file" name="foto" accept="image/*,.pdf" capture="environment"></label>'}
             <div data-cc="tip" style="grid-column:1/-1"></div>
             <div class="cc-regla" style="grid-column:1/-1">🔒 <b>Todo gasto debe estar autorizado por Erika antes de hacerse.</b> Si no fue autorizado, puede ser observado o no reconocido por la caja.</div>`;
@@ -303,6 +353,7 @@
     }
     function abrirGasto(m) {
         const det = m ? `Gasto N° ${m.numero} · creado por ${esc(m.creado_por || '')} el ${fecha(m.creado_en)}` + (m.actualizado_en !== m.creado_en ? ` · modificado por ${esc(m.actualizado_por || '')} el ${fecha(m.actualizado_en)}` : '')
+            : BORR() ? `Caja de <b>${esc(empCodigo())}</b> · se guarda como <b>📝 borrador</b>: Hellen lo revisa y lo valida.`
             : `Caja de <b>${esc(empCodigo())}</b> · saldo ${soles(R.saldo)}`;
         abrirModal(m ? `Editar gasto N° ${m.numero}` : 'Registrar gasto', det, formGasto(m), 'Guardar', async () => {
             const d = leerGasto();
@@ -348,6 +399,11 @@
         abrirModal(`Anular movimiento N° ${m.numero}`, `${esc(m.descripcion)} · ${soles(num(m.egreso) || num(m.ingreso))}`,
             '<label style="grid-column:1/-1">¿Por qué se anula?<input name="motivo" required maxlength="500" placeholder="Ej.: se registró dos veces"></label>', 'Anular',
             async () => { const d = leerForm(); await enviar(`/caja-chica/api/movimiento/${m.id}/anular`, 'POST', d); });
+    }
+    function abrirRechazo(m) {
+        abrirModal(`Devolver gasto N° ${m.numero}`, `${esc(m.descripcion)} · ${soles(m.egreso)} · anotado por ${esc(m.creado_por || '')}`,
+            '<label style="grid-column:1/-1">¿Qué debe corregir?<input name="motivo" required minlength="5" maxlength="500" placeholder="Ej.: falta la foto del voucher"></label>', 'Devolver',
+            async () => { const d = leerForm(); await enviar(`/caja-chica/api/movimiento/${m.id}/rechazar`, 'POST', d); });
     }
     function abrirAjuste(m) {
         abrirModal(`Ajustar gasto N° ${m.numero}`,
@@ -420,7 +476,8 @@
             <li><b>Hellen</b> registra cada gasto y, al final de la semana, pulsa <b>📤 Enviar rendición a Erika</b>.</li>
             <li><b>Erika</b> revisa, pulsa <b>Aprobar y reponer</b> y transfiere lo que falta (o <b>Observar</b> si algo está mal).</li>
             <li>La caja vuelve a <b>${soles(R.config.fondo_fijo)}</b> y esos gastos quedan con <b>🔒 candado</b>: nadie los cambia. Un error se corrige con <b>🔧 Ajustar</b>.</li></ol>`;
-        const validado = v ? `<div class="cc-aviso cc-aviso-ok"><ul><li>🔒 <b>Saldo validado:</b> ${v.saldo != null ? soles(v.saldo) : '—'} con la rendición N° ${v.numero} (hasta el ${fecha(v.hasta)}), aprobada por ${esc(v.por || '')} el ${fecha(v.en)}. Lo anterior ya no se mueve.</li></ul></div>` : '';
+        const validado = v ? `<div class="cc-aviso cc-aviso-ok"><ul><li>🔒 <b>Saldo validado:</b> ${v.saldo != null ? soles(v.saldo) : '—'} con la rendición N° ${v.numero}, aprobada por ${esc(v.por || '')} el ${fecha(v.en)}.</li>
+            <li>La caja se cortó a esa hora: lo registrado después (aunque sea el mismo día) va a la siguiente rendición.</li></ul></div>` : '';
         const estado = porAprobar
             ? `<div class="cc-aviso cc-aviso-warn"><ul><li>⏳ <b>Rendición N° ${porAprobar.numero}</b> enviada por ${esc(porAprobar.enviada_por || '')} el ${fecha(porAprobar.enviada_en)}: gastos por <b>${soles(porAprobar.total_gastado)}</b>.</li>
                 <li>Falta que Erika la revise${esAdmin() ? ': abajo, <b>Aprobar y reponer</b> u <b>Observar</b>' : ''}. Mientras tanto, los gastos nuevos esperan a la siguiente.</li>
@@ -480,7 +537,7 @@
             tabla + `<label>Monto a reponer (S/)<input type="number" name="monto" min="0" step="0.01" value="${sugerido.toFixed(2)}"></label>
              <label>Fecha de la transferencia<input type="date" name="fecha_reposicion" max="${hoy()}" value="${hoy()}"></label>
              <label>N° de operación<input name="numero_operacion" maxlength="80"></label>
-             <label>Banco de la empresa <small>(de donde sale)</small><input name="banco" maxlength="80"></label>
+             <label>Banco de la empresa <small>(de donde sale)</small><select name="banco">${(R.cuentas_empresa || []).map(c => `<option value="${esc(c.banco)}" ${c.principal ? 'selected' : ''}>${esc(c.etiqueta)}${c.principal ? ' (principal)' : ''}</option>`).join('')}<option value="Otro">Otro banco</option></select></label>
              <label style="grid-column:1/-1">Comentario <small>(opcional)</small><input name="observacion" maxlength="500"></label>`, 'Aprobar y reponer',
             async () => { const d = leerForm(); await enviar(`/caja-chica/api/rendicion/${rid}/aprobar`, 'POST', d); });
     }
@@ -495,28 +552,38 @@
     // ARQUEO
     // ============================================================
     function pintarArqueo() {
-        $('#ccArqueo').innerHTML = `<p>Cuenta el efectivo y mira el saldo de la cuenta de caja chica. El sistema dice <b>${soles(R.saldo)}</b> hoy.</p>
-            <div class="ge-form" id="ccArqueoForm">
-                <label>Fecha<input type="date" id="ccArqFecha" max="${hoy()}" value="${hoy()}"></label>
-                <label>Efectivo contado (S/)<input type="number" id="ccArqEfectivo" min="0" step="0.01" value="0"></label>
-                <label>Saldo en la cuenta de caja (S/)<input type="number" id="ccArqCuenta" min="0" step="0.01" value="0"></label>
-                <label>Vales por rendir (S/)<input type="number" id="ccArqVales" min="0" step="0.01" value="0"></label>
-                <label style="grid-column:1/-1">Explicación <small>(obligatoria si hay diferencia)</small><input id="ccArqExpl" maxlength="500"></label>
+        // Erika 04/11/2026: "el arqueo es confuso". Tres pasos y una frase por campo.
+        $('#ccArqueo').innerHTML = `<p class="cc-arq-intro">El arqueo es <b>contar el dinero</b> y ver si coincide con lo que dice el ERP. Hazlo cada viernes, antes de enviar la rendición.</p>
+            <div class="cc-arq">
+              <div class="cc-arq-paso"><span class="cc-arq-n">1</span><div><b>Lo que debe haber según el ERP</b><div class="cc-arq-grande">${soles(R.saldo)}</div>
+                <div class="ge-sub">Fondo ${soles(R.config.fondo_fijo)} menos los gastos, más los depósitos. Hoy, ${fecha(hoy())}.</div></div></div>
+              <div class="cc-arq-paso"><span class="cc-arq-n">2</span><div><b>Cuenta lo que hay de verdad</b>
+                <div class="ge-form" id="ccArqueoForm">
+                  <label>💵 Efectivo en la caja (S/)<input type="number" id="ccArqEfectivo" min="0" step="0.01" value="0"></label>
+                  <label>🏦 Saldo en la cuenta de caja chica (S/) <small>(mira la app del banco)</small><input type="number" id="ccArqCuenta" min="0" step="0.01" value="0"></label>
+                  <label>🧾 Dinero entregado sin registrar (S/) <small>(adelantos que aún no traen comprobante)</small><input type="number" id="ccArqVales" min="0" step="0.01" value="0"></label>
+                  <input type="hidden" id="ccArqFecha" value="${hoy()}">
+                </div>
+                <div class="ge-sub">Total contado: <b id="ccArqTotal">${soles(0)}</b></div></div></div>
+              <div class="cc-arq-paso"><span class="cc-arq-n">3</span><div><b>Resultado</b><div id="ccArqDif" class="cc-arq-res"></div>
+                <label class="cc-arq-motivo">¿Por qué no cuadra? <small>(obligatorio si sobra o falta)</small><input id="ccArqExpl" maxlength="500" placeholder="Ej.: faltó registrar el pasaje de Luis del jueves"></label>
+                <button type="button" class="btn btn-primary" id="ccArqGuardar">Guardar arqueo</button></div></div>
             </div>
-            <div class="cc-pie"><span id="ccArqDif" class="ge-chip"></span><button type="button" class="btn btn-primary" id="ccArqGuardar">Guardar arqueo</button></div>
-            ${R.arqueos.length ? `<table class="inv-table ge-tabla" style="margin-top:12px"><thead><tr><th>Fecha</th><th>Sistema (S/)</th><th>Real (S/)</th><th>Diferencia (S/)</th><th>Explicación</th><th>Hecho por</th></tr></thead><tbody>
+            ${R.arqueos.length ? `<h4 class="cc-arq-tit">Arqueos hechos</h4><table class="inv-table ge-tabla"><thead><tr><th>Fecha</th><th>Debía haber (S/)</th><th>Se contó (S/)</th><th>Resultado</th><th>Por qué</th><th>Quién y cuándo</th></tr></thead><tbody>
                 ${R.arqueos.map(a => `<tr class="${num(a.diferencia) === 0 ? 'ge-fila-ok' : 'ge-fila-pend'}"><td>${fecha(a.fecha)}</td><td>${soles(a.saldo_sistema)}</td>
                     <td>${soles(num(a.efectivo) + num(a.saldo_cuenta) + num(a.vales))}</td>
-                    <td>${num(a.diferencia) === 0 ? '<span class="ge-estado verde">✔ Cuadra</span>' : `<span class="ge-estado rojo">${soles(a.diferencia)}</span>`}</td>
+                    <td>${num(a.diferencia) === 0 ? '<span class="ge-estado verde">✔ Cuadra</span>' : num(a.diferencia) < 0 ? `<span class="ge-estado rojo">Faltó ${soles(-num(a.diferencia))}</span>` : `<span class="ge-estado amarillo">Sobró ${soles(a.diferencia)}</span>`}</td>
                     <td>${esc(a.explicacion || '')}</td><td><span class="ge-sub">${esc(a.hecho_por)} · ${fecha(a.hecho_en)}</span></td></tr>`).join('')}</tbody></table>` : ''}`;
         calcularDif();
     }
     function calcularDif() {
         const real = num($('#ccArqEfectivo').value) + num($('#ccArqCuenta').value) + num($('#ccArqVales').value);
-        const fechaArq = $('#ccArqFecha').value;
         const dif = Math.round((real - R.saldo) * 100) / 100;
-        $('#ccArqDif').innerHTML = fechaArq !== hoy() ? 'La diferencia se calcula al guardar (saldo a esa fecha).'
-            : dif === 0 ? '✔ Cuadra con el sistema' : `Diferencia: ${soles(dif)} ${dif < 0 ? '(falta dinero)' : '(sobra dinero)'}`;
+        $('#ccArqTotal').textContent = soles(real);
+        $('#ccArqDif').className = 'cc-arq-res ' + (dif === 0 ? 'ok' : dif < 0 ? 'mal' : 'warn');
+        $('#ccArqDif').innerHTML = dif === 0 ? '✔ Cuadra: hay lo que dice el ERP.'
+            : dif < 0 ? `🔴 Falta ${soles(-dif)}: hay menos dinero de lo que dice el ERP.` : `🟡 Sobra ${soles(dif)}: hay más dinero de lo que dice el ERP.`;
+        $('.cc-arq-motivo').hidden = dif === 0;
     }
 
     // ============================================================
@@ -598,6 +665,7 @@
         $('#ccMovilidad').addEventListener('click', () => abrirMovilidad().catch(e => aviso(e.message, 'error')));
         $('#ccNuevaPersona').addEventListener('click', () => abrirPersona(null));
         ['#ccDesde', '#ccHasta', '#ccAnulados'].forEach(s => $(s).addEventListener('change', cargarMovs));
+        ['#ccFRubro', '#ccFQuien', '#ccFPagado'].forEach(s => $(s).addEventListener('change', () => pintarMovs(saldoAnt)));
         // Erika 04/11/2026: "el ERP está muy saturado". Por defecto se ven los últimos 30 días; lo anterior sigue
         // guardado (sustento ante SUNAT por 5 años) y se ve con "📚 Ver todo".
         const hace30 = new Date(hoy() + 'T12:00:00'); hace30.setDate(hace30.getDate() - 30);
@@ -633,6 +701,12 @@
                 else if (b.dataset.anular) abrirAnular(mov(b.dataset.anular));
                 else if (b.dataset.historial) verHistorial(mov(b.dataset.historial));
                 else if (b.dataset.ajustar) abrirAjuste(mov(b.dataset.ajustar));
+                else if (b.dataset.rechazar) abrirRechazo(mov(b.dataset.rechazar));
+                else if (b.dataset.validar) {
+                    b.disabled = true;
+                    try { const j = await api(`/caja-chica/api/movimiento/${b.dataset.validar}/validar`, { method: 'POST', body: { empresa_id: empresa() } }); aviso(j.message, 'success'); await cargar(); }
+                    finally { b.disabled = false; }
+                }
                 else if (b.dataset.vale) imprimir('/caja-chica/imprimir/vale/' + b.dataset.vale);
                 else if (b.dataset.impPlanilla) imprimir('/caja-chica/imprimir/movilidad', { ids: b.dataset.impPlanilla });
                 else if (b.dataset.anularPlanilla) abrirAnularPlanilla(+b.dataset.anularPlanilla);

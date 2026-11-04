@@ -97,9 +97,23 @@ def puede_ver_caja():
     return gestiona_caja_chica()
 
 
+def _solo_borrador():
+    """Luis, Sebastián y Estrella: solo anotan sus gastos como borrador (Erika 04/11/2026 noche)."""
+    from utils import reporta_caja_chica
+    return not puede_ver_caja() and reporta_caja_chica()
+
+
+ENDPOINTS_BORRADOR = {'caja_chica.pagina', 'caja_chica.api_mis_gastos', 'caja_chica.api_personas', 'caja_chica.api_gasto',
+                      'caja_chica.api_subir_foto', 'caja_chica.api_fotos', 'caja_chica.ver_foto'}
+
+
 @caja_chica_bp.before_request
 def _proteger():
     if 'usuario_id' not in session:
+        return None
+    if not puede_ver_caja() and _solo_borrador() and request.endpoint in ENDPOINTS_BORRADOR \
+            and not (request.endpoint == 'caja_chica.api_personas' and request.method != 'GET'):
+        asegurar_tablas()
         return None
     if not puede_ver_caja():
         msg = ('No tienes permiso para entrar a Caja chica. Lo ve la gerencia y quien tenga el permiso '
@@ -248,6 +262,18 @@ SQL_DDL_CAJA = """
     ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS hora TIME;
     ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS detalle VARCHAR(300);
     ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS planilla_id INTEGER REFERENCES caja_chica_planillas(id);
+    -- 047 (04/11/2026 noche): borradores que Hellen valida
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS creado_usuario VARCHAR(60);
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS validado_por VARCHAR(150);
+    ALTER TABLE caja_chica_movimientos ADD COLUMN IF NOT EXISTS validado_en TIMESTAMP;
+    DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'caja_chica_movimientos_estado_check'
+                       AND pg_get_constraintdef(oid) LIKE '%Borrador%') THEN
+            ALTER TABLE caja_chica_movimientos DROP CONSTRAINT IF EXISTS caja_chica_movimientos_estado_check;
+            ALTER TABLE caja_chica_movimientos ADD CONSTRAINT caja_chica_movimientos_estado_check
+                CHECK (estado IN ('Activo', 'Anulado', 'Borrador', 'Rechazado'));
+        END IF;
+    END $$;
 """
 _tablas = {'ok': False}
 _lock = threading.Lock()
@@ -375,6 +401,13 @@ def _siguiente(cur, tabla, eid):
     return cur.fetchone()['n']
 
 
+def _ultimo_cierre(eid):
+    """Fecha y hora exactas de la última aprobación (Erika 04/11/2026 noche: el cierre es por hora, no por día)."""
+    f = db_query("""SELECT revisada_en FROM caja_chica_rendiciones WHERE empresa_id = %s AND estado = 'Aprobada'
+                    ORDER BY revisada_en DESC NULLS LAST LIMIT 1""", (str(eid),))
+    return f[0]['revisada_en'] if f else None
+
+
 def _ultima_aprobada(eid):
     f = db_query("""SELECT MAX(hasta) AS h FROM caja_chica_rendiciones WHERE empresa_id = %s AND estado = 'Aprobada'""",
                  (str(eid),))
@@ -442,9 +475,11 @@ def _leer_gasto(eid, d, conf):
         raise ErrorCaja('La fecha no puede ser futura.')
     if fecha < hoy - timedelta(days=120):
         raise ErrorCaja('La fecha es de hace más de 4 meses: revisa el año.')
+    # Cierre por hora: lo del mismo día de la aprobación sigue entrando (va a la siguiente rendición).
+    # Solo se rechaza una fecha anterior al último día aprobado.
     cerrada = _ultima_aprobada(eid)
-    if cerrada and fecha <= cerrada:
-        raise ErrorCaja(f'La semana hasta el {cerrada:%d/%m/%Y} ya fue aprobada y está cerrada. Usa una fecha posterior.')
+    if cerrada and fecha < cerrada and fecha != d.get('_fecha_anterior'):
+        raise ErrorCaja(f'La caja ya se aprobó hasta el {cerrada:%d/%m/%Y}. Usa una fecha desde ese día.')
     hora = _hora(d.get('hora'), fecha, hoy)
     rubro = RUBROS_ANTERIORES.get(d.get('rubro'), d.get('rubro'))
     if rubro not in RUBROS or (rubro in RUBROS_RETIRADOS and rubro != (d.get('_rubro_anterior') or '')):
@@ -504,6 +539,9 @@ def _leer_gasto(eid, d, conf):
     # Erika 04/11/2026: el flete siempre es subcontratado: "Pagado a" = el transportista (no "No aplica")
     if rubro == RUBRO_FLETE and (not d.get('pagado_a') or str(d.get('pagado_a')).startswith('__')):
         raise ErrorCaja('En flete, en "Pagado a" elige al transportista que contrataste (o escribe su nombre).')
+    obs = (d.get('observacion') or '').strip()
+    if obs and (len(re.sub(r'\W', '', obs)) < 4 or re.fullmatch(r'(.)\1+', re.sub(r'\s', '', obs.lower()))):
+        raise ErrorCaja('Escribe una observación con sentido (ej.: "pagó con Yape"), o déjala vacía.')
     autorizado = _txt(d, 'autorizado_por', 150)
     if monto > TOPE_AVISO and not autorizado:
         raise ErrorCaja(f'Gasto mayor a S/ {TOPE_AVISO:.0f}: escribe quién lo autorizó (ej.: Erika por WhatsApp).')
@@ -560,21 +598,78 @@ def _numero_vale(cur, eid):
     return f"{pref}{int(cur.fetchone()['n']) + 1:06d}"
 
 
+def _login():
+    return (session.get('usuario') or '').strip().lower()
+
+
 def registrar_gasto(eid, d):
     conf = leer_config(eid)
     g = _leer_gasto(eid, d, conf)
+    borrador = _solo_borrador()
     with db_tx() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        if g['comprobante_tipo'] == COMPROBANTE_VALE:
-            g['comprobante_numero'] = _numero_vale(cur, eid)
+        if g['comprobante_tipo'] == COMPROBANTE_VALE and not borrador:
+            g['comprobante_numero'] = _numero_vale(cur, eid)       # el borrador recibe su N° V- al validarse
         n = _siguiente(cur, 'caja_chica_movimientos', eid)
-        cols = ['empresa_id', 'numero', 'tipo', 'creado_por', 'actualizado_por'] + list(g.keys())
-        vals = [str(eid), n, 'Gasto', _usuario(), _usuario()] + list(g.values())
+        cols = ['empresa_id', 'numero', 'tipo', 'estado', 'creado_usuario', 'creado_por', 'actualizado_por'] + list(g.keys())
+        vals = [str(eid), n, 'Gasto', 'Borrador' if borrador else 'Activo', _login(), _usuario(), _usuario()] + list(g.values())
         cur.execute(f"INSERT INTO caja_chica_movimientos ({', '.join(cols)}, historial) VALUES "
                     f"({', '.join(['%s'] * len(vals))}, %s) RETURNING id",
                     vals + [_evento('Registrado', monto=float(g['egreso']))])
         mid = cur.fetchone()['id']
     return mid, n, _avisos_de(eid, conf, g, mid)
+
+
+def _mio_editable(m):
+    if (m.get('creado_usuario') or '') != _login():
+        raise ErrorCaja('Solo puedes cambiar los gastos que tú anotaste.')
+    if m['estado'] not in ('Borrador', 'Rechazado'):
+        raise ErrorCaja('Hellen ya validó ese gasto: si hay un error, avísale a ella.')
+
+
+def validar_borrador(eid, mid):
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        m = _mov(cur, eid, mid)
+        if m['estado'] != 'Borrador':
+            raise ErrorCaja('Ese gasto no está por validar.')
+        numero_c = m['comprobante_numero']
+        if m['comprobante_tipo'] == COMPROBANTE_VALE and not str(numero_c or '').startswith('V-'):
+            numero_c = _numero_vale(cur, eid)
+        cur.execute("""UPDATE caja_chica_movimientos SET estado = 'Activo', comprobante_numero = %s, validado_por = %s,
+                       validado_en = NOW(), actualizado_por = %s, actualizado_en = NOW(), historial = historial || %s WHERE id = %s""",
+                    (numero_c, _usuario(), _usuario(), _evento('Validado'), mid))
+    return m['numero']
+
+
+def rechazar_borrador(eid, mid, motivo):
+    motivo = (motivo or '').strip()
+    if len(motivo) < 5:
+        raise ErrorCaja('Escribe qué está mal, para que lo corrijan.')
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        m = _mov(cur, eid, mid)
+        if m['estado'] != 'Borrador':
+            raise ErrorCaja('Ese gasto no está por validar.')
+        cur.execute("""UPDATE caja_chica_movimientos SET estado = 'Rechazado', motivo_anulacion = %s, actualizado_por = %s,
+                       actualizado_en = NOW(), historial = historial || %s WHERE id = %s""",
+                    (motivo[:500], _usuario(), _evento('Rechazado', motivo=motivo[:500]), mid))
+    return m['numero']
+
+
+def mis_gastos(eid):
+    filas = db_query("""SELECT m.*, (SELECT COUNT(*) FROM caja_chica_fotos f WHERE f.movimiento_id = m.id) AS fotos
+                        FROM caja_chica_movimientos m WHERE m.empresa_id = %s AND m.creado_usuario = %s AND m.tipo = 'Gasto'
+                          AND m.fecha >= CURRENT_DATE - 60 ORDER BY m.fecha DESC, m.numero DESC LIMIT 300""", (str(eid), _login()))
+    salida = []
+    for m in filas:
+        item = {k: _f(v) for k, v in m.items() if k != 'historial'}
+        item['rubro'] = rubro_actual(m['rubro'])
+        item['historial'] = m['historial'] or []
+        item['sustenta'] = m['comprobante_tipo'] in SUSTENTA_SUNAT
+        item['bloqueado'] = m['estado'] not in ('Borrador', 'Rechazado')
+        salida.append(item)
+    return salida
 
 
 def _avisos_de(eid, conf, g, mid):
@@ -618,10 +713,10 @@ def _aprobado(cur, m):
             return True
     # Por fecha (semana cerrada) quedan validados el histórico y los depósitos/devoluciones. Un gasto o ajuste del ERP
     # que aún no entró en una rendición sigue pendiente: va a la siguiente para que Erika lo vea.
-    if _es_ajuste(m) or (m['tipo'] == 'Gasto' and m['origen'] != 'Histórico'):
+    if _es_ajuste(m) or (m['tipo'] == 'Gasto' and m['origen'] != 'Histórico') or m['estado'] in ('Borrador', 'Rechazado'):
         return False
-    cerrada = _ultima_aprobada(m['empresa_id'])
-    return bool(cerrada and m['fecha'] <= cerrada)
+    corte = _ultimo_cierre(m['empresa_id'])          # por hora: lo registrado antes de la última aprobación
+    return bool(corte and m.get('creado_en') and m['creado_en'] <= corte)
 
 
 def _editable(cur, m, para_anular=False):
@@ -653,9 +748,15 @@ def editar_gasto(eid, mid, d):
     with db_tx() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         m = _mov(cur, eid, mid)
+        if _solo_borrador():
+            _mio_editable(m)
         _editable(cur, m)          # primero el candado: lo aprobado no se toca
-        g = _leer_gasto(eid, d, conf)
-        if g['comprobante_tipo'] == COMPROBANTE_VALE:
+        g = _leer_gasto(eid, dict(d, _fecha_anterior=m['fecha']), conf)
+        if m['estado'] in ('Borrador', 'Rechazado'):
+            g['estado'] = 'Borrador'      # corregido: vuelve a "por validar"
+            if g['comprobante_tipo'] == COMPROBANTE_VALE and not str(m.get('comprobante_numero') or '').startswith('V-'):
+                g['comprobante_numero'] = None
+        if g['comprobante_tipo'] == COMPROBANTE_VALE and g.get('estado') != 'Borrador':
             # si ya tenía su N° de vale lo conserva; si recién pasa a vale, recibe el siguiente
             g['comprobante_numero'] = (m['comprobante_numero'] if str(m.get('comprobante_numero') or '').startswith('V-')
                                        else _numero_vale(cur, eid))
@@ -765,8 +866,8 @@ def registrar_ingreso(eid, d):
     if fecha > _ahora().date():
         raise ErrorCaja('La fecha no puede ser futura.')
     cerrada = _ultima_aprobada(eid)
-    if cerrada and fecha <= cerrada:
-        raise ErrorCaja(f'La semana hasta el {cerrada:%d/%m/%Y} ya fue aprobada y está cerrada. Usa una fecha posterior.')
+    if cerrada and fecha < cerrada:
+        raise ErrorCaja(f'La caja ya se aprobó hasta el {cerrada:%d/%m/%Y}. Usa una fecha desde ese día.')
     monto = _monto(d.get('monto'))
     descripcion = _txt(d, 'descripcion', 500, True, 'la descripción')
     operacion = _txt(d, 'numero_operacion', 80)
@@ -794,7 +895,7 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
              LEFT JOIN caja_chica_planillas pl ON pl.id = m.planilla_id
              WHERE m.empresa_id = %s"""
     if not incluir_anulados:
-        sql += " AND m.estado = 'Activo'"
+        sql += " AND m.estado IN ('Activo', 'Borrador')"
     if desde:
         sql += " AND m.fecha >= %s"
         par.append(desde)
@@ -812,7 +913,7 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
         previo = saldo(eid, desde - timedelta(days=1))
     salida = []
     acumulado = previo
-    cerrada = _ultima_aprobada(eid)
+    corte = _ultimo_cierre(eid)
     for m in filas:
         item = {k: _f(v) for k, v in m.items() if k != 'historial'}
         item['rubro'] = rubro_actual(m['rubro'])
@@ -823,7 +924,8 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
         item['sustenta'] = m['comprobante_tipo'] in SUSTENTA_SUNAT
         es_aj = any((h or {}).get('accion') == 'Ajuste' for h in (m['historial'] or []))
         aprobado = bool((m['rendicion_id'] and m['rendicion_estado'] == 'Aprobada') or
-                        (cerrada and m['fecha'] <= cerrada and not es_aj and (m['tipo'] != 'Gasto' or m['origen'] == 'Histórico')))
+                        (corte and m['creado_en'] and m['creado_en'] <= corte and not es_aj and m['estado'] == 'Activo'
+                         and (m['tipo'] != 'Gasto' or m['origen'] == 'Histórico')))
         item['aprobado'] = aprobado
         item['es_ajuste'] = es_aj
         item['bloqueado'] = bool(m['origen'] == 'Histórico' or m['tipo'] != 'Gasto' or es_aj or aprobado or
@@ -833,6 +935,7 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
                                 and (m['tipo'] == 'Gasto' and m['origen'] != 'Histórico' and not (m['planilla_id'] and m['planilla_estado'] == 'Emitida')
                                      or es_aj or (es_admin() and (m['origen'] == 'Histórico' or m['tipo'] != 'Gasto'))))
         item['ajustable'] = bool(m['estado'] == 'Activo' and m['tipo'] == 'Gasto' and not es_aj and aprobado)
+        item['por_validar'] = m['estado'] == 'Borrador'
         item['editado'] = sum(1 for h in (m['historial'] or []) if (h or {}).get('accion') == 'Editado')
         salida.append(item)
     return salida, _n(previo)
@@ -846,6 +949,30 @@ def _validado(rend):
             return {'numero': r['numero'], 'hasta': _f(r['hasta']), 'saldo': ev.get('saldo_validado'),
                     'por': r['revisada_por'], 'en': _f(r['revisada_en'])}
     return None
+
+
+def _cuentas_empresa(eid):
+    """Cuentas bancarias de la empresa para elegir de dónde sale la reposición (principal primero: KCF BBVA, AGD BCP)."""
+    try:
+        filas = db_query("""SELECT banco, moneda, tipo_cuenta, numero_cuenta, es_principal FROM erp_empresa_cuentas_bancarias
+                            WHERE empresa_id::text = %s AND COALESCE(LOWER(estado), 'activo') <> 'inactivo'
+                            ORDER BY es_principal DESC NULLS LAST, banco""", (str(eid),))
+    except Exception:
+        return []
+    salida = []
+    for f in filas:
+        num = re.sub(r'\D', '', f['numero_cuenta'] or '')
+        etiqueta = f"{f['banco']} · {f['tipo_cuenta'] or 'Cuenta'} {f['moneda'] or 'PEN'}" + (f" ···{num[-4:]}" if num else '')
+        salida.append({'banco': f['banco'], 'etiqueta': etiqueta, 'principal': bool(f['es_principal'])})
+    return salida
+
+
+def _detalles_previos(eid):
+    """Recorridos ya escritos ("De dónde a dónde"), los más usados primero, para no escribirlos de nuevo."""
+    filas = db_query("""SELECT TRIM(detalle) AS d, COUNT(*) AS n FROM caja_chica_movimientos
+                        WHERE empresa_id = %s AND NULLIF(TRIM(detalle), '') IS NOT NULL AND fecha >= CURRENT_DATE - 180
+                        GROUP BY TRIM(detalle) ORDER BY COUNT(*) DESC, MAX(id) DESC LIMIT 80""", (str(eid),))
+    return [f['d'] for f in filas]
 
 
 def resumen(e):
@@ -880,6 +1007,9 @@ def resumen(e):
     sin_mes = sum((a_decimal(x['sin_sustento']) for x in mes), CERO)
     hist = db_query("""SELECT COUNT(*) AS n, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM caja_chica_movimientos
                        WHERE empresa_id = %s AND origen = 'Histórico'""", (eid,))[0]
+    por_validar = [{'quien': x['quien'], 'creado_por': x['creado_por'], 'n': x['n'], 'total': _n(x['t'])} for x in db_query(
+        """SELECT creado_por, MIN(quien) AS quien, COUNT(*) AS n, SUM(egreso) AS t FROM caja_chica_movimientos
+           WHERE empresa_id = %s AND estado = 'Borrador' GROUP BY creado_por ORDER BY creado_por""", (eid,))]
     return {
         'empresa': {'id': eid, 'codigo': e['codigo'], 'razon_social': e.get('razon_social'), 'ruc': e.get('ruc')},
         'config': {**conf, 'fondo_fijo': float(conf['fondo_fijo']), 'rmv': float(conf['rmv']),
@@ -893,6 +1023,10 @@ def resumen(e):
         'arqueos': [{k: _f(v) for k, v in a.items()} for a in arq],
         'historico': {'n': hist['n'], 'desde': _f(hist['desde']), 'hasta': _f(hist['hasta'])},
         'cerrada_hasta': _f(_ultima_aprobada(eid)),
+        'cierre': _f(_ultimo_cierre(eid)),
+        'por_validar': por_validar,
+        'cuentas_empresa': _cuentas_empresa(eid),
+        'detalles_previos': _detalles_previos(eid),
         'hoy': hoy.isoformat(),
     }
 
@@ -934,6 +1068,8 @@ def subir_foto(eid, mid, archivo):
         m = _mov(cur, eid, mid)
         if m['estado'] == 'Anulado':
             raise ErrorCaja('Ese movimiento está anulado.')
+        if _solo_borrador() and (m.get('creado_usuario') or '') != _login():
+            raise ErrorCaja('Solo puedes subir fotos de tus gastos.')
         cur.execute("SELECT COUNT(*) AS n FROM caja_chica_fotos WHERE movimiento_id = %s", (mid,))
         if cur.fetchone()['n'] >= 3:
             raise ErrorCaja('Máximo 3 fotos por gasto.')
@@ -1340,7 +1476,7 @@ def pagina():
     emps = [{'id': x['id'], 'codigo': x['codigo']} for x in lista_empresas()]
     activa = empresa_actual()
     return render_template('caja_chica.html', empresas=emps, empresa_activa=activa['id'] if activa else None,
-                           es_admin=es_admin(), rubros=RUBROS_FORMULARIO, comprobantes=COMPROBANTES, tipos_persona=TIPOS_PERSONA,
+                           es_admin=es_admin(), solo_borrador=_solo_borrador(), rubros=RUBROS_FORMULARIO, comprobantes=COMPROBANTES, tipos_persona=TIPOS_PERSONA,
                            proveedores=_proveedores_flete(),
                            descripciones=DESCRIPCIONES, piden_detalle=PIDEN_DETALLE,
                            con_numero=CON_NUMERO, sustenta=SUSTENTA_SUNAT, tope_aviso=float(TOPE_AVISO))
@@ -1393,6 +1529,36 @@ def api_ingreso():
         return _err(ex)
 
 
+@caja_chica_bp.route('/caja-chica/api/mis-gastos')
+def api_mis_gastos():
+    e = _empresa(request.args.get('empresa_id'))
+    conf = leer_config(str(e['id']))
+    return jsonify({'success': True, 'data': {'filas': mis_gastos(str(e['id'])),
+                                              'config': {'tope_movilidad': float(tope_movilidad(conf)), 'fondo_fijo': None,
+                                                         'responsable': conf['responsable'], 'configurado': conf['configurado']},
+                                              'detalles_previos': _detalles_previos(str(e['id']))}})
+
+
+@caja_chica_bp.route('/caja-chica/api/movimiento/<int:mid>/validar', methods=['POST'])
+def api_validar(mid):
+    try:
+        d = _json()
+        n = validar_borrador(str(_empresa(d.get('empresa_id'))['id']), mid)
+        return jsonify({'success': True, 'message': f'Gasto N° {n} validado: ya cuenta en la caja.'})
+    except ErrorCaja as ex:
+        return _err(ex)
+
+
+@caja_chica_bp.route('/caja-chica/api/movimiento/<int:mid>/rechazar', methods=['POST'])
+def api_rechazar(mid):
+    try:
+        d = _json()
+        n = rechazar_borrador(str(_empresa(d.get('empresa_id'))['id']), mid, d.get('motivo'))
+        return jsonify({'success': True, 'message': f'Gasto N° {n} devuelto para corregir.'})
+    except ErrorCaja as ex:
+        return _err(ex)
+
+
 @caja_chica_bp.route('/caja-chica/api/movimiento/<int:mid>/ajuste', methods=['POST'])
 def api_ajuste(mid):
     try:
@@ -1429,14 +1595,16 @@ def api_fotos(mid):
     e = _empresa(request.args.get('empresa_id'))
     filas = db_query("""SELECT f.id, f.nombre, f.mime, f.bytes, f.subido_por, f.subido_en FROM caja_chica_fotos f
                         JOIN caja_chica_movimientos m ON m.id = f.movimiento_id
-                        WHERE f.movimiento_id = %s AND m.empresa_id = %s ORDER BY f.id""", (mid, str(e['id'])))
+                        WHERE f.movimiento_id = %s AND m.empresa_id = %s AND (%s OR m.creado_usuario = %s) ORDER BY f.id""",
+                     (mid, str(e['id']), not _solo_borrador(), _login()))
     return jsonify({'success': True, 'data': [{k: _f(v) for k, v in f.items()} for f in filas]})
 
 
 @caja_chica_bp.route('/caja-chica/foto/<int:fid>')
 def ver_foto(fid):
     f = db_query("""SELECT f.mime, f.datos, m.empresa_id FROM caja_chica_fotos f
-                    JOIN caja_chica_movimientos m ON m.id = f.movimiento_id WHERE f.id = %s""", (fid,))
+                    JOIN caja_chica_movimientos m ON m.id = f.movimiento_id WHERE f.id = %s AND (%s OR m.creado_usuario = %s)""",
+                 (fid, not _solo_borrador(), _login()))
     if not f or not any(str(x['id']) == str(f[0]['empresa_id']) for x in lista_empresas()):
         return Response('No encontrada', status=404)
     return Response(bytes(f[0]['datos']), mimetype=f[0]['mime'], headers={'Cache-Control': 'private, max-age=86400'})

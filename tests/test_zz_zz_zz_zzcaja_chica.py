@@ -164,9 +164,12 @@ def test_rendicion_observar_y_aprobar(admin, kcf, gente):
     assert d['saldo'] == 600 and d['por_reponer'] == 0
     pago = sql("SELECT monto, numero_operacion FROM finanzas_pagos WHERE documento_tabla = 'caja_chica_rendiciones' AND documento_id = %s", (rid,))
     assert float(pago[0][0]) == 164 and pago[0][1] == '987654'
-    # Semana cerrada: no se registra con fecha de esa semana
+    # Cierre por hora (Erika 04/11/2026 noche): el mismo día sigue entrando (va a la siguiente rendición);
+    # una fecha anterior al último día aprobado, no
+    r = _gasto(admin, kcf, gente['Luis'], fecha=(HOY - timedelta(days=1)).isoformat())
+    assert r.status_code == 400 and 'aprobó' in r.json['error']
     r = _gasto(admin, kcf, gente['Luis'])
-    assert r.status_code == 400 and 'cerrada' in r.json['error']
+    assert r.status_code == 200, r.json
     assert admin.get(f'/caja-chica/imprimir/rendicion/{rid}?empresa_id={kcf}').status_code == 200
     assert admin.get(f'/caja-chica/imprimir/acta?empresa_id={kcf}').status_code == 200
 
@@ -174,7 +177,7 @@ def test_rendicion_observar_y_aprobar(admin, kcf, gente):
 def test_arqueo_y_anular(admin, kcf, gente):
     r = admin.post('/caja-chica/api/arqueo', json={'empresa_id': kcf, 'efectivo': 100, 'saldo_cuenta': 495})
     assert r.status_code == 400 and 'diferencia' in r.json['error']
-    r = admin.post('/caja-chica/api/arqueo', json={'empresa_id': kcf, 'efectivo': 100, 'saldo_cuenta': 500})
+    r = admin.post('/caja-chica/api/arqueo', json={'empresa_id': kcf, 'efectivo': 100, 'saldo_cuenta': 496.50})
     assert r.status_code == 200 and 'cuadra' in r.json['message']
     movs = admin.get(f'/caja-chica/api/movimientos?empresa_id={kcf}').json['data']['filas']
     repo = next(m for m in movs if m['tipo'] == 'Reposición' and m['rendicion_id'])

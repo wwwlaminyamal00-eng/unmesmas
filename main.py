@@ -163,6 +163,11 @@ def control_de_acceso():
         if session.get('admin_erp') != acceso['admin']:
             session['admin_erp'] = acceso['admin']
         modulo = None if acceso['admin'] else modulo_de_ruta(ruta, request.method)
+        # Caja chica: la decide su propia lista (Erika 04/11/2026: la gestionan Hellen y Erika; Luis, Sebastián y
+        # Estrella solo anotan borradores). El candado está en routes/caja_chica.py, no en la matriz.
+        caja = modulo == 'caja_chica'
+        if caja:
+            modulo = None
         if modulo and modulo not in acceso['modulos']:
             mensaje = (f"No tienes permiso para entrar a {NOMBRE_MODULO.get(modulo, modulo)}. "
                        f"Pídeselo al administrador en Configuración ▸ Usuarios y permisos.")
@@ -171,7 +176,7 @@ def control_de_acceso():
             flash(mensaje, 'error')
             return redirect(url_for('index'))
         # "Solo lectura": puede mirar el módulo pero el servidor no le deja grabar nada (22/10/2026)
-        lectura = bloqueo_solo_lectura(ruta, request.method, acceso)
+        lectura = None if caja else bloqueo_solo_lectura(ruta, request.method, acceso)
         if lectura:
             mensaje = (f"Tienes {NOMBRE_MODULO.get(lectura, lectura)} en «Solo lectura»: puedes mirar pero no grabar. "
                        f"Pide «Acceso total» al administrador en Configuración ▸ Usuarios y permisos.")
@@ -294,10 +299,11 @@ def inject_request():
     except Exception:
         puede_validar = False
     # 25/10/2026: regla de oro, el menú 8 Reportes solo lo ve Erika
-    from utils import es_duena_reportes, es_duena, gestiona_caja_chica
+    from utils import es_duena_reportes, es_duena, gestiona_caja_chica, reporta_caja_chica
     return dict(request=request, acceso_menu=acceso_menu, usuario_es_admin=es_admin(), puede_validar_ventas=puede_validar,
                 es_duena_reportes='usuario_id' in session and es_duena_reportes(),
                 gestiona_caja='usuario_id' in session and gestiona_caja_chica(),
+                reporta_caja='usuario_id' in session and not gestiona_caja_chica() and reporta_caja_chica(),
                 es_duena='usuario_id' in session and es_duena())
 
 # ==========================================

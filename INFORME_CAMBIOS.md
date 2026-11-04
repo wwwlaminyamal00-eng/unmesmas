@@ -2790,3 +2790,13 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - "Saldo validado": al aprobar se guarda el saldo que quedó (en el historial de la rendición) y se muestra en la pestaña Rendición.
 - Tarjetas con una línea que explica cada una; pestaña Rendición con paso a paso (Hellen envía → Erika aprueba y repone → candado) y estado claro.
 - Sin migraciones (el ajuste se marca en el historial JSON existente). 399 pruebas.
+
+## 24.76 Caja chica: cierre por hora, borradores, banco, sugerencias, filtros y arqueo (04/11/2026 noche)
+- **Cierre por hora:** aprobar una rendición ya no bloquea el día. Lo registrado después de la aprobación (aunque sea el mismo día) va a la siguiente rendición; solo se rechaza una fecha anterior al último día aprobado. La hora del gasto la pone el sistema y se ve en la lista. El candado de lo aprobado se mide con la hora exacta de la aprobación.
+- **Borradores (migración 047, respaldo respaldo_20261104_caja_chica_movimientos, 840 filas):** Luis, Sebastián y Estrella (lista `USUARIOS_CAJA_BORRADOR`) entran a "Mis gastos": anotan sus gastos con foto como 📝 Por validar; no ven saldos, rendiciones ni gastos ajenos. Hellen los ve resaltados con ✔ Validar / Editar / ✖ Devolver (con motivo). Solo lo validado cuenta en la caja y entra en la rendición; el vale recibe su N° V- al validarse. Caja chica ya no depende de la matriz de permisos: la deciden sus listas.
+- **Banco de la empresa** al aprobar: lista con las cuentas de la empresa (principal primero: KCF BBVA, AGD BCP) y "Otro banco".
+- **"De dónde a dónde":** sugiere los recorridos ya escritos (los más usados de los últimos 6 meses).
+- **Filtros** por Rubro, Quién gastó y Pagado a, con **fila de total** al pie (gastos, total, sin sustento, ingresos, por validar).
+- **Arqueo** en 3 pasos: lo que debe haber según el ERP, lo que se contó (efectivo, cuenta, adelantos), resultado (cuadra / falta / sobra) con motivo obligatorio; historial "Arqueos hechos".
+- **Observación:** vacía o con sentido (rechaza "pppp").
+- 400 pruebas.

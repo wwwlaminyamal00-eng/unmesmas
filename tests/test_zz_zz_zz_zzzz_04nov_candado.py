@@ -4,6 +4,8 @@ Candados de Caja chica (Erika, 04/11/2026 noche). Datos de prueba, solo en la ba
   - Un error se corrige con "Ajuste": línea nueva con motivo que entra en la siguiente rendición.
   - Los cambios hechos antes de aprobar se ven en la rendición; el saldo aprobado queda como "saldo validado".
 """
+from datetime import timedelta
+
 import pytest
 
 from tests.test_flujos import sql
@@ -69,9 +71,9 @@ def test_candado_despues_de_aprobar_y_ajuste(admin, emp):
     assert r.status_code == 400 and 'Ajustar' in r.json['error']
     r = admin.post(f'/caja-chica/api/movimiento/{a}/anular', json={'empresa_id': eid, 'motivo': 'quiero cambiarlo'})
     assert r.status_code == 400 and 'Ajustar' in r.json['error']
-    r = admin.post('/caja-chica/api/ingreso', json={'empresa_id': eid, 'tipo': 'Devolución', 'fecha': HOY.isoformat(),
+    r = admin.post('/caja-chica/api/ingreso', json={'empresa_id': eid, 'tipo': 'Devolución', 'fecha': (HOY - timedelta(days=1)).isoformat(),
                                                    'monto': '1.00', 'descripcion': 'devolución a fecha cerrada'})
-    assert r.status_code == 400 and 'cerrada' in r.json['error']
+    assert r.status_code == 400 and 'aprobó' in r.json['error']
     # ajuste: motivo obligatorio, 5 → 6 deja un gasto de 1.00; 25 → 20 deja una devolución de 5.00
     assert admin.post(f'/caja-chica/api/movimiento/{a}/ajuste', json={'empresa_id': eid, 'monto_nuevo': '6'}).status_code == 400
     r = admin.post(f'/caja-chica/api/movimiento/{a}/ajuste', json={'empresa_id': eid, 'monto_nuevo': '6.00',
@@ -96,3 +98,47 @@ def test_candado_despues_de_aprobar_y_ajuste(admin, emp):
     html = admin.get('/caja-chica/imprimir/rendicion/' + str(sql(
         "SELECT id FROM caja_chica_rendiciones WHERE empresa_id = %s AND estado = 'Por aprobar'", (eid,))[0][0]) + f'?empresa_id={eid}').get_data(as_text=True)
     assert '− 5.00' in html and 'Ajuste del gasto' in html
+
+
+def test_borradores_cierre_por_hora_y_observacion(app, admin, emp, base):
+    # Erika 04/11/2026 (noche): Luis, Sebastián y Estrella anotan borradores; Hellen valida o devuelve
+    from werkzeug.security import generate_password_hash
+    from conftest import _login
+    from tests.test_permisos_usuarios import _usuario
+    eid, quien = emp
+    uid, _ = _usuario(base, 'caja_borrador', empresas=('AGD',))
+    sql("UPDATE usuarios SET password = %s WHERE id = %s", (generate_password_hash('Borr#2026!'), uid))
+    h = _login(app, 'caja_borrador', 'Borr#2026!')
+    assert h.get('/caja-chica').status_code == 200
+    assert h.get(f'/caja-chica/api/resumen?empresa_id={eid}').status_code == 403      # no ve saldos ni rendiciones
+    saldo0 = admin.get(f'/caja-chica/api/resumen?empresa_id={eid}').json['data']['saldo']
+    d = {'empresa_id': eid, 'fecha': HOY.isoformat(), 'rubro': 'Movilidad operativa del personal', 'monto': '4.00',
+         'quien_id': quien, 'descripcion': 'Entrega a cliente', 'detalle': 'Oficina Breña → Malvinas',
+         'comprobante_tipo': 'Sin comprobante (vale)', 'observacion': 'pppppppppppp'}
+    r = h.post('/caja-chica/api/gasto', json=d)
+    assert r.status_code == 400 and 'sentido' in r.json['error']
+    r = h.post('/caja-chica/api/gasto', json=dict(d, observacion=''))
+    assert r.status_code == 200, r.json
+    mid = r.json['id']
+    mios = h.get(f'/caja-chica/api/mis-gastos?empresa_id={eid}').json['data']
+    assert [m['estado'] for m in mios['filas'] if m['id'] == mid] == ['Borrador'] and 'Oficina Breña → Malvinas' in mios['detalles_previos']
+    res = admin.get(f'/caja-chica/api/resumen?empresa_id={eid}').json['data']
+    assert res['saldo'] == saldo0 and res['por_validar'][0]['n'] >= 1         # el borrador aún no cuenta
+    # Hellen lo devuelve; el practicante lo corrige y vuelve a "por validar"
+    assert admin.post(f'/caja-chica/api/movimiento/{mid}/rechazar', json={'empresa_id': eid, 'motivo': 'falta la foto'}).status_code == 200
+    assert h.put(f'/caja-chica/api/gasto/{mid}', json=dict(d, observacion='', monto='4.50')).status_code == 200
+    assert sql("SELECT estado, comprobante_numero FROM caja_chica_movimientos WHERE id = %s", (mid,))[0] == ('Borrador', None)
+    # validado: cuenta en la caja y recibe su N° de vale; el practicante ya no lo cambia
+    assert admin.post(f'/caja-chica/api/movimiento/{mid}/validar', json={'empresa_id': eid}).status_code == 200
+    est, num = sql("SELECT estado, comprobante_numero FROM caja_chica_movimientos WHERE id = %s", (mid,))[0]
+    assert est == 'Activo' and num.startswith('V-')
+    assert admin.get(f'/caja-chica/api/resumen?empresa_id={eid}').json['data']['saldo'] == round(saldo0 - 4.5, 2)
+    r = h.put(f'/caja-chica/api/gasto/{mid}', json=dict(d, observacion='', monto='9.00'))
+    assert r.status_code == 400 and 'Hellen' in r.json['error']
+    # no toca gastos ajenos
+    otro = _g(admin, eid, quien, '3.00', 'Gasto de Hellen')
+    r = h.put(f'/caja-chica/api/gasto/{otro}', json=dict(d, observacion=''))
+    assert r.status_code == 400 and 'tú anotaste' in r.json['error']
+    assert h.post(f'/caja-chica/api/movimiento/{otro}/anular', json={'empresa_id': eid, 'motivo': 'no es mío'}).status_code == 403
+    # cuentas del banco para la reposición
+    assert 'cuentas_empresa' in admin.get(f'/caja-chica/api/resumen?empresa_id={eid}').json['data']
