@@ -62,6 +62,7 @@
                 <label>Hasta<input type="date" id="ccHasta"></label>
                 <label>Buscar<input type="search" id="ccBuscar" placeholder="Persona, destino, N° PV / PC, N° comprobante..."></label>
                 <label class="ge-check" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="ccAnulados"> Ver anulados</label>
+                <button type="button" class="btn btn-secondary" id="ccVerTodo">📚 Ver todo (histórico)</button>
                 <button type="button" class="btn btn-secondary" id="ccIngreso">+ Depósito o devolución</button>
                 <button type="button" class="btn btn-secondary" id="ccMovilidad">🧾 Planillas de movilidad</button>
             </div>
@@ -130,5 +131,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104a"></script>
+<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104b"></script>
 {% endblock %}

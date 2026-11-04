@@ -156,7 +156,7 @@
                     (!m.bloqueado || (esAdmin() && (m.origen === 'Histórico' || (m.tipo !== 'Gasto' && !m.rendicion_id)))) ? `<button type="button" class="ge-btn" data-anular="${m.id}">Anular</button>` : ''
                 ].join('')}</td></tr>`).join('')}
             </tbody></table>
-            ${saldoAnterior && $('#ccDesde').value ? `<div class="ge-sub">Saldo antes del ${fecha($('#ccDesde').value)}: ${soles(saldoAnterior)}</div>` : ''}`;
+            ${$('#ccDesde').value ? `<div class="ge-sub">Se ve desde el ${fecha($('#ccDesde').value)}${saldoAnterior ? ` · saldo antes de esa fecha: ${soles(saldoAnterior)}` : ''}. Lo anterior sigue guardado: pulsa <b>📚 Ver todo (histórico)</b>.</div>` : ''}`;
     }
 
     // ============================================================
@@ -515,6 +515,17 @@
         $('#ccMovilidad').addEventListener('click', () => abrirMovilidad().catch(e => aviso(e.message, 'error')));
         $('#ccNuevaPersona').addEventListener('click', () => abrirPersona(null));
         ['#ccDesde', '#ccHasta', '#ccAnulados'].forEach(s => $(s).addEventListener('change', cargarMovs));
+        // Erika 04/11/2026: "el ERP está muy saturado". Por defecto se ven los últimos 30 días; lo anterior sigue
+        // guardado (sustento ante SUNAT por 5 años) y se ve con "📚 Ver todo".
+        const hace30 = new Date(hoy() + 'T12:00:00'); hace30.setDate(hace30.getDate() - 30);
+        $('#ccDesde').value = hace30.toISOString().slice(0, 10);
+        $('#ccVerTodo').addEventListener('click', () => {
+            const todo = $('#ccDesde').value !== '';
+            $('#ccDesde').value = todo ? '' : hace30.toISOString().slice(0, 10);
+            $('#ccHasta').value = '';
+            $('#ccVerTodo').textContent = todo ? '🗓 Ver solo últimos 30 días' : '📚 Ver todo (histórico)';
+            cargarMovs();
+        });
         let t = null;
         $('#ccBuscar').addEventListener('input', () => { clearTimeout(t); t = setTimeout(cargarMovs, 350); });
         $('#ccModalCancelar').addEventListener('click', cerrarModal);
