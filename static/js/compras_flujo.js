@@ -7,11 +7,12 @@
     const PUEDE = {
         comprar: app.dataset.comprar === 'true', aprobar: app.dataset.aprobar === 'true',
         pagar: app.dataset.pagar === 'true', recibir: app.dataset.recibir === 'true',
-        facturar: app.dataset.facturar === 'true', admin: app.dataset.admin === 'true'
+        facturar: app.dataset.facturar === 'true', admin: app.dataset.admin === 'true', apruebaCredito: app.dataset.apruebaCredito === 'true'
     };
     const cat = { empresas: [], sedes: [], proveedores: [], usuarios: [], registro: [], empresaDefecto: null, usuarioId: null, metodos: [] };
     let tabActual = 'hoy';
-    let pedidosCache = [];
+    let pedidosCache = [];
+
     let pedidoResaltado = null;   // PV que llegó desde Ventas ▸ Entregas ▸ Generar compra (se sombrea)
     let ordenesCache = [];
     let lineas = [];           // líneas del formulario de OC
@@ -999,8 +1000,8 @@
         if (v2 && o.estado === 'Por aprobar' && PUEDE.aprobar) {
             b.push(`<button class="btn btn-secondary" data-accion="devolver">↩ Devolver para corregir</button>`);
             // Erika 25/10/2026: las OC a crédito solo las aprueba la administradora
-            if (!o.solo_admin_aprueba || PUEDE.admin) b.push(`<button class="btn btn-primary" data-accion="aprobar">✔ Aprobar</button>`);
-            else b.push(`<span class="inv-tip">A crédito: la aprueba Erika</span>`);
+            if (!o.solo_admin_aprueba || PUEDE.apruebaCredito) b.push(`<button class="btn btn-primary" data-accion="aprobar">✔ Aprobar</button>`);
+            else b.push(`<span class="inv-tip">A crédito: la aprueban Erika o Hellen</span>`);
         }
         if (v2 && ['pagar', 'pagar_credito'].includes(c) && PUEDE.pagar) b.push(`<button class="btn btn-primary" data-accion="pagar">💸 Registrar pago</button>`);
         if (v2 && c === 'recibir' && PUEDE.recibir) b.push(`<button class="btn btn-primary" data-accion="recibir">📦 Recibir mercadería</button>`);

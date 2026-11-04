@@ -56,6 +56,24 @@ def es_duena():
     return (session.get('usuario') or '').strip().lower() in USUARIOS_DUENA
 
 
+# Erika 04/11/2026: "las OC a crédito solo lo puede aprobar yo y Hellen, nadie más, están prohibidos".
+# Por usuario (no por rol ni por la matriz): otro administrador tampoco. Se cambia con USUARIOS_APRUEBAN_OC_CREDITO.
+USUARIOS_APRUEBAN_OC_CREDITO = _lista_env('USUARIOS_APRUEBAN_OC_CREDITO', 'eri01kcf,hel02kcf')
+
+
+def aprueba_oc_credito():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_APRUEBAN_OC_CREDITO
+
+
+# Erika 04/11/2026: "los pagos de las OC para proveedores solo lo debe registrar Hellen" (y Erika, dueña).
+# Por usuario. Se cambia con USUARIOS_PAGAN_PROVEEDORES.
+USUARIOS_PAGAN_PROVEEDORES = _lista_env('USUARIOS_PAGAN_PROVEEDORES', 'eri01kcf,hel02kcf')
+
+
+def paga_proveedores():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_PAGAN_PROVEEDORES
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 
