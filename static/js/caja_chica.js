@@ -99,12 +99,13 @@
         if (obs) avisos.push(`Erika observó la rendición N° ${obs.numero}: "${esc(obs.observacion)}". Corrige y vuelve a enviarla.`);
         $('#ccAvisos').innerHTML = avisos.length ? `<div class="ge-aviso-rojo"><b>Revisa:</b><ul>${avisos.map(a => `<li>${a}</li>`).join('')}</ul></div>` : '';
         const pctSin = R.mes.total ? Math.round(R.mes.sin_sustento / R.mes.total * 100) : 0;
+        // Erika 04/11/2026 (noche): cada tarjeta dice en una línea qué significa
         $('#ccKpis').innerHTML = [
-            kpi('Saldo de la caja', soles(R.saldo), `Fondo fijo ${soles(c.fondo_fijo)}`, R.saldo < 0 ? 'ge-kpi-mal' : 'ge-kpi-ok'),
-            kpi('Por reponer', soles(R.por_reponer), 'Para completar el fondo', R.por_reponer > 0 ? 'ge-kpi-pago' : 'ge-kpi-ok'),
-            kpi('Gastos sin rendir', soles(R.pendientes.total), `${R.pendientes.n} gasto(s)`, R.pendientes.n ? '' : 'ge-kpi-gris'),
-            kpi('Gastado este mes', soles(R.mes.total), (R.mes.por_rubro[0] ? `Más en: ${esc(R.mes.por_rubro[0].rubro)}` : 'Sin gastos'), ''),
-            kpi('Sin sustento SUNAT (mes)', soles(R.mes.sin_sustento), `${pctSin}% del gasto del mes`, R.mes.sin_sustento ? 'ge-kpi-mal' : 'ge-kpi-ok')
+            kpi('Saldo de la caja', soles(R.saldo), R.saldo < 0 ? 'Negativo: se gastó dinero propio y hay que devolverlo' : 'Lo que debe haber hoy (efectivo + cuenta)', R.saldo < 0 ? 'ge-kpi-mal' : 'ge-kpi-ok'),
+            kpi('Por reponer', soles(R.por_reponer), `Lo que Erika entrega para volver a ${soles(c.fondo_fijo)}`, R.por_reponer > 0 ? 'ge-kpi-pago' : 'ge-kpi-ok'),
+            kpi('Gastos sin rendir', soles(R.pendientes.total), `${R.pendientes.n} gasto(s) que aún no se envían a Erika`, R.pendientes.n ? '' : 'ge-kpi-gris'),
+            kpi('Gastado este mes', soles(R.mes.total), (R.mes.por_rubro[0] ? `Lo que más se gastó: ${esc(R.mes.por_rubro[0].rubro)}` : 'Sin gastos'), ''),
+            kpi('Sin sustento SUNAT (mes)', soles(R.mes.sin_sustento), `No se descuenta del impuesto (${pctSin}% del mes)`, R.mes.sin_sustento ? 'ge-kpi-mal' : 'ge-kpi-ok')
         ].join('');
     }
 
@@ -123,9 +124,10 @@
     function estadoFila(m) {
         if (m.estado === 'Anulado') return `<span class="ge-estado gris">Anulado</span><span class="ge-sub">${esc(m.motivo_anulacion || '')}</span>`;
         if (m.origen === 'Histórico') return '<span class="ge-estado gris">Histórico</span>';
-        if (m.tipo !== 'Gasto') return '<span class="ge-estado verde">✔ Ingreso</span>';
+        if (m.es_ajuste) return `<span class="ge-estado amarillo">🔧 Ajuste</span>${m.rendicion_id ? `<span class="ge-sub">${m.rendicion_estado === 'Aprobada' ? '🔒 Aprobado' : 'Enviado'} N° ${m.rendicion_numero}</span>` : '<span class="ge-sub ge-rojo">Por rendir</span>'}`;
+        if (m.tipo !== 'Gasto') return `<span class="ge-estado verde">✔ Ingreso</span>${m.aprobado ? '<span class="ge-sub">🔒 Validado</span>' : ''}`;
         if (!m.rendicion_id) return '<span class="ge-estado rojo">⏳ Por rendir</span>';
-        if (m.rendicion_estado === 'Aprobada') return `<span class="ge-estado verde">✔ Rendido N° ${m.rendicion_numero}</span>`;
+        if (m.rendicion_estado === 'Aprobada') return `<span class="ge-estado verde">🔒 Aprobado N° ${m.rendicion_numero}</span>`;
         return `<span class="ge-estado amarillo">Enviado N° ${m.rendicion_numero}</span>`;
     }
     function pintarMovs(saldoAnterior) {
@@ -149,14 +151,15 @@
                 <td style="text-align:left">${esc(m.descripcion)}${m.detalle ? `<span class="ge-sub">${esc(m.detalle)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">Obs.: ${esc(m.observacion)}</span>` : ''}</td>
                 <td class="ge-nw">${m.referencia ? esc(m.referencia) : '<span class="ge-cero">—</span>'}</td>
                 <td>${estadoComprobante(m)}${foto(m) ? `<div>${foto(m)}</div>` : ''}</td>
-                <td class="ge-nw cc-monto">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
+                <td class="ge-nw cc-monto">${num(m.ingreso) ? `<b style="color:#0D9488">+ ${soles(m.ingreso)}</b>${m.es_ajuste ? '<span class="ge-sub">vuelve a la caja</span>' : ''}` : `<b style="color:#7C3AED">− ${soles(m.egreso)}</b>`}</td>
                 ${filtrado ? '' : `<td class="ge-nw cc-monto"><b style="color:${num(m.saldo) < 0 ? '#E60023' : '#0F172A'}">${m.saldo == null ? '' : soles(m.saldo)}</b></td>`}
-                <td>${estadoFila(m)}<span class="ge-sub">${esc(m.creado_por || '')} · ${fecha(m.creado_en)}</span>${(m.historial || []).length > 1 ? `<button type="button" class="ge-btn" data-historial="${m.id}">Historial</button>` : ''}</td>
+                <td>${estadoFila(m)}<span class="ge-sub">${esc(m.creado_por || '')} · ${fecha(m.creado_en)}</span>${m.editado ? `<span class="ge-sub ge-rojo">✏️ Cambiado ${m.editado} vez${m.editado > 1 ? 'es' : ''}</span>` : ''}${(m.historial || []).length > 1 ? `<button type="button" class="ge-btn" data-historial="${m.id}">Historial</button>` : ''}</td>
                 <td>${m.estado === 'Anulado' ? '' : [
                     m.tipo === 'Gasto' && m.origen !== 'Histórico' ? `<button type="button" class="ge-btn" data-foto="${m.id}">Subir foto</button>` : '',
                     !m.bloqueado ? `<button type="button" class="ge-btn" data-editar="${m.id}">Editar</button>` : '',
                     m.tipo === 'Gasto' ? `<button type="button" class="ge-btn" data-vale="${m.id}">Vale</button>` : '',
-                    (!m.bloqueado || (esAdmin() && (m.origen === 'Histórico' || (m.tipo !== 'Gasto' && !m.rendicion_id)))) ? `<button type="button" class="ge-btn" data-anular="${m.id}">Anular</button>` : ''
+                    m.anulable ? `<button type="button" class="ge-btn" data-anular="${m.id}">Anular</button>` : '',
+                    m.ajustable ? `<button type="button" class="ge-btn" data-ajustar="${m.id}">🔧 Ajustar</button>` : ''
                 ].join('')}</td></tr>`).join('')}
             </tbody></table>
             ${$('#ccDesde').value ? `<div class="ge-sub">Se ve desde el ${fecha($('#ccDesde').value)}${saldoAnterior ? ` · saldo antes de esa fecha: ${soles(saldoAnterior)}` : ''}. Lo anterior sigue guardado: pulsa <b>📚 Ver todo (histórico)</b>.</div>` : ''}`;
@@ -346,6 +349,14 @@
             '<label style="grid-column:1/-1">¿Por qué se anula?<input name="motivo" required maxlength="500" placeholder="Ej.: se registró dos veces"></label>', 'Anular',
             async () => { const d = leerForm(); await enviar(`/caja-chica/api/movimiento/${m.id}/anular`, 'POST', d); });
     }
+    function abrirAjuste(m) {
+        abrirModal(`Ajustar gasto N° ${m.numero}`,
+            `🔒 Este gasto ya fue aprobado por Erika: no se edita. El ajuste queda como <b>una línea nueva</b> con su motivo y entra en la siguiente rendición para que Erika lo apruebe.`,
+            `<div class="cc-aviso cc-aviso-info"><ul><li>${esc(m.descripcion)}${m.quien ? ' · ' + esc(m.quien) : ''}</li><li>Monto registrado: <b>${soles(m.egreso)}</b></li></ul></div>
+             <label>Monto correcto (S/)<input type="number" name="monto_nuevo" required min="0" step="0.01" placeholder="Ej.: 6.00 (0 si no debió registrarse)"></label>
+             <label style="grid-column:1/-1">¿Qué estaba mal y por qué?<input name="motivo" required minlength="10" maxlength="300" placeholder="Ej.: el pasaje fue S/ 6.00, se escribió 5.00"></label>`, 'Guardar ajuste',
+            async () => { const d = leerForm(); await enviar(`/caja-chica/api/movimiento/${m.id}/ajuste`, 'POST', d); });
+    }
     function verHistorial(m) {
         abrirModal(`Historial del movimiento N° ${m.numero}`, '', `<ul class="ge-vac-lista" style="grid-column:1/-1">${m.historial.slice().reverse().map(h =>
             `<li>${fecha(h.fecha)} · ${esc(h.usuario)}: <b>${esc(h.accion)}</b>${h.motivo ? ' · ' + esc(h.motivo) : ''}${(h.cambios || []).length ? ' · ' + esc(h.cambios.join('; ')) : ''}</li>`).join('')}</ul>`, null, null);
@@ -404,20 +415,29 @@
     function pintarRendicion() {
         const p = R.pendientes;
         const porAprobar = R.rendiciones.find(x => x.estado === 'Por aprobar');
-        $('#ccRendir').innerHTML = porAprobar
-            ? `<div class="ge-todo-ok">La rendición N° ${porAprobar.numero} (${soles(porAprobar.total_gastado)}) está enviada y espera la aprobación de Erika.</div>`
-            : `<p>Hay <b>${p.n}</b> gasto(s) sin rendir por <b>${soles(p.total)}</b>${p.sin_foto ? ` · <span class="ge-rojo">${p.sin_foto} sin foto</span>` : ''}.
-                Saldo actual ${soles(R.saldo)} · para completar el fondo faltan <b>${soles(R.por_reponer)}</b>.</p>
+        const v = R.validado;
+        const pasos = `<ol class="cc-pasos">
+            <li><b>Hellen</b> registra cada gasto y, al final de la semana, pulsa <b>📤 Enviar rendición a Erika</b>.</li>
+            <li><b>Erika</b> revisa, pulsa <b>Aprobar y reponer</b> y transfiere lo que falta (o <b>Observar</b> si algo está mal).</li>
+            <li>La caja vuelve a <b>${soles(R.config.fondo_fijo)}</b> y esos gastos quedan con <b>🔒 candado</b>: nadie los cambia. Un error se corrige con <b>🔧 Ajustar</b>.</li></ol>`;
+        const validado = v ? `<div class="cc-aviso cc-aviso-ok"><ul><li>🔒 <b>Saldo validado:</b> ${v.saldo != null ? soles(v.saldo) : '—'} con la rendición N° ${v.numero} (hasta el ${fecha(v.hasta)}), aprobada por ${esc(v.por || '')} el ${fecha(v.en)}. Lo anterior ya no se mueve.</li></ul></div>` : '';
+        const estado = porAprobar
+            ? `<div class="cc-aviso cc-aviso-warn"><ul><li>⏳ <b>Rendición N° ${porAprobar.numero}</b> enviada por ${esc(porAprobar.enviada_por || '')} el ${fecha(porAprobar.enviada_en)}: gastos por <b>${soles(porAprobar.total_gastado)}</b>.</li>
+                <li>Falta que Erika la revise${esAdmin() ? ': abajo, <b>Aprobar y reponer</b> u <b>Observar</b>' : ''}. Mientras tanto, los gastos nuevos esperan a la siguiente.</li>
+                ${R.saldo < 0 ? `<li>Para volver a ${soles(R.config.fondo_fijo)} hay que reponer <b>${soles(R.por_reponer)}</b>: más que la rendición, porque la caja ya estaba en ${soles(R.saldo)}.</li>` : ''}</ul></div>`
+            : `<div class="cc-aviso ${p.n ? 'cc-aviso-warn' : 'cc-aviso-ok'}"><ul><li>${p.n ? `Hay <b>${p.n}</b> gasto(s) por enviar: <b>${soles(p.total)}</b>` : 'No hay gastos por enviar.'}${p.sin_foto ? ` · <span class="ge-rojo">${p.sin_foto} sin foto</span>` : ''}${p.ajustes ? ` · ${p.ajustes} ajuste(s)` : ''}.</li>
+                <li>Saldo de la caja: <b>${soles(R.saldo)}</b> · por reponer: <b>${soles(R.por_reponer)}</b>.</li></ul></div>
                <div class="cc-pie"><label>Rendir gastos hasta el <input type="date" id="ccRendirHasta" max="${hoy()}" value="${hoy()}"></label>
                <button type="button" class="btn btn-primary" id="ccEnviarRendicion" ${p.n ? '' : 'disabled'}>📤 Enviar rendición a Erika</button></div>`;
+        $('#ccRendir').innerHTML = pasos + validado + estado;
         const filas = R.rendiciones;
         $('#ccRendiciones').innerHTML = !filas.length ? '<div class="inv-vacio">Todavía no hay rendiciones.</div>'
-            : `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Periodo</th><th>Total gastado (S/)</th><th>Sin sustento SUNAT (S/)</th>
-                <th>Estado</th><th>Reposición</th><th>Enviada</th><th>Revisada</th><th>Acciones</th></tr></thead><tbody>
+            : `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Periodo de los gastos</th><th>Total gastado (S/)</th><th>Sin sustento SUNAT (S/)</th>
+                <th>Estado</th><th>Transferido por Erika</th><th>Enviada por</th><th>Revisada por</th><th>Acciones</th></tr></thead><tbody>
                 ${filas.map(r => `<tr class="${r.estado === 'Aprobada' ? 'ge-fila-ok' : r.estado === 'Por aprobar' ? 'ge-fila-pend' : ''}">
                     <td>${r.numero}</td><td class="ge-nw">${fecha(r.desde)} al ${fecha(r.hasta)}</td><td>${soles(r.total_gastado)}</td>
                     <td>${num(r.sin_sustento) ? `<span class="ge-rojo">${soles(r.sin_sustento)}</span>` : soles(0)}</td>
-                    <td><span class="ge-estado ${r.estado === 'Aprobada' ? 'verde' : r.estado === 'Por aprobar' ? 'rojo' : 'amarillo'}">${r.estado === 'Aprobada' ? '✔ ' : r.estado === 'Por aprobar' ? '⏳ ' : ''}${esc(r.estado)}</span>
+                    <td><span class="ge-estado ${r.estado === 'Aprobada' ? 'verde' : r.estado === 'Por aprobar' ? 'rojo' : 'amarillo'}">${r.estado === 'Aprobada' ? '🔒 ' : r.estado === 'Por aprobar' ? '⏳ ' : ''}${esc(r.estado)}</span>
                         ${r.estado === 'Observada' ? `<span class="ge-sub">${esc(r.observacion || '')}</span>` : ''}</td>
                     <td>${r.monto_repuesto != null ? `${soles(r.monto_repuesto)}<span class="ge-sub">${fecha(r.fecha_reposicion)}${r.numero_operacion ? ' · N° op. ' + esc(r.numero_operacion) : ''}</span>` : ''}</td>
                     <td><span class="ge-sub">${esc(r.enviada_por || '')} · ${fecha(r.enviada_en)}</span></td>
@@ -431,13 +451,27 @@
         const j = await api(`/caja-chica/api/rendicion/${rid}?empresa_id=${encodeURIComponent(empresa())}`);
         const { rendicion: r, gastos, por_rubro: rubros } = j.data;
         const sugerido = Math.max(j.data.fondo_fijo - j.data.saldo, 0);
-        const tabla = `<div style="grid-column:1/-1">
+        const cambiados = gastos.filter(g => (g.cambios || []).length), ajustes = gastos.filter(g => g.es_ajuste);
+        const alerta = cambiados.length || ajustes.length ? `<div class="cc-aviso cc-aviso-warn" style="grid-column:1/-1"><ul>
+            ${cambiados.length ? `<li>✏️ <b>${cambiados.length} gasto(s) se cambiaron</b> después de registrarse: ${cambiados.map(g => `N° ${g.numero}`).join(', ')}. Mira el detalle abajo.</li>` : ''}
+            ${ajustes.length ? `<li>🔧 <b>${ajustes.length} ajuste(s)</b> de gastos ya aprobados: ${ajustes.map(g => `N° ${g.numero} (${g.monto < 0 ? '−' : '+'} ${soles(Math.abs(g.monto))})`).join(', ')}.</li>` : ''}</ul></div>` : '';
+        // cambios en palabras simples (sin la hora ni el N° de vale que pone el sistema)
+        const CAMPO = { egreso: 'Monto', rubro: 'Rubro', descripcion: 'Descripción', quien: 'Quién gastó', pagado_a: 'Pagado a', fecha: 'Fecha',
+            comprobante_tipo: 'Comprobante', comprobante_numero: 'N° comprobante', detalle: 'De dónde a dónde', referencia: 'N° PV / PC', ruc_emisor: 'RUC', autorizado_por: 'Autorizó', empresa_gasto: 'Empresa' };
+        const legible = c => {
+            const [k, resto] = [c.split(':')[0], c.slice(c.indexOf(':') + 1).trim()];
+            if (!CAMPO[k] || k === 'quien_id' || (k === 'comprobante_numero' && /→ V-/.test(resto))) return '';
+            const [a, b] = resto.split(' → ').map(x => x === 'None' ? '(vacío)' : x);
+            return k === 'egreso' ? `<b>Monto: ${soles(+a)} → ${soles(+b)}</b>` : `${CAMPO[k]}: ${esc(a)} → ${esc(b)}`;
+        };
+        const cambiosTxt = g => (g.cambios || []).map(h => `<div class="cc-cambio">✏️ ${esc(h.usuario)} · ${fecha(h.fecha)} · ${(h.cambios || []).map(legible).filter(Boolean).join(' · ') || 'sin cambio de datos'}</div>`).join('');
+        const tabla = alerta + `<div style="grid-column:1/-1">
             <table class="inv-table ge-tabla"><thead><tr><th>Rubro</th><th>N°</th><th>Total (S/)</th><th>Sin sustento (S/)</th></tr></thead><tbody>
             ${rubros.map(x => `<tr><td>${esc(x.rubro)}</td><td>${x.n}</td><td>${soles(x.total)}</td><td>${num(x.sin_sustento) ? soles(x.sin_sustento) : '—'}</td></tr>`).join('')}
             </tbody></table>
-            <details><summary>Ver los ${gastos.length} gastos</summary><table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Descripción</th><th>Comprobante</th><th>Foto</th><th>S/</th></tr></thead><tbody>
-            ${gastos.map(g => `<tr><td>${g.numero}</td><td>${fecha(g.fecha)}</td><td>${esc(g.quien || '')}</td><td style="text-align:left">${esc(g.descripcion)}${g.detalle ? `<span class="ge-sub">${esc(g.detalle)}</span>` : ''}</td>
-                <td>${esc(nomComp(g.comprobante_tipo))}</td><td>${g.fotos ? '✔' : (g.comprobante_tipo === 'Planilla de movilidad' ? 'Planilla' : '<span class="ge-sin">Falta</span>')}</td><td>${soles(g.egreso)}</td></tr>`).join('')}
+            <details ${alerta ? 'open' : ''}><summary>Ver los ${gastos.length} gastos</summary><table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Descripción</th><th>Comprobante</th><th>Foto</th><th>S/</th></tr></thead><tbody>
+            ${gastos.map(g => `<tr class="${(g.cambios || []).length || g.es_ajuste ? 'ge-fila-pend' : ''}"><td>${g.numero}</td><td>${fecha(g.fecha)}</td><td>${esc(g.quien || '')}</td><td style="text-align:left">${g.es_ajuste ? '<b>🔧 </b>' : ''}${esc(g.descripcion)}${g.detalle ? `<span class="ge-sub">${esc(g.detalle)}</span>` : ''}${cambiosTxt(g)}</td>
+                <td>${esc(nomComp(g.comprobante_tipo))}</td><td>${g.es_ajuste ? '—' : g.fotos ? '✔' : (g.comprobante_tipo === 'Planilla de movilidad' ? 'Planilla' : '<span class="ge-sin">Falta</span>')}</td><td>${g.monto < 0 ? '− ' + soles(-g.monto) : soles(g.monto)}</td></tr>`).join('')}
             </tbody></table></details></div>`;
         if (!paraAprobar) return abrirModal(`Rendición N° ${r.numero}`, `${fecha(r.desde)} al ${fecha(r.hasta)} · ${esc(r.estado)} · total ${soles(r.total_gastado)}`, tabla, null, null);
         abrirModal(`Aprobar rendición N° ${r.numero}`,
@@ -598,6 +632,7 @@
                 else if (b.dataset.fotos) await verFotos(mov(b.dataset.fotos));
                 else if (b.dataset.anular) abrirAnular(mov(b.dataset.anular));
                 else if (b.dataset.historial) verHistorial(mov(b.dataset.historial));
+                else if (b.dataset.ajustar) abrirAjuste(mov(b.dataset.ajustar));
                 else if (b.dataset.vale) imprimir('/caja-chica/imprimir/vale/' + b.dataset.vale);
                 else if (b.dataset.impPlanilla) imprimir('/caja-chica/imprimir/movilidad', { ids: b.dataset.impPlanilla });
                 else if (b.dataset.anularPlanilla) abrirAnularPlanilla(+b.dataset.anularPlanilla);

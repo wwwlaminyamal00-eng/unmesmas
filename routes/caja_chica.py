@@ -598,9 +598,39 @@ def _mov(cur, eid, mid):
     return m
 
 
-def _editable(cur, m):
+# Erika 04/11/2026 (noche): lo aprobado no se mueve. Ni Hellen ni un administrador editan o anulan un movimiento
+# de una rendición aprobada o de una semana ya cerrada (saldo validado). Un error se corrige con un "Ajuste".
+CANDADO_APROBADO = ('Está en una rendición ya aprobada por Erika (saldo validado): nadie lo edita ni lo anula. '
+                    'Si hay un error, usa "Ajustar": queda una línea nueva con su motivo y entra en la siguiente rendición.')
+AJUSTE_JSON = Json([{'accion': 'Ajuste'}])
+
+
+def _es_ajuste(m):
+    return any((h or {}).get('accion') == 'Ajuste' for h in (m.get('historial') or []))
+
+
+def _aprobado(cur, m):
+    """True si el movimiento ya quedó dentro de lo validado por Erika."""
+    if m.get('rendicion_id'):
+        cur.execute("SELECT estado FROM caja_chica_rendiciones WHERE id = %s", (m['rendicion_id'],))
+        r = cur.fetchone()
+        if r and r['estado'] == 'Aprobada':
+            return True
+    # Por fecha (semana cerrada) quedan validados el histórico y los depósitos/devoluciones. Un gasto o ajuste del ERP
+    # que aún no entró en una rendición sigue pendiente: va a la siguiente para que Erika lo vea.
+    if _es_ajuste(m) or (m['tipo'] == 'Gasto' and m['origen'] != 'Histórico'):
+        return False
+    cerrada = _ultima_aprobada(m['empresa_id'])
+    return bool(cerrada and m['fecha'] <= cerrada)
+
+
+def _editable(cur, m, para_anular=False):
     if m['estado'] == 'Anulado':
         raise ErrorCaja('Ese movimiento está anulado.')
+    if _aprobado(cur, m):
+        raise ErrorCaja(CANDADO_APROBADO)
+    if _es_ajuste(m) and not para_anular:
+        raise ErrorCaja('Los ajustes no se editan. Si está mal, anúlalo (antes de enviarlo) y registra otro.')
     if m['origen'] == 'Histórico':
         raise ErrorCaja('Los movimientos del histórico no se editan (vienen del Excel). Si hay un error, anótalo como nuevo gasto o devolución.')
     if m['tipo'] != 'Gasto':
@@ -620,11 +650,11 @@ def _editable(cur, m):
 
 def editar_gasto(eid, mid, d):
     conf = leer_config(eid)
-    g = _leer_gasto(eid, d, conf)
     with db_tx() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         m = _mov(cur, eid, mid)
-        _editable(cur, m)
+        _editable(cur, m)          # primero el candado: lo aprobado no se toca
+        g = _leer_gasto(eid, d, conf)
         if g['comprobante_tipo'] == COMPROBANTE_VALE:
             # si ya tenía su N° de vale lo conserva; si recién pasa a vale, recibe el siguiente
             g['comprobante_numero'] = (m['comprobante_numero'] if str(m.get('comprobante_numero') or '').startswith('V-')
@@ -648,13 +678,15 @@ def anular_movimiento(eid, mid, motivo):
         m = _mov(cur, eid, mid)
         if m['estado'] == 'Anulado':
             raise ErrorCaja('Ya estaba anulado.')
+        if _aprobado(cur, m):
+            raise ErrorCaja(CANDADO_APROBADO)
         if m['origen'] == 'Histórico' and not es_admin():
             raise ErrorCaja('Solo la gerencia anula movimientos del histórico.')
         if m['origen'] != 'Histórico':
             if m['tipo'] == 'Reposición' and m['rendicion_id']:
                 raise ErrorCaja('Esta reposición es de una rendición aprobada: no se anula aquí.')
-            if m['tipo'] == 'Gasto':
-                _editable(cur, m)
+            if m['tipo'] == 'Gasto' or _es_ajuste(m):
+                _editable(cur, m, para_anular=True)
             elif not es_admin():
                 raise ErrorCaja('Solo la gerencia anula reposiciones y devoluciones.')
         cur.execute("""UPDATE caja_chica_movimientos SET estado = 'Anulado', motivo_anulacion = %s, actualizado_por = %s,
@@ -664,6 +696,50 @@ def anular_movimiento(eid, mid, motivo):
         cur.execute("""UPDATE finanzas_pagos SET estado = 'Anulado', anulado_en = NOW(), motivo_anulacion = %s
                        WHERE documento_tabla = 'caja_chica_movimientos' AND documento_id = %s AND estado <> 'Anulado'""",
                     (f'Anulado en Caja chica: {motivo[:200]}', mid))
+
+
+def ajustar_gasto(eid, mid, d):
+    """Corrige un gasto ya aprobado sin tocarlo: deja una línea nueva (gasto por la diferencia, o devolución si fue
+    de más) con motivo obligatorio. Entra en la siguiente rendición para que Erika la vea y la apruebe."""
+    motivo = (d.get('motivo') or '').strip()
+    if len(motivo) < 10:
+        raise ErrorCaja('Escribe el motivo del ajuste: qué estaba mal y por qué.')
+    txt = str(d.get('monto_nuevo') if d.get('monto_nuevo') is not None else '').strip()
+    if txt in ('0', '0.0', '0.00'):
+        nuevo = CERO
+    else:
+        nuevo = _monto(txt, 'el monto correcto')
+    with db_tx() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        m = _mov(cur, eid, mid)
+        if m['tipo'] != 'Gasto' or m['estado'] != 'Activo' or _es_ajuste(m):
+            raise ErrorCaja('Solo se ajusta un gasto activo (no un ajuste).')
+        if not _aprobado(cur, m):
+            raise ErrorCaja('Ese gasto todavía no está aprobado: corrígelo con "Editar".')
+        cur.execute("""SELECT tipo, ingreso, egreso FROM caja_chica_movimientos
+                       WHERE empresa_id = %s AND estado = 'Activo' AND historial @> %s""",
+                    (str(eid), Json([{'ajuste_de': m['id']}])))
+        previos = cur.fetchall()
+        actual = _r(a_decimal(m['egreso']) + sum((a_decimal(x['egreso']) - a_decimal(x['ingreso']) for x in previos), CERO))
+        dif = _r(nuevo - actual)
+        if dif == 0:
+            raise ErrorCaja(f'El monto correcto es igual al que ya tiene (S/ {actual:,.2f}).')
+        ahora = _ahora()
+        n = _siguiente(cur, 'caja_chica_movimientos', eid)
+        desc = f'Ajuste del gasto N° {m["numero"]} (S/ {actual:,.2f} → S/ {nuevo:,.2f}): {motivo}'[:500]
+        ev = _evento('Ajuste', ajuste_de=m['id'], ajuste_de_numero=m['numero'], monto_antes=float(actual),
+                     monto_nuevo=float(nuevo), motivo=motivo[:300])
+        cur.execute("""INSERT INTO caja_chica_movimientos (empresa_id, numero, fecha, hora, tipo, empresa_gasto, rubro, quien,
+                           quien_id, pagado_a, descripcion, detalle, referencia, comprobante_tipo, comprobante_numero, ruc_emisor,
+                           autorizado_por, ingreso, egreso, creado_por, actualizado_por, historial)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (str(eid), n, ahora.date(), ahora.time().replace(microsecond=0), 'Gasto' if dif > 0 else 'Devolución',
+                     m['empresa_gasto'], m['rubro'], m['quien'], m['quien_id'], m['pagado_a'], desc, m.get('detalle'),
+                     m['referencia'], m['comprobante_tipo'], m['comprobante_numero'], m['ruc_emisor'], m['autorizado_por'],
+                     -dif if dif < 0 else CERO, dif if dif > 0 else CERO, _usuario(), _usuario(), ev))
+        cur.execute("UPDATE caja_chica_movimientos SET historial = historial || %s WHERE id = %s",
+                    (_evento('Ajustado', ajuste_numero=n, monto_nuevo=float(nuevo), motivo=motivo[:300]), m['id']))
+    return n, actual, nuevo
 
 
 def _pago_finanzas(cur, eid, tabla, doc_id, doc_numero, conf, fecha, monto, banco, operacion, obs):
@@ -688,6 +764,9 @@ def registrar_ingreso(eid, d):
     fecha = _fecha(d.get('fecha'), 'la fecha')
     if fecha > _ahora().date():
         raise ErrorCaja('La fecha no puede ser futura.')
+    cerrada = _ultima_aprobada(eid)
+    if cerrada and fecha <= cerrada:
+        raise ErrorCaja(f'La semana hasta el {cerrada:%d/%m/%Y} ya fue aprobada y está cerrada. Usa una fecha posterior.')
     monto = _monto(d.get('monto'))
     descripcion = _txt(d, 'descripcion', 500, True, 'la descripción')
     operacion = _txt(d, 'numero_operacion', 80)
@@ -733,6 +812,7 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
         previo = saldo(eid, desde - timedelta(days=1))
     salida = []
     acumulado = previo
+    cerrada = _ultima_aprobada(eid)
     for m in filas:
         item = {k: _f(v) for k, v in m.items() if k != 'historial'}
         item['rubro'] = rubro_actual(m['rubro'])
@@ -741,11 +821,31 @@ def lista_movimientos(eid, desde=None, hasta=None, q=None, incluir_anulados=Fals
             item['saldo'] = _n(acumulado) if not q else None
         item['historial'] = m['historial'] or []
         item['sustenta'] = m['comprobante_tipo'] in SUSTENTA_SUNAT
-        item['bloqueado'] = bool(m['origen'] == 'Histórico' or m['tipo'] != 'Gasto' or
+        es_aj = any((h or {}).get('accion') == 'Ajuste' for h in (m['historial'] or []))
+        aprobado = bool((m['rendicion_id'] and m['rendicion_estado'] == 'Aprobada') or
+                        (cerrada and m['fecha'] <= cerrada and not es_aj and (m['tipo'] != 'Gasto' or m['origen'] == 'Histórico')))
+        item['aprobado'] = aprobado
+        item['es_ajuste'] = es_aj
+        item['bloqueado'] = bool(m['origen'] == 'Histórico' or m['tipo'] != 'Gasto' or es_aj or aprobado or
                                  (m['rendicion_id'] and m['rendicion_estado'] != 'Observada') or m['estado'] == 'Anulado'
                                  or (m['planilla_id'] and m['planilla_estado'] == 'Emitida'))
+        item['anulable'] = bool(m['estado'] == 'Activo' and not aprobado and not (m['rendicion_id'] and m['rendicion_estado'] != 'Observada')
+                                and (m['tipo'] == 'Gasto' and m['origen'] != 'Histórico' and not (m['planilla_id'] and m['planilla_estado'] == 'Emitida')
+                                     or es_aj or (es_admin() and (m['origen'] == 'Histórico' or m['tipo'] != 'Gasto'))))
+        item['ajustable'] = bool(m['estado'] == 'Activo' and m['tipo'] == 'Gasto' and not es_aj and aprobado)
+        item['editado'] = sum(1 for h in (m['historial'] or []) if (h or {}).get('accion') == 'Editado')
         salida.append(item)
     return salida, _n(previo)
+
+
+def _validado(rend):
+    """Último saldo validado por Erika (se congela al aprobar la rendición)."""
+    for r in rend:
+        if r['estado'] == 'Aprobada':
+            ev = next((h for h in reversed(r['historial'] or []) if (h or {}).get('accion') == 'Aprobada'), {}) or {}
+            return {'numero': r['numero'], 'hasta': _f(r['hasta']), 'saldo': ev.get('saldo_validado'),
+                    'por': r['revisada_por'], 'en': _f(r['revisada_en'])}
+    return None
 
 
 def resumen(e):
@@ -758,11 +858,14 @@ def resumen(e):
                              SUM(CASE WHEN comprobante_tipo IN %s THEN 0 ELSE egreso END) AS sin_sustento
                       FROM caja_chica_movimientos WHERE empresa_id = %s AND estado = 'Activo' AND tipo = 'Gasto'
                         AND fecha >= %s GROUP BY rubro ORDER BY SUM(egreso) DESC""", (SUSTENTA_SUNAT, eid, ini_mes))
-    pend = db_query("""SELECT COUNT(*) AS n, COALESCE(SUM(egreso), 0) AS t,
-                              COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM caja_chica_fotos f WHERE f.movimiento_id = m.id)
-                                               AND comprobante_tipo <> 'Planilla de movilidad') AS sin_foto
-                       FROM caja_chica_movimientos m WHERE empresa_id = %s AND estado = 'Activo' AND tipo = 'Gasto'
-                         AND origen = 'ERP' AND rendicion_id IS NULL""", (eid,))[0]
+    pend = db_query("""SELECT COUNT(*) AS n, COALESCE(SUM(egreso - ingreso), 0) AS t,
+                              COUNT(*) FILTER (WHERE tipo = 'Gasto' AND NOT historial @> %s
+                                               AND NOT EXISTS (SELECT 1 FROM caja_chica_fotos f WHERE f.movimiento_id = m.id)
+                                               AND comprobante_tipo <> 'Planilla de movilidad') AS sin_foto,
+                              COUNT(*) FILTER (WHERE historial @> %s) AS ajustes
+                       FROM caja_chica_movimientos m WHERE empresa_id = %s AND estado = 'Activo'
+                         AND (tipo = 'Gasto' OR (tipo = 'Devolución' AND historial @> %s))
+                         AND origen = 'ERP' AND rendicion_id IS NULL""", (AJUSTE_JSON, AJUSTE_JSON, eid, AJUSTE_JSON))[0]
     rend = db_query("""SELECT * FROM caja_chica_rendiciones WHERE empresa_id = %s ORDER BY numero DESC LIMIT 30""", (eid,))
     arq = db_query("""SELECT * FROM caja_chica_arqueos WHERE empresa_id = %s ORDER BY fecha DESC, id DESC LIMIT 10""", (eid,))
     juntos = {}
@@ -782,7 +885,8 @@ def resumen(e):
         'config': {**conf, 'fondo_fijo': float(conf['fondo_fijo']), 'rmv': float(conf['rmv']),
                    'tope_movilidad': float(tope_movilidad(conf))},
         'saldo': float(s), 'por_reponer': float(max(conf['fondo_fijo'] - s, CERO)),
-        'pendientes': {'n': pend['n'], 'total': _n(pend['t']), 'sin_foto': pend['sin_foto']},
+        'pendientes': {'n': pend['n'], 'total': _n(pend['t']), 'sin_foto': pend['sin_foto'], 'ajustes': pend['ajustes']},
+        'validado': _validado(rend),
         'mes': {'total': float(total_mes), 'sin_sustento': float(sin_mes),
                 'por_rubro': [{'rubro': x['rubro'], 'n': x['n'], 'total': _n(x['total'])} for x in mes]},
         'rendiciones': [{**{k: _f(v) for k, v in r.items() if k != 'historial'}, 'historial': r['historial'] or []} for r in rend],
@@ -852,14 +956,15 @@ def enviar_rendicion(eid, d):
         abierta = cur.fetchone()
         if abierta:
             raise ErrorCaja(f'La rendición N° {abierta["numero"]} todavía espera aprobación. Cuando Erika la apruebe u observe, envías la siguiente.')
-        cur.execute("""SELECT id, fecha, egreso, comprobante_tipo FROM caja_chica_movimientos
-                       WHERE empresa_id = %s AND estado = 'Activo' AND tipo = 'Gasto' AND origen = 'ERP'
-                         AND rendicion_id IS NULL AND fecha <= %s FOR UPDATE""", (str(eid), hasta))
+        cur.execute("""SELECT id, fecha, egreso, ingreso, comprobante_tipo FROM caja_chica_movimientos
+                       WHERE empresa_id = %s AND estado = 'Activo' AND origen = 'ERP'
+                         AND (tipo = 'Gasto' OR (tipo = 'Devolución' AND historial @> %s))
+                         AND rendicion_id IS NULL AND fecha <= %s FOR UPDATE""", (str(eid), AJUSTE_JSON, hasta))
         gastos = cur.fetchall()
         if not gastos:
             raise ErrorCaja('No hay gastos nuevos para rendir hasta esa fecha.')
-        total = sum((a_decimal(g['egreso']) for g in gastos), CERO)
-        sin = sum((a_decimal(g['egreso']) for g in gastos if g['comprobante_tipo'] not in SUSTENTA_SUNAT), CERO)
+        total = sum((a_decimal(g['egreso']) - a_decimal(g['ingreso']) for g in gastos), CERO)
+        sin = sum((a_decimal(g['egreso']) - a_decimal(g['ingreso']) for g in gastos if g['comprobante_tipo'] not in SUSTENTA_SUNAT), CERO)
         n = _siguiente(cur, 'caja_chica_rendiciones', eid)
         cur.execute("""INSERT INTO caja_chica_rendiciones (empresa_id, numero, desde, hasta, total_gastado, sin_sustento,
                            enviada_por, historial) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
@@ -914,7 +1019,7 @@ def aprobar_rendicion(eid, rid, d):
                            monto_repuesto = %s, fecha_reposicion = %s, numero_operacion = %s, finanzas_pago_id = %s,
                            observacion = %s, historial = historial || %s WHERE id = %s""",
                     (_usuario(), monto, fecha, operacion, pago, _txt(d, 'observacion', 500),
-                     _evento('Aprobada', repuesto=float(monto)), rid))
+                     _evento('Aprobada', repuesto=float(monto), saldo_validado=float(_r(s + monto))), rid))
     return r['numero'], _r(monto)
 
 
@@ -934,7 +1039,7 @@ def observar_rendicion(eid, rid, motivo):
                     (_usuario(), motivo[:500], _evento('Observada', motivo=motivo[:500]), rid))
         # Los gastos vuelven a quedar libres para corregirlos y enviarlos de nuevo
         cur.execute("""UPDATE caja_chica_movimientos SET rendicion_id = NULL, historial = historial || %s
-                       WHERE rendicion_id = %s AND tipo = 'Gasto'""",
+                       WHERE rendicion_id = %s AND tipo IN ('Gasto', 'Devolución')""",
                     (_evento('Liberado', motivo=f'Rendición N° {r["numero"]} observada'), rid))
     return r['numero']
 
@@ -948,16 +1053,18 @@ def detalle_rendicion(eid, rid):
         gastos = []
     else:
         gastos = db_query("""SELECT m.*, (SELECT COUNT(*) FROM caja_chica_fotos f WHERE f.movimiento_id = m.id) AS fotos
-                             FROM caja_chica_movimientos m WHERE rendicion_id = %s AND estado = 'Activo' AND tipo = 'Gasto'
+                             FROM caja_chica_movimientos m WHERE rendicion_id = %s AND estado = 'Activo'
+                               AND tipo IN ('Gasto', 'Devolución')
                              ORDER BY fecha, numero""", (rid,))
     por_rubro = {}
     for g in gastos:
         x = por_rubro.setdefault(rubro_actual(g['rubro']), {'rubro': rubro_actual(g['rubro']), 'n': 0, 'total': CERO,
                                                             'sin_sustento': CERO})
         x['n'] += 1
-        x['total'] += a_decimal(g['egreso'])
+        neto = a_decimal(g['egreso']) - a_decimal(g['ingreso'])
+        x['total'] += neto
         if g['comprobante_tipo'] not in SUSTENTA_SUNAT:
-            x['sin_sustento'] += a_decimal(g['egreso'])
+            x['sin_sustento'] += neto
     return r, gastos, sorted(por_rubro.values(), key=lambda x: -x['total'])
 
 
@@ -1286,6 +1393,17 @@ def api_ingreso():
         return _err(ex)
 
 
+@caja_chica_bp.route('/caja-chica/api/movimiento/<int:mid>/ajuste', methods=['POST'])
+def api_ajuste(mid):
+    try:
+        d = _json()
+        n, antes, nuevo = ajustar_gasto(str(_empresa(d.get('empresa_id'))['id']), mid, d)
+        return jsonify({'success': True, 'message': f'Ajuste N° {n} registrado (S/ {antes:,.2f} → S/ {nuevo:,.2f}). '
+                                                    'Entra en la siguiente rendición para que Erika lo apruebe.'})
+    except ErrorCaja as ex:
+        return _err(ex)
+
+
 @caja_chica_bp.route('/caja-chica/api/movimiento/<int:mid>/anular', methods=['POST'])
 def api_anular(mid):
     try:
@@ -1341,7 +1459,10 @@ def api_rendicion(rid):
         r, gastos, rubros = detalle_rendicion(str(e['id']), rid)
         return jsonify({'success': True, 'data': {
             'rendicion': {**{k: _f(v) for k, v in r.items() if k != 'historial'}, 'historial': r['historial'] or []},
-            'gastos': [{k: _f(v) for k, v in g.items() if k != 'historial'} for g in gastos],
+            'gastos': [{**{k: _f(v) for k, v in g.items() if k != 'historial'},
+                        'monto': _n(a_decimal(g['egreso']) - a_decimal(g['ingreso'])),
+                        'es_ajuste': any((h or {}).get('accion') == 'Ajuste' for h in (g['historial'] or [])),
+                        'cambios': [h for h in (g['historial'] or []) if (h or {}).get('accion') == 'Editado']} for g in gastos],
             'por_rubro': [{k: _f(v) for k, v in x.items()} for x in rubros],
             'saldo': float(saldo(str(e['id']))), 'fondo_fijo': float(leer_config(str(e['id']))['fondo_fijo'])}})
     except ErrorCaja as ex:

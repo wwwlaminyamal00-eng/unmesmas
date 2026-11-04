@@ -2782,3 +2782,11 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - Con Factura, el servidor exige el proveedor ("Pagado a"), RUC y N° de factura. La foto del voucher sigue opcional.
 - Lista: "Quién gastó" y "Pagado a" en columnas separadas; monto y saldo más grandes.
 - Sin migraciones. 398 pruebas.
+
+## 24.75 Caja chica: candados después de aprobar, "Ajustar" y pantallas más claras (04/11/2026 noche)
+- Al aprobar una rendición, sus gastos quedan con 🔒: **nadie** los edita ni los anula (tampoco Hellen ni la gerencia). Lo mismo los depósitos, devoluciones e histórico con fecha de una semana ya aprobada. Ya no se registran depósitos/devoluciones con esa fecha.
+- Un error en algo aprobado se corrige con **🔧 Ajustar**: monto correcto + motivo obligatorio. Queda una línea nueva (gasto por la diferencia, o devolución si fue de más) con "Ajuste del gasto N° X (S/ antes → S/ ahora): motivo", entra en la siguiente rendición y Erika la aprueba. El gasto original no se toca (solo se anota en su historial). Un ajuste no se edita; se puede anular solo antes de enviarlo.
+- Los gastos todavía no aprobados se pueden editar, pero cada cambio guarda quién, cuándo, antes y después; la lista muestra "✏️ Cambiado N vez" y, al aprobar, Erika ve un aviso con los gastos cambiados (Monto: S/ 5.00 → S/ 8.00) y los ajustes.
+- "Saldo validado": al aprobar se guarda el saldo que quedó (en el historial de la rendición) y se muestra en la pestaña Rendición.
+- Tarjetas con una línea que explica cada una; pestaña Rendición con paso a paso (Hellen envía → Erika aprueba y repone → candado) y estado claro.
+- Sin migraciones (el ajuste se marca en el historial JSON existente). 399 pruebas.
