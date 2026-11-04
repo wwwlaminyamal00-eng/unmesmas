@@ -351,6 +351,7 @@
     // ========================================================
     function pasoHtml(o) {
         const c = o.paso.codigo;
+        if (c === 'pagar' && o.pago_contado_vencido) return `<span class="com-paso com-paso-danger">${esc(o.paso.texto)}</span><small>${esc(o.paso.quien)}</small>`;
         const color = { aprobar: 'warn', pagar: 'warn', pagar_credito: 'warn', recibir: 'info', incidencia: 'danger',
                         factura: 'warn', enviar: 'gris', listo: 'ok', anulada: 'gris', antigua: 'gris' }[c] || 'info';
         return `<span class="com-paso com-paso-${color}">${esc(o.paso.texto)}</span><small>${esc(o.paso.quien)}</small>`;
@@ -1208,10 +1209,13 @@
             $('recBodyCom').innerHTML = data.length ? data.map(o => {
                 let accion;
                 if (o.estado === 'Por aprobar') accion = '<span class="inv-tip">Falta aprobar</span>';
-                else if (o.paso.codigo === 'pagar') accion = '<span class="inv-tip">🔒 Falta el pago</span><small class="com-pago-nota">Es al contado: Finanzas paga primero y luego se recoge</small>';
-                else if (!PUEDE.recibir) accion = '—';
+                // Erika 04/11/2026: solo el ADELANTO acordado bloquea; al contado se recibe y se paga en 5 días
+                else if (o.paso.codigo === 'pagar') accion = `<span class="inv-tip">🔒 Falta el adelanto ${dinero(o.moneda, o.falta_adelanto || o.saldo_pago)}</span>`
+                    + (PUEDE.pagar ? `<button class="btn-mini" data-pagar="${o.id}">💸 Registrar pago</button>` : '<small class="com-pago-nota">Cuando Erika o Hellen registren el adelanto, se habilita Recibir.</small>');
+                else if (!PUEDE.recibir) accion = '<small class="com-pago-nota">Reciben solo Erika, Hellen o Estrella</small>';
                 else if (o.usuario_id === cat.usuarioId && !PUEDE.admin) accion = '<span class="inv-tip">Tú hiciste la orden: la recibe otra persona</span>';
                 else accion = `<button class="btn-mini" data-recibir="${o.id}">📦 Recibir</button>`;
+                if (o.contado_sin_pagar && o.paso.codigo === 'recibir') accion += '<small class="com-pago-nota">Al contado, aún sin pagar: se puede recibir. Se paga en 5 días desde que llega.</small>';
                 // Intercompany (el proveedor es otra empresa del grupo): se recibe aunque falte el pago (22/10/2026)
                 if (o.falta_pago_intercompany && o.paso.codigo === 'recibir') accion += '<small class="com-pago-nota">Intercompany: falta el pago</small>';
                 return `<tr><td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td><td class="left">${esc(o.proveedor || '')}</td>
@@ -1371,11 +1375,12 @@
         try {
             const conFiltro = filtroVer && filtroVer.tab === 'facturas';
             const data = aplicarFiltroVer('facturas', (await api('/compras/api/flujo/ordenes' + (conFiltro ? '' : '?estado=abiertas'))).data);
-            const porPagar = data.filter(o => ['pagar', 'pagar_credito'].includes(o.paso.codigo));
+            // Erika 04/11/2026: también las OC al contado que aún se van a recibir (se pueden recibir antes del pago)
+            const porPagar = data.filter(o => ['pagar', 'pagar_credito'].includes(o.paso.codigo) || o.contado_sin_pagar);
             $('pagBody').innerHTML = porPagar.length ? porPagar.map(o => `<tr>
                 <td><button class="btn-link" data-ver="${o.id}">${esc(o.numero)}</button></td><td><b>${esc(o.empresa || '')}</b></td>
                 <td class="left">${esc(o.proveedor || '')}</td><td>${esc(condPagoMostrar(o.condicion_pago, o.dias_credito))}</td>
-                <td class="num">${dinero(o.moneda, o.total)}</td><td class="num">${dinero(o.moneda, o.pagado)}</td><td class="num"><b>${dinero(o.moneda, o.saldo_pago)}</b></td>
+                <td class="num">${dinero(o.moneda, o.total)}</td><td class="num">${dinero(o.moneda, o.pagado)}</td><td class="num"><b>${dinero(o.moneda, o.saldo_pago)}</b>${o.contado_sin_pagar && o.primera_recepcion ? `<small class="${o.pago_contado_vencido ? 'neg' : ''}">${o.pago_contado_vencido ? '🔴 VENCIDO · ' : ''}Recibido · falta pagar${o.pago_contado_vence ? ' (plazo ' + fecha(o.pago_contado_vence, false) + ')' : ''}</small>` : ''}</td>
                 <td>${PUEDE.pagar ? `<button class="btn-mini" data-pagar="${o.id}">💸 Pagar</button>` : '—'}</td></tr>`).join('')
                 : '<tr><td colspan="8">No hay órdenes por pagar. 👍</td></tr>';
             // Se espera factura cuando ya llegó mercadería o ya se pagó algo

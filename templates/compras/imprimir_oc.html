@@ -154,9 +154,9 @@
 </div>
 {% if declarada == false %}<p class="no-print" style="color:#B91C1C"><b>Aviso interno:</b> {{ sede.nombre }} no está declarada en SUNAT para esta empresa.</p>{% endif %}
 {% if not sin_aprobar and o.aprobado_por %}
-<div class="sello">✔ APROBADA por <b>{{ o.aprobado_por }}</b>{% if o.aprobado_en %} · {{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') if o.aprobado_en.strftime is defined else o.aprobado_en }} (hora de Lima){% endif %}</div>
+<div class="sello">✔ APROBADO por <b>{{ aprobador_pdf or o.aprobado_por }}</b>{% if o.aprobado_en %} · {{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') if o.aprobado_en.strftime is defined else o.aprobado_en }} (hora de Lima){% endif %}</div>
 {% endif %}
-<div class="firmas"><div>Elaboró: {{ o.creado_por_nombre or '' }}</div><div>Aprobó: {{ '' if sin_aprobar else (o.aprobado_por or '') }}{% if not sin_aprobar and o.aprobado_en and o.aprobado_en.strftime is defined %}<br><small>{{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}</div><div>Proveedor (conformidad)</div></div>
+<div class="firmas"><div>Elaboró: {{ o.creado_por_nombre or '' }}</div><div>Aprobado por: {{ '' if sin_aprobar else (aprobador_pdf or o.aprobado_por or '') }}{% if not sin_aprobar and o.aprobado_en and o.aprobado_en.strftime is defined %}<br><small>{{ o.aprobado_en.strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}</div><div>Proveedor (conformidad)</div></div>
 {% endif %}
 </body>
 </html>

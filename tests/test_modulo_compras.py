@@ -106,7 +106,7 @@ def test_flujo_completo_bajo_pedido(cx, aprobador, app):
     r = aprobador.post(f'/compras/api/flujo/ordenes/{oc_id}/aprobar', json={'aprobar': True})
     assert r.status_code == 200, r.get_json()
 
-    # 3. Es al contado: no se puede recibir antes del pago
+    # 3. Es al contado: desde el 04/11/2026 (Erika) ya NO se bloquea por el pago; aquí lo contado no coincide → ventana
     rec = {'almacen_id': cx['SMP'], 'guia_proveedor': 'EG01-00000123', 'traido_por_tipo': 'usuario',
            'traido_por_id': cx['usu']['log1'], 'items': []}
     items = cx['alm'].get(f'/compras/api/flujo/ordenes/{oc_id}/para_recibir').get_json()['items']
@@ -114,7 +114,7 @@ def test_flujo_completo_bajo_pedido(cx, aprobador, app):
     rec['items'] = [{'oc_item_id': items[0]['id'], 'cantidad_buena': 4, 'cantidad_danada': 0},
                     {'oc_item_id': items[1]['id'], 'cantidad_buena': 5, 'cantidad_danada': 0}]
     r = cx['alm'].post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
-    assert r.status_code == 400 and 'pago' in r.get_json()['error']
+    assert r.status_code == 409 and r.get_json().get('codigo') == 'diferencias', r.get_json()
 
     # 4. Pago: sin N° de operación no; quien hizo la OC no puede pagar; Finanzas sí
     assert cx['fin'].post(f'/compras/api/flujo/ordenes/{oc_id}/pago', json={'monto': 100, 'metodo': 'Transferencia'}).status_code == 400

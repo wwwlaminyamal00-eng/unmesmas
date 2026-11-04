@@ -46,10 +46,10 @@ def test_lista_oc_credito_deuda_y_sin_aprobar(admin):
     assert r['totales']['PEN']['n_sin_aprobar'] >= 1
     # OC impresa: sello con nombre y hora; la no aprobada solo sale como borrador con la marca
     html = admin.get(f'/compras/flujo/ordenes/{aprobada}/imprimir').get_data(as_text=True)
-    assert 'APROBADA por' in html and '(hora de Lima)' in html and 'NO APROBADA' not in html
+    assert 'APROBADO por' in html and '(hora de Lima)' in html and 'NO APROBADA' not in html
     assert admin.get(f'/compras/flujo/ordenes/{sin}/imprimir').status_code == 409
     html = admin.get(f'/compras/flujo/ordenes/{sin}/imprimir?hoja=borrador').get_data(as_text=True)
-    assert 'NO APROBADA' in html and 'solo Erika o Hellen' in html and 'APROBADA por' not in html
+    assert 'NO APROBADA' in html and 'solo Erika o Hellen' in html and 'APROBADO por' not in html
 
 
 def test_pantallas_credito_y_aviso_stock():
@@ -75,3 +75,39 @@ def test_pdf_oc_ordenado_y_distinto_por_empresa():
     t = (RAIZ / 'templates/compras/imprimir_oc.html').read_text(encoding='utf-8')
     assert 'Tiempo de entrega' in t and '>Ítems</div>' in t and 'Emitir factura a:' in t
     assert '<div class="transfer no-print">' in t and "== 'AGD'" in t
+
+
+def test_recibir_solo_erika_hellen_estrella(app):
+    import utils
+    from flask import session
+    with app.test_request_context():
+        for usuario, esperado in (('eri01kcf', True), ('HEL02KCF', True), ('est01kcf', True), ('luis01kcf', False), ('mil01kcf', False)):
+            session['usuario'] = usuario
+            assert utils.recibe_mercaderia() is esperado, usuario
+    js = (RAIZ / 'static/js/compras_flujo.js').read_text(encoding='utf-8')
+    assert '💸 Registrar pago' in js and 'Reciben solo Erika, Hellen o Estrella' in js
+
+
+def test_firma_agd_como_gerencia_en_pdf():
+    # Erika 04/11/2026: "Aprobado por: Gerencia Compras AGD GROUP SAC" (por dentro se guarda el usuario real)
+    from routes.compras_flujo import FIRMA_APROBACION_PDF
+    assert FIRMA_APROBACION_PDF == {'AGD': 'Gerencia Compras AGD GROUP SAC'}
+    t = (RAIZ / 'templates/compras/imprimir_oc.html').read_text(encoding='utf-8')
+    assert 'aprobador_pdf or o.aprobado_por' in t and 'Aprobado por:' in t
+
+
+def test_contado_recibido_sin_pago_plazo_5_dias():
+    # Erika 04/11/2026: los proveedores al contado entregan antes del pago; se recibe y queda "Recibido · falta pagar"
+    from datetime import datetime, timedelta, date
+    from routes.compras_flujo import _paso, _vence_pago_contado, DIAS_PAGO_CONTADO
+    assert DIAS_PAGO_CONTADO == 5
+    base = {'estado': 'Recibida', 'total': 100, 'pagado': 0, 'condicion_pago': 'Contado', 'flujo': 'v2', 'ruc': '20000000001',
+            'incidencias': 0, 'facturas': 0, 'facturado': 0, 'adelanto_pct': 0}
+    hace = datetime.now() - timedelta(days=7)
+    p = _paso(dict(base, primera_recepcion=hace))
+    assert p['codigo'] == 'pagar' and 'VENCIDO' in p['texto'] and 'Recibido · falta pagar' in p['texto']
+    assert _vence_pago_contado({'primera_recepcion': hace}) == hace.date() + timedelta(days=5)
+    p = _paso(dict(base, primera_recepcion=datetime.now()))
+    assert p['codigo'] == 'pagar' and 'VENCIDO' not in p['texto']
+    assert _paso(dict(base, estado='Aprobada'))['codigo'] == 'recibir'          # antes de llegar: ya se puede recibir
+    assert date.today()

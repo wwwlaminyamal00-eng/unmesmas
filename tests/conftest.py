@@ -29,6 +29,8 @@ os.environ.setdefault('USUARIOS_REPORTES', 'eri01kcf,admin')
 # En pruebas 'admin' hace de Erika: aprueba OC al crédito y paga a proveedores (en la base real: eri01kcf y hel02kcf)
 os.environ.setdefault('USUARIOS_APRUEBAN_OC_CREDITO', 'eri01kcf,hel02kcf,admin')
 os.environ.setdefault('USUARIOS_PAGAN_PROVEEDORES', 'eri01kcf,hel02kcf,admin,fin1')
+# Recibir mercadería: en la base real eri01kcf, hel02kcf y est01kcf; en pruebas también los usuarios de almacén de prueba
+os.environ.setdefault('USUARIOS_RECIBEN_MERCADERIA', 'eri01kcf,hel02kcf,est01kcf,admin,alm1,alm2,alm9,log1,ctrl,hellen,compra7')
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ESQUEMA = os.environ.get('TEST_ESQUEMA', 'real')
 ARCHIVO_ESQUEMA = 'schema_pruebas.sql' if ESQUEMA == 'reconstruido' else 'schema_supabase_real.sql'

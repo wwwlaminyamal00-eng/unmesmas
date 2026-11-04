@@ -45,7 +45,8 @@ def test_acceso_total_en_la_matriz_habilita_recibir(app, admin, base):
     from routes import acceso
     acceso._cache_flags.clear()
     puede, _ = _datos(h)
-    assert puede['recibir'] and puede['comprar'] and puede['facturar']
+    # Erika 04/11/2026 (tarde): Recibir mercadería pasó a ser solo de Erika, Hellen y Estrella (por usuario)
+    assert not puede['recibir'] and puede['comprar'] and puede['facturar']
     assert not puede['aprobar']                                  # aprobar OC no se regala con "crear"
 
 

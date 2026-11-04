@@ -74,6 +74,15 @@ def paga_proveedores():
     return (session.get('usuario') or '').strip().lower() in USUARIOS_PAGAN_PROVEEDORES
 
 
+# Erika 04/11/2026: "en recibir mercadería deberían tener acceso Erika, Hellen y Estrella". Por usuario (no por rol
+# ni por la matriz). Se cambia con USUARIOS_RECIBEN_MERCADERIA.
+USUARIOS_RECIBEN_MERCADERIA = _lista_env('USUARIOS_RECIBEN_MERCADERIA', 'eri01kcf,hel02kcf,est01kcf')
+
+
+def recibe_mercaderia():
+    return (session.get('usuario') or '').strip().lower() in USUARIOS_RECIBEN_MERCADERIA
+
+
 def es_aprobador():
     return rol_actual() in ROLES_APROBADORES or es_admin()
 

@@ -98,12 +98,12 @@ def test_oc_intercompany_se_recibe_antes_del_pago(zz, admin):
            'items': [{'oc_item_id': items[0]['id'], 'cantidad_buena': 23, 'cantidad_danada': 0}]}
     r = admin.post(f'/compras/api/flujo/ordenes/{oc_id}/recibir', json=rec)
     assert r.status_code == 200 and r.json['success'], r.json
-    # Una OC al contado de un proveedor de afuera sigue bloqueada hasta el pago
+    # 04/11/2026 (Erika): una OC al contado de un proveedor de afuera ya se recibe antes del pago (queda falta pagar)
     otra = admin.post('/compras/api/flujo/ordenes', json=_oc_flujo(zz, motivo_compra='Stock estratégico',
                                                                     items=[{'producto_id': zz['LENTE'], 'cantidad': 29, 'precio_unitario': 7}])).json['id']
     _sql("UPDATE ordenes_compra SET estado = 'Aprobada' WHERE id = %s", (otra,), fetch=False)
     fila = next(o for o in admin.get('/compras/api/flujo/por_recibir').json['data'] if o['id'] == otra)
-    assert fila['paso']['codigo'] == 'pagar' and fila['falta_pago_intercompany'] is False
+    assert fila['paso']['codigo'] == 'recibir' and fila['falta_pago_intercompany'] is False and fila['contado_sin_pagar'] is True
 
 
 def test_recibir_con_diferencia_avisa_antes_de_grabar(zz, admin):
