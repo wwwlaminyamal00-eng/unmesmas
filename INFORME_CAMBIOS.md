@@ -2765,3 +2765,11 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - En Recibir: si falta el adelanto, botón "💸 Registrar pago" para Erika y Hellen.
 - PDF de OC de AGD: "Aprobado por: Gerencia Compras AGD GROUP SAC" con fecha y hora. Por dentro se guarda y muestra el usuario real (historial y OC al crédito). KCF sin cambios.
 - Sin migraciones. 396 pruebas.
+
+## 24.73 Caja chica: sin hora, sin "Gastos bancarios", "Vale" y flete (04/11/2026 noche)
+- El campo Hora ya no sale en el formulario ni en la lista; se guarda sola la hora del registro (trazabilidad). Los datos guardados no se tocan.
+- "Gastos bancarios (ITF)" ya no sale en el formulario. Los gastos ya registrados con ese rubro se conservan y se pueden editar.
+- "Sin comprobante (vale)" se muestra como **"Vale"** (en la base sigue igual, como lo ya registrado).
+- Flete: "Pagado a" muestra solo transportistas (Personas tipo Transportista), proveedores con RUC del maestro y "Otro (escribir)"; sin "No aplica" ni el personal. Al elegir un proveedor se llena su RUC. El servidor exige "Pagado a" en flete. Ayuda: "Quién gastó: quien dio el dinero. Pagado a: el transportista."
+- Saldo KCF −S/ 862.44 verificado: es la suma real (saldo inicial 134.61 + reposiciones 13,761.40 + devolución 62.80 − gastos 14,821.25). Desde la última reposición (20/10) se gastó más que el fondo; incluye fletes de S/ 300 (03/11) y S/ 500 (04/11).
+- Sin migraciones. 397 pruebas.

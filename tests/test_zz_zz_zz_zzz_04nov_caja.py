@@ -118,3 +118,16 @@ def test_solo_gerencia_anula_planilla(app, agd):
         session['rol'] = 'vendedor'
         with pytest.raises(caja_chica.ErrorCaja):
             caja_chica.anular_planilla(agd, 1, 'motivo de prueba')
+
+
+def test_caja_noche_sin_hora_sin_itf_vale_y_flete():
+    # Erika 04/11/2026 (noche): quitar la hora, quitar gastos bancarios, "Vale", flete pagado al transportista
+    from pathlib import Path
+    from routes import caja_chica as cc
+    assert 'Gastos bancarios (ITF)' not in cc.RUBROS_FORMULARIO and 'Gastos bancarios (ITF)' in cc.RUBROS
+    raiz = Path(__file__).resolve().parent.parent
+    js = (raiz / 'static/js/caja_chica.js').read_text(encoding='utf-8')
+    assert 'type="hidden" name="hora"' in js and '<label>Hora' not in js
+    assert "'Sin comprobante (vale)': 'Vale'" in js and 'data-solo-flete' in js and '<b>Pagado a</b>: el transportista' in js
+    src = (raiz / 'routes/caja_chica.py').read_text(encoding='utf-8')
+    assert 'En flete, en "Pagado a" elige al transportista' in src

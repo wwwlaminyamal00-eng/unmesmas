@@ -38,8 +38,11 @@
     const empCodigo = () => ($('#ccEmpresa').selectedOptions[0] || {}).textContent || '';
     const esAdmin = () => APP.dataset.admin === 'true';
     const kpi = (titulo, valor, pie, clase) => `<div class="inv-kpi ${clase || ''}"><small>${titulo}</small><b>${valor}</b><span>${pie || ''}</span></div>`;
+    // Erika 04/11/2026: "falta VALE": se muestra como "Vale" (en la base sigue "Sin comprobante (vale)", igual que lo ya registrado)
+    const NOMBRE_COMPROBANTE = { 'Sin comprobante (vale)': 'Vale' };
+    const nomComp = t => NOMBRE_COMPROBANTE[t] || t || '';
     const opciones = (lista, actual, vacio) => (vacio ? `<option value="">${esc(vacio)}</option>` : '') +
-        lista.map(x => `<option value="${esc(x)}" ${x === actual ? 'selected' : ''}>${esc(x)}</option>`).join('');
+        lista.map(x => `<option value="${esc(x)}" ${x === actual ? 'selected' : ''}>${esc(nomComp(x))}</option>`).join('');
     const imprimir = (ruta, extra) => window.open(`${ruta}?${new URLSearchParams(Object.assign({ empresa_id: empresa() }, extra || {}))}`, '_blank');
 
     // ============================================================
@@ -112,7 +115,7 @@
         if (m.tipo !== 'Gasto') return '<span class="ge-cero">—</span>';
         if (m.comprobante_tipo === 'No registrado (histórico)') return '<span class="ge-estado gris">No registrado</span>';
         const clase = m.sustenta ? 'verde' : 'rojo';
-        return `<span class="ge-estado ${clase}">${esc(m.comprobante_tipo)}</span>` +
+        return `<span class="ge-estado ${clase}">${esc(nomComp(m.comprobante_tipo))}</span>` +
             (m.comprobante_numero ? `<span class="ge-sub">N° ${esc(m.comprobante_numero)}</span>` : '') +
             (m.comprobante_tipo === 'Planilla de movilidad' ? (m.planilla_numero && m.planilla_estado === 'Emitida'
                 ? `<span class="ge-sub">Planilla N° ${String(m.planilla_numero).padStart(6, '0')}</span>` : '<span class="ge-sub ge-rojo">Planilla sin emitir</span>') : '');
@@ -140,7 +143,7 @@
         $('#ccMovs').innerHTML = `<table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Rubro</th><th>Quién gastó / pagado a</th>
             <th>Descripción</th><th>N° PV / PC</th><th>Comprobante y foto</th><th>Monto (S/)</th>${filtrado ? '' : '<th>Saldo (S/)</th>'}<th>Estado</th><th>Acciones</th></tr></thead><tbody>
             ${lista.map(m => `<tr class="${m.estado === 'Anulado' ? 'cc-anulado' : m.origen === 'Histórico' ? 'cc-hist' : (m.tipo === 'Gasto' && !m.rendicion_id ? 'ge-fila-pend' : '')}">
-                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}${m.hora ? `<span class="ge-sub">${esc(m.hora)}</span>` : ''}</td>
+                <td>${m.numero}</td><td class="ge-nw">${fecha(m.fecha)}</td>
                 <td>${esc(m.rubro || m.tipo)}${m.empresa_gasto && m.empresa_gasto !== empCodigo() ? `<span class="ge-sub">Gasto de ${esc(m.empresa_gasto)}</span>` : ''}</td>
                 <td>${esc(m.quien || '')}${m.pagado_a ? `<span class="ge-sub">Pagado a: ${esc(m.pagado_a)}</span>` : ''}</td>
                 <td style="text-align:left">${esc(m.descripcion)}${m.detalle ? `<span class="ge-sub">${esc(m.detalle)}</span>` : ''}${m.autorizado_por ? `<span class="ge-sub">Autorizó: ${esc(m.autorizado_por)}</span>` : ''}${m.observacion ? `<span class="ge-sub">Obs.: ${esc(m.observacion)}</span>` : ''}</td>
@@ -202,14 +205,17 @@
         const descEnLista = !m.descripcion || OPC.descripciones.includes(m.descripcion);
         const empresas = $$('#ccEmpresa option').map(o => o.textContent);
         return `<label>Fecha<input type="date" name="fecha" required max="${hoy()}" value="${esc(m.fecha)}"></label>
-            <label>Hora<input type="time" name="hora" required value="${esc(m.hora || '')}"></label>
+            <input type="hidden" name="hora" value="${esc(m.hora || '')}">
+            <input type="hidden" name="_rubro_anterior" value="${esc(m.rubro || '')}">
             <label>Empresa dueña del gasto<select name="empresa_gasto">${opciones(empresas, m.empresa_gasto || empCodigo())}</select></label>
-            <label>Rubro<select name="rubro" required>${opciones(OPC.rubros, m.rubro, 'Elige...')}</select></label>
+            <label>Rubro<select name="rubro" required>${opciones(m.rubro && !OPC.rubros.includes(m.rubro) ? OPC.rubros.concat([m.rubro]) : OPC.rubros, m.rubro, 'Elige...')}</select></label>
             <label>Monto (S/)<input type="number" name="monto" required min="0.01" step="0.01" value="${m.egreso ?? ''}"></label>
             <label>Quién gastó<select name="quien_id" required><option value="">Elige...</option>${personal.map(p => `<option value="${p.id}" ${p.id === m.quien_id ? 'selected' : ''}>${esc(p.nombre)} (${esc(p.tipo)})</option>`).join('')}</select></label>
-            <label>Pagado a<select name="pagado_a"><option value="">— No aplica —</option>
-                ${grupo('Personal', pagables.filter(p => p.tipo !== 'Transportista' && p.tipo !== 'Otro'))}${grupo('Transportistas', pagables.filter(p => p.tipo === 'Transportista'))}${grupo('Otros', pagables.filter(p => p.tipo === 'Otro'))}
-                <option value="__otro" ${enLista ? '' : 'selected'}>Otro (escribir: tienda, empresa...)</option></select></label>
+            <label>Pagado a<select name="pagado_a"><option value="" data-no-flete>— No aplica —</option>
+                ${grupo('Transportistas', pagables.filter(p => p.tipo === 'Transportista'))}<optgroup label="Personal" data-no-flete>${pagables.filter(p => p.tipo !== 'Transportista' && p.tipo !== 'Otro').map(p => `<option value="${esc(p.nombre)}" ${p.nombre === m.pagado_a ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</optgroup>${grupo('Otros', pagables.filter(p => p.tipo === 'Otro'))}
+                ${(OPC.proveedores || []).length ? `<optgroup label="Proveedores registrados (con RUC)" data-solo-flete>${OPC.proveedores.map(p => `<option value="${esc(p.nombre)}" data-ruc="${esc(p.ruc)}" ${p.nombre === m.pagado_a ? 'selected' : ''}>${esc(p.nombre)}${p.ruc ? ' · RUC ' + esc(p.ruc) : ''}</option>`).join('')}</optgroup>` : ''}
+                <option value="__otro" ${enLista || (OPC.proveedores || []).some(p => p.nombre === m.pagado_a) ? '' : 'selected'}>Otro (escribir: transportista, tienda...)</option></select></label>
+            <div class="ge-sub" data-cc="ayuda-flete" style="grid-column:1/-1" hidden>🚚 <b>Quién gastó</b>: quien dio el dinero. <b>Pagado a</b>: el transportista.</div>
             <label data-cc="pagado-otro">Escribe a quién se pagó<input name="pagado_a_otro" maxlength="150" value="${enLista ? '' : esc(m.pagado_a)}" placeholder="Ej.: Tienda Sodimac"></label>
             <label>Descripción<select name="descripcion" required>${opciones(OPC.descripciones, descEnLista ? m.descripcion : 'Otro (escribir)', 'Elige...')}</select></label>
             <label data-cc="desc-otro">Escribe la descripción<input name="descripcion_otro" maxlength="500" value="${descEnLista ? '' : esc(m.descripcion)}"></label>
@@ -237,6 +243,21 @@
         const n = $('[data-cc=numero]', f); if (n) n.hidden = !OPC.conNumero.includes(tipo);
         const r = $('[data-cc=ruc]', f); if (r) r.hidden = tipo !== 'Factura';
         const a = $('[data-cc=autoriza]', f); if (a) a.hidden = monto <= OPC.topeAviso;
+        // Erika 04/11/2026: en flete "Pagado a" es el transportista contratado: sin "No aplica" ni el personal
+        const esFlete = f.rubro && f.rubro.value === 'Flete y transporte de mercadería';
+        if (f.pagado_a) {
+            $$('[data-no-flete], [data-no-flete] option', f.pagado_a).forEach(o => { o.hidden = esFlete; o.disabled = esFlete; });
+            $$('[data-solo-flete], [data-solo-flete] option', f.pagado_a).forEach(o => { o.hidden = !esFlete; o.disabled = !esFlete; });
+            const sel = f.pagado_a.selectedOptions[0];
+            const apagada = o => !o || o.disabled || (o.parentElement && o.parentElement.disabled);
+            if (esFlete && apagada(sel)) f.pagado_a.value = '__otro';
+            if (!esFlete && sel && apagada(sel)) f.pagado_a.value = '';
+            const elegida = f.pagado_a.selectedOptions[0];
+            const ruc = elegida && elegida.dataset ? elegida.dataset.ruc : '';
+            if (ruc && f.ruc_emisor && !f.ruc_emisor.value) f.ruc_emisor.value = ruc;
+        }
+        const af = $('[data-cc=ayuda-flete]', f); if (af) af.hidden = !esFlete;
+        if (f.pagado_a_otro) f.pagado_a_otro.placeholder = esFlete ? 'Ej.: Ever Alfaro (transportista)' : 'Ej.: Tienda Sodimac';
         const po = $('[data-cc=pagado-otro]', f); if (po) po.hidden = !f.pagado_a || f.pagado_a.value !== '__otro';
         const dot = $('[data-cc=desc-otro]', f); if (dot) dot.hidden = !f.descripcion || f.descripcion.value !== 'Otro (escribir)';
         const det = $('[data-cc=detalle]', f); if (det) det.hidden = !OPC.pidenDetalle.includes(f.rubro.value);
@@ -388,7 +409,7 @@
             </tbody></table>
             <details><summary>Ver los ${gastos.length} gastos</summary><table class="inv-table ge-tabla"><thead><tr><th>N°</th><th>Fecha</th><th>Quién</th><th>Descripción</th><th>Comprobante</th><th>Foto</th><th>S/</th></tr></thead><tbody>
             ${gastos.map(g => `<tr><td>${g.numero}</td><td>${fecha(g.fecha)}</td><td>${esc(g.quien || '')}</td><td style="text-align:left">${esc(g.descripcion)}${g.detalle ? `<span class="ge-sub">${esc(g.detalle)}</span>` : ''}</td>
-                <td>${esc(g.comprobante_tipo || '')}</td><td>${g.fotos ? '✔' : (g.comprobante_tipo === 'Planilla de movilidad' ? 'Planilla' : '<span class="ge-sin">Falta</span>')}</td><td>${soles(g.egreso)}</td></tr>`).join('')}
+                <td>${esc(nomComp(g.comprobante_tipo))}</td><td>${g.fotos ? '✔' : (g.comprobante_tipo === 'Planilla de movilidad' ? 'Planilla' : '<span class="ge-sin">Falta</span>')}</td><td>${soles(g.egreso)}</td></tr>`).join('')}
             </tbody></table></details></div>`;
         if (!paraAprobar) return abrirModal(`Rendición N° ${r.numero}`, `${fecha(r.desde)} al ${fecha(r.hasta)} · ${esc(r.estado)} · total ${soles(r.total_gastado)}`, tabla, null, null);
         abrirModal(`Aprobar rendición N° ${r.numero}`,
