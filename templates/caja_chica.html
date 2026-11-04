@@ -125,11 +125,12 @@
         sustenta: {{ sustenta | list | tojson }},
         topeAviso: {{ tope_aviso }},
         descripciones: {{ descripciones | list | tojson }},
-        pidenDetalle: {{ piden_detalle | list | tojson }}
+        pidenDetalle: {{ piden_detalle | list | tojson }},
+        proveedores: {{ proveedores | tojson }}
     };
 </script>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104b"></script>
+<script src="{{ url_for('static', filename='js/caja_chica.js') }}?v=20261104c"></script>
 {% endblock %}

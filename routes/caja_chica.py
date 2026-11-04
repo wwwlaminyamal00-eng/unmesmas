@@ -59,6 +59,10 @@ DESCRIPCIONES = ('Entrega a cliente', 'Recojo de productos de proveedores', 'Tra
                  'Trámite en banco', 'Trámite en SUNAT, municipalidad u otra entidad', 'Compra de útiles o materiales',
                  'Compra urgente para un pedido', 'Refrigerio o atención', 'Recarga de celular', DESCRIPCION_OTRO)
 PIDEN_DETALLE = (RUBRO_FLETE, RUBRO_MOVILIDAD)    # de dónde a dónde: lo pide la planilla de movilidad
+# Erika 04/11/2026 (noche): "quitar gastos bancarios". Ya no sale en el formulario; lo ya registrado se conserva y se
+# puede seguir editando con su rubro.
+RUBROS_RETIRADOS = ('Gastos bancarios (ITF)',)
+RUBROS_FORMULARIO = tuple(r for r in RUBROS if r not in RUBROS_RETIRADOS)
 
 
 def rubro_actual(rubro):
@@ -447,7 +451,7 @@ def _leer_gasto(eid, d, conf):
         raise ErrorCaja(f'La semana hasta el {cerrada:%d/%m/%Y} ya fue aprobada y está cerrada. Usa una fecha posterior.')
     hora = _hora(d.get('hora'), fecha, hoy)
     rubro = RUBROS_ANTERIORES.get(d.get('rubro'), d.get('rubro'))
-    if rubro not in RUBROS:
+    if rubro not in RUBROS or (rubro in RUBROS_RETIRADOS and rubro != (d.get('_rubro_anterior') or '')):
         raise ErrorCaja('Elige el rubro.')
     descripcion = _txt(d, 'descripcion', 500, True, 'la descripción (elige de la lista)')
     if descripcion == DESCRIPCION_OTRO:
@@ -460,7 +464,7 @@ def _leer_gasto(eid, d, conf):
     monto = _monto(d.get('monto'))
     tipo_c = d.get('comprobante_tipo')
     if tipo_c not in COMPROBANTES:
-        raise ErrorCaja('Elige el tipo de comprobante (si no hay, "Sin comprobante (vale)").')
+        raise ErrorCaja('Elige el tipo de comprobante (si no hay, "Vale").')
     numero_c = _txt(d, 'comprobante_numero', 40)
     if tipo_c in CON_NUMERO and not numero_c:
         raise ErrorCaja(f'Escribe el N° de la {tipo_c.lower()} (ej.: F001-123).')
@@ -496,6 +500,9 @@ def _leer_gasto(eid, d, conf):
     codigos = {x['codigo'] for x in lista_empresas()}
     if empresa_gasto and codigos and empresa_gasto not in codigos:
         raise ErrorCaja('Empresa del gasto no válida.')
+    # Erika 04/11/2026: el flete siempre es subcontratado: "Pagado a" = el transportista (no "No aplica")
+    if rubro == RUBRO_FLETE and (not d.get('pagado_a') or str(d.get('pagado_a')).startswith('__')):
+        raise ErrorCaja('En flete, en "Pagado a" elige al transportista que contrataste (o escribe su nombre).')
     autorizado = _txt(d, 'autorizado_por', 150)
     if monto > TOPE_AVISO and not autorizado:
         raise ErrorCaja(f'Gasto mayor a S/ {TOPE_AVISO:.0f}: escribe quién lo autorizó (ej.: Erika por WhatsApp).')
@@ -1183,12 +1190,26 @@ def _json():
     return request.get_json(silent=True) or {}
 
 
+def _proveedores_flete():
+    """Proveedores con RUC del maestro, para elegir al transportista en un flete (Erika 04/11/2026)."""
+    try:
+        filas = db_query("""SELECT razon_social, ruc FROM proveedores
+                            WHERE COALESCE(activo, true) AND NULLIF(TRIM(razon_social), '') IS NOT NULL
+                            ORDER BY (razon_social ILIKE '%trans%' OR razon_social ILIKE '%flete%'
+                                      OR razon_social ILIKE '%carga%' OR razon_social ILIKE '%logist%') DESC, razon_social
+                            LIMIT 600""")
+        return [{'nombre': f['razon_social'].strip(), 'ruc': (f['ruc'] or '').strip()} for f in filas]
+    except Exception:
+        return []
+
+
 @caja_chica_bp.route('/caja-chica')
 def pagina():
     emps = [{'id': x['id'], 'codigo': x['codigo']} for x in lista_empresas()]
     activa = empresa_actual()
     return render_template('caja_chica.html', empresas=emps, empresa_activa=activa['id'] if activa else None,
-                           es_admin=es_admin(), rubros=RUBROS, comprobantes=COMPROBANTES, tipos_persona=TIPOS_PERSONA,
+                           es_admin=es_admin(), rubros=RUBROS_FORMULARIO, comprobantes=COMPROBANTES, tipos_persona=TIPOS_PERSONA,
+                           proveedores=_proveedores_flete(),
                            descripciones=DESCRIPCIONES, piden_detalle=PIDEN_DETALLE,
                            con_numero=CON_NUMERO, sustenta=SUSTENTA_SUNAT, tope_aviso=float(TOPE_AVISO))
 
