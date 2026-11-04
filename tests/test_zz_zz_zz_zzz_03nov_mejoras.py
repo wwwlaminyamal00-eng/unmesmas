@@ -161,4 +161,5 @@ def test_pv_lista_trae_el_pago_y_pv_nuevo_empieza_vacio(vendedor):
 
 def test_aviso_de_movimientos_pendientes_en_palabras_simples():
     js = (RAIZ / 'static/js/inventario.js').read_text(encoding='utf-8')
-    assert 'NO suman ni restan stock' in js and 'reportó ${esc(p.usuario_nombre)}' not in js
+    # 04/11/2026: Erika pidió frases más cortas (viñetas + tabla); la idea se mantiene: sin aprobar no cambia el stock
+    assert 'el stock <b class="neg">no cambia</b>' in js and 'reportó ${esc(p.usuario_nombre)}' not in js

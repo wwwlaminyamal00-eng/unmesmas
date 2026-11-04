@@ -2745,3 +2745,9 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 **4. Arriba a la derecha sale el nombre real de quien entró** (antes decía "Usuario" en varias pantallas porque se tomaba de una variable que solo existía en el inicio, o del navegador). Ahora sale siempre de la sesión del servidor.
 - No se ejecutó el prompt de Abdiel (quitar candados de administrador y crear otra matriz): no hacía falta y debilitaba la seguridad.
 - Pruebas: 389 bien.
+
+## 24.70 OC al crédito, firma de aprobación y aviso de stock (04/11/2026)
+- Compras ▸ **💳 OC al crédito** (nueva pestaña): tarjetas (deuda aprobada, vencido, esperan aprobación, proveedores con deuda), tabla **Deuda por proveedor** y tabla **Todas las OC al crédito** (quién la hizo y quién la aprobó con fecha y hora de Lima, días de crédito, vencimiento, pagado, falta pagar). Cada tabla con su botón Exportar Excel. Endpoint `/compras/api/flujo/credito`. Lo no aprobado no cuenta como deuda y sale en rojo "NO APROBADA / Falta firma".
+- OC impresa: sello "✔ APROBADA por [nombre] · dd/mm/aaaa hh:mm (hora de Lima)" y fecha bajo "Aprobó". La hoja borrador sale con marca de agua "NO APROBADA" y aviso rojo. Imprimir sin aprobar sigue bloqueado (409).
+- Inventario: aviso de movimientos por aprobar en viñetas cortas (qué es, qué pasa si no haces nada, qué botón pulsar) + tabla (N°, producto, cantidad, empresa, sede, quién y cuándo, nota, Aprobar/Rechazar). Rechazar no borra nada.
+- Sin cambios en la base. Pruebas: 391 pasan.

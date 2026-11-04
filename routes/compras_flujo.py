@@ -831,6 +831,95 @@ def _listar_ocs(where='', params=()):
     return [_oc_dict(f) for f in filas]
 
 
+# ============================================================
+# OC AL CRÉDITO: lista de control para Erika
+# Erika 04/11/2026: "seria bueno tener una data de todas las oc al credito pk tengo miedo que pidan mercaderia
+# al credito sin mi aprobación y luego tenga una deuda de 10 mil soles"
+# ============================================================
+ESTADOS_SIN_VALIDEZ = ('Borrador', 'Por aprobar')
+
+
+def _ocs_credito():
+    """Todas las OC a crédito (no anuladas) con quién la hizo, quién la aprobó, vencimiento y saldo.
+    Deuda = lo que falta pagar de las APROBADAS. Lo que no está aprobado va aparte: todavía no tiene validez."""
+    ocs = [o for o in _listar_ocs("oc.estado <> 'Anulada' AND (oc.condicion_pago ILIKE '%%crédito%%' OR oc.condicion_pago ILIKE '%%credito%%')")
+           if es_credito(o.get('condicion_pago'))]
+    ids = [o['id'] for o in ocs]
+    vence_fact = {}
+    if ids:
+        for f in db_query("""SELECT orden_compra_id, MIN(fecha_vencimiento) AS vence FROM comprobantes_proveedor
+                             WHERE orden_compra_id = ANY(%s) AND fecha_vencimiento IS NOT NULL
+                               AND COALESCE(UPPER(estado), '') NOT IN ('ANULADO', 'ANULADA', 'PAGADO', 'PAGADA')
+                             GROUP BY orden_compra_id""", (ids,)):
+            vence_fact[f['orden_compra_id']] = f['vence']
+    hoy = date.today()
+    filas, por_prov = [], {}
+    for o in ocs:
+        aprobada = (o['estado'] or '').strip().lower() not in ('borrador', 'por aprobar', 'pendiente')
+        dias = int(o.get('dias_credito') or 0)
+        vence, estimado = vence_fact.get(o['id']), False
+        if not vence and aprobada:
+            # Sin factura todavía: se estima desde la aprobación (el plazo real corre desde la factura)
+            base = o.get('aprobado_en') or o.get('fecha')
+            try:
+                base = datetime.fromisoformat(str(base)[:19]).date() if base else None
+            except ValueError:
+                base = None
+            if base:
+                vence, estimado = base + timedelta(days=dias), True
+        if isinstance(vence, str):
+            vence = date.fromisoformat(vence[:10])
+        saldo = o['saldo_pago'] if aprobada else 0.0
+        fila = {
+            'id': o['id'], 'numero': o['numero'], 'empresa': o['empresa'], 'proveedor': o['proveedor'], 'ruc': o['ruc'],
+            'moneda': o.get('moneda') or 'PEN', 'total': float(o['total'] or 0), 'pagado': float(o['pagado'] or 0),
+            'saldo': saldo, 'estado': o['estado'], 'aprobada': aprobada, 'dias_credito': dias,
+            'creado_por': o.get('creado_por_nombre') or '—', 'creada_en': fecha_hora(_a_dt(o.get('created_at') or o.get('fecha'))),
+            'aprobado_por': o.get('aprobado_por') if aprobada else None,
+            'aprobado_en': fecha_hora(_a_dt(o.get('aprobado_en'))) if aprobada else '',
+            'vence': vence.isoformat() if vence else None, 'vence_txt': vence.strftime('%d/%m/%Y') if vence else '—',
+            'vence_estimado': estimado, 'vencida': bool(vence and vence < hoy and saldo > 0.005),
+            'condicion_pago': o.get('condicion_pago'),
+        }
+        filas.append(fila)
+        k = (o.get('proveedor_id'), fila['moneda'])
+        p = por_prov.setdefault(k, {'proveedor': o['proveedor'], 'ruc': o['ruc'], 'moneda': fila['moneda'],
+                                    'deuda': 0.0, 'vencido': 0.0, 'sin_aprobar': 0.0, 'n_sin_aprobar': 0, 'ocs': 0})
+        p['ocs'] += 1
+        p['deuda'] = round(p['deuda'] + saldo, 2)
+        if fila['vencida']:
+            p['vencido'] = round(p['vencido'] + saldo, 2)
+        if not aprobada:
+            p['sin_aprobar'] = round(p['sin_aprobar'] + fila['total'], 2)
+            p['n_sin_aprobar'] += 1
+    proveedores = sorted(por_prov.values(), key=lambda p: (-p['deuda'], -p['sin_aprobar'], p['proveedor'] or ''))
+    totales = {}
+    for p in proveedores:
+        t = totales.setdefault(p['moneda'], {'deuda': 0.0, 'vencido': 0.0, 'sin_aprobar': 0.0, 'n_sin_aprobar': 0})
+        for c in ('deuda', 'vencido', 'sin_aprobar'):
+            t[c] = round(t[c] + p[c], 2)
+        t['n_sin_aprobar'] += p['n_sin_aprobar']
+    return filas, proveedores, totales
+
+
+def _a_dt(v):
+    if isinstance(v, (datetime, date)) or not v:
+        return v
+    try:
+        return datetime.fromisoformat(str(v)[:19])
+    except ValueError:
+        return v
+
+
+@compras_flujo_bp.route('/compras/api/flujo/credito')
+def api_ocs_credito():
+    try:
+        filas, proveedores, totales = _ocs_credito()
+        return jsonify({'success': True, 'data': filas, 'proveedores': proveedores, 'totales': totales})
+    except Exception as e:
+        return _respuesta_error(e)
+
+
 def _obtener_oc(oc_id):
     filas = db_query(SQL_OC_LISTA + ' WHERE oc.id = %s', (oc_id,))
     if not filas:

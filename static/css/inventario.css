@@ -166,3 +166,9 @@
 .inv-pend-lista { margin:0 0 0 18px; padding:0; line-height:1.55; }
 .inv-pend-lista li { margin:3px 0; }
 .inv-pend-lista .azul { color:#1D4ED8; font-weight:700; }
+/* Erika 04/11/2026: aviso de movimientos por aprobar en viñetas cortas + tabla */
+.inv-pend-pasos { margin:4px 0 8px 18px; padding:0; line-height:1.55; font-size:13px; }
+.inv-pend-pasos li { margin:2px 0; }
+.inv-pend-pasos .azul, .inv-pend-tabla .azul { color:#1D4ED8; font-weight:700; }
+.inv-pend-tabla { margin-top:4px; background:#fff; }
+.inv-pend-tabla td small { display:block; color:#64748B; font-size:11px; }
