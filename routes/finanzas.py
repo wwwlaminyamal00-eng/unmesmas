@@ -111,8 +111,9 @@ def asegurar_tablas_finanzas():
 
 
 def puede_operar_finanzas():
+    from utils import paga_proveedores
     rol = (session.get('rol') or '').lower()
-    return es_admin() or es_aprobador() or rol in ROLES_FINANZAS
+    return es_admin() or es_aprobador() or rol in ROLES_FINANZAS or paga_proveedores()
 
 
 def _semaforo(saldo, vencimiento, hoy):
@@ -534,6 +535,9 @@ def api_registrar_movimiento():
         tipo = (data.get('tipo') or '').upper()
         if tipo not in ('COBRO', 'PAGO'):
             return jsonify({'success': False, 'error': 'Tipo inválido (COBRO o PAGO)'}), 400
+        from utils import paga_proveedores
+        if tipo == 'PAGO' and not paga_proveedores():     # Erika 04/11/2026: solo Hellen y Erika pagan a proveedores
+            return jsonify({'success': False, 'error': 'Solo Hellen o Erika registran los pagos a proveedores.'}), 403
         try:
             documento_id = int(data.get('documento_id'))
         except (TypeError, ValueError):

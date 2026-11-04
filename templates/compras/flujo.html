@@ -25,6 +25,7 @@
      data-recibir="{{ 'true' if puede_recibir else 'false' }}"
      data-facturar="{{ 'true' if puede_facturar else 'false' }}"
      data-admin="{{ 'true' if es_admin else 'false' }}"
+     data-aprueba-credito="{{ 'true' if aprueba_credito else 'false' }}"
      data-tab="{{ tab }}"
      data-nueva="{{ 'true' if nueva else 'false' }}">
 
@@ -483,5 +484,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261102a"></script>
+<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261104c"></script>
 {% endblock %}

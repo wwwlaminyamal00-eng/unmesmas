@@ -26,6 +26,9 @@ os.environ['DATABASE_URL'] = TEST_DB
 os.environ.setdefault('SECRET_KEY', 'clave-solo-para-pruebas')
 # En pruebas el usuario 'admin' hace de Erika para Reportes (en la base real es solo eri01kcf)
 os.environ.setdefault('USUARIOS_REPORTES', 'eri01kcf,admin')
+# En pruebas 'admin' hace de Erika: aprueba OC al crédito y paga a proveedores (en la base real: eri01kcf y hel02kcf)
+os.environ.setdefault('USUARIOS_APRUEBAN_OC_CREDITO', 'eri01kcf,hel02kcf,admin')
+os.environ.setdefault('USUARIOS_PAGAN_PROVEEDORES', 'eri01kcf,hel02kcf,admin,fin1')
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ESQUEMA = os.environ.get('TEST_ESQUEMA', 'real')
 ARCHIVO_ESQUEMA = 'schema_pruebas.sql' if ESQUEMA == 'reconstruido' else 'schema_supabase_real.sql'

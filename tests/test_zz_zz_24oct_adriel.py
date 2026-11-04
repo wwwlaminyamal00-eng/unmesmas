@@ -59,7 +59,10 @@ def test_oc_a_credito_solo_la_aprueba_erika():
     assert es_credito('Crédito') and es_credito('Credito 30 dias') and not es_credito('Contado')
     src = (RAIZ / 'routes/compras_flujo.py').read_text(encoding='utf-8')
     assert 'No puedes aprobar una orden que tú misma hiciste' not in src
-    assert "es_credito(oc['condicion_pago']) and not es_admin()" in src
+    # Erika 04/11/2026: ahora las de crédito las aprueban solo ella y Hellen (por usuario)
+    assert "es_credito(oc['condicion_pago']) and not aprueba_oc_credito()" in src
+    import utils
+    assert utils._lista_env('X_NO_EXISTE', 'eri01kcf,hel02kcf') == {'eri01kcf', 'hel02kcf'}
 
 
 def test_cotizacion_no_muestra_cuenta_en_dolares():

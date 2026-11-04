@@ -2734,3 +2734,14 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - La lista cargaba los 836 movimientos de una vez (831 del histórico de Excel). Ahora por defecto muestra los **últimos 30 días** (hoy 89 movimientos, ~11%).
 - Botón "📚 Ver todo (histórico)" para ver todo; vuelve con "🗓 Ver solo últimos 30 días". Debajo de la tabla dice desde qué fecha se ve y el saldo anterior.
 - No se borró ni anuló nada: los movimientos son sustento ante SUNAT (se guardan 5 años).
+
+### 24.69 Recibir mercadería, pagos a proveedores, OC al crédito y nombre del usuario (Erika 04/11/2026)
+**1. "Acceso total" en la matriz no dejaba recibir** (Hellen y los demás)
+- Compras miraba solo el rol (almacén, compras, finanzas), no Usuarios y permisos. Ahora "Acceso total" (crear) en Recibir mercadería, Órdenes de compra o Facturas de proveedores también habilita ese paso (`compras_flujo._matriz`). Aprobar OC no se regala con "crear".
+- Se mantiene: quien hizo la OC no la recibe (otra persona la recibe).
+- Además, ese día ninguna OC podía recibirse: 5 al contado esperaban el pago (OC-20261104-0005, 0008, 0010, 0011, 0012), 3 a crédito esperaban aprobación (0006, 0007, 0009). La 0004 ya está pagada: la recibe alguien que no sea Hellen (ella la hizo). La 0011 y la 0012 son iguales (AENZA, S/ 205.32): revisar si una está duplicada.
+**2. Pagos a proveedores: solo Hellen (hel02kcf) y Erika (eri01kcf)**, por usuario (`utils.paga_proveedores`, variable USUARIOS_PAGAN_PROVEEDORES). Vale para "Registrar pago" de la OC y para los pagos en Finanzas ▸ Cuentas por pagar. Los cobros no cambian.
+**3. OC al crédito: solo las aprueban Erika y Hellen**, nadie más aunque tenga el check (`utils.aprueba_oc_credito`, variable USUARIOS_APRUEBAN_OC_CREDITO). Reemplaza la regla del 25/10 (solo Erika).
+**4. Arriba a la derecha sale el nombre real de quien entró** (antes decía "Usuario" en varias pantallas porque se tomaba de una variable que solo existía en el inicio, o del navegador). Ahora sale siempre de la sesión del servidor.
+- No se ejecutó el prompt de Abdiel (quitar candados de administrador y crear otra matriz): no hacía falta y debilitaba la seguridad.
+- Pruebas: 389 bien.

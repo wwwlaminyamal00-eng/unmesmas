@@ -255,8 +255,19 @@ def _antes():
 # ============================================================
 # PERMISOS
 # ============================================================
+def _aprueba_credito():
+    from utils import aprueba_oc_credito
+    return aprueba_oc_credito()
+
+
+def _matriz(codigo):
+    """04/11/2026: "Acceso total" (crear) en Usuarios y permisos también habilita el paso, no solo el rol."""
+    from routes.acceso import tiene_permiso
+    return tiene_permiso(codigo, 'puede_crear')
+
+
 def puede_comprar():
-    return es_admin() or es_aprobador() or rol_actual() in ROLES_COMPRAS
+    return es_admin() or es_aprobador() or rol_actual() in ROLES_COMPRAS or _matriz('ORDEN_COMPRA')
 
 
 def puede_aprobar():
@@ -266,15 +277,18 @@ def puede_aprobar():
 
 
 def puede_pagar():
-    return es_admin() or es_aprobador() or rol_actual() in ROLES_FINANZAS
+    # Erika 04/11/2026: los pagos de OC a proveedores solo los registran Hellen y Erika (por usuario, no por rol)
+    from utils import paga_proveedores
+    return paga_proveedores()
 
 
 def puede_recibir():
-    return es_admin() or es_aprobador() or rol_actual() in ROLES_ALMACEN or rol_actual() in ROLES_CONTROL_INVENTARIO
+    return (es_admin() or es_aprobador() or rol_actual() in ROLES_ALMACEN or rol_actual() in ROLES_CONTROL_INVENTARIO
+            or _matriz('RECEPCION_MERCADERIA'))
 
 
 def puede_facturar():
-    return puede_pagar() or puede_comprar()
+    return puede_pagar() or puede_comprar() or _matriz('COMPROBANTES_PROVEEDOR')
 
 
 def _usuario():
@@ -832,6 +846,7 @@ def compras_inicio():
     return render_template('compras/flujo.html',
                            puede_comprar=puede_comprar(), puede_aprobar=puede_aprobar(), puede_pagar=puede_pagar(),
                            puede_recibir=puede_recibir(), puede_facturar=puede_facturar(), es_admin=es_admin(),
+                           aprueba_credito=_aprueba_credito(),
                            metodos=METODOS_PAGO, tab=request.args.get('tab') or 'hoy',
                            nueva=request.args.get('nueva') == '1', motivos=MOTIVOS_SIN_PEDIDO)
 
@@ -1439,8 +1454,10 @@ def api_orden_aprobar(oc_id):
                 raise ErrorCompras(f'La orden está "{oc["estado"]}": no está esperando aprobación.')
             if aprobar:
                 # Erika 25/10/2026: Hellen sí aprueba sus propias OC; las de crédito solo las aprueba la administradora
-                if es_credito(oc['condicion_pago']) and not es_admin():
-                    raise PermissionError('Esta orden es a crédito: solo Erika (administradora) puede aprobarla. Sin su aprobación no tiene validez.')
+                # Erika 04/11/2026: las OC a crédito solo las aprueban ella y Hellen; nadie más, aunque tenga el check
+                from utils import aprueba_oc_credito
+                if es_credito(oc['condicion_pago']) and not aprueba_oc_credito():
+                    raise PermissionError('Esta orden es a crédito: solo Erika o Hellen pueden aprobarla. Sin su aprobación no tiene validez.')
                 cur.execute("""UPDATE ordenes_compra SET estado = 'Aprobada', aprobado_por_id = %s, aprobado_por = %s,
                                aprobado_en = NOW(), updated_at = NOW() WHERE id = %s""", (uid, unom, oc_id))
                 _historial(cur, oc_id, 'Aprobada', motivo or None)
@@ -1495,7 +1512,7 @@ def api_orden_anular(oc_id):
 @compras_flujo_bp.route('/compras/api/flujo/ordenes/<int:oc_id>/pago', methods=['POST'])
 def api_orden_pago(oc_id):
     if not puede_pagar():
-        return _no_autorizado('Solo Finanzas o una supervisora registra pagos.')
+        return _no_autorizado('Solo Hellen o Erika registran los pagos a proveedores.')
     d = request.get_json(silent=True) or {}
     try:
         if a_decimal(d.get('monto_pagado') if d.get('monto_pagado') not in (None, '') else d.get('monto')) <= 0:

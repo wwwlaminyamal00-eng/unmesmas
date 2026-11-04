@@ -780,8 +780,8 @@ table:not(.no-centrar) > :is(thead,tbody,tfoot) > tr > :is(th,td){text-align:cen
             {{ nombre_completo.split()[0][0]|upper if nombre_completo.split() else 'U' }}
         </div>
         <span id="userName">
-            {% set nombre_completo = session.get('nombre_completo') or session.get('nombre') or 'Usuario' %}
-            {{ nombre_completo.split()[0] if nombre_completo.split() else 'Usuario' }}
+            {% set nombre_completo = session.get('nombre_completo') or session.get('nombre') or session.get('usuario') or 'Usuario' %}
+            {{ nombre_completo }}
         </span>
     </div>
 </div>
@@ -1832,10 +1832,11 @@ else if (currentPath.includes('/inventario')) {
         // DATOS DE SESIÓN DESDE FLASK
         // ============================================================
         const FLASK_SESSION = {
-            user: '{{ usuario or "" }}',
-            name: '{{ nombre or "Usuario" }}',
-            empresa: '{{ empresa or "KCF" }}',
-            rol: '{{ rol or "usuario" }}'
+            // Erika 04/11/2026: arriba a la derecha siempre el nombre real de quien entró (no "Usuario")
+            user: {{ (session.get('usuario') or usuario or '')|tojson }},
+            name: {{ (session.get('nombre_completo') or nombre or session.get('usuario') or 'Usuario')|tojson }},
+            empresa: {{ (session.get('empresa') or empresa or 'KCF')|tojson }},
+            rol: {{ (session.get('rol') or rol or 'usuario')|tojson }}
         };
 
         FLASK_SESSION.isLoggedIn = FLASK_SESSION.user && FLASK_SESSION.user !== '';
