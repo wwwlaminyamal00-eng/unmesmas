@@ -2758,3 +2758,10 @@ Igual en todos los módulos. Lo aplica `static/js/colores_avance.js` según el t
 - "Datos para la transferencia" queda solo como dato interno en pantalla: ya no sale al imprimir ni en el PDF.
 - KCF y AGD con diseños distintos: KCF igual que antes (letra Arial, recuadro rojo); AGD con franja naranja arriba, letra con serifa, encabezado de tabla naranja y cajas con borde lateral.
 - El nombre del aprobador en las OC de AGD NO se cambió (pendiente de decisión de Erika). 393 pruebas.
+
+## 24.72 Recibir mercadería: quién recibe, contado sin pago y firma AGD (04/11/2026)
+- Reciben mercadería SOLO eri01kcf, hel02kcf y est01kcf (por usuario; `USUARIOS_RECIBEN_MERCADERIA`). Ni el rol ni la matriz lo dan. Sigue: quien hizo la OC no la recibe.
+- OC al contado: ya se puede recibir aunque no esté pagada (los proveedores entregan con 1 a 5 días de confianza). Al recibir queda "Recibido · falta pagar (plazo dd/mm)", plazo 5 días desde la primera recepción (`COMPRAS_DIAS_PAGO_CONTADO`); pasado el plazo sale "🔴 VENCIDO". Aviso en Hoy en Compras y la OC sale en Pagos y facturas. El adelanto % acordado sí sigue bloqueando hasta que se pague. El pago lo registran solo eri01kcf y hel02kcf.
+- En Recibir: si falta el adelanto, botón "💸 Registrar pago" para Erika y Hellen.
+- PDF de OC de AGD: "Aprobado por: Gerencia Compras AGD GROUP SAC" con fecha y hora. Por dentro se guarda y muestra el usuario real (historial y OC al crédito). KCF sin cambios.
+- Sin migraciones. 396 pruebas.

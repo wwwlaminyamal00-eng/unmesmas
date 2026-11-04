@@ -55,6 +55,9 @@ ALERTA_PRECIO_PCT = a_decimal(os.environ.get('COMPRAS_ALERTA_PRECIO_PCT', '10'))
 TOLERANCIA_FACTURA = a_decimal(os.environ.get('COMPRAS_TOLERANCIA_FACTURA', '1.00'))
 # Días para avisar: pagado y la mercadería no llega / recibido y la factura no llega
 DIAS_AVISO = int(os.environ.get('COMPRAS_DIAS_AVISO', '3'))
+# Erika 04/11/2026: muchos proveedores "al contado" entregan antes de que se les pague (confianza, 1 a 5 días).
+# La OC al contado ya se puede recibir sin pago; queda "Recibido · falta pagar" con este plazo desde que llegó.
+DIAS_PAGO_CONTADO = int(os.environ.get('COMPRAS_DIAS_PAGO_CONTADO', '5'))
 
 CONDICIONES = ('Contado', 'Contra entrega', 'Crédito', 'Adelanto 50%')
 # 24/10/2026 (equipo de Erika): hay proveedores a los que se paga el 50% antes y el saldo después (lo ve Finanzas)
@@ -283,8 +286,9 @@ def puede_pagar():
 
 
 def puede_recibir():
-    return (es_admin() or es_aprobador() or rol_actual() in ROLES_ALMACEN or rol_actual() in ROLES_CONTROL_INVENTARIO
-            or _matriz('RECEPCION_MERCADERIA'))
+    # Erika 04/11/2026: reciben mercadería solo Erika, Hellen y Estrella (por usuario, como los pagos y el crédito)
+    from utils import recibe_mercaderia
+    return recibe_mercaderia()
 
 
 def puede_facturar():
@@ -730,7 +734,8 @@ SQL_OC_LISTA = """
     inc AS (SELECT orden_compra_id, COUNT(*) AS abiertas FROM com_incidencias WHERE estado = 'Abierta' GROUP BY orden_compra_id),
     -- Erika 02/11/2026: cuánto llegó dañado (no entra al stock; el proveedor repone o da nota de crédito)
     dn AS (SELECT r.orden_compra_id, SUM(ri.cantidad_danada) AS danado FROM com_recepcion_items ri
-           JOIN com_recepciones r ON r.id = ri.recepcion_id GROUP BY r.orden_compra_id)
+           JOIN com_recepciones r ON r.id = ri.recepcion_id GROUP BY r.orden_compra_id),
+    rc AS (SELECT orden_compra_id, MIN(fecha) AS primera_recepcion FROM com_recepciones GROUP BY orden_compra_id)
     SELECT oc.id, oc.numero_orden AS numero, COALESCE(oc.fecha_creacion, oc.created_at) AS fecha, oc.estado, oc.flujo,
            oc.empresa_id, e.codigo AS empresa,
            oc.almacen_entrega_id, a.nombre AS sede, oc.modalidad_entrega, oc.direccion_recojo, oc.tipo_compra,
@@ -745,7 +750,7 @@ SQL_OC_LISTA = """
            COALESCE(it.lineas, 0) AS lineas, COALESCE(it.pedida, 0) AS pedida, COALESCE(it.recibida, 0) AS recibida,
            COALESCE(it.valor_recibido, 0) AS valor_recibido, it.pedidos, it.clientes, it.productos,
            COALESCE(pg.pagado, 0) AS pagado, COALESCE(fa.facturas, 0) AS facturas, COALESCE(fa.facturado, 0) AS facturado,
-           fa.cuadra, COALESCE(inc.abiertas, 0) AS incidencias, COALESCE(dn.danado, 0) AS danado
+           fa.cuadra, COALESCE(inc.abiertas, 0) AS incidencias, COALESCE(dn.danado, 0) AS danado, rc.primera_recepcion
     FROM ordenes_compra oc
     LEFT JOIN erp_empresas e ON e.id = oc.empresa_id
     LEFT JOIN almacenes a ON a.id = oc.almacen_entrega_id
@@ -755,6 +760,7 @@ SQL_OC_LISTA = """
     LEFT JOIN fa ON fa.orden_compra_id = oc.id
     LEFT JOIN inc ON inc.orden_compra_id = oc.id
     LEFT JOIN dn ON dn.orden_compra_id = oc.id
+    LEFT JOIN rc ON rc.orden_compra_id = oc.id
 """
 
 
@@ -783,8 +789,7 @@ def _paso(o):
         return {'codigo': 'enviar', 'texto': 'Terminar y enviar a aprobar', 'quien': 'Compras'}
     if estado == 'Por aprobar':
         return {'codigo': 'aprobar', 'texto': 'Aprobar', 'quien': 'Supervisora'}
-    if estado in ESTADOS_ABIERTOS and contado and pagado < total:
-        return {'codigo': 'pagar', 'texto': 'Pagar al proveedor (es al contado)', 'quien': 'Finanzas'}
+    # Erika 04/11/2026: al contado ya no bloquea la recepción (el proveedor entrega y se le paga en DIAS_PAGO_CONTADO días)
     pct = pct_adelanto(o)
     if estado in ESTADOS_ABIERTOS and pct > 0 and pagado < monto_adelanto(total, pct) \
             and not _es_intercompany(o.get('ruc')):
@@ -793,6 +798,11 @@ def _paso(o):
         texto = 'Recibir lo que falta' if estado == 'Recibida parcial' else (
             'Recoger y recibir en sede' if o.get('modalidad_entrega') == 'Nosotros recogemos' else 'Recibir en sede')
         return {'codigo': 'recibir', 'texto': texto, 'quien': 'Almacén (otra persona)'}
+    if contado and pagado < total and estado != 'Anulada':
+        vence = _vence_pago_contado(o)
+        vencido = bool(vence and vence < date.today())
+        return {'codigo': 'pagar', 'texto': ('🔴 VENCIDO · ' if vencido else '') + 'Recibido · falta pagar'
+                + (f' (plazo {vence:%d/%m})' if vence else ''), 'quien': 'Erika o Hellen'}
     if a_decimal(o['incidencias']) > 0:
         return {'codigo': 'incidencia', 'texto': 'Resolver diferencias', 'quien': 'Supervisora'}
     if a_decimal(o['facturas']) == 0:
@@ -800,6 +810,18 @@ def _paso(o):
     if pagado < a_decimal(o['facturado']):
         return {'codigo': 'pagar_credito', 'texto': 'Pagar factura (crédito)', 'quien': 'Finanzas'}
     return {'codigo': 'listo', 'texto': 'Completa', 'quien': '—'}
+
+
+def _vence_pago_contado(o):
+    pr = o.get('primera_recepcion')
+    if not pr:
+        return None
+    if isinstance(pr, str):
+        try:
+            pr = datetime.fromisoformat(pr[:19])
+        except ValueError:
+            return None
+    return (pr.date() if isinstance(pr, datetime) else pr) + timedelta(days=DIAS_PAGO_CONTADO)
 
 
 def _oc_dict(o):
@@ -813,6 +835,12 @@ def _oc_dict(o):
         d['falta_adelanto'] = float(max(monto_adelanto(o['total'], pct) - a_decimal(o['pagado']), 0))
     d['solo_admin_aprueba'] = es_credito(o.get('condicion_pago'))
     d['intercompany'] = _es_intercompany(o.get('ruc'))
+    # Erika 04/11/2026: OC al contado aprobada con saldo por pagar (se puede recibir antes; se paga en DIAS_PAGO_CONTADO días)
+    d['contado_sin_pagar'] = bool((o.get('condicion_pago') or '').startswith('Contado') and not d['intercompany']
+                                  and o['estado'] not in ('Borrador', 'Por aprobar', 'Anulada') and d['saldo_pago'] > 0.009)
+    vence = _vence_pago_contado(o) if d['contado_sin_pagar'] else None
+    d['pago_contado_vence'] = vence.isoformat() if vence else None
+    d['pago_contado_vencido'] = bool(vence and vence < date.today())
     d['falta_pago_intercompany'] = bool(d['intercompany'] and (o.get('condicion_pago') or '').startswith('Contado')
                                         and d['saldo_pago'] > 0)
     pedida = a_decimal(o['pedida'])
@@ -837,6 +865,9 @@ def _listar_ocs(where='', params=()):
 # al credito sin mi aprobación y luego tenga una deuda de 10 mil soles"
 # ============================================================
 ESTADOS_SIN_VALIDEZ = ('Borrador', 'Por aprobar')
+# Erika 04/11/2026: en el PDF de las OC de AGD la firma sale como cargo, no con el nombre de la persona.
+# Por dentro (historial, OC al crédito) se sigue guardando y mostrando el usuario real que aprobó.
+FIRMA_APROBACION_PDF = {'AGD': 'Gerencia Compras AGD GROUP SAC'}
 
 
 def _ocs_credito():
@@ -990,11 +1021,23 @@ def api_resumen():
         if por('aprobar'):
             alerta('warn', f'<b>{len(por("aprobar"))} orden(es) esperan aprobación.</b> Sin aprobación no se paga ni se recibe.',
                    'ordenes', len(por('aprobar')), por('aprobar'), 'Órdenes que esperan aprobación')
-        if por('pagar'):
-            monto = sum(o['saldo_pago'] for o in por('pagar'))
-            alerta('warn', f'<b>{len(por("pagar"))} orden(es) al contado por pagar</b> (S/ {monto:,.2f}). '
-                           'Finanzas paga solo a la cuenta registrada del proveedor.', 'facturas', len(por('pagar')),
-                   por('pagar'), 'Órdenes al contado por pagar')
+        recibidas_sin_pago = [o for o in ocs if o.get('contado_sin_pagar') and o.get('primera_recepcion')]
+        if recibidas_sin_pago:
+            vencidas = [o for o in recibidas_sin_pago if o['pago_contado_vencido']]
+            alerta('danger' if vencidas else 'warn',
+                   f'<b>{len(recibidas_sin_pago)} orden(es) al contado ya recibidas y sin pagar</b>'
+                   + (f' · <b>{len(vencidas)} vencida(s)</b>' if vencidas else '')
+                   + f'. Plazo: {DIAS_PAGO_CONTADO} días desde que llegó. Pagan Erika o Hellen: '
+                   + ', '.join(o['numero'] + (f" (vence {o['pago_contado_vence'][8:10]}/{o['pago_contado_vence'][5:7]})" if o['pago_contado_vence'] else '')
+                               for o in recibidas_sin_pago[:6]) + '.',
+                   'facturas', len(recibidas_sin_pago), recibidas_sin_pago, 'Recibidas al contado sin pagar')
+        antes = [o for o in ocs if (o.get('contado_sin_pagar') and not o.get('primera_recepcion'))
+                 or (o['paso']['codigo'] == 'pagar' and not o.get('contado_sin_pagar'))]
+        if antes:
+            monto = sum(o['saldo_pago'] for o in antes)
+            alerta('warn', f'<b>{len(antes)} orden(es) por pagar antes de que llegue la mercadería</b> (S/ {monto:,.2f}). '
+                           'Se pueden recibir igual; el pago va solo a la cuenta registrada del proveedor.', 'facturas', len(antes),
+                   antes, 'Órdenes al contado por pagar')
         atrasadas = [o for o in ocs if o['atrasada']]
         if atrasadas:
             alerta('danger', f'<b>{len(atrasadas)} orden(es) atrasadas:</b> pasó la fecha prometida y la mercadería no llega completa: '
@@ -1064,8 +1107,9 @@ def api_resumen():
         kpis = {
             'pedidos': len(pedidos),
             'por_aprobar': len(por('aprobar')),
-            'por_pagar': round(sum(o['saldo_pago'] for o in por('pagar')), 2),
-            'por_recibir': len(por('recibir')) + len(por('pagar')),
+            'por_pagar': round(sum(o['saldo_pago'] for o in ocs if o.get('contado_sin_pagar')
+                                   or (o['paso']['codigo'] == 'pagar' and not o.get('contado_sin_pagar'))), 2),
+            'por_recibir': len([o for o in ocs if o['estado'] in ESTADOS_ABIERTOS and o['paso']['codigo'] in ('recibir', 'pagar')]),
             'incidencias': inc,
             'compras_mes': round(total_mes, 2),
         }
@@ -1676,11 +1720,13 @@ def api_por_recibir():
         datos = _listar_ocs("oc.flujo = 'v2' AND oc.estado IN ('Aprobada', 'Recibida parcial', 'Por aprobar')")
         res = []
         for o in datos:
-            res.append({k: o[k] for k in ('id', 'numero', 'empresa', 'empresa_id', 'sede', 'almacen_entrega_id', 'proveedor',
+            res.append(dict({k: o[k] for k in ('id', 'numero', 'empresa', 'empresa_id', 'sede', 'almacen_entrega_id', 'proveedor',
                                           'modalidad_entrega', 'direccion_recojo', 'fecha_compromiso', 'estado',
                                           'atrasada', 'paso', 'clientes', 'lineas', 'usuario_id',
                                           'responsable_recojo_id', 'responsable_recojo', 'responsable_recojo_por',
-                                          'responsable_recojo_en', 'falta_pago_intercompany')})
+                                          'responsable_recojo_en', 'falta_pago_intercompany', 'moneda', 'saldo_pago',
+                                          'contado_sin_pagar', 'pago_contado_vence')},
+                       falta_adelanto=o.get('falta_adelanto') or 0))
         return jsonify({'success': True, 'data': res})
     except Exception as e:
         return _respuesta_error(e)
@@ -1841,10 +1887,7 @@ def api_orden_recibir(oc_id):
                                    'Si llegó algo sin orden aprobada, no lo recibas y avisa a tu supervisora.')
             if oc['usuario_id'] and oc['usuario_id'] == uid and not es_admin():
                 raise PermissionError('Tú hiciste esta orden de compra: la mercadería la recibe otra persona.')
-            if ((oc['condicion_pago'] or '').startswith('Contado') and not _es_intercompany(oc.get('proveedor_ruc'))
-                    and _pagado_oc(oc_id) < a_decimal(oc['total'])):
-                raise ErrorCompras('Esta orden es al contado y Finanzas todavía no registra el pago completo. '
-                                   'Si el proveedor entregó sin pago, avisa a tu supervisora.')
+            # Erika 04/11/2026: la OC al contado se recibe aunque falte el pago; queda "Recibido · falta pagar"
             pct = pct_adelanto(oc)
             if (pct > 0 and not _es_intercompany(oc.get('proveedor_ruc'))
                     and _pagado_oc(oc_id) < monto_adelanto(oc['total'], pct)):
@@ -2241,7 +2284,9 @@ def orden_imprimir(oc_id):
                     'cuando': f'a crédito {dias} días (desde la factura)' if es_credito(o.get('condicion_pago')) and dias
                               else 'con la entrega' if (o.get('condicion_pago') or '').startswith('Contra entrega')
                               else 'con la factura'}
-        return render_template('compras/imprimir_oc.html', o=o, pago=pago, empresa=empresa[0] if empresa else {},
+        cod_emp = ((empresa[0].get('codigo') if empresa else None) or o.get('empresa') or '').upper()
+        aprobador_pdf = FIRMA_APROBACION_PDF.get(cod_emp) or o.get('aprobado_por')
+        return render_template('compras/imprimir_oc.html', o=o, pago=pago, empresa=empresa[0] if empresa else {}, aprobador_pdf=aprobador_pdf,
                                sede=sede[0] if sede else {}, prov=prov[0] if prov else {}, items=items,
                                hoja=request.args.get('hoja') or 'oc', hoy=date.today(),
                                declarada=_sede_declarada(o['empresa_id'], o['almacen_entrega_id']) if o['empresa_id'] and o['almacen_entrega_id'] else None)

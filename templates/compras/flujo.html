@@ -60,7 +60,7 @@
         <div class="inv-kpis">
             <div class="inv-kpi" data-ir="pedidos"><small>Pedidos por comprar</small><b id="kpiPedidos">0</b><span>Pedidos de clientes sin orden</span></div>
             <div class="inv-kpi inv-kpi-warn" data-ir="ordenes" data-paso="aprobar"><small>Por aprobar</small><b id="kpiAprobar">0</b><span>Órdenes esperando a la supervisora</span></div>
-            <div class="inv-kpi inv-kpi-warn" data-ir="facturas"><small>Por pagar (contado)</small><b id="kpiPagar">S/ 0.00</b><span>Antes de recoger</span></div>
+            <div class="inv-kpi inv-kpi-warn" data-ir="facturas"><small>Por pagar (contado)</small><b id="kpiPagar">S/ 0.00</b><span>Al contado, aún sin pagar</span></div>
             <div class="inv-kpi" data-ir="recibir"><small>Por recibir</small><b id="kpiRecibir">0</b><span>Órdenes con mercadería pendiente</span></div>
             <div class="inv-kpi inv-kpi-danger" data-ir="ordenes" data-paso="incidencia"><small>Diferencias abiertas</small><b id="kpiInc">0</b><span>Faltantes, sobrantes, dañados</span></div>
         </div>
@@ -209,7 +209,7 @@
             <div class="inv-head">
                 <div>
                     <div class="inv-title">Órdenes con mercadería por llegar</div>
-                    <div class="inv-help">Las órdenes al contado aparecen bloqueadas hasta que Finanzas registra el pago.</div>
+                    <div class="inv-help">Reciben <b>Erika, Hellen o Estrella</b>. Las órdenes <b>al contado</b> se pueden recibir antes del pago: quedan "Recibido · falta pagar" y se pagan en <b>5 días</b>.</div>
                 </div>
                 <div>
                     <a class="btn btn-transporte" href="/compras/flujo/programa_transporte" target="_blank" rel="noopener" title="Lista de lo que hay que recoger, con responsable. Se imprime o se descarga en Excel.">🚚 Programa de transporte</a>
@@ -233,7 +233,7 @@
             <div class="inv-head">
                 <div>
                     <div class="inv-title">Órdenes por pagar</div>
-                    <div class="inv-help">Al contado: se paga antes de recoger. Paga <b>solo a la cuenta bancaria registrada del proveedor</b> y anota el N° de operación. Quien hizo la orden no puede registrar el pago.</div>
+                    <div class="inv-help">Al contado: se paga antes de recoger o, si el proveedor entregó primero, en 5 días desde que llegó. Paga <b>solo a la cuenta bancaria registrada del proveedor</b> y anota el N° de operación. Quien hizo la orden no puede registrar el pago.</div>
                 </div>
             </div>
             <div class="table-wrap">
@@ -545,5 +545,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261104e"></script>
+<script src="{{ url_for('static', filename='js/compras_flujo.js') }}?v=20261104g"></script>
 {% endblock %}

@@ -264,7 +264,8 @@ def test_responsable_recojo_y_programa_de_transporte(zz, admin):
     assert fila['responsable_recojo'] == 'Compradora Siete' and fila['responsable_recojo_en'] and fila['responsable_recojo_por']
     html = admin.get('/compras/flujo/programa_transporte').get_data(as_text=True)
     assert 'Jr. Recojo ZZ 456' in html and 'Compradora Siete' in html and 'LENTE DE SEGURIDAD ZZ' in html
-    assert 'Falta el pago' in html and CLIENTE not in html          # al contado sin pagar: no se recoge
+    # 04/11/2026 (Erika): al contado sin pagar ya se puede recoger (el proveedor confía 1 a 5 días)
+    assert 'Listo para recoger' in html and CLIENTE not in html
     csv_txt = admin.get('/compras/flujo/programa_transporte', query_string={'formato': 'csv'}).get_data(as_text=True)
     assert 'Responsable de recoger' in csv_txt and 'Compradora Siete' in csv_txt and ';17;' in csv_txt
     # una OC que entrega el proveedor no lleva responsable de recojo
